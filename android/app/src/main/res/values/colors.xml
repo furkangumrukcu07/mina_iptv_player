@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="tv_banner_bg">#0D1117</color>
+	<!-- Telefon/tablet adaptif ikon: beyaz zemin (siyah halka önlenir). TV: values-television -->
+	<color name="ic_launcher_background">#FFFFFF</color>
+</resources>
