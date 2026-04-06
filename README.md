@@ -1,17 +1,33 @@
-# mina_iptv_player
+# Mina IPTV Player
 
-A new Flutter project.
+Android TV ve telefon için Flutter ile geliştirilmiş IPTV oynatıcı. M3U / M3U8 URL veya yerel dosya, Xtream Codes API, canlı TV, VOD, dizi gözatma, XMLTV (EPG), Better Player (ExoPlayer) ve MediaKit desteği sunar.
 
-## Getting Started
+## Gereksinimler
 
-This project is a starting point for a Flutter application.
+- [Flutter](https://docs.flutter.dev/get-started/install) (SDK sürümü `pubspec.yaml` ile uyumlu)
+- Android: API ve Gradle sürümleri `android/` yapılandırmasında tanımlıdır
 
-A few resources to get you started if this is your first Flutter project:
+## Çalıştırma
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+```bash
+flutter pub get
+flutter run
+```
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+Release APK örneği:
+
+```bash
+flutter build apk --release
+```
+
+## Gizlilik
+
+Ayrıntılar için depo kökündeki [GIZLILIK_POLITIKASI.md](GIZLILIK_POLITIKASI.md) dosyasına bakın.
+
+## Yerel paket
+
+`better_player_plus` bu repoda `packages/better_player_plus` altında yol bağımlılığı olarak kullanılır.
+
+## Lisans
+
+Apache License 2.0 — ayrıntılar için [LICENSE](LICENSE) dosyası.
