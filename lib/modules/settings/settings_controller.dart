@@ -1,11 +1,8 @@
 import 'dart:async';
-import 'dart:io';
-
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
-import 'package:path_provider/path_provider.dart';
-import 'package:file_picker/file_picker.dart';
+import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/constants/playlist_storage.dart';
@@ -18,7 +15,7 @@ import '../../core/services/epg_service.dart';
 import '../../core/services/favorites_service.dart';
 import '../../core/services/playlist_cache_service.dart';
 import '../../core/layout/app_layout_mode.dart';
-import '../../domain/entities/m3u_result.dart';
+import '../../core/theme/glass_appearance.dart';
 import '../../domain/entities/playlist_source.dart';
 import '../../domain/repositories/playlist_repository.dart';
 import '../browse/browse_controller.dart';
@@ -36,6 +33,11 @@ class SettingsController extends GetxController {
   final isRefreshing = false.obs;
   final isFetchingInfo = false.obs;
   final isXtream = false.obs;
+  /// Ayarlar altı: Xtream kullanıcı + sunucu (şifre yok).
+  final xtreamFooterLine = ''.obs;
+
+  /// Boş: henüz yüklenmedi. Örn. `1.1.0 (2014)`.
+  final packageVersionLabel = ''.obs;
 
   AppSettingsService get app => _app;
 
@@ -58,12 +60,40 @@ class SettingsController extends GetxController {
     _clock = Timer.periodic(const Duration(seconds: 30), (_) {
       now.value = DateTime.now();
     });
+    unawaited(_loadPackageInfo());
     _checkSource();
+  }
+
+  Future<void> _loadPackageInfo() async {
+    try {
+      final info = await PackageInfo.fromPlatform();
+      packageVersionLabel.value =
+          '${info.version} (${info.buildNumber})';
+    } catch (_) {
+      packageVersionLabel.value = '';
+    }
   }
 
   Future<void> _checkSource() async {
     final s = await _repo.readSource();
     isXtream.value = s is XtreamSource;
+    if (s is XtreamSource) {
+      final host = _shortUrlHost(s.baseUrl);
+      xtreamFooterLine.value = 'settings.xtreamFooter.line'.trParams({
+        'user': s.username,
+        'host': host,
+      });
+    } else {
+      xtreamFooterLine.value = '';
+    }
+  }
+
+  String _shortUrlHost(String raw) {
+    final u = Uri.tryParse(raw.trim());
+    if (u != null && u.host.isNotEmpty) {
+      return u.hasPort ? '${u.host}:${u.port}' : u.host;
+    }
+    return raw.trim();
   }
 
   @override
@@ -138,14 +168,18 @@ class SettingsController extends GetxController {
 
     isRefreshing.value = true;
     try {
-      final parsed = await _loadSource(source);
+      final parsed = await _repo.loadMergedPlaylist(
+        secondaryOrphanCategoryName: 'playlist.merge.orphanCategory'.tr,
+      );
+      final sec = await _repo.readSecondarySource();
       final urlLabel = switch (source) {
         M3uSource() => isM3uLocalSentinel(source.url)
             ? 'playlist.label.localM3u'.tr
             : source.url,
         XtreamSource() => source.baseUrl,
       };
-      _cache.setPlaylist(value: parsed, url: urlLabel);
+      final label = sec == null ? urlLabel : '$urlLabel (+2)';
+      _cache.setPlaylist(value: parsed, url: label);
       await _app.updateLastRefreshTime();
       GlassSnackbar.show(
         'settings.snackbar.content'.tr,
@@ -258,116 +292,12 @@ class SettingsController extends GetxController {
 
   void goBack() => Get.back();
 
-  void openPlaylistList() => Get.toNamed(AppRoutes.playlist);
-
-  Future<void> showBackgroundPickerDialog() async {
-    final ctx = Get.context;
-    if (ctx == null) return;
-
-    final action = await showDialog<String>(
-      context: ctx,
-      builder: (c) => GlassAlertDialog(
-        title: Text('settings.dialog.backgroundTitle'.tr),
-        content: Text('settings.dialog.backgroundBody'.tr),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(c, 'cancel'),
-            child: Text('common.cancel'.tr),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(c, 'default'),
-            child: Text('theme.defaultName'.tr),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(c, 'pick'),
-            child: Text('settings.dialog.pickGallery'.tr),
-          ),
-        ],
-      ),
+  Future<void> openPlaylistList() async {
+    await Get.toNamed(
+      AppRoutes.playlist,
+      arguments: const {AppRoutes.argPlaylistManage: true},
     );
-
-    if (action == 'default') {
-      await _setDefaultBackground();
-      return;
-    }
-    if (action != 'pick') return;
-    await _pickAndSetBackground();
-  }
-
-  Future<void> _setDefaultBackground() async {
-    final prev = _app.customBackgroundPath.value;
-    await _app.setCustomBackgroundPath(null);
-    if (prev != null) {
-      try {
-        final f = File(prev);
-        if (f.existsSync()) {
-          f.deleteSync();
-        }
-      } catch (_) {}
-    }
-    GlassSnackbar.show(
-      'settings.tile.background'.tr,
-      'settings.snackbar.backgroundDefault'.tr,
-      snackPosition: SnackPosition.BOTTOM,
-    );
-  }
-
-  Future<void> _pickAndSetBackground() async {
-    final res = await FilePicker.platform.pickFiles(
-      type: FileType.image,
-      allowMultiple: false,
-      withData: false,
-    );
-    final path = res?.files.firstOrNull?.path;
-    if (path == null || path.trim().isEmpty) return;
-
-    final src = File(path);
-    if (!src.existsSync()) return;
-
-    final dir = await getApplicationSupportDirectory();
-    final ext = path.toLowerCase().split('.').last;
-    final safeExt =
-        (ext == 'jpg' || ext == 'jpeg' || ext == 'png' || ext == 'webp')
-            ? ext
-            : 'png';
-    final outPath =
-        '${dir.path}/bg_${DateTime.now().millisecondsSinceEpoch}.$safeExt';
-
-    final prev = _app.customBackgroundPath.value;
-    try {
-      await src.copy(outPath);
-      await _app.setCustomBackgroundPath(outPath);
-      if (prev != null && prev != outPath) {
-        try {
-          final f = File(prev);
-          if (f.existsSync()) {
-            f.deleteSync();
-          }
-        } catch (_) {}
-      }
-      GlassSnackbar.show(
-        'settings.tile.background'.tr,
-        'settings.snackbar.backgroundUpdated'.tr,
-        snackPosition: SnackPosition.BOTTOM,
-      );
-    } catch (e) {
-      GlassSnackbar.show(
-        'settings.tile.background'.tr,
-        'settings.snackbar.backgroundFail'.trParams({'e': '$e'}),
-        snackPosition: SnackPosition.BOTTOM,
-      );
-    }
-  }
-
-  Future<M3uResult> _loadSource(PlaylistSource source) {
-    return switch (source) {
-      M3uSource() => _repo.loadFromM3uUrl(source.url),
-      XtreamSource() => _repo.loadFromXtream(
-          baseUrl: source.baseUrl,
-          username: source.username,
-          password: source.password,
-        ),
-    };
+    await _checkSource();
   }
 
   Future<void> showAlarmDialog() async {
@@ -621,6 +551,58 @@ class SettingsController extends GetxController {
                 },
               ),
             ),
+            Obx(
+              () => ListTile(
+                title: Text('common.lang.fr'.tr),
+                trailing: _app.languageCode.value == 'fr'
+                    ? Icon(Icons.check_rounded,
+                        color: Theme.of(c).colorScheme.primary)
+                    : null,
+                onTap: () async {
+                  await _app.setLanguageCode('fr');
+                  if (c.mounted) Navigator.pop(c);
+                },
+              ),
+            ),
+            Obx(
+              () => ListTile(
+                title: Text('common.lang.ar'.tr),
+                trailing: _app.languageCode.value == 'ar'
+                    ? Icon(Icons.check_rounded,
+                        color: Theme.of(c).colorScheme.primary)
+                    : null,
+                onTap: () async {
+                  await _app.setLanguageCode('ar');
+                  if (c.mounted) Navigator.pop(c);
+                },
+              ),
+            ),
+            Obx(
+              () => ListTile(
+                title: Text('common.lang.zh'.tr),
+                trailing: _app.languageCode.value == 'zh'
+                    ? Icon(Icons.check_rounded,
+                        color: Theme.of(c).colorScheme.primary)
+                    : null,
+                onTap: () async {
+                  await _app.setLanguageCode('zh');
+                  if (c.mounted) Navigator.pop(c);
+                },
+              ),
+            ),
+            Obx(
+              () => ListTile(
+                title: Text('common.lang.ru'.tr),
+                trailing: _app.languageCode.value == 'ru'
+                    ? Icon(Icons.check_rounded,
+                        color: Theme.of(c).colorScheme.primary)
+                    : null,
+                onTap: () async {
+                  await _app.setLanguageCode('ru');
+                  if (c.mounted) Navigator.pop(c);
+                },
+              ),
+            ),
           ],
         ),
       ),
@@ -685,13 +667,14 @@ class SettingsController extends GetxController {
           children: [
             Obx(
               () => ListTile(
-                title: Text(localizedThemeStorageLabel('Varsayılan')),
-                trailing: _app.themeLabel.value == 'Varsayılan'
+                title: Text(
+                    localizedThemeStorageLabel(GlassThemeLabels.varsayilan)),
+                trailing: _app.themeLabel.value == GlassThemeLabels.varsayilan
                     ? Icon(Icons.check_rounded,
                         color: Theme.of(c).colorScheme.primary)
                     : null,
                 onTap: () async {
-                  await _app.setThemeLabel('Varsayılan');
+                  await _app.setThemeLabel(GlassThemeLabels.varsayilan);
                   if (c.mounted) Navigator.pop(c);
                 },
               ),
@@ -744,6 +727,19 @@ class SettingsController extends GetxController {
                     : null,
                 onTap: () async {
                   await _app.setThemeLabel('Mor Cam');
+                  if (c.mounted) Navigator.pop(c);
+                },
+              ),
+            ),
+            Obx(
+              () => ListTile(
+                title: Text(localizedThemeStorageLabel('Koyu Cam')),
+                trailing: _app.themeLabel.value == 'Koyu Cam'
+                    ? Icon(Icons.check_rounded,
+                        color: Theme.of(c).colorScheme.primary)
+                    : null,
+                onTap: () async {
+                  await _app.setThemeLabel('Koyu Cam');
                   if (c.mounted) Navigator.pop(c);
                 },
               ),
@@ -899,13 +895,20 @@ class SettingsController extends GetxController {
       builder: (c) => GlassAlertDialog(
         title: Text('settings.snackbar.aboutTitle'.tr),
         content: SingleChildScrollView(
-          child: Text(
-            'settings.dialog.aboutBody'.tr,
-            style: TextStyle(
-              color: Theme.of(c).colorScheme.onSurface.withValues(alpha: 0.9),
-              height: 1.45,
-            ),
-          ),
+          child: Obx(() {
+            final v = packageVersionLabel.value;
+            final head = v.isEmpty
+                ? 'Mina IPTV Player'
+                : 'Mina IPTV Player $v';
+            return Text(
+              '$head\n\n${'settings.dialog.aboutFeatures'.tr}',
+              style: TextStyle(
+                color:
+                    Theme.of(c).colorScheme.onSurface.withValues(alpha: 0.9),
+                height: 1.45,
+              ),
+            );
+          }),
         ),
         actions: [
           TextButton(

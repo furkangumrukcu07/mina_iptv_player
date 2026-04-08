@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../../core/routes/app_routes.dart';
+import '../../core/services/app_settings_service.dart';
 import '../../core/theme/app_theme.dart';
 import 'playlist_controller.dart';
 
@@ -23,8 +24,12 @@ class PlaylistView extends GetView<PlaylistController> {
     final cs = Theme.of(context).colorScheme;
     final text = Theme.of(context).textTheme;
     final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
+    final args = Get.arguments;
+    final showSecondaryPlaylistUi = args is Map &&
+        args[AppRoutes.argPlaylistManage] == true;
 
     return Scaffold(
+      backgroundColor: Colors.black,
       resizeToAvoidBottomInset: true,
       extendBodyBehindAppBar: true,
       appBar: AppBar(
@@ -56,12 +61,20 @@ class PlaylistView extends GetView<PlaylistController> {
           ),
         ],
       ),
-      body: Container(
-        decoration: AppTheme.screenBackground(context, cs),
-        child: Stack(
-          children: [
-            // Glass Background elements could be added here if needed
-            FocusTraversalGroup(
+      body: Obx(() {
+        final themeLabel = Get.find<AppSettingsService>().themeLabel.value;
+        return Container(
+          width: double.infinity,
+          height: double.infinity,
+          decoration: AppTheme.screenBackground(
+            context,
+            cs,
+            themeLabel: themeLabel,
+          ),
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              FocusTraversalGroup(
               policy: WidgetOrderTraversalPolicy(),
               child: SingleChildScrollView(
                 keyboardDismissBehavior:
@@ -74,8 +87,10 @@ class PlaylistView extends GetView<PlaylistController> {
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
                         _GlassCard(
+                          padding: const EdgeInsets.fromLTRB(24, 22, 24, 16),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
+                            mainAxisSize: MainAxisSize.min,
                             children: [
                               Text(
                                 'playlist.sourceTitle'.tr,
@@ -95,7 +110,7 @@ class PlaylistView extends GetView<PlaylistController> {
                                   height: 1.35,
                                 ),
                               ),
-                              const SizedBox(height: 20),
+                              const SizedBox(height: 16),
                               Obx(
                                 () => _SourceTabs(
                                   index: controller.tabIndex.value,
@@ -103,28 +118,101 @@ class PlaylistView extends GetView<PlaylistController> {
                                   cs: cs,
                                 ),
                               ),
-                              const SizedBox(height: 24),
+                              const SizedBox(height: 14),
                               Obx(
-                                () => IndexedStack(
-                                  index: controller.tabIndex.value,
-                                  alignment: Alignment.topCenter,
-                                  children: [
-                                    _M3uTab(
-                                      controller: controller,
-                                      denseStyle: _denseFieldStyle,
-                                      cs: cs,
-                                    ),
-                                    _XtreamTab(
-                                      controller: controller,
-                                      denseStyle: _denseFieldStyle,
-                                      cs: cs,
-                                    ),
-                                  ],
-                                ),
+                                () => controller.tabIndex.value == 0
+                                    ? _M3uTab(
+                                        controller: controller,
+                                        denseStyle: _denseFieldStyle,
+                                        cs: cs,
+                                      )
+                                    : _XtreamTab(
+                                        controller: controller,
+                                        denseStyle: _denseFieldStyle,
+                                        cs: cs,
+                                      ),
                               ),
                             ],
                           ),
                         ),
+                        if (showSecondaryPlaylistUi) ...[
+                          const SizedBox(height: 16),
+                          _GlassCard(
+                            child: Obx(() {
+                              final en = controller.enableSecondary.value;
+                              return Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  Text(
+                                    'playlist.secondaryTitle'.tr,
+                                    style: text.titleMedium?.copyWith(
+                                      fontWeight: FontWeight.w800,
+                                      fontSize: 17,
+                                      color: const Color(0xFFF8FAFC),
+                                      height: 1.2,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Text(
+                                    'playlist.secondarySubtitle'.tr,
+                                    style: text.bodyMedium?.copyWith(
+                                      color: const Color(0xFFCBD5E1),
+                                      fontWeight: FontWeight.w500,
+                                      height: 1.35,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 12),
+                                  SwitchListTile.adaptive(
+                                    value: en,
+                                    onChanged: (v) {
+                                      controller.enableSecondary.value = v;
+                                    },
+                                    title: Text(
+                                      'playlist.secondaryEnable'.tr,
+                                      style: const TextStyle(
+                                        color: Color(0xFFF1F5F9),
+                                        fontWeight: FontWeight.w700,
+                                        fontSize: 15,
+                                      ),
+                                    ),
+                                    activeThumbColor: Colors.white,
+                                    activeTrackColor: cs.primary,
+                                  ),
+                                  if (en)
+                                    Obx(() {
+                                      return Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.stretch,
+                                        children: [
+                                          const SizedBox(height: 8),
+                                          _SourceTabs(
+                                            index: controller
+                                                .secondaryTabIndex.value,
+                                            onChanged:
+                                                controller.setSecondaryTab,
+                                            cs: cs,
+                                          ),
+                                          const SizedBox(height: 14),
+                                          controller.secondaryTabIndex.value ==
+                                                  0
+                                              ? _M3uSecondaryTab(
+                                                  controller: controller,
+                                                  denseStyle: _denseFieldStyle,
+                                                  cs: cs,
+                                                )
+                                              : _XtreamSecondaryTab(
+                                                  controller: controller,
+                                                  denseStyle: _denseFieldStyle,
+                                                  cs: cs,
+                                                ),
+                                        ],
+                                      );
+                                    }),
+                                ],
+                              );
+                            }),
+                          ),
+                        ],
                         const SizedBox(height: 24),
                         Obx(
                           () => _GlassButton(
@@ -146,14 +234,20 @@ class PlaylistView extends GetView<PlaylistController> {
             ),
           ],
         ),
-      ),
+        );
+      }),
     );
   }
 }
 
 class _GlassCard extends StatelessWidget {
+  const _GlassCard({
+    required this.child,
+    this.padding = const EdgeInsets.all(24),
+  });
+
   final Widget child;
-  const _GlassCard({required this.child});
+  final EdgeInsetsGeometry padding;
 
   @override
   Widget build(BuildContext context) {
@@ -162,7 +256,7 @@ class _GlassCard extends StatelessWidget {
       child: BackdropFilter(
         filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
         child: Container(
-          padding: const EdgeInsets.all(24),
+          padding: padding,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(24),
             border: Border.all(
@@ -455,109 +549,102 @@ class _M3uTab extends StatelessWidget {
           onSubmitted: (_) => controller.submit(),
         ),
         const SizedBox(height: 16),
-        Row(
-          children: [
-            Expanded(
-              child: Container(
-                height: 54,
-                decoration: BoxDecoration(
-                  color: const Color(0xD9070D14),
-                  borderRadius: BorderRadius.circular(14),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.26),
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withValues(alpha: 0.2),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
+        Container(
+          height: 56,
+          decoration: BoxDecoration(
+            color: const Color(0xD9070D14),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.26),
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.2),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: controller.pickM3uFile,
+              borderRadius: BorderRadius.circular(14),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.folder_open_rounded,
+                      color: cs.primary.withValues(alpha: 0.95),
+                      size: 24,
+                    ),
+                    const SizedBox(width: 10),
+                    Text(
+                      'playlist.pickFile'.tr,
+                      style: const TextStyle(
+                        color: Color(0xFFF1F5F9),
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                      ),
                     ),
                   ],
                 ),
-                child: Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    onTap: controller.pickM3uFile,
-                    borderRadius: BorderRadius.circular(14),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.folder_open_rounded,
-                          color: cs.primary.withValues(alpha: 0.95),
-                          size: 22,
-                        ),
-                        const SizedBox(width: 8),
-                        Text(
-                          'playlist.pickFile'.tr,
-                          style: const TextStyle(
-                            color: Color(0xFFF1F5F9),
-                            fontSize: 15,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
               ),
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              flex: 2,
-              child: Obx(() {
-                final name = controller.m3uLocalFileName.value;
-                if (name == null || name.isEmpty) {
-                  return Text(
-                    'playlist.noFile'.tr,
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.62),
+          ),
+        ),
+        const SizedBox(height: 10),
+        Obx(() {
+          final name = controller.m3uLocalFileName.value;
+          if (name == null || name.isEmpty) {
+            return Text(
+              'playlist.noFile'.tr,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.62),
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                height: 1.35,
+              ),
+            );
+          }
+          return Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: cs.primary.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: cs.primary.withValues(alpha: 0.3)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.file_present_rounded,
+                    color: Colors.white70, size: 16),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
                       fontSize: 13,
                       fontWeight: FontWeight.w500,
                     ),
-                  );
-                }
-                return Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                  decoration: BoxDecoration(
-                    color: cs.primary.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(12),
-                    border:
-                        Border.all(color: cs.primary.withValues(alpha: 0.3)),
                   ),
-                  child: Row(
-                    children: [
-                      const Icon(Icons.file_present_rounded,
-                          color: Colors.white70, size: 16),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 13,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.close_rounded,
-                            size: 18, color: Colors.white70),
-                        onPressed: controller.clearPickedM3uFile,
-                        visualDensity: VisualDensity.compact,
-                        padding: EdgeInsets.zero,
-                        constraints: const BoxConstraints(),
-                      ),
-                    ],
-                  ),
-                );
-              }),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close_rounded,
+                      size: 18, color: Colors.white70),
+                  onPressed: controller.clearPickedM3uFile,
+                  visualDensity: VisualDensity.compact,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                ),
+              ],
             ),
-          ],
-        ),
+          );
+        }),
       ],
     );
   }
@@ -635,6 +722,274 @@ class _XtreamTab extends StatelessWidget {
           style: denseStyle,
           decoration:
               _fieldDecoration('playlist.xtream.pass'.tr, Icons.lock_outline_rounded),
+          obscureText: true,
+          textInputAction: TextInputAction.done,
+          onSubmitted: (_) => controller.submit(),
+        ),
+        const SizedBox(height: 12),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: 0.35),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.18)),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(
+                Icons.info_outline_rounded,
+                color: cs.primary.withValues(alpha: 0.95),
+                size: 20,
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Text(
+                  'playlist.xtream.hint'.tr,
+                  style: const TextStyle(
+                    color: Color(0xFFCBD5E1),
+                    fontSize: 12.5,
+                    height: 1.35,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _M3uSecondaryTab extends StatelessWidget {
+  const _M3uSecondaryTab({
+    required this.controller,
+    required this.denseStyle,
+    required this.cs,
+  });
+
+  final PlaylistController controller;
+  final TextStyle denseStyle;
+  final ColorScheme cs;
+
+  InputDecoration _fieldDecoration(String label, IconData icon) =>
+      InputDecoration(
+        labelText: label,
+        labelStyle: const TextStyle(
+          color: Color(0xFFCBD5E1),
+          fontWeight: FontWeight.w600,
+          fontSize: 13,
+        ),
+        floatingLabelStyle: TextStyle(
+          color: cs.primary,
+          fontWeight: FontWeight.w700,
+          fontSize: 13,
+        ),
+        hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.42)),
+        prefixIcon: Icon(icon, color: const Color(0xFF94A3B8), size: 22),
+        filled: true,
+        fillColor: const Color(0xD9070D14),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.22)),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.26)),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: cs.primary, width: 2),
+        ),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        TextField(
+          controller: controller.m3uSecondaryUrlController,
+          style: denseStyle,
+          decoration: _fieldDecoration(
+            'playlist.secondaryUrlHint'.tr,
+            Icons.link_rounded,
+          ),
+          keyboardType: TextInputType.url,
+          textInputAction: TextInputAction.done,
+          onSubmitted: (_) => controller.submit(),
+        ),
+        const SizedBox(height: 16),
+        Container(
+          height: 56,
+          decoration: BoxDecoration(
+            color: const Color(0xD9070D14),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.26),
+            ),
+          ),
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: controller.pickM3uSecondaryFile,
+              borderRadius: BorderRadius.circular(14),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 20),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(
+                      Icons.folder_open_rounded,
+                      color: cs.primary.withValues(alpha: 0.95),
+                      size: 24,
+                    ),
+                    const SizedBox(width: 10),
+                    Text(
+                      'playlist.pickFile'.tr,
+                      style: const TextStyle(
+                        color: Color(0xFFF1F5F9),
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 10),
+        Obx(() {
+          final name = controller.m3uSecondaryLocalFileName.value;
+          if (name == null || name.isEmpty) {
+            return Text(
+              'playlist.noFile'.tr,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.62),
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                height: 1.35,
+              ),
+            );
+          }
+          return Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              color: cs.primary.withValues(alpha: 0.15),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: cs.primary.withValues(alpha: 0.3)),
+            ),
+            child: Row(
+              children: [
+                const Icon(Icons.file_present_rounded,
+                    color: Colors.white70, size: 16),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ),
+                IconButton(
+                  icon: const Icon(Icons.close_rounded,
+                      size: 18, color: Colors.white70),
+                  onPressed: controller.clearPickedM3uSecondaryFile,
+                  visualDensity: VisualDensity.compact,
+                  padding: EdgeInsets.zero,
+                  constraints: const BoxConstraints(),
+                ),
+              ],
+            ),
+          );
+        }),
+      ],
+    );
+  }
+}
+
+class _XtreamSecondaryTab extends StatelessWidget {
+  const _XtreamSecondaryTab({
+    required this.controller,
+    required this.denseStyle,
+    required this.cs,
+  });
+
+  final PlaylistController controller;
+  final TextStyle denseStyle;
+  final ColorScheme cs;
+
+  InputDecoration _fieldDecoration(String label, IconData icon) =>
+      InputDecoration(
+        labelText: label,
+        labelStyle: const TextStyle(
+          color: Color(0xFFCBD5E1),
+          fontWeight: FontWeight.w600,
+          fontSize: 13,
+        ),
+        floatingLabelStyle: TextStyle(
+          color: cs.primary,
+          fontWeight: FontWeight.w700,
+          fontSize: 13,
+        ),
+        hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.42)),
+        prefixIcon: Icon(icon, color: const Color(0xFF94A3B8), size: 22),
+        filled: true,
+        fillColor: const Color(0xD9070D14),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.22)),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.26)),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(14),
+          borderSide: BorderSide(color: cs.primary, width: 2),
+        ),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        TextField(
+          controller: controller.xtreamSecondaryBaseUrlController,
+          style: denseStyle,
+          decoration:
+              _fieldDecoration('playlist.xtream.server'.tr, Icons.dns_rounded),
+          keyboardType: TextInputType.url,
+          textInputAction: TextInputAction.next,
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: controller.xtreamSecondaryUsernameController,
+          style: denseStyle,
+          decoration: _fieldDecoration(
+              'playlist.xtream.user'.tr, Icons.person_outline_rounded),
+          textInputAction: TextInputAction.next,
+        ),
+        const SizedBox(height: 12),
+        TextField(
+          controller: controller.xtreamSecondaryPasswordController,
+          style: denseStyle,
+          decoration: _fieldDecoration(
+              'playlist.xtream.pass'.tr, Icons.lock_outline_rounded),
           obscureText: true,
           textInputAction: TextInputAction.done,
           onSubmitted: (_) => controller.submit(),

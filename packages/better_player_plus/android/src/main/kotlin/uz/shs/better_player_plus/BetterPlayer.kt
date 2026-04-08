@@ -46,6 +46,8 @@ import androidx.media3.common.Timeline
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.TrackSelectionParameters
 import androidx.media3.common.Tracks
+import androidx.media3.common.text.Cue
+import androidx.media3.common.text.CueGroup
 import androidx.media3.common.util.UnstableApi
 import androidx.media3.common.util.Util
 import androidx.media3.datasource.DataSource
@@ -575,6 +577,10 @@ internal class BetterPlayer(
                 tryAutoSelectSupportedAudioTrack()
             }
 
+            override fun onCues(cueGroup: CueGroup) {
+                sendExoEmbeddedCuesToFlutter(cueGroup)
+            }
+
             override fun onPlaybackStateChanged(playbackState: Int) {
                 when (playbackState) {
                     Player.STATE_BUFFERING -> {
@@ -615,6 +621,36 @@ internal class BetterPlayer(
         val reply: MutableMap<String, Any> = HashMap()
         reply["textureId"] = surfaceProducer.id()
         result.success(reply)
+    }
+
+    /**
+     * Gömülü metin izleri (MKV/MP4/TS içi): Flutter [BetterPlayerSubtitlesDrawer] ile çizilir.
+     * [Cue] süreleri bazı konteynerlerde yok; [CueGroup.presentationTimeUs] ve oynatıcı pozisyonu kullanılır.
+     */
+    private fun sendExoEmbeddedCuesToFlutter(cueGroup: CueGroup) {
+        val player = exoPlayer ?: return
+        var baseUs = cueGroup.presentationTimeUs
+        if (baseUs == C.TIME_UNSET) {
+            baseUs = Util.msToUs(player.currentPosition.coerceAtLeast(0L))
+        }
+        val list = ArrayList<Map<String, Any>>(cueGroup.cues.size)
+        val defaultEndUs = baseUs + Util.msToUs(8_000L)
+        for (i in 0 until cueGroup.cues.size) {
+            val cue: Cue = cueGroup.cues[i]
+            val text = cue.text?.toString()?.trim() ?: continue
+            if (text.isEmpty()) continue
+            list.add(
+                mapOf(
+                    "startMs" to Util.usToMs(baseUs),
+                    "endMs" to Util.usToMs(defaultEndUs),
+                    "text" to text,
+                ),
+            )
+        }
+        val event: MutableMap<String, Any> = HashMap(2)
+        event["event"] = "exoEmbeddedCues"
+        event["cues"] = list
+        eventSink.success(event)
     }
 
     fun sendBufferingUpdate(isFromBufferingStart: Boolean) {
@@ -1018,6 +1054,100 @@ internal class BetterPlayer(
         var result = exoPlayer?.hashCode() ?: 0
         result = 31 * result + surfaceProducer.id().hashCode()
         return result
+    }
+
+    /**
+     * [ExoPlayer.getCurrentTracks] — gömülü MKV/MP4 ses ve metin (altyazı) izleri.
+     * HLS ASMS listesiyle karıştırılmaz; manifest dışı çoklu izler burada görünür.
+     */
+    fun getExoPlayerTracksPayload(): Map<String, Any?> {
+        val player = exoPlayer
+            ?: return mapOf("audio" to emptyList<Any>(), "text" to emptyList<Any>())
+        val audio = ArrayList<Map<String, Any?>>()
+        val text = ArrayList<Map<String, Any?>>()
+        val groups = player.currentTracks.groups
+        for (gIdx in groups.indices) {
+            val group = groups[gIdx]
+            when (group.type) {
+                C.TRACK_TYPE_AUDIO, C.TRACK_TYPE_TEXT -> {
+                    val target = if (group.type == C.TRACK_TYPE_AUDIO) audio else text
+                    for (tIdx in 0 until group.length) {
+                        if (!group.isTrackSupported(tIdx)) continue
+                        val f = group.getTrackFormat(tIdx)
+                        val defaultLabel =
+                            if (group.type == C.TRACK_TYPE_AUDIO) {
+                                "Audio ${target.size + 1}"
+                            } else {
+                                "Subtitle ${target.size + 1}"
+                            }
+                        val label = when {
+                            !f.label.isNullOrEmpty() -> f.label!!
+                            !f.language.isNullOrEmpty() -> f.language!!
+                            else -> defaultLabel
+                        }
+                        target.add(
+                            mapOf(
+                                "tracksGroupIndex" to gIdx,
+                                "trackIndex" to tIdx,
+                                "trackType" to group.type,
+                                "label" to label,
+                                "language" to (f.language ?: ""),
+                                "selected" to group.isTrackSelected(tIdx),
+                                "mimeType" to (f.sampleMimeType ?: ""),
+                            ),
+                        )
+                    }
+                }
+                else -> Unit
+            }
+        }
+        return mapOf("audio" to audio, "text" to text)
+    }
+
+    /**
+     * [TrackSelectionParameters] ile iz seçimi; URL yeniden yüklenmez.
+     */
+    fun selectExoPlayerTrack(tracksGroupIndex: Int, trackIndex: Int): Boolean {
+        val player = exoPlayer ?: return false
+        val groups = player.currentTracks.groups
+        if (tracksGroupIndex < 0 || tracksGroupIndex >= groups.size) return false
+        val group = groups[tracksGroupIndex]
+        if (group.type != C.TRACK_TYPE_AUDIO && group.type != C.TRACK_TYPE_TEXT) {
+            return false
+        }
+        if (trackIndex < 0 || trackIndex >= group.length) return false
+        if (!group.isTrackSupported(trackIndex)) return false
+        val trackType = group.type
+        val mediaGroup = group.mediaTrackGroup
+        val builder = trackSelector.parameters
+            .buildUpon()
+            .clearOverridesOfType(trackType)
+        if (trackType == C.TRACK_TYPE_TEXT) {
+            builder.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, false)
+        }
+        if (trackType == C.TRACK_TYPE_AUDIO) {
+            val mapped = trackSelector.currentMappedTrackInfo
+            if (mapped != null) {
+                for (ri in 0 until mapped.rendererCount) {
+                    if (mapped.getRendererType(ri) == C.TRACK_TYPE_AUDIO) {
+                        builder.setRendererDisabled(ri, false)
+                        break
+                    }
+                }
+            }
+        }
+        builder.addOverride(TrackSelectionOverride(mediaGroup, trackIndex))
+        trackSelector.setParameters(builder)
+        return true
+    }
+
+    /** Gömülü metin izlerini kapatır (Better harici SRT ile karışmaz). */
+    fun setExoPlayerTextTrackDisabled(disabled: Boolean) {
+        val builder = trackSelector.parameters
+            .buildUpon()
+            .clearOverridesOfType(C.TRACK_TYPE_TEXT)
+        builder.setTrackTypeDisabled(C.TRACK_TYPE_TEXT, disabled)
+        trackSelector.setParameters(builder)
     }
 
     companion object {

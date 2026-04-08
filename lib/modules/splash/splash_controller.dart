@@ -61,8 +61,12 @@ class SplashController extends GetxController {
 
       debugPrint('mina_iptv: Loading saved source…');
       final shouldRefresh = _app.shouldRefreshContent();
-      final parsed = await _loadSource(source).timeout(
-        const Duration(seconds: 40),
+      final parsed = await _repo
+          .loadMergedPlaylist(
+            secondaryOrphanCategoryName: 'playlist.merge.orphanCategory'.tr,
+          )
+          .timeout(
+        const Duration(seconds: 60),
       );
 
       // EPG'yi arka planda yüklemeyi dene
@@ -135,17 +139,6 @@ class SplashController extends GetxController {
     _failSafe?.cancel();
     if (clearCache) _cache.clear();
     Get.offAllNamed(AppRoutes.playlist);
-  }
-
-  Future<M3uResult> _loadSource(PlaylistSource source) {
-    return switch (source) {
-      M3uSource() => _repo.loadFromM3uUrl(source.url),
-      XtreamSource() => _repo.loadFromXtream(
-          baseUrl: source.baseUrl,
-          username: source.username,
-          password: source.password,
-        ),
-    };
   }
 
   @override

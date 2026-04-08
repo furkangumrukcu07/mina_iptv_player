@@ -181,6 +181,43 @@ class MethodChannelVideoPlayer extends VideoPlayerPlatform {
   );
 
   @override
+  Future<Map<String, dynamic>?> getExoPlayerTracks(int? textureId) async {
+    final dynamic raw = await _channel.invokeMethod<dynamic>(
+      'getExoPlayerTracks',
+      <String, dynamic>{'textureId': textureId},
+    );
+    if (raw == null) {
+      return null;
+    }
+    if (raw is! Map) {
+      return null;
+    }
+    return raw.map((k, v) => MapEntry(k.toString(), v));
+  }
+
+  @override
+  Future<void> selectExoPlayerTrack(
+    int? textureId, {
+    required int tracksGroupIndex,
+    required int trackIndex,
+  }) =>
+      _channel.invokeMethod<void>(
+        'selectExoPlayerTrack',
+        <String, dynamic>{
+          'textureId': textureId,
+          'tracksGroupIndex': tracksGroupIndex,
+          'trackIndex': trackIndex,
+        },
+      );
+
+  @override
+  Future<void> setExoPlayerTextTrackDisabled(int? textureId, bool disabled) =>
+      _channel.invokeMethod<void>(
+        'setExoPlayerTextTrackDisabled',
+        <String, dynamic>{'textureId': textureId, 'disabled': disabled},
+      );
+
+  @override
   Future<void> setMixWithOthers(int? textureId, bool mixWithOthers) => _channel.invokeMethod<void>(
     'setMixWithOthers',
     <String, dynamic>{'textureId': textureId, 'mixWithOthers': mixWithOthers},
@@ -277,6 +314,13 @@ class MethodChannelVideoPlayer extends VideoPlayerPlatform {
 
           case 'pipStop':
             return VideoEvent(eventType: VideoEventType.pipStop, key: key);
+
+          case 'exoEmbeddedCues':
+            return VideoEvent(
+              eventType: VideoEventType.exoEmbeddedCues,
+              key: key,
+              embeddedExoCues: map['cues'] as List<dynamic>?,
+            );
 
           default:
             return VideoEvent(eventType: VideoEventType.unknown, key: key);

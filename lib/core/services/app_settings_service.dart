@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
@@ -7,6 +8,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../i18n/app_locale.dart';
 import '../layout/app_layout_mode.dart';
+import '../theme/glass_appearance.dart';
+import '../platform/device_layout_defaults.dart';
 import '../routes/app_routes.dart';
 import '../../ui/glass_overlays.dart';
 
@@ -21,12 +24,13 @@ class AppSettingsService extends GetxService {
   static const defaultLiveBufferSeconds = 3;
   static const _kTheme = 'mina_settings_theme_label';
   static const _kLayout = 'mina_settings_layout_mode';
+  /// Eski sürümde telefonda yanlış kaydedilen `tv` düzenini bir kez düzelt.
+  static const _kLayoutPhoneTvFix = 'mina_settings_layout_phone_tv_fix_applied';
   static const _kReduceBlur = 'mina_settings_reduce_blur';
   static const _kLaunchOnBoot = 'mina_settings_launch_on_boot';
   static const _kAlarmSet = 'mina_settings_alarm_set';
   static const _kAlarmH = 'mina_settings_alarm_h';
   static const _kAlarmM = 'mina_settings_alarm_m';
-  static const _kCustomBgPath = 'mina_settings_custom_bg_path';
   static const _kLastLiveCat = 'mina_last_live_cat';
   static const _kLastLiveCh = 'mina_last_live_ch';
   static const _kLastFilmsCat = 'mina_last_films_cat';
@@ -45,28 +49,35 @@ class AppSettingsService extends GetxService {
   /// İkinci oynatıcı (media_kit / libmpv).
   static const _kUseMediaKit = 'mina_settings_use_media_kit';
   static const _kUseVlcLegacy = 'mina_settings_use_vlc';
+  /// MediaKit Android: `true` → `hwdec=mediacodec`, `false` → `mediacodec-copy`.
+  static const _kMediaKitLowPowerHwdec =
+      'mina_settings_media_kit_low_power_hwdec';
 
   /// Liste detayında canlı/film/dizi yayın önizlemesi (sessiz küçük oynatıcı).
   static const _kStreamPreview = 'mina_settings_stream_preview';
+  /// Android telefon: ana ekrana dönünce Picture-in-Picture (sürüklenebilir mini pencere).
+  static const _kMiniPlayerHome = 'mina_settings_mini_player_home';
   static const _kSleepEnd = 'mina_settings_sleep_timer_end_ms';
 
   final backgroundPlayback = false.obs;
   final languageCode = 'tr'.obs;
   final xmltvUrl = ''.obs;
   final liveBufferSeconds = defaultLiveBufferSeconds.obs;
-  final themeLabel = 'Varsayılan'.obs;
-  final layoutMode = AppLayoutMode.tv.obs;
+  final themeLabel = GlassThemeLabels.varsayilan.obs;
+  final layoutMode = AppLayoutMode.mobile.obs;
 
   /// [MediaQuery.textScaler] için; kök `GetMaterialApp` builder'da [ValueListenableBuilder] ile dinlenir.
   final layoutTextScaleNotifier = ValueNotifier<double>(1.2);
 
   final reduceBlur = false.obs;
   final launchOnBoot = false.obs;
-  final useMediaKit = false.obs;
+  /// Varsayılan açık; ilk kurulumda prefs yoksa [ensureLoaded] `true` yazar.
+  final useMediaKit = true.obs;
+  /// Zayıf GPU’lu eski TV kutuları için tam donanım çözüm (mpv `hwdec=mediacodec`).
+  final mediaKitLowPowerHwdec = false.obs;
   final alarmHour = Rxn<int>();
   final alarmMinute = Rxn<int>();
   final alarmEnabled = false.obs;
-  final customBackgroundPath = Rxn<String>();
   final lastLiveCategoryId = Rxn<int>();
   final lastLiveChannelId = Rxn<int>();
   final lastFilmsCategoryKey = Rxn<int>();
@@ -81,8 +92,11 @@ class AppSettingsService extends GetxService {
   /// Android ExoPlayer: `true` = yazılım kod çözücü önce (TS uyumluluğu); varsayılan donanım.
   final preferSoftwareVideoDecoder = false.obs;
 
-  /// Canlı / film / dizi listelerinde küçük yayın önizlemesi.
+  /// Canlı / film / dizi listelerinde küçük yayın önizlemesi; varsayılan açık ([ensureLoaded] `?? true`).
   final streamPreviewEnabled = true.obs;
+
+  /// Android: yayın sırasında ana ekrana geçince PiP (Better/Exo). MediaKit’te kullanılmaz.
+  final miniPlayerOnHome = false.obs;
 
   /// Uyku zamanlayıcısı bitişi (epoch ms); null = kapalı.
   final sleepTimerEndMs = Rxn<int>();
@@ -110,6 +124,10 @@ class AppSettingsService extends GetxService {
   Future<void> ensureLoaded() async {
     if (_loaded) return;
     final p = await SharedPreferences.getInstance();
+    // Eski sürümlerde özel arka plan yolu; READ_MEDIA kaldırıldı, anahtarı temizle.
+    if (p.containsKey('mina_settings_custom_bg_path')) {
+      await p.remove('mina_settings_custom_bg_path');
+    }
     backgroundPlayback.value = p.getBool(_kBg) ?? false;
     final savedLang = p.getString(_kLang);
     if (savedLang != null && savedLang.isNotEmpty) {
@@ -121,28 +139,40 @@ class AppSettingsService extends GetxService {
     }
     xmltvUrl.value = p.getString(_kXmltv) ?? '';
     liveBufferSeconds.value = p.getInt(_kBuffer) ?? defaultLiveBufferSeconds;
-    themeLabel.value = p.getString(_kTheme) ?? 'Varsayılan';
+    themeLabel.value = p.getString(_kTheme) ?? GlassThemeLabels.varsayilan;
     reduceBlur.value = p.getBool(_kReduceBlur) ?? true;
     launchOnBoot.value = p.getBool(_kLaunchOnBoot) ?? false;
 
     final rawLayout = p.getString(_kLayout);
     if (rawLayout == null) {
-      // Cihaz tipine göre varsayılan mod belirle
-      final shortestSide = WidgetsBinding.instance.platformDispatcher.views
-              .first.physicalSize.shortestSide /
-          WidgetsBinding
-              .instance.platformDispatcher.views.first.devicePixelRatio;
-
-      if (shortestSide >= 600) {
-        // Tablet veya TV (600dp+ genellikle tablet/büyük ekran eşiğidir)
-        layoutMode.value = AppLayoutMode.tv;
-      } else {
-        // Telefon
-        layoutMode.value = AppLayoutMode.mobile;
-      }
+      layoutMode.value = await resolveDefaultLayoutMode();
+      await p.setString(_kLayout, layoutMode.value.name);
     } else {
-      layoutMode.value =
-          AppLayoutMode.tryParseName(rawLayout) ?? AppLayoutMode.tv;
+      final parsed = AppLayoutMode.tryParseName(rawLayout);
+      if (parsed != null) {
+        layoutMode.value = parsed;
+        final fixDone = p.getBool(_kLayoutPhoneTvFix) ?? false;
+        if (!fixDone &&
+            parsed == AppLayoutMode.tv &&
+            !(await nativeAndroidTv())) {
+          final views = WidgetsBinding.instance.platformDispatcher.views;
+          if (views.isNotEmpty) {
+            final view = views.first;
+            final dpr = view.devicePixelRatio;
+            if (dpr > 0) {
+              final dip = view.physicalSize.shortestSide / dpr;
+              if (dip > 0 && dip < 600) {
+                layoutMode.value = AppLayoutMode.mobile;
+                await p.setString(_kLayout, AppLayoutMode.mobile.name);
+              }
+            }
+          }
+          await p.setBool(_kLayoutPhoneTvFix, true);
+        }
+      } else {
+        layoutMode.value = await resolveDefaultLayoutMode();
+        await p.setString(_kLayout, layoutMode.value.name);
+      }
     }
     await _applyLayoutMode(layoutMode.value);
     _syncLayoutTextScale();
@@ -157,10 +187,6 @@ class AppSettingsService extends GetxService {
       alarmHour.value = null;
       alarmMinute.value = null;
     }
-
-    final bgPath = p.getString(_kCustomBgPath);
-    customBackgroundPath.value =
-        (bgPath == null || bgPath.trim().isEmpty) ? null : bgPath.trim();
 
     final liveCat = p.getInt(_kLastLiveCat);
     lastLiveCategoryId.value =
@@ -184,7 +210,7 @@ class AppSettingsService extends GetxService {
     var mk = p.getBool(_kUseMediaKit);
     if (mk == null) {
       final legacy = p.getBool(_kUseVlcLegacy);
-      mk = legacy ?? false;
+      mk = legacy ?? true;
       await p.setBool(_kUseMediaKit, mk);
       if (legacy != null) {
         await p.remove(_kUseVlcLegacy);
@@ -192,7 +218,12 @@ class AppSettingsService extends GetxService {
     }
     useMediaKit.value = mk;
 
+    mediaKitLowPowerHwdec.value =
+        p.getBool(_kMediaKitLowPowerHwdec) ?? false;
+
     streamPreviewEnabled.value = p.getBool(_kStreamPreview) ?? true;
+
+    miniPlayerOnHome.value = p.getBool(_kMiniPlayerHome) ?? false;
 
     final sleepEnd = p.getInt(_kSleepEnd);
     final nowMs = DateTime.now().millisecondsSinceEpoch;
@@ -290,15 +321,75 @@ class AppSettingsService extends GetxService {
     return 'settings.sleepTimer.remaining'.trParams({'min': '$mins'});
   }
 
-  Future<void> _applyLayoutMode(AppLayoutMode mode) async {
+  /// iOS: dokunulmaz (immersive). Android telefon + mobil düzen: gerçek durum çubuğu (edge-to-edge).
+  Future<void> syncSystemChromeWithLayout() async {
+    await _applySystemChromeForLayout(layoutMode.value);
+  }
+
+  /// Mobil düzen: yatay oynatıcıda tam ekran (durum/pil çubuğu yok); dikeyde normal (Android’de edge-to-edge + çubuk).
+  Future<void> applyMobilePlayerOrientationChrome({
+    required bool landscapePlayback,
+  }) async {
+    if (kIsWeb) return;
+    if (defaultTargetPlatform != TargetPlatform.android &&
+        defaultTargetPlatform != TargetPlatform.iOS) {
+      return;
+    }
+    if (layoutMode.value != AppLayoutMode.mobile) return;
+    if (landscapePlayback) {
+      await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+      SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle(
+        statusBarColor: Colors.transparent,
+        statusBarIconBrightness: Brightness.light,
+        systemNavigationBarColor: Colors.transparent,
+        systemNavigationBarDividerColor: Colors.transparent,
+        systemStatusBarContrastEnforced: false,
+        statusBarBrightness: Brightness.dark,
+      ));
+      return;
+    }
+    await _applySystemChromeForLayout(AppLayoutMode.mobile);
+  }
+
+  Future<void> _applySystemChromeForLayout(AppLayoutMode mode) async {
+    if (kIsWeb) return;
+    if (defaultTargetPlatform == TargetPlatform.iOS) {
+      await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+      return;
+    }
+    if (defaultTargetPlatform == TargetPlatform.android) {
+      if (mode == AppLayoutMode.tv) {
+        await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+        SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
+          statusBarColor: Colors.transparent,
+          systemNavigationBarColor: Colors.transparent,
+          systemNavigationBarDividerColor: Colors.transparent,
+        ));
+      } else {
+        await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+        SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
+          statusBarColor: Colors.transparent,
+          statusBarIconBrightness: Brightness.light,
+          systemNavigationBarColor: Colors.transparent,
+          systemNavigationBarDividerColor: Colors.transparent,
+        ));
+      }
+      return;
+    }
     if (mode == AppLayoutMode.tv) {
-      SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+      await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
       SystemChrome.setSystemUIOverlayStyle(const SystemUiOverlayStyle(
         statusBarColor: Colors.transparent,
         systemNavigationBarColor: Colors.transparent,
         systemNavigationBarDividerColor: Colors.transparent,
       ));
+    } else {
+      await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
     }
+  }
+
+  Future<void> _applyLayoutMode(AppLayoutMode mode) async {
+    await _applySystemChromeForLayout(mode);
     if (mode == AppLayoutMode.mobile) {
       await SystemChrome.setPreferredOrientations(<DeviceOrientation>[]);
       return;
@@ -309,8 +400,15 @@ class AppSettingsService extends GetxService {
     ]);
   }
 
-  String get languageLabel =>
-      languageCode.value == 'en' ? 'common.lang.en'.tr : 'common.lang.tr'.tr;
+  String get languageLabel => switch (languageCode.value) {
+        'tr' => 'common.lang.tr'.tr,
+        'en' => 'common.lang.en'.tr,
+        'fr' => 'common.lang.fr'.tr,
+        'ar' => 'common.lang.ar'.tr,
+        'zh' => 'common.lang.zh'.tr,
+        'ru' => 'common.lang.ru'.tr,
+        _ => 'common.lang.en'.tr,
+      };
 
   String get layoutLabel => layoutMode.value.title;
 
@@ -342,6 +440,12 @@ class AppSettingsService extends GetxService {
     backgroundPlayback.value = v;
     final p = await SharedPreferences.getInstance();
     await p.setBool(_kBg, v);
+  }
+
+  Future<void> setMiniPlayerOnHome(bool v) async {
+    miniPlayerOnHome.value = v;
+    final p = await SharedPreferences.getInstance();
+    await p.setBool(_kMiniPlayerHome, v);
   }
 
   Future<void> setLanguageCode(String code) async {
@@ -387,17 +491,6 @@ class AppSettingsService extends GetxService {
     launchOnBoot.value = v;
     final p = await SharedPreferences.getInstance();
     await p.setBool(_kLaunchOnBoot, v);
-  }
-
-  Future<void> setCustomBackgroundPath(String? path) async {
-    final v = path?.trim();
-    customBackgroundPath.value = (v == null || v.isEmpty) ? null : v;
-    final p = await SharedPreferences.getInstance();
-    if (customBackgroundPath.value == null) {
-      await p.remove(_kCustomBgPath);
-    } else {
-      await p.setString(_kCustomBgPath, customBackgroundPath.value!);
-    }
   }
 
   Future<void> setLastLiveCategoryId(int? id) async {
@@ -473,6 +566,26 @@ class AppSettingsService extends GetxService {
     await p.setBool(_kUseMediaKit, v);
   }
 
+  Future<void> setMediaKitLowPowerHwdec(bool v) async {
+    mediaKitLowPowerHwdec.value = v;
+    final p = await SharedPreferences.getInstance();
+    await p.setBool(_kMediaKitLowPowerHwdec, v);
+  }
+
+  /// MediaKit (Android) `hwdec` mpv değeri.
+  String get mediaKitHwdecMpvValue =>
+      mediaKitLowPowerHwdec.value ? 'mediacodec' : 'mediacodec-copy';
+
+  /// Amlogic / Meson kutularda `mediacodec-copy` sık kasıyor; doğrudan `mediacodec` kullanılır.
+  String resolveMediaKitHwdecMpvValue({bool amlogicLike = false}) {
+    if (amlogicLike) return 'mediacodec';
+    return mediaKitHwdecMpvValue;
+  }
+
+  String get mediaKitHwdecModeSubtitle => mediaKitLowPowerHwdec.value
+      ? 'settings.tile.mediaKitHwdec.subLowPower'.tr
+      : 'settings.tile.mediaKitHwdec.subBalanced'.tr;
+
   String get videoDecoderModeSubtitle {
     if (preferSoftwareVideoDecoder.value) {
       return 'settings.decoder.software'.tr;
@@ -522,8 +635,8 @@ class AppSettingsService extends GetxService {
     languageCode.value = languageCodeFromDeviceLocale(device);
     xmltvUrl.value = '';
     liveBufferSeconds.value = defaultLiveBufferSeconds;
-    themeLabel.value = 'Varsayılan';
-    layoutMode.value = AppLayoutMode.tv;
+    themeLabel.value = GlassThemeLabels.varsayilan;
+    layoutMode.value = await resolveDefaultLayoutMode();
     _syncLayoutTextScale();
     await _applyLayoutMode(layoutMode.value);
     reduceBlur.value = true;
@@ -532,7 +645,6 @@ class AppSettingsService extends GetxService {
     sleepTimerEndMs.value = null;
     _sleepTimer?.cancel();
     _sleepTimer = null;
-    customBackgroundPath.value = null;
     lastLiveCategoryId.value = null;
     lastLiveChannelId.value = null;
     lastFilmsCategoryKey.value = null;
@@ -542,17 +654,21 @@ class AppSettingsService extends GetxService {
     lastFavoritesCategoryKey.value = null;
     lastFavoritesSelection.value = '';
     preferSoftwareVideoDecoder.value = false;
-    useMediaKit.value = false;
+    useMediaKit.value = true;
+    mediaKitLowPowerHwdec.value = false;
+    streamPreviewEnabled.value = true;
+    miniPlayerOnHome.value = false;
     final p = await SharedPreferences.getInstance();
+    await p.remove('mina_settings_custom_bg_path');
     await p.remove(_kBg);
     await p.setString(_kLang, languageCode.value);
     await p.remove(_kXmltv);
     await p.setInt(_kBuffer, defaultLiveBufferSeconds);
     await p.remove(_kTheme);
     await p.remove(_kLayout);
+    await p.remove(_kLayoutPhoneTvFix);
     await p.setBool(_kReduceBlur, true);
     await p.remove(_kLaunchOnBoot);
-    await p.remove(_kCustomBgPath);
     await p.remove(_kLastLiveCat);
     await p.remove(_kLastLiveCh);
     await p.remove(_kLastFilmsCat);
@@ -562,8 +678,13 @@ class AppSettingsService extends GetxService {
     await p.remove(_kLastFavCat);
     await p.remove(_kLastFavSel);
     await p.setBool(_kPreferSoftwareDecoder, false);
-    await p.remove(_kUseMediaKit);
+    await p.setBool(_kUseMediaKit, true);
+    await p.setBool(_kMediaKitLowPowerHwdec, false);
+    await p.setBool(_kStreamPreview, true);
     await p.remove(_kUseVlcLegacy);
+    await p.remove(_kMiniPlayerHome);
     await p.remove(_kSleepEnd);
+    await p.setString(_kLayout, layoutMode.value.name);
+    await p.setBool(_kLayoutPhoneTvFix, true);
   }
 }

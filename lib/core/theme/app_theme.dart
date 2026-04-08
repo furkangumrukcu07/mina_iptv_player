@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import 'glass_appearance.dart';
+
 abstract final class AppTheme {
   static const _seed = Color(0xFF7B6CF6);
 
@@ -10,15 +12,29 @@ abstract final class AppTheme {
   static const defaultBackgroundAssetPortrait =
       'assets/images/home_background_portrait.png';
 
-  static String homeBackgroundAsset(BuildContext context) {
+  /// Yalnızca [GlassThemeLabels.koyuCam]: tek görsel, dikey/yatayda [BoxFit.cover].
+  static const darkGlassBackgroundAsset = 'assets/images/dark_glass_koyu_cam.png';
+
+  /// [themeLabel]: [AppSettingsService.themeLabel] (örn. `GlassThemeLabels.koyuCam`).
+  static String homeBackgroundAsset(
+    BuildContext context, {
+    String? themeLabel,
+  }) {
+    if (themeLabel == GlassThemeLabels.koyuCam) {
+      return darkGlassBackgroundAsset;
+    }
     return MediaQuery.orientationOf(context) == Orientation.portrait
         ? defaultBackgroundAssetPortrait
         : defaultBackgroundAsset;
   }
 
   /// [cs] şimdilik ayrılmış; ileride tema ile harmanlanabilir.
-  static BoxDecoration screenBackground(BuildContext context, ColorScheme cs) {
-    final asset = homeBackgroundAsset(context);
+  static BoxDecoration screenBackground(
+    BuildContext context,
+    ColorScheme cs, {
+    String? themeLabel,
+  }) {
+    final asset = homeBackgroundAsset(context, themeLabel: themeLabel);
     return BoxDecoration(
       image: DecorationImage(
         image: AssetImage(asset),

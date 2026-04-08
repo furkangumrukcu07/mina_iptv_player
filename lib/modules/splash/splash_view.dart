@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
+import '../../core/services/app_settings_service.dart';
 import '../../core/theme/app_theme.dart';
 import 'splash_controller.dart';
 
@@ -14,11 +15,18 @@ class SplashView extends GetView<SplashController> {
     final cs = Theme.of(context).colorScheme;
 
     return Scaffold(
-      body: Container(
-        width: double.infinity,
-        height: double.infinity,
-        decoration: AppTheme.screenBackground(context, cs),
-        child: Stack(
+      backgroundColor: Colors.black,
+      body: Obx(() {
+        final themeLabel = Get.find<AppSettingsService>().themeLabel.value;
+        return Container(
+          width: double.infinity,
+          height: double.infinity,
+          decoration: AppTheme.screenBackground(
+            context,
+            cs,
+            themeLabel: themeLabel,
+          ),
+          child: Stack(
           children: [
             // Floating Glass Bubbles (Visual decoration)
             Positioned(
@@ -59,7 +67,18 @@ class SplashView extends GetView<SplashController> {
                           color: Colors.white,
                         ),
                       ),
-                      const SizedBox(height: 40),
+                      const SizedBox(height: 14),
+                      Text(
+                        'common.loading'.tr,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.65),
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 0.3,
+                        ),
+                      ),
+                      const SizedBox(height: 28),
                       const Text(
                         'Mina IPTV',
                         style: TextStyle(
@@ -95,7 +114,8 @@ class SplashView extends GetView<SplashController> {
             ),
           ],
         ),
-      ),
+        );
+      }),
     );
   }
 }

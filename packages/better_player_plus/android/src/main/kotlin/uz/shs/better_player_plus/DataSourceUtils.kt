@@ -10,6 +10,10 @@ internal object DataSourceUtils {
     private const val USER_AGENT = "User-Agent"
     private const val USER_AGENT_PROPERTY = "http.agent"
 
+    /** Varsayılan ~8s read; uzun IPTV / yavaş kutularda segment aralarında yanlışlıkla Source error üretebiliyor. */
+    private const val IPTV_CONNECT_TIMEOUT_MS = 25_000
+    private const val IPTV_READ_TIMEOUT_MS = 90_000
+
     @JvmStatic
     fun getUserAgent(headers: Map<String, String>?): String? {
         var userAgent = System.getProperty(USER_AGENT_PROPERTY)
@@ -30,8 +34,8 @@ internal object DataSourceUtils {
         val dataSourceFactory: DataSource.Factory = DefaultHttpDataSource.Factory()
             .setUserAgent(userAgent)
             .setAllowCrossProtocolRedirects(true)
-            .setConnectTimeoutMs(DefaultHttpDataSource.DEFAULT_CONNECT_TIMEOUT_MILLIS)
-            .setReadTimeoutMs(DefaultHttpDataSource.DEFAULT_READ_TIMEOUT_MILLIS)
+            .setConnectTimeoutMs(IPTV_CONNECT_TIMEOUT_MS)
+            .setReadTimeoutMs(IPTV_READ_TIMEOUT_MS)
         if (headers != null) {
             val notNullHeaders = mutableMapOf<String, String>()
             headers.forEach { entry ->

@@ -307,6 +307,12 @@ extension SwiftBetterPlayerPlugin {
             let index = (argsMap["index"] as? NSNumber)?.intValue ?? 0
             player.setAudioTrack(name: name, index: index)
             result(nil)
+        case "getExoPlayerTracks":
+            result(["audio": [], "text": []])
+        case "selectExoPlayerTrack":
+            result(nil)
+        case "setExoPlayerTextTrackDisabled":
+            result(nil)
         case "setMixWithOthers":
             let mix = (argsMap["mixWithOthers"] as? NSNumber)?.boolValue ?? false
             player.setMixWithOthers(mix)

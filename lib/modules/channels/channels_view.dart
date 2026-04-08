@@ -1,4 +1,3 @@
-import 'dart:io';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
@@ -76,12 +75,11 @@ class ChannelsView extends GetView<ChannelsController> {
             children: [
               Obx(() {
                 final settings = Get.find<AppSettingsService>();
+                final themeLabel = settings.themeLabel.value;
                 final reduce = settings.reduceBlur.value;
                 final mode = settings.layoutMode.value;
                 final sharpBg = remoteNavForScreenLayout(context, mode);
                 final sigma = 6.5;
-                final bgPath = settings.customBackgroundPath.value ?? '';
-                final useFile = bgPath.isNotEmpty;
                 final dpr = MediaQuery.devicePixelRatioOf(context);
                 final targetW =
                     (MediaQuery.sizeOf(context).width * dpr).round();
@@ -89,31 +87,17 @@ class ChannelsView extends GetView<ChannelsController> {
                     (MediaQuery.sizeOf(context).height * dpr).round();
                 final scaled = Transform.scale(
                   scale: 1.06,
-                  child: useFile
-                      ? Image.file(
-                          File(bgPath),
-                          fit: BoxFit.cover,
-                          width: double.infinity,
-                          height: double.infinity,
-                          cacheWidth: targetW,
-                          cacheHeight: targetH,
-                          errorBuilder: (_, __, ___) => Image.asset(
-                            AppTheme.homeBackgroundAsset(context),
-                            fit: BoxFit.cover,
-                            width: double.infinity,
-                            height: double.infinity,
-                            cacheWidth: targetW,
-                            cacheHeight: targetH,
-                          ),
-                        )
-                      : Image.asset(
-                          AppTheme.homeBackgroundAsset(context),
-                          fit: BoxFit.cover,
-                          width: double.infinity,
-                          height: double.infinity,
-                          cacheWidth: targetW,
-                          cacheHeight: targetH,
-                        ),
+                  child: Image.asset(
+                    AppTheme.homeBackgroundAsset(
+                      context,
+                      themeLabel: themeLabel,
+                    ),
+                    fit: BoxFit.cover,
+                    width: double.infinity,
+                    height: double.infinity,
+                    cacheWidth: targetW,
+                    cacheHeight: targetH,
+                  ),
                 );
                 if (reduce || sharpBg) {
                   return scaled;

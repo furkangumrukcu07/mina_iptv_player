@@ -12,6 +12,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../core/player/better_player_iptv_config.dart';
+import '../../core/player/exo_native_track_option.dart';
 import '../../core/player/iptv_playback_defaults.dart';
 import '../../core/layout/app_layout_mode.dart';
 import '../../core/services/app_settings_service.dart';
@@ -23,6 +24,8 @@ import '../browse/browse_controller.dart';
 import '../channels/channels_controller.dart';
 import 'widgets/tv_better_player_controls.dart';
 import '../../ui/glass_overlays.dart';
+
+const MethodChannel _androidPipChannel = MethodChannel('mina.player/pip');
 
 class PlayerController extends GetxController with WidgetsBindingObserver {
   PlayerController({
@@ -95,10 +98,11 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
         l.contains('network_error') ||
         l.contains('offline') ||
         l.contains('end of input') ||
-        (l.contains('source error') &&
-            (l.contains('http') ||
-                l.contains('connection') ||
-                l.contains('timeout'))) ||
+        // ExoPlayer köprüsü çoğu zaman yalnızca "Source error" / "source error null" döner;
+        // uzun canlı yayında segment/HTTP kopması böyle görünür (eski TV kutuları sık).
+        l.contains('source error') ||
+        l.contains('unexpected end of stream') ||
+        l.contains('connection closed') ||
         (l.contains('http') && l.contains('50'));
   }
 
@@ -181,8 +185,15 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
   final decoderFallbackStep = 0.obs;
   final videoFit = BoxFit.fill.obs;
   bool _recovering = false;
+  /// Canlıda kullanıcı OSD’den duraklattıysa [play] yalnızca devam ettirir; yayın kesildiyse tam yeniden yükleme yapılır.
+  bool _userPausedLive = false;
   bool _forceSoftwareVideoDecoder = false;
   bool _vodTriedSoftwareDecoder = false;
+
+  /// Android: sistem PiP / [onPause] girişi ile [pause] yarışmasını kısa süre engellemek için.
+  bool _suppressPauseForAndroidMiniPip = false;
+  Timer? _androidPipFallbackPauseTimer;
+  Worker? _pipAutoEnterWorker;
 
   /// Kullanıcı OSD'den sabit kalite seçtiyse otomatik düşürmeyi yapma.
   bool _manualVideoQualityLock = false;
@@ -231,6 +242,190 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
 
   BetterPlayerAsmsAudioTrack? get currentAudioTrack =>
       better?.betterPlayerAsmsAudioTrack;
+
+  List<BetterPlayerSubtitlesSource> get availableSubtitleSources =>
+      better?.betterPlayerSubtitlesSourceList ?? const [];
+
+  BetterPlayerSubtitlesSource? get currentSubtitleSource =>
+      better?.betterPlayerSubtitlesSource;
+
+  Future<void> setBetterSubtitleSource(
+    BetterPlayerSubtitlesSource src, {
+    bool disableEmbeddedExoSubtitles = true,
+  }) async {
+    final b = better;
+    if (b == null) return;
+    try {
+      await b.setupSubtitleSource(src, sourceInitialize: true);
+    } catch (_) {}
+    if (!disableEmbeddedExoSubtitles) return;
+    if (!canQueryExoNativeTracks) return;
+    final t = src.type;
+    if (t != null && t != BetterPlayerSubtitlesSourceType.none) {
+      await disableExoNativeTextTracks();
+    }
+  }
+
+  List<ExoNativeTrackOption> _parseExoTrackList(dynamic list) {
+    if (list is! List) return const [];
+    final out = <ExoNativeTrackOption>[];
+    for (final e in list) {
+      if (e is! Map) continue;
+      final m = <String, dynamic>{};
+      e.forEach((k, v) => m[k.toString()] = v);
+      final gi = m['tracksGroupIndex'];
+      final ti = m['trackIndex'];
+      final tt = m['trackType'];
+      int? g;
+      int? t;
+      var type = 0;
+      if (gi is int) {
+        g = gi;
+      } else if (gi is num) {
+        g = gi.toInt();
+      }
+      if (ti is int) {
+        t = ti;
+      } else if (ti is num) {
+        t = ti.toInt();
+      }
+      if (tt is int) {
+        type = tt;
+      } else if (tt is num) {
+        type = tt.toInt();
+      }
+      if (g == null || t == null) continue;
+      out.add(
+        ExoNativeTrackOption(
+          tracksGroupIndex: g,
+          trackIndex: t,
+          trackType: type,
+          label: m['label'] as String? ?? '',
+          language: m['language'] as String? ?? '',
+          selected: m['selected'] == true,
+        ),
+      );
+    }
+    return out;
+  }
+
+  Future<ExoNativeTracksBundle> loadExoNativeTracks() async {
+    if (!canQueryExoNativeTracks) return ExoNativeTracksBundle.empty;
+    try {
+      final raw = await better!.getExoPlayerTracks();
+      if (raw == null) return ExoNativeTracksBundle.empty;
+      final audio = _parseExoTrackList(raw['audio']);
+      final text = _parseExoTrackList(raw['text']);
+      return ExoNativeTracksBundle(audio: audio, text: text);
+    } catch (_) {
+      return ExoNativeTracksBundle.empty;
+    }
+  }
+
+  Future<void> selectExoNativeAudioTrack(ExoNativeTrackOption opt) async {
+    if (!canQueryExoNativeTracks) return;
+    try {
+      await better!.selectExoPlayerTrack(opt.tracksGroupIndex, opt.trackIndex);
+    } catch (_) {}
+  }
+
+  Future<void> selectExoNativeTextTrack(ExoNativeTrackOption opt) async {
+    if (!canQueryExoNativeTracks) return;
+    try {
+      await setBetterSubtitleSource(
+        BetterPlayerSubtitlesSource(type: BetterPlayerSubtitlesSourceType.none),
+        disableEmbeddedExoSubtitles: false,
+      );
+      better!.setExoEmbeddedSubtitlesActive(true);
+      await better!.selectExoPlayerTrack(opt.tracksGroupIndex, opt.trackIndex);
+    } catch (_) {}
+  }
+
+  Future<void> disableExoNativeTextTracks() async {
+    if (!canQueryExoNativeTracks) return;
+    try {
+      better?.setExoEmbeddedSubtitlesActive(false);
+      await better!.setExoPlayerTextTrackDisabled(true);
+    } catch (_) {}
+  }
+
+  /// MediaKit altyazı parçaları; `no` = kapalı.
+  Map<String, String> mediaKitSubtitleTrackLabels() {
+    final player = _mediaKitPlayer;
+    if (player == null) return {};
+    final off = 'player.subtitle.off'.tr;
+    final out = <String, String>{'no': off};
+    for (final t in player.state.tracks.subtitle) {
+      if (t.id == 'no' || t.id == 'auto') continue;
+      final label = (t.title?.trim().isNotEmpty == true)
+          ? t.title!.trim()
+          : (t.language?.trim().isNotEmpty == true)
+              ? t.language!.trim()
+              : t.id;
+      out[t.id] = label;
+    }
+    return out;
+  }
+
+  Future<void> setMediaKitSubtitleById(String id) async {
+    final player = _mediaKitPlayer;
+    if (player == null) return;
+    try {
+      if (id == 'no') {
+        await player.setSubtitleTrack(SubtitleTrack.no());
+        return;
+      }
+      SubtitleTrack? picked;
+      for (final e in player.state.tracks.subtitle) {
+        if (e.id == id) {
+          picked = e;
+          break;
+        }
+      }
+      final t = picked;
+      if (t == null) return;
+      await player.setSubtitleTrack(t);
+    } catch (_) {}
+  }
+
+  Future<void> enterPictureInPictureIfSupported() async {
+    if (effectiveUseMediaKit) return;
+    final b = better;
+    final k = b?.betterPlayerGlobalKey;
+    if (b == null || k == null) return;
+    try {
+      await b.enablePictureInPicture(k);
+    } catch (e) {
+      debugPrint('mina_iptv: PiP: $e');
+    }
+  }
+
+  bool _eligibleForMiniPlayerPip() {
+    if (!_settings.miniPlayerOnHome.value) return false;
+    if (_settings.layoutMode.value == AppLayoutMode.tv) return false;
+    if (effectiveUseMediaKit) return false;
+    final b = better;
+    final k = b?.betterPlayerGlobalKey;
+    final v = b?.videoPlayerController?.value;
+    return b != null &&
+        k != null &&
+        v != null &&
+        v.isPlaying &&
+        !v.hasError;
+  }
+
+  Future<void> _syncAndroidPipAutoEnterEligible() async {
+    if (!Platform.isAndroid) return;
+    final eligible = _eligibleForMiniPlayerPip();
+    try {
+      await _androidPipChannel.invokeMethod<void>(
+        'setPipAutoEnterEligible',
+        <String, dynamic>{'eligible': eligible},
+      );
+    } catch (e) {
+      debugPrint('mina_iptv: setPipAutoEnterEligible: $e');
+    }
+  }
 
   /// OSD sol şerit: 4K / FHD / HD / SD (akış boyutuna göre).
   String? get osdStreamQualityLabel {
@@ -312,20 +507,38 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
     update(['osd']);
   }
 
+  /// O anki kanal URL’sine göre canlı mı (film/dizi yolu değil).
+  bool get _currentStreamIsLive {
+    final norm =
+        IptvPlaybackDefaults.normalizeStreamUrl(channel.value.streamUrl);
+    return IptvPlaybackDefaults.isLikelyLiveStream(norm);
+  }
+
   /// Better (Exo) + oturum yedeği: gerçekten MediaKit kullanılıyor mu.
-  bool get effectiveUseMediaKit =>
-      !betterOsdOverride.value &&
-      (_settings.useMediaKit.value || mediaKitFallbackSession.value);
+  /// Canlı yayınlarda varsayılan Better; MediaKit yalnızca OSD/hata yedeği.
+  /// Film/dizide [AppSettingsService.useMediaKit] ve yedek oturum geçerlidir.
+  bool get effectiveUseMediaKit {
+    if (betterOsdOverride.value) return false;
+    if (_currentStreamIsLive) {
+      return mediaKitFallbackSession.value;
+    }
+    return _settings.useMediaKit.value || mediaKitFallbackSession.value;
+  }
+
+  /// Android Better: ExoPlayer [currentTracks] ile gömülü ses/altyazı sorgulanabilir.
+  bool get canQueryExoNativeTracks =>
+      Platform.isAndroid &&
+      !effectiveUseMediaKit &&
+      better?.videoPlayerController != null;
 
   /// OSD: MediaKit’e geç (Better’dan veya Better OSD geçersiz kılma sonrası).
   Future<void> switchToBackupPlayer() async {
     final wasBetterOverride = betterOsdOverride.value;
     betterOsdOverride.value = false;
-    final alreadyMk = _settings.useMediaKit.value || mediaKitFallbackSession.value;
-    if (!wasBetterOverride && alreadyMk) {
+    if (!wasBetterOverride && effectiveUseMediaKit) {
       return;
     }
-    if (!_settings.useMediaKit.value) {
+    if (!_settings.useMediaKit.value || _currentStreamIsLive) {
       mediaKitFallbackSession.value = true;
     }
     await _performMediaKitFallbackBoot();
@@ -375,14 +588,15 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
       _mediaKitDimSubs.add(p.stream.height.listen(dimBump));
       _mediaKitDimSubs.add(p.stream.track.listen(dimBump));
 
-      if (_settings.layoutMode.value == AppLayoutMode.tv) {
-        unawaited(p.setVolume(100.0).catchError((_, __) {}));
-      }
+      unawaited(p.setVolume(100.0).catchError((_, __) {}));
     }
 
     _maybeBumpOsdQualitySignature();
     mediaKitAttachEpoch.value++;
     update(['osd']);
+    if (Platform.isAndroid) {
+      unawaited(_syncAndroidPipAutoEnterEligible());
+    }
   }
 
   Map<String, String> mediaKitAudioTrackLabels() {
@@ -450,12 +664,34 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
     } catch (_) {}
   }
 
+  bool _isCurrentChannelLive() {
+    final norm =
+        IptvPlaybackDefaults.normalizeStreamUrl(channel.value.streamUrl);
+    return IptvPlaybackDefaults.isLikelyLiveStream(norm);
+  }
+
+  /// Aynı kanalı baştan yükler (canlı kesinti / takılı Exo durumu).
+  Future<void> restartCurrentStream() async {
+    if (isClosed) return;
+    _resetNetworkRecoveryState();
+    error.value = null;
+    _userPausedLive = false;
+    _cancelLiveStallWatchdog();
+    _cancelLiveTvStartupWatchdog();
+    await _boot(
+      preferredMaxHeight: null,
+      disableAsms: false,
+      reuseSameBetterPlayer: false,
+      suppressNetworkRecoverySchedule: true,
+    );
+  }
+
   double get currentVolume {
     final mk = _mediaKitPlayer;
     if (mk != null) {
       return (mk.state.volume.clamp(0.0, 100.0)) / 100.0;
     }
-    return better?.videoPlayerController?.value.volume ?? 0.5;
+    return better?.videoPlayerController?.value.volume ?? 1.0;
   }
 
   Duration get currentPosition {
@@ -467,15 +703,63 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
   }
 
   void play() {
+    if (isBusy.value) {
+      final mk = _mediaKitPlayer;
+      if (mk != null) {
+        unawaited(mk.play().catchError((_, __) {}));
+      } else {
+        better?.play();
+      }
+      return;
+    }
+
     final mk = _mediaKitPlayer;
     if (mk != null) {
+      if (_isCurrentChannelLive()) {
+        if (_userPausedLive) {
+          _userPausedLive = false;
+          unawaited(mk.play().catchError((_, __) {}));
+          return;
+        }
+        final s = mk.state;
+        if (!s.playing && !s.buffering) {
+          unawaited(restartCurrentStream());
+          return;
+        }
+      } else {
+        _userPausedLive = false;
+      }
       unawaited(mk.play().catchError((_, __) {}));
       return;
+    }
+
+    if (_isCurrentChannelLive()) {
+      if (_userPausedLive) {
+        _userPausedLive = false;
+        better?.play();
+        return;
+      }
+      final v = better?.videoPlayerController?.value;
+      if (v != null &&
+          v.initialized &&
+          !v.hasError &&
+          !v.isPlaying &&
+          !v.isBuffering) {
+        unawaited(restartCurrentStream());
+        return;
+      }
+    } else {
+      _userPausedLive = false;
     }
     better?.play();
   }
 
   void pause() {
+    if (_isCurrentChannelLive()) {
+      _userPausedLive = true;
+    } else {
+      _userPausedLive = false;
+    }
     final mk = _mediaKitPlayer;
     if (mk != null) {
       unawaited(mk.pause().catchError((_, __) {}));
@@ -892,15 +1176,57 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
       betterOsdOverride.value = false;
       unawaited(zapTo(channel.value));
     });
+    _pipAutoEnterWorker = ever(_settings.miniPlayerOnHome, (_) {
+      unawaited(_syncAndroidPipAutoEnterEligible());
+    });
     _boot();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (_settings.backgroundPlayback.value) return;
+
+    if (state == AppLifecycleState.resumed) {
+      _androidPipFallbackPauseTimer?.cancel();
+      _androidPipFallbackPauseTimer = null;
+      _suppressPauseForAndroidMiniPip = false;
+    }
+
+    // iOS: arka plana geçerken PiP dene.
+    if (state == AppLifecycleState.paused && !Platform.isAndroid) {
+      if (_tryEnterMiniPlayerPipInsteadOfPause()) {
+        return;
+      }
+    }
+
+    // `inactive` yönlendirme / config değişiminde de gelir; burada duraklatmak yayını keser.
     if (state == AppLifecycleState.paused ||
-        state == AppLifecycleState.inactive ||
         state == AppLifecycleState.hidden) {
+      final vpc = better?.videoPlayerController?.value;
+      if (vpc?.isPip == true) return;
+
+      // Android: Küçük ekran açıkken sistem PiP (setAutoEnterEnabled / onPause) için kısa süre bekle.
+      if (Platform.isAndroid && _eligibleForMiniPlayerPip()) {
+        _suppressPauseForAndroidMiniPip = true;
+        _androidPipFallbackPauseTimer?.cancel();
+        _androidPipFallbackPauseTimer =
+            Timer(const Duration(milliseconds: 900), () {
+          _androidPipFallbackPauseTimer = null;
+          _suppressPauseForAndroidMiniPip = false;
+          if (_settings.backgroundPlayback.value) return;
+          final v = better?.videoPlayerController?.value;
+          if (v != null && v.isPip) return;
+          final mk = _mediaKitPlayer;
+          if (mk != null) {
+            unawaited(mk.pause().catchError((_, __) {}));
+          } else {
+            better?.pause();
+          }
+        });
+        return;
+      }
+
+      if (Platform.isAndroid && _suppressPauseForAndroidMiniPip) return;
       final mk = _mediaKitPlayer;
       if (mk != null) {
         unawaited(mk.pause().catchError((_, __) {}));
@@ -910,9 +1236,17 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
     }
   }
 
+  /// Ayar açıkken arka plana geçişte PiP dene; başarılıysa duraklatmayı atla (iOS vb.).
+  bool _tryEnterMiniPlayerPipInsteadOfPause() {
+    if (!_eligibleForMiniPlayerPip()) return false;
+    unawaited(enterPictureInPictureIfSupported());
+    return true;
+  }
+
   Future<void> zapTo(Channel newChannel) async {
     if (newChannel.id == channel.value.id) return;
 
+    _userPausedLive = false;
     _cancelZapRelativeDebounce();
     _cancelTvOsdAutoHideTimer();
     _resetNetworkRecoveryState();
@@ -1065,9 +1399,7 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
         );
         await ctrl.play();
         _autoQPlaybackStartedAt = DateTime.now();
-        if (_settings.layoutMode.value == AppLayoutMode.tv) {
-          ctrl.setVolume(1.0);
-        }
+        ctrl.setVolume(1.0);
         if (isTv && live) {
           _armLiveTvStartupWatchdog();
         }
@@ -1078,6 +1410,18 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
       }
 
       if (reuseSameBetterPlayer && better != null) {
+        try {
+          better!.videoPlayerController?.removeListener(_onVideoPlayerChanged);
+          await better!.pause();
+          better!.dispose(forceDispose: true);
+        } catch (_) {}
+        better = null;
+      }
+
+      // Ağ/stall kurtarma ve benzeri yollar `reuseSameBetterPlayer: false` ile _boot
+      // çağırırken eski ExoPlayer'ı atlamış oluyordu; ikinci ses + çıkış sonrası ses
+      // (özellikle Amlogic TV kutularında) bu yüzden oluşabiliyordu.
+      if (!reuseSameBetterPlayer && better != null) {
         try {
           better!.videoPlayerController?.removeListener(_onVideoPlayerChanged);
           await better!.pause();
@@ -1121,9 +1465,7 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
 
       await ctrl.play();
       _autoQPlaybackStartedAt = DateTime.now();
-      if (_settings.layoutMode.value == AppLayoutMode.tv) {
-        ctrl.setVolume(1.0);
-      }
+      ctrl.setVolume(1.0);
       if (isTv && live) {
         _armLiveTvStartupWatchdog();
       }
@@ -1146,6 +1488,9 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
       if (_settings.layoutMode.value == AppLayoutMode.tv &&
           error.value == null) {
         scheduleTvOsdAutoHide();
+      }
+      if (Platform.isAndroid) {
+        unawaited(_syncAndroidPipAutoEnterEligible());
       }
     }
   }
@@ -1308,7 +1653,7 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
   /// ExoPlayer / donanım kod çözücü hatalarında otomatik MediaKit’e düş.
   bool _shouldAutoFallbackToMediaKit(String msg) {
     if (msg.isEmpty) return false;
-    if (_settings.useMediaKit.value) return false;
+    if (_settings.useMediaKit.value && !_currentStreamIsLive) return false;
     if (mediaKitFallbackSession.value) return false;
     if (_isPlaybackDecoderFailure(msg)) return true;
     final l = msg.toLowerCase();
@@ -1348,9 +1693,10 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
   }
 
   void _onVideoPlayerChanged() {
-    final v = better?.videoPlayerController?.value;
-    if (v == null) return;
-    if (v.hasError) {
+    try {
+      final v = better?.videoPlayerController?.value;
+      if (v == null) return;
+      if (v.hasError) {
       final msg = v.errorDescription ?? 'Video oynatılamadı';
       debugPrint('mina_iptv: VideoPlayer error: $msg');
       if (_shouldAutoFallbackToMediaKit(msg)) {
@@ -1415,6 +1761,11 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
       _cancelLiveTvStartupWatchdog();
     }
     _maybeBumpOsdQualitySignature();
+    } finally {
+      if (Platform.isAndroid) {
+        unawaited(_syncAndroidPipAutoEnterEligible());
+      }
+    }
   }
 
   /// `get.php?...&output=ts` / `output=m3u8` gibi Xtream URL'lerini
@@ -1503,6 +1854,16 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
 
   @override
   void onClose() {
+    _androidPipFallbackPauseTimer?.cancel();
+    _pipAutoEnterWorker?.dispose();
+    if (Platform.isAndroid) {
+      unawaited(
+        _androidPipChannel.invokeMethod<void>(
+          'setPipAutoEnterEligible',
+          <String, dynamic>{'eligible': false},
+        ),
+      );
+    }
     _mediaKitSettingsWorker?.dispose();
     _cancelZapRelativeDebounce();
     _cancelTvOsdAutoHideTimer();

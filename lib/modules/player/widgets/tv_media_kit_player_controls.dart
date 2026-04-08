@@ -10,11 +10,13 @@ import 'package:screen_brightness/screen_brightness.dart';
 
 import '../../../core/layout/app_layout_mode.dart';
 import '../../../core/services/app_settings_service.dart';
+import '../../../core/theme/glass_appearance.dart';
 import '../../../core/services/epg_service.dart';
 import '../../../core/services/favorites_service.dart';
 import '../../../domain/entities/channel.dart';
 import '../player_controller.dart';
 import '../../../ui/glass_overlays.dart';
+import 'player_glass_level_overlay.dart';
 
 /// MediaKit için [TvBetterPlayerControls] ile aynı cam OSD düzeni (yatay tam ekran).
 class TvMediaKitPlayerControls extends StatefulWidget {
@@ -102,7 +104,9 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
           _restartHideTimer();
           widget.onPlayerVisibilityChanged(true);
           WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) _firstOsdButtonFocus.requestFocus();
+            if (!mounted) return;
+            if (_pc.liveChannelStripOverlayOpen.value) return;
+            _firstOsdButtonFocus.requestFocus();
           });
         } else {
           _hideTimer?.cancel();
@@ -133,8 +137,8 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       widget.onPlayerVisibilityChanged(_visible);
       _requestTvPlayerFocus();
+      _pc.setVolume(1.0);
       if (Get.find<AppSettingsService>().layoutMode.value == AppLayoutMode.tv) {
-        _pc.setVolume(1.0);
         Future<void>.delayed(const Duration(milliseconds: 320), () {
           if (mounted) _requestTvPlayerFocus();
         });
@@ -215,6 +219,7 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
   }
 
   void _requestTvPlayerFocus() {
+    if (_pc.liveChannelStripOverlayOpen.value) return;
     if (_visible) {
       _firstOsdButtonFocus.requestFocus();
     } else {
@@ -252,7 +257,9 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
       setState(() => _visible = false);
       widget.onPlayerVisibilityChanged(false);
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) _mainFocusNode.requestFocus();
+        if (!mounted) return;
+        if (_pc.liveChannelStripOverlayOpen.value) return;
+        _mainFocusNode.requestFocus();
       });
     });
   }
@@ -263,6 +270,7 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
     _restartHideTimer();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
+      if (_pc.liveChannelStripOverlayOpen.value) return;
       _firstOsdButtonFocus.requestFocus();
     });
   }
@@ -270,22 +278,22 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
   void _handleVerticalDragStart(DragStartDetails details) async {
     final width = MediaQuery.of(context).size.width;
     _isDraggingLeft = details.globalPosition.dx < width / 2;
-    try {
-      if (_isDraggingLeft) {
+    if (_isDraggingLeft) {
+      try {
         _dragStartValue = await ScreenBrightness().application;
-      } else {
-        _dragStartValue = _pc.currentVolume;
+      } catch (_) {
+        _dragStartValue = null;
       }
-    } catch (_) {
+    } else {
       _dragStartValue = _pc.currentVolume;
-      _isDraggingLeft = false;
     }
   }
 
   void _handleVerticalDragUpdate(DragUpdateDetails details) {
     if (_dragStartValue == null) return;
     final height = MediaQuery.of(context).size.height;
-    final delta = -details.primaryDelta! / height;
+    final dy = details.primaryDelta ?? details.delta.dy;
+    final delta = -dy / height;
     final newValue = (_dragStartValue! + delta).clamp(0.0, 1.0);
     _dragStartValue = newValue;
 
@@ -294,12 +302,11 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
         ScreenBrightness().setApplicationScreenBrightness(newValue);
       } catch (_) {}
       _overlayIcon.value = Icons.brightness_6_rounded;
-      _overlayValue.value = newValue;
     } else {
       _pc.setVolume(newValue);
-      _overlayIcon.value = _volumeIconFor(newValue);
-      _overlayValue.value = newValue;
+      _overlayIcon.value = playerVolumeIconFor(newValue);
     }
+    _overlayValue.value = newValue;
 
     _showOverlay.value = true;
     _overlayTimer?.cancel();
@@ -308,29 +315,17 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
     });
   }
 
-  void _showVolumeOverlay() {
-    final vol = _pc.currentVolume;
-    _overlayIcon.value = _volumeIconFor(vol);
-    _overlayValue.value = vol;
+  void _nudgeVolumeFromKey(double delta) {
+    _restartHideTimer();
+    final v = (_pc.currentVolume + delta).clamp(0.0, 1.0);
+    _pc.setVolume(v);
+    _overlayIcon.value = playerVolumeIconFor(v);
+    _overlayValue.value = v;
     _showOverlay.value = true;
     _overlayTimer?.cancel();
-    _overlayTimer = Timer(const Duration(milliseconds: 2500), () {
+    _overlayTimer = Timer(const Duration(milliseconds: 1200), () {
       _showOverlay.value = false;
     });
-  }
-
-  void _adjustVolume(double delta) {
-    _restartHideTimer();
-    final current = _pc.currentVolume;
-    final newValue = (current + delta).clamp(0.0, 1.0);
-    _pc.setVolume(newValue);
-    _showVolumeOverlay();
-  }
-
-  IconData _volumeIconFor(double v) {
-    if (v == 0) return Icons.volume_off_rounded;
-    if (v < 0.5) return Icons.volume_down_rounded;
-    return Icons.volume_up_rounded;
   }
 
   void _togglePlay() {
@@ -439,6 +434,7 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
     return ClipRRect(
       borderRadius: BorderRadius.circular(radius),
       child: Obx(() {
+        final ga = GlassAppearance.fromLabel(settings.themeLabel.value);
         final reduce = settings.reduceBlur.value;
         final tv = settings.layoutMode.value == AppLayoutMode.tv;
         final sigma = tv ? 0.0 : (reduce ? 10.0 : 20.0);
@@ -446,63 +442,15 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
           padding: padding,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(radius),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.32)),
+            border: Border.all(color: ga.playerBarBorder),
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: [
-                Colors.white.withValues(alpha: 0.18),
-                Colors.white.withValues(alpha: 0.06),
-              ],
+              colors: ga.playerBarGradientColors,
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.35),
-                blurRadius: 24,
-                offset: const Offset(0, 10),
-              ),
-            ],
-          ),
-          child: child,
-        );
-        if (sigma <= 0) return decorated;
-        return BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
-          child: decorated,
-        );
-      }),
-    );
-  }
-
-  Widget _glassCenterOverlayCard({
-    required double width,
-    required Widget child,
-  }) {
-    const radius = 18.0;
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(radius),
-      child: Obx(() {
-        final settings = Get.find<AppSettingsService>();
-        final reduce = settings.reduceBlur.value;
-        final tv = settings.layoutMode.value == AppLayoutMode.tv;
-        final sigma = tv ? 0.0 : (reduce ? 10.0 : 20.0);
-        final decorated = Container(
-          width: width,
-          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(radius),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.32)),
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                Colors.white.withValues(alpha: 0.2),
-                Colors.white.withValues(alpha: 0.07),
-              ],
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withValues(alpha: 0.35),
+                color: ga.popupShadowColor,
                 blurRadius: 24,
                 offset: const Offset(0, 10),
               ),
@@ -530,12 +478,8 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
     Color? iconColor,
     FocusNode? focusNode,
     KeyEventResult Function(FocusNode, KeyEvent)? onKeyEvent,
-    bool showVolumeGlassOnFocus = false,
   }) {
     assert(icon != null || (letter != null && letter.isNotEmpty));
-    final bg = primary
-        ? const Color(0xFF4EC4D4).withValues(alpha: 0.45)
-        : Colors.white.withValues(alpha: 0.12);
     final primaryColor = Theme.of(context).colorScheme.primary;
 
     return StatefulBuilder(
@@ -546,9 +490,6 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
           onFocusChange: (hasFocus) {
             if (hasFocus) {
               _restartHideTimer();
-              if (showVolumeGlassOnFocus) {
-                _showVolumeOverlay();
-              }
             }
             setSt(() {});
           },
@@ -612,51 +553,61 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
           },
           child: Builder(builder: (innerCtx) {
             final focused = Focus.of(innerCtx).hasFocus;
-            return Tooltip(
-              message: tooltip,
-              child: AnimatedContainer(
-                duration: const Duration(milliseconds: 200),
-                width: size,
-                height: size,
-                decoration: BoxDecoration(
-                  color: focused ? primaryColor.withValues(alpha: 0.6) : bg,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(
-                    color: focused ? Colors.white : Colors.transparent,
-                    width: 2,
-                  ),
-                ),
-                child: Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    canRequestFocus: false,
+            return Obx(() {
+              final ga = GlassAppearance.fromLabel(
+                Get.find<AppSettingsService>().themeLabel.value,
+              );
+              final unfocusedBg = primary
+                  ? const Color(0xFF4EC4D4).withValues(alpha: 0.45)
+                  : ga.playerBarDimColor;
+              return Tooltip(
+                message: tooltip,
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 200),
+                  width: size,
+                  height: size,
+                  decoration: BoxDecoration(
+                    color: focused
+                        ? primaryColor.withValues(alpha: 0.6)
+                        : unfocusedBg,
                     borderRadius: BorderRadius.circular(12),
-                    onTap: onPressed,
-                    child: letter != null
-                        ? Center(
-                            child: Text(
-                              letter,
-                              style: TextStyle(
-                                color: iconColor ?? Colors.white,
-                                fontSize: primary
-                                    ? (size * 0.48).clamp(16.0, 22.0)
-                                    : (size * 0.44).clamp(15.0, 20.0),
-                                fontWeight: FontWeight.w800,
-                                height: 1,
+                    border: Border.all(
+                      color: focused ? Colors.white : Colors.transparent,
+                      width: 2,
+                    ),
+                  ),
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      canRequestFocus: false,
+                      borderRadius: BorderRadius.circular(12),
+                      onTap: onPressed,
+                      child: letter != null
+                          ? Center(
+                              child: Text(
+                                letter,
+                                style: TextStyle(
+                                  color: iconColor ?? Colors.white,
+                                  fontSize: primary
+                                      ? (size * 0.48).clamp(16.0, 22.0)
+                                      : (size * 0.44).clamp(15.0, 20.0),
+                                  fontWeight: FontWeight.w800,
+                                  height: 1,
+                                ),
                               ),
+                            )
+                          : Icon(
+                              icon!,
+                              color: iconColor ?? Colors.white,
+                              size: primary
+                                  ? (size * 0.59).roundToDouble()
+                                  : (size * 0.5).roundToDouble(),
                             ),
-                          )
-                        : Icon(
-                            icon!,
-                            color: iconColor ?? Colors.white,
-                            size: primary
-                                ? (size * 0.59).roundToDouble()
-                                : (size * 0.5).roundToDouble(),
-                          ),
+                    ),
                   ),
                 ),
-              ),
-            );
+              );
+            });
           }),
         );
       },
@@ -720,6 +671,38 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
     );
   }
 
+  Future<void> _showSubtitleDialog() async {
+    _restartHideTimer();
+    final tracks = _pc.mediaKitSubtitleTrackLabels();
+    if (!mounted) return;
+    final realCount = tracks.keys.where((k) => k != 'no').length;
+    if (realCount == 0) {
+      _osdInfoDialog(
+        'player.sheet.subtitleTitle'.tr,
+        'player.subtitle.noneLong'.tr,
+      );
+      return;
+    }
+    final list = tracks.entries.toList()
+      ..sort((a, b) {
+        if (a.key == 'no') return -1;
+        if (b.key == 'no') return 1;
+        return a.key.compareTo(b.key);
+      });
+    final active = _player?.state.track.subtitle.id ?? 'no';
+    await Get.dialog<void>(
+      _MkTrackPickDialog(
+        title: 'player.sheet.subtitleTitle'.tr,
+        entries: list,
+        selectedId: active,
+        onPick: (id) {
+          unawaited(_pc.setMediaKitSubtitleById(id));
+          Get.back<void>();
+        },
+      ),
+    );
+  }
+
   void _osdInfoDialog(String title, String body) {
     Get.dialog<void>(
       GlassAlertDialog(
@@ -758,14 +741,12 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
       final _ = _pc.osdQualityStamp.value;
       final qualityLabel = _pc.osdStreamQualityLabel;
       final epgLine = _liveEpgSubtitle(live);
-      final layoutTv =
-          Get.find<AppSettingsService>().layoutMode.value == AppLayoutMode.tv;
 
       return GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: _showControls,
-        onVerticalDragStart: layoutTv ? null : _handleVerticalDragStart,
-        onVerticalDragUpdate: layoutTv ? null : _handleVerticalDragUpdate,
+        onVerticalDragStart: _handleVerticalDragStart,
+        onVerticalDragUpdate: _handleVerticalDragUpdate,
         child: Focus(
           focusNode: _mainFocusNode,
           autofocus: true,
@@ -777,11 +758,11 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
             final key = event.logicalKey;
 
             if (key == LogicalKeyboardKey.audioVolumeUp) {
-              _adjustVolume(0.05);
+              _nudgeVolumeFromKey(0.05);
               return KeyEventResult.handled;
             }
             if (key == LogicalKeyboardKey.audioVolumeDown) {
-              _adjustVolume(-0.05);
+              _nudgeVolumeFromKey(-0.05);
               return KeyEventResult.handled;
             }
 
@@ -1124,51 +1105,20 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
                                           _osdButton(
                                             context,
                                             tooltip:
+                                                'player.tooltip.subtitle'.tr,
+                                            icon: Icons.closed_caption_rounded,
+                                            onPressed: () {
+                                              unawaited(_showSubtitleDialog());
+                                            },
+                                          ),
+                                          const SizedBox(width: 6),
+                                          _osdButton(
+                                            context,
+                                            tooltip:
                                                 'player.tooltip.toBetter'.tr,
                                             letter: 'B',
                                             onPressed: _switchToBetterPlayer,
                                           ),
-                                          const SizedBox(width: 6),
-                                          Builder(builder: (context) {
-                                            final vol =
-                                                (_mkSnap?.volume ?? 50) / 100.0;
-                                            final icon = vol == 0
-                                                ? Icons.volume_off_rounded
-                                                : (vol < 0.5
-                                                    ? Icons.volume_down_rounded
-                                                    : Icons.volume_up_rounded);
-                                            return _osdButton(
-                                              context,
-                                              tooltip:
-                                                  'player.tooltip.volume'.tr,
-                                              icon: icon,
-                                              showVolumeGlassOnFocus: true,
-                                              onPressed: () {
-                                                _restartHideTimer();
-                                                _showVolumeOverlay();
-                                              },
-                                              onKeyEvent: (node, event) {
-                                                if (event is! KeyDownEvent &&
-                                                    event is! KeyRepeatEvent) {
-                                                  return KeyEventResult.ignored;
-                                                }
-                                                final key = event.logicalKey;
-                                                if (key ==
-                                                    LogicalKeyboardKey
-                                                        .arrowUp) {
-                                                  _adjustVolume(0.05);
-                                                  return KeyEventResult.handled;
-                                                }
-                                                if (key ==
-                                                    LogicalKeyboardKey
-                                                        .arrowDown) {
-                                                  _adjustVolume(-0.05);
-                                                  return KeyEventResult.handled;
-                                                }
-                                                return KeyEventResult.ignored;
-                                              },
-                                            );
-                                          }),
                                           const SizedBox(width: 6),
                                           Obx(
                                             () {
@@ -1252,91 +1202,15 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
                   ),
                 ),
               ),
-              Obx(() {
-                final visible = _showOverlay.value;
-                final icon = _overlayIcon.value;
-                final isBrightness = icon == Icons.brightness_6_rounded;
-                final v = _overlayValue.value.clamp(0.0, 1.0);
-                return IgnorePointer(
-                  ignoring: !visible,
-                  child: AnimatedOpacity(
+              Obx(() => AnimatedOpacity(
                     duration: const Duration(milliseconds: 200),
-                    opacity: visible ? 1.0 : 0.0,
-                    child: Center(
-                      child: _glassCenterOverlayCard(
-                        width: isBrightness ? 200 : 260,
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Icon(icon, color: Colors.white, size: 40),
-                            const SizedBox(height: 14),
-                            if (isBrightness)
-                              ClipRRect(
-                                borderRadius: BorderRadius.circular(6),
-                                child: LinearProgressIndicator(
-                                  value: v,
-                                  backgroundColor:
-                                      Colors.white.withValues(alpha: 0.2),
-                                  color: Colors.white,
-                                  minHeight: 6,
-                                ),
-                              )
-                            else
-                              Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  SliderTheme(
-                                    data: SliderTheme.of(context).copyWith(
-                                      trackHeight: 5,
-                                      thumbShape: const RoundSliderThumbShape(
-                                        enabledThumbRadius: 9,
-                                      ),
-                                      overlayShape:
-                                          const RoundSliderOverlayShape(
-                                        overlayRadius: 18,
-                                      ),
-                                      activeTrackColor: Colors.white,
-                                      inactiveTrackColor:
-                                          Colors.white.withValues(alpha: 0.22),
-                                      thumbColor: const Color(0xFF4EC4D4),
-                                      overlayColor: const Color(0xFF4EC4D4)
-                                          .withValues(alpha: 0.22),
-                                    ),
-                                    child: Slider(
-                                      value: v,
-                                      onChanged: (nv) {
-                                        _restartHideTimer();
-                                        _pc.setVolume(nv);
-                                        _overlayValue.value = nv;
-                                        _overlayIcon.value = _volumeIconFor(nv);
-                                        _overlayTimer?.cancel();
-                                        _overlayTimer = Timer(
-                                          const Duration(milliseconds: 2500),
-                                          () {
-                                            _showOverlay.value = false;
-                                          },
-                                        );
-                                      },
-                                    ),
-                                  ),
-                                  Text(
-                                    '${(v * 100).round()}%',
-                                    style: TextStyle(
-                                      color:
-                                          Colors.white.withValues(alpha: 0.85),
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                          ],
-                        ),
-                      ),
+                    opacity: _showOverlay.value ? 1.0 : 0.0,
+                    child: PlayerGlassLevelOverlay(
+                      visible: _showOverlay.value,
+                      icon: _overlayIcon.value,
+                      value01: _overlayValue.value,
                     ),
-                  ),
-                );
-              }),
+                  )),
             ],
           ),
         ),

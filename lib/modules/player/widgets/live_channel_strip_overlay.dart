@@ -21,17 +21,24 @@ class LiveChannelStripOverlay extends StatefulWidget {
   final Future<void> Function(Channel channel) onPick;
 
   @override
-  State<LiveChannelStripOverlay> createState() =>
-      _LiveChannelStripOverlayState();
+  LiveChannelStripOverlayState createState() => LiveChannelStripOverlayState();
 }
 
-class _LiveChannelStripOverlayState extends State<LiveChannelStripOverlay> {
+class LiveChannelStripOverlayState extends State<LiveChannelStripOverlay> {
   late int _index;
   final _scroll = ScrollController();
   final _focusNode = FocusNode(descendantsAreFocusable: false);
   Timer? _scrollDebounce;
 
   static const _itemExtent = 120.0;
+
+  /// Kumanda OK / Enter: odak başka yerdeyse [PlayerView] üzerinden çağrılır.
+  void confirmSelection() {
+    if (!mounted || widget.channels.isEmpty) return;
+    final i = _index.clamp(0, widget.channels.length - 1);
+    final ch = widget.channels[i];
+    unawaited(widget.onPick(ch));
+  }
 
   @override
   void initState() {
@@ -104,8 +111,7 @@ class _LiveChannelStripOverlayState extends State<LiveChannelStripOverlay> {
             k == LogicalKeyboardKey.numpadEnter ||
             k == LogicalKeyboardKey.space ||
             k == LogicalKeyboardKey.gameButtonSelect)) {
-      final ch = widget.channels[_index];
-      unawaited(widget.onPick(ch));
+      confirmSelection();
       return KeyEventResult.handled;
     }
 
@@ -117,27 +123,28 @@ class _LiveChannelStripOverlayState extends State<LiveChannelStripOverlay> {
     final scheme = Theme.of(context).colorScheme;
     final ch = widget.channels[_index];
 
-    return Focus(
-      focusNode: _focusNode,
-      autofocus: true,
-      skipTraversal: true,
-      onKeyEvent: _onKey,
-      child: Material(
-        color: Colors.transparent,
-        child: Stack(
-          fit: StackFit.expand,
-          children: [
-            GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: widget.onClose,
-              child: Container(color: Colors.black.withValues(alpha: 0.72)),
-            ),
-            Center(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
+    return FocusScope(
+      child: Focus(
+        focusNode: _focusNode,
+        autofocus: true,
+        skipTraversal: true,
+        onKeyEvent: _onKey,
+        child: Material(
+          color: Colors.transparent,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: widget.onClose,
+                child: Container(color: Colors.black.withValues(alpha: 0.72)),
+              ),
+              Center(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
                     Text(
                       'Kanal seç',
                       style: TextStyle(
@@ -187,7 +194,10 @@ class _LiveChannelStripOverlayState extends State<LiveChannelStripOverlay> {
                                       : Colors.white.withValues(alpha: 0.06),
                                 ),
                                 child: InkWell(
-                                  onTap: () => _setIndex(i),
+                                  onTap: () {
+                                    setState(() => _index = i);
+                                    unawaited(widget.onPick(c));
+                                  },
                                   borderRadius: BorderRadius.circular(14),
                                   child: Padding(
                                     padding: const EdgeInsets.all(8),
@@ -257,6 +267,7 @@ class _LiveChannelStripOverlayState extends State<LiveChannelStripOverlay> {
               ),
             ),
           ],
+          ),
         ),
       ),
     );

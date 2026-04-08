@@ -94,6 +94,20 @@ class BetterPlayerController {
   ///Subtitles lines for current data source.
   List<BetterPlayerSubtitle> subtitlesLines = [];
 
+  /// Android: gömülü Exo metin izi seçiliyken [VideoEventType.exoEmbeddedCues] ile doldurulur.
+  bool _exoEmbeddedSubtitlesActive = false;
+
+  /// Gömülü metin izi (MKV vb.) Flutter altyazı katmanına aktarılsın mı; harici SRT ile karışmaması için.
+  void setExoEmbeddedSubtitlesActive(bool active) {
+    _exoEmbeddedSubtitlesActive = active;
+    if (!active) {
+      subtitlesLines.clear();
+      if (!_disposed) {
+        _postControllerEvent(BetterPlayerControllerEvent.changeSubtitles);
+      }
+    }
+  }
+
   ///List of tracks available for current data source. Used only for HLS / DASH.
   List<BetterPlayerAsmsTrack> _betterPlayerAsmsTracks = [];
 
@@ -365,6 +379,7 @@ class BetterPlayerController {
   ///If subtitles source is segmented then don't load videos at start. Videos
   ///will load with just in time policy.
   Future<void> setupSubtitleSource(BetterPlayerSubtitlesSource subtitlesSource, {bool sourceInitialize = false}) async {
+    _exoEmbeddedSubtitlesActive = false;
     _betterPlayerSubtitlesSource = subtitlesSource;
     subtitlesLines.clear();
     _asmsSegmentsLoaded.clear();
@@ -1145,8 +1160,78 @@ class BetterPlayerController {
         );
       case VideoEventType.bufferingEnd:
         _postEvent(BetterPlayerEvent(BetterPlayerEventType.bufferingEnd));
+      case VideoEventType.exoEmbeddedCues:
+        _applyExoEmbeddedCuesFromEvent(event);
       default:
         break;
+    }
+  }
+
+  void _applyExoEmbeddedCuesFromEvent(VideoEvent event) {
+    if (_disposed || !_exoEmbeddedSubtitlesActive) {
+      return;
+    }
+    final raw = event.embeddedExoCues;
+    subtitlesLines.clear();
+    if (raw == null || raw.isEmpty) {
+      _postEvent(BetterPlayerEvent(BetterPlayerEventType.changedSubtitles));
+      if (!_disposed) {
+        _postControllerEvent(BetterPlayerControllerEvent.changeSubtitles);
+      }
+      return;
+    }
+    var minStart = 1 << 30;
+    var maxEnd = 0;
+    final lines = <String>[];
+    for (final e in raw) {
+      if (e is! Map) {
+        continue;
+      }
+      final m = e.map((k, v) => MapEntry(k.toString(), v));
+      final sm = m['startMs'];
+      final em = m['endMs'];
+      final tx = m['text'] as String?;
+      int? s;
+      int? en;
+      if (sm is int) {
+        s = sm;
+      } else if (sm is num) {
+        s = sm.toInt();
+      }
+      if (em is int) {
+        en = em;
+      } else if (em is num) {
+        en = em.toInt();
+      }
+      if (tx == null || s == null || en == null) {
+        continue;
+      }
+      final t = tx.trim();
+      if (t.isEmpty) {
+        continue;
+      }
+      if (s < minStart) {
+        minStart = s;
+      }
+      if (en > maxEnd) {
+        maxEnd = en;
+      }
+      lines.add(t);
+    }
+    if (lines.isEmpty || minStart == 1 << 30) {
+      _postEvent(BetterPlayerEvent(BetterPlayerEventType.changedSubtitles));
+      if (!_disposed) {
+        _postControllerEvent(BetterPlayerControllerEvent.changeSubtitles);
+      }
+      return;
+    }
+    final sub = BetterPlayerSubtitle.fromExoTimes(startMs: minStart, endMs: maxEnd, texts: lines);
+    if (sub.start != null && sub.end != null && (sub.texts?.isNotEmpty ?? false)) {
+      subtitlesLines.add(sub);
+    }
+    _postEvent(BetterPlayerEvent(BetterPlayerEventType.changedSubtitles));
+    if (!_disposed) {
+      _postControllerEvent(BetterPlayerControllerEvent.changeSubtitles);
     }
   }
 
@@ -1191,6 +1276,31 @@ class BetterPlayerController {
     }
 
     videoPlayerController!.setMixWithOthers(mixWithOthers);
+  }
+
+  /// Android ExoPlayer: [Player.getCurrentTracks] — MKV/MP4 gömülü ses ve metin izleri.
+  Future<Map<String, dynamic>?> getExoPlayerTracks() async {
+    final c = videoPlayerController;
+    if (c == null) {
+      return null;
+    }
+    return c.getExoPlayerTracks();
+  }
+
+  Future<void> selectExoPlayerTrack(int tracksGroupIndex, int trackIndex) async {
+    final c = videoPlayerController;
+    if (c == null) {
+      return;
+    }
+    await c.selectExoPlayerTrack(tracksGroupIndex, trackIndex);
+  }
+
+  Future<void> setExoPlayerTextTrackDisabled(bool disabled) async {
+    final c = videoPlayerController;
+    if (c == null) {
+      return;
+    }
+    await c.setExoPlayerTextTrackDisabled(disabled);
   }
 
   ///Clear all cached data. Video player controller must be initialized to

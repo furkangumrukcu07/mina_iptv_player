@@ -67,3 +67,9 @@ android {
 flutter {
     source = "../.."
 }
+
+dependencies {
+    // HLS master + WEBVTT altyazı track’leri için Media3 HLS modülü zorunlu.
+    // better_player_plus bunu transitif taşır; sürümü hizalayıp APK’da kesin bulunmasını sağlar.
+    implementation("androidx.media3:media3-exoplayer-hls:1.8.0")
+}

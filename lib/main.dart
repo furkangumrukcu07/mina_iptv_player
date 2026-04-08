@@ -1,11 +1,14 @@
+import 'dart:async' show unawaited;
+import 'dart:io' show Platform;
+
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:get/get.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:media_kit/media_kit.dart';
 
 import 'core/bindings/initial_binding.dart';
+import 'core/platform/android_playback_soc_hints.dart';
 import 'core/i18n/app_locale.dart';
 import 'core/i18n/app_translations.dart';
 import 'core/services/app_settings_service.dart';
@@ -20,16 +23,23 @@ Future<void> main() async {
   await Future.wait<void>([
     initializeDateFormatting('tr_TR'),
     initializeDateFormatting('en_US'),
+    initializeDateFormatting('fr_FR'),
+    initializeDateFormatting('ar_SA'),
+    initializeDateFormatting('zh_CN'),
+    initializeDateFormatting('ru_RU'),
   ]);
 
   final settings = AppSettingsService();
   await settings.ensureLoaded();
   Get.put<AppSettingsService>(settings, permanent: true);
+  if (Platform.isAndroid) {
+    unawaited(AndroidPlaybackSocHints.ensureLoaded());
+  }
   Get.updateLocale(
     materialLocaleFromLanguageCode(settings.languageCode.value),
   );
 
-  await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+  await settings.syncSystemChromeWithLayout();
   runApp(const MinaIptvApp());
 }
 
@@ -52,6 +62,10 @@ class MinaIptvApp extends StatelessWidget {
       supportedLocales: const [
         Locale('en', 'US'),
         Locale('tr', 'TR'),
+        Locale('fr', 'FR'),
+        Locale('ar', 'SA'),
+        Locale('zh', 'CN'),
+        Locale('ru', 'RU'),
       ],
       theme: AppTheme.dark,
       initialBinding: InitialBinding(),

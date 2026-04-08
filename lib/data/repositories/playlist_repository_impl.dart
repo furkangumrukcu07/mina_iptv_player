@@ -14,6 +14,7 @@ import '../../domain/entities/playlist_source.dart';
 import '../../domain/entities/series.dart';
 import '../../domain/entities/vod.dart';
 import '../../domain/repositories/playlist_repository.dart';
+import '../m3u_live_merge.dart';
 import '../remote/m3u_parser.dart';
 import '../remote/xtream_api.dart';
 
@@ -42,6 +43,12 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
   static const _kXtreamUsername = 'mina_iptv_xtream_username';
   static const _kXtreamPassword = 'mina_iptv_xtream_password';
 
+  static const _kSourceType2 = 'mina_iptv_source_type_2';
+  static const _kPlaylistUrl2 = 'mina_iptv_playlist_url_2';
+  static const _kXtreamBaseUrl2 = 'mina_iptv_xtream_base_url_2';
+  static const _kXtreamUsername2 = 'mina_iptv_xtream_username_2';
+  static const _kXtreamPassword2 = 'mina_iptv_xtream_password_2';
+
   final Dio _dio;
   final FlutterSecureStorage _storage;
 
@@ -53,6 +60,18 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
   Future<void> _deleteLocalM3uFile() async {
     try {
       final f = await _localM3uFile();
+      if (await f.exists()) await f.delete();
+    } catch (_) {}
+  }
+
+  Future<File> _localM3uFile2() async {
+    final dir = await getApplicationSupportDirectory();
+    return File('${dir.path}/saved_playlist_2.m3u');
+  }
+
+  Future<void> _deleteLocalM3uFile2() async {
+    try {
+      final f = await _localM3uFile2();
       if (await f.exists()) await f.delete();
     } catch (_) {}
   }
@@ -104,6 +123,23 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
         rethrow;
       } catch (e) {
         throw NetworkException('Yerel playlist okunamadı', e);
+      }
+    }
+    if (trimmed == kM3uLocalPlaylistSentinel2) {
+      try {
+        final f = await _localM3uFile2();
+        if (!await f.exists()) {
+          throw const ParseException('Kayıtlı ikinci yerel playlist bulunamadı');
+        }
+        final body = await f.readAsString();
+        if (body.trim().isEmpty) {
+          throw const ParseException('İkinci yerel playlist dosyası boş');
+        }
+        return await compute(M3uParser.instance.parse, body);
+      } on AppException {
+        rethrow;
+      } catch (e) {
+        throw NetworkException('İkinci yerel playlist okunamadı', e);
       }
     }
     try {
@@ -277,6 +313,47 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
     );
   }
 
+  Future<M3uResult> _loadXtreamLiveOnly(XtreamSource s) async {
+    final api = XtreamApi(
+      baseUrl: s.baseUrl.trim(),
+      username: s.username.trim(),
+      password: s.password.trim(),
+    );
+    try {
+      final cats = await api.getLiveCategories(_dio);
+      final streams = await api.getLiveStreams(_dio);
+      return M3uResult(
+        channels: streams,
+        channelCategories: cats,
+        vod: const [],
+        vodCategories: const [],
+        series: const [],
+        seriesCategories: const [],
+        userInfo: null,
+      );
+    } on AppException {
+      rethrow;
+    } catch (e) {
+      throw NetworkException('Failed to load Xtream live list', e);
+    }
+  }
+
+  Future<M3uResult> _loadParsedForMerge(
+    PlaylistSource source, {
+    bool secondaryXtreamLiveOnly = false,
+  }) {
+    return switch (source) {
+      M3uSource() => loadFromM3uUrl(source.url),
+      XtreamSource() => secondaryXtreamLiveOnly
+          ? _loadXtreamLiveOnly(source)
+          : loadFromXtream(
+              baseUrl: source.baseUrl,
+              username: source.username,
+              password: source.password,
+            ),
+    };
+  }
+
   @override
   Future<PlaylistSource?> readSource() async {
     try {
@@ -374,8 +451,126 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
       await _storage.delete(key: _kXtreamBaseUrl);
       await _storage.delete(key: _kXtreamUsername);
       await _storage.delete(key: _kXtreamPassword);
+      await clearSecondarySource();
     } catch (e) {
       throw StorageException('Could not clear saved source', e);
     }
+  }
+
+  @override
+  Future<PlaylistSource?> readSecondarySource() async {
+    try {
+      final type = await _storage.read(key: _kSourceType2);
+      if (type == null || type.isEmpty) return null;
+      if (type == 'm3u') {
+        final url = await _storage.read(key: _kPlaylistUrl2);
+        if (url == null || url.trim().isEmpty) return null;
+        return M3uSource(url: url);
+      }
+      if (type == 'xtream') {
+        final baseUrl = await _storage.read(key: _kXtreamBaseUrl2);
+        final username = await _storage.read(key: _kXtreamUsername2);
+        final password = await _storage.read(key: _kXtreamPassword2);
+        if (baseUrl == null ||
+            username == null ||
+            password == null ||
+            baseUrl.trim().isEmpty ||
+            username.trim().isEmpty ||
+            password.trim().isEmpty) {
+          return null;
+        }
+        return XtreamSource(
+          baseUrl: baseUrl,
+          username: username,
+          password: password,
+        );
+      }
+      return null;
+    } catch (e) {
+      throw StorageException('Could not read secondary source', e);
+    }
+  }
+
+  @override
+  Future<void> persistSecondarySource(PlaylistSource source) async {
+    try {
+      switch (source) {
+        case M3uSource():
+          if (source.url.trim() != kM3uLocalPlaylistSentinel2) {
+            await _deleteLocalM3uFile2();
+          }
+          await _storage.write(key: _kSourceType2, value: 'm3u');
+          await _storage.write(key: _kPlaylistUrl2, value: source.url.trim());
+          await _storage.delete(key: _kXtreamBaseUrl2);
+          await _storage.delete(key: _kXtreamUsername2);
+          await _storage.delete(key: _kXtreamPassword2);
+        case XtreamSource():
+          await _deleteLocalM3uFile2();
+          await _storage.write(key: _kSourceType2, value: 'xtream');
+          await _storage.write(
+            key: _kXtreamBaseUrl2,
+            value: source.baseUrl.trim(),
+          );
+          await _storage.write(
+            key: _kXtreamUsername2,
+            value: source.username.trim(),
+          );
+          await _storage.write(
+            key: _kXtreamPassword2,
+            value: source.password,
+          );
+          await _storage.delete(key: _kPlaylistUrl2);
+      }
+    } catch (e) {
+      throw StorageException('Could not save secondary source', e);
+    }
+  }
+
+  @override
+  Future<void> clearSecondarySource() async {
+    try {
+      await _deleteLocalM3uFile2();
+      await _storage.delete(key: _kSourceType2);
+      await _storage.delete(key: _kPlaylistUrl2);
+      await _storage.delete(key: _kXtreamBaseUrl2);
+      await _storage.delete(key: _kXtreamUsername2);
+      await _storage.delete(key: _kXtreamPassword2);
+    } catch (e) {
+      throw StorageException('Could not clear secondary source', e);
+    }
+  }
+
+  @override
+  Future<M3uResult> persistM3uLocalContentSecondary(String content) async {
+    final result = await loadFromM3uContent(content);
+    final f = await _localM3uFile2();
+    await f.parent.create(recursive: true);
+    await f.writeAsString(content, flush: true);
+    await persistSecondarySource(
+      const M3uSource(url: kM3uLocalPlaylistSentinel2),
+    );
+    return result;
+  }
+
+  @override
+  Future<M3uResult> loadMergedPlaylist({
+    String secondaryOrphanCategoryName = 'List 2',
+  }) async {
+    final primary = await readSource();
+    if (primary == null) {
+      throw const ParseException('No playlist source');
+    }
+    final mergedPrimary = await _loadParsedForMerge(primary);
+    final secondary = await readSecondarySource();
+    if (secondary == null) return mergedPrimary;
+    final secParsed = await _loadParsedForMerge(
+      secondary,
+      secondaryXtreamLiveOnly: secondary is XtreamSource,
+    );
+    return mergeLiveChannelLayer(
+      mergedPrimary,
+      secParsed,
+      orphanCategoryName: secondaryOrphanCategoryName,
+    );
   }
 }

@@ -1,7 +1,9 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui';
 import 'package:better_player_plus/better_player_plus.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
@@ -10,9 +12,11 @@ import 'package:screen_brightness/screen_brightness.dart';
 import '../../../core/layout/app_layout_mode.dart';
 import '../../../core/services/app_settings_service.dart';
 import '../../../core/services/favorites_service.dart';
+import '../../../core/player/exo_native_track_option.dart';
 import '../../../core/services/playlist_cache_service.dart';
 import '../../../domain/entities/channel.dart';
 import 'widgets/live_channel_strip_overlay.dart';
+import 'widgets/player_glass_level_overlay.dart';
 import 'widgets/tv_live_busy_osd.dart';
 import 'widgets/tv_media_kit_player_controls.dart';
 import 'widgets/universal_video_player.dart';
@@ -26,8 +30,11 @@ class PlayerView extends StatefulWidget {
   State<PlayerView> createState() => _PlayerViewState();
 }
 
-class _PlayerViewState extends State<PlayerView> {
+class _PlayerViewState extends State<PlayerView> with WidgetsBindingObserver {
   final controller = Get.find<PlayerController>();
+
+  /// Dikey ↔ yatay geçişte üst widget ağacı değişince [UniversalVideoPlayer] yeniden kurulmasın.
+  final GlobalKey _videoSurfaceKey = GlobalKey(debugLabel: 'minaPlayerVideo');
 
   double? _dragStartValue;
   bool _isDraggingLeft = false;
@@ -38,25 +45,29 @@ class _PlayerViewState extends State<PlayerView> {
 
   bool _channelStripOpen = false;
   List<Channel> _channelStripSnapshot = const [];
+  final GlobalKey<LiveChannelStripOverlayState> _channelStripKey =
+      GlobalKey<LiveChannelStripOverlayState>();
   Timer? _centerKeyHoldTimer;
   bool _centerKeyDown = false;
 
   Worker? _busyWorker;
+
+  /// [build] içinde yön değişince [didChangeMetrics] kaçırılırsa immersive senkronu için.
+  Orientation? _lastAppliedOrientationInBuild;
 
   bool _hardwareKeyHandler(KeyEvent event) => _onGlobalHardwareKey(event);
 
   void _handleVerticalDragStart(DragStartDetails details) async {
     final width = MediaQuery.of(context).size.width;
     _isDraggingLeft = details.globalPosition.dx < width / 2;
-    try {
-      if (_isDraggingLeft) {
+    if (_isDraggingLeft) {
+      try {
         _dragStartValue = await ScreenBrightness().application;
-      } else {
-        _dragStartValue = controller.currentVolume;
+      } catch (_) {
+        _dragStartValue = null;
       }
-    } catch (_) {
+    } else {
       _dragStartValue = controller.currentVolume;
-      _isDraggingLeft = false;
     }
   }
 
@@ -74,16 +85,11 @@ class _PlayerViewState extends State<PlayerView> {
         ScreenBrightness().setApplicationScreenBrightness(newValue);
       } catch (_) {}
       _overlayIcon.value = Icons.brightness_6_rounded;
-      _overlayValue.value = newValue;
     } else {
       controller.setVolume(newValue);
-      _overlayIcon.value = newValue == 0
-          ? Icons.volume_off_rounded
-          : (newValue < 0.5
-              ? Icons.volume_down_rounded
-              : Icons.volume_up_rounded);
-      _overlayValue.value = newValue;
+      _overlayIcon.value = playerVolumeIconFor(newValue);
     }
+    _overlayValue.value = newValue;
 
     _showOverlay.value = true;
     _overlayTimer?.cancel();
@@ -92,9 +98,51 @@ class _PlayerViewState extends State<PlayerView> {
     });
   }
 
+  void _nudgeInAppVolume(double delta) {
+    final v = (controller.currentVolume + delta).clamp(0.0, 1.0);
+    controller.setVolume(v);
+    _overlayIcon.value = playerVolumeIconFor(v);
+    _overlayValue.value = v;
+    _showOverlay.value = true;
+    _overlayTimer?.cancel();
+    _overlayTimer = Timer(const Duration(milliseconds: 1200), () {
+      _showOverlay.value = false;
+    });
+  }
+
+  void _syncPlayerSystemChrome() {
+    if (!mounted) return;
+    final settings = Get.find<AppSettingsService>();
+    if (settings.layoutMode.value != AppLayoutMode.mobile) return;
+    if (kIsWeb) return;
+    if (defaultTargetPlatform != TargetPlatform.android &&
+        defaultTargetPlatform != TargetPlatform.iOS) {
+      return;
+    }
+    final landscape =
+        MediaQuery.orientationOf(context) == Orientation.landscape;
+    unawaited(
+      settings.applyMobilePlayerOrientationChrome(landscapePlayback: landscape),
+    );
+    if (landscape) {
+      void redo() {
+        if (!mounted) return;
+        if (MediaQuery.orientationOf(context) != Orientation.landscape) return;
+        unawaited(
+          settings.applyMobilePlayerOrientationChrome(landscapePlayback: true),
+        );
+      }
+
+      Future<void>.delayed(const Duration(milliseconds: 120), redo);
+      Future<void>.delayed(const Duration(milliseconds: 400), redo);
+      Future<void>.delayed(const Duration(milliseconds: 900), redo);
+    }
+  }
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     HardwareKeyboard.instance.addHandler(_hardwareKeyHandler);
     _busyWorker = ever(controller.isBusy, (bool busy) {
       if (!busy &&
@@ -109,10 +157,19 @@ class _PlayerViewState extends State<PlayerView> {
         });
       }
     });
+    WidgetsBinding.instance.addPostFrameCallback((_) => _syncPlayerSystemChrome());
+  }
+
+  @override
+  void didChangeMetrics() {
+    super.didChangeMetrics();
+    _syncPlayerSystemChrome();
   }
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    unawaited(Get.find<AppSettingsService>().syncSystemChromeWithLayout());
     _busyWorker?.dispose();
     HardwareKeyboard.instance.removeHandler(_hardwareKeyHandler);
     _centerKeyHoldTimer?.cancel();
@@ -147,7 +204,34 @@ class _PlayerViewState extends State<PlayerView> {
   }
 
   bool _onGlobalHardwareKey(KeyEvent event) {
-    if (!mounted || _channelStripOpen) return false;
+    if (!mounted) return false;
+    if (event is KeyDownEvent || event is KeyRepeatEvent) {
+      final k = event.logicalKey;
+      if (k == LogicalKeyboardKey.audioVolumeUp) {
+        if (_channelStripOpen) return false;
+        _nudgeInAppVolume(0.06);
+        return true;
+      }
+      if (k == LogicalKeyboardKey.audioVolumeDown) {
+        if (_channelStripOpen) return false;
+        _nudgeInAppVolume(-0.06);
+        return true;
+      }
+    }
+    if (_channelStripOpen) {
+      if (event is KeyDownEvent) {
+        final k = event.logicalKey;
+        if (k == LogicalKeyboardKey.select ||
+            k == LogicalKeyboardKey.enter ||
+            k == LogicalKeyboardKey.numpadEnter ||
+            k == LogicalKeyboardKey.gameButtonSelect ||
+            k == LogicalKeyboardKey.space) {
+          _channelStripKey.currentState?.confirmSelection();
+          return true;
+        }
+      }
+      return false;
+    }
     final ch = controller.channel.value;
     if (!_isLiveChannel(ch)) return false;
 
@@ -175,8 +259,28 @@ class _PlayerViewState extends State<PlayerView> {
 
   @override
   Widget build(BuildContext context) {
+    final orient = MediaQuery.orientationOf(context);
+    final landscape = orient == Orientation.landscape;
+    if (_lastAppliedOrientationInBuild != orient) {
+      _lastAppliedOrientationInBuild = orient;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _syncPlayerSystemChrome();
+      });
+    }
+
+    final uiStyle = landscape
+        ? const SystemUiOverlayStyle(
+            statusBarColor: Colors.transparent,
+            statusBarIconBrightness: Brightness.light,
+            statusBarBrightness: Brightness.dark,
+            systemNavigationBarColor: Colors.transparent,
+            systemNavigationBarDividerColor: Colors.transparent,
+            systemStatusBarContrastEnforced: false,
+          )
+        : SystemUiOverlayStyle.light;
+
     return AnnotatedRegion<SystemUiOverlayStyle>(
-      value: SystemUiOverlayStyle.light,
+      value: uiStyle,
       child: PopScope(
         canPop: false,
         onPopInvokedWithResult: (didPop, _) {
@@ -206,8 +310,6 @@ class _PlayerViewState extends State<PlayerView> {
                   final fit = controller.videoFit.value;
                   final bp = controller.better;
                   final settings = Get.find<AppSettingsService>();
-                  final isMediaKitActive = settings.useMediaKit.value ||
-                      controller.mediaKitFallbackSession.value;
                   controller.betterOsdOverride.value;
                   final useMediaKitPlayer = controller.effectiveUseMediaKit;
 
@@ -301,6 +403,33 @@ class _PlayerViewState extends State<PlayerView> {
                     );
                   }
                   if (message != null) {
+                    if (kReleaseMode) {
+                      return _PlayerMessage(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const SizedBox(
+                              width: 40,
+                              height: 40,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 3,
+                                color: Color(0xFF6ECFE0),
+                              ),
+                            ),
+                            const SizedBox(height: 16),
+                            Text(
+                              'player.loading.stream'.tr,
+                              textAlign: TextAlign.center,
+                              style: const TextStyle(
+                                color: Colors.white70,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    }
                     return _PlayerMessage(
                       child: LayoutBuilder(
                         builder: (context, constraints) {
@@ -338,7 +467,7 @@ class _PlayerViewState extends State<PlayerView> {
                     );
                   }
 
-                  if (!isMediaKitActive && bp == null) {
+                  if (!useMediaKitPlayer && bp == null) {
                     return _PlayerMessage(
                       child: Text(
                         'player.notReady'.tr,
@@ -355,6 +484,7 @@ class _PlayerViewState extends State<PlayerView> {
 
                   final live = _isLiveChannel(controller.channel.value);
                   final player = UniversalVideoPlayer(
+                    key: _videoSurfaceKey,
                     url: controller.channel.value.streamUrl,
                     useMediaKit: useMediaKitPlayer,
                     betterPlayerController: bp,
@@ -435,54 +565,32 @@ class _PlayerViewState extends State<PlayerView> {
 
                 return Stack(
                   children: [
-                    if (isPortrait)
-                      Obx(() {
-                        if (controller.isBusy.value) return playerWidget;
-                        return Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            AspectRatio(
-                              aspectRatio: 16 / 9,
-                              child: playerWidget,
-                            ),
-                            const SizedBox(height: 24),
-                            _PortraitOsdPanel(controller: controller),
-                          ],
-                        );
-                      })
-                    else
-                      // Yatay: tek OSD — BetterPlayer’da TvBetterPlayerControls.
-                      // _PortraitOsdPanel (7 düğme şeridi) kaldırıldı; MediaKit ile üst üste biniyordu.
-                      playerWidget,
+                    ExcludeFocus(
+                      excluding: _channelStripOpen,
+                      child: isPortrait
+                          ? Obx(() {
+                              if (controller.isBusy.value) return playerWidget;
+                              return Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  AspectRatio(
+                                    aspectRatio: 16 / 9,
+                                    child: playerWidget,
+                                  ),
+                                  const SizedBox(height: 24),
+                                  _PortraitOsdPanel(controller: controller),
+                                ],
+                              );
+                            })
+                          : playerWidget,
+                    ),
                     Obx(() => AnimatedOpacity(
                           duration: const Duration(milliseconds: 200),
                           opacity: _showOverlay.value ? 1.0 : 0.0,
-                          child: Center(
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                  horizontal: 24, vertical: 16),
-                              decoration: BoxDecoration(
-                                color: Colors.black54,
-                                borderRadius: BorderRadius.circular(16),
-                              ),
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(_overlayIcon.value,
-                                      color: Colors.white, size: 42),
-                                  const SizedBox(height: 12),
-                                  SizedBox(
-                                    width: 120,
-                                    child: LinearProgressIndicator(
-                                      value: _overlayValue.value,
-                                      backgroundColor: Colors.white24,
-                                      color: Colors.white,
-                                      minHeight: 4,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
+                          child: PlayerGlassLevelOverlay(
+                            visible: _showOverlay.value,
+                            icon: _overlayIcon.value,
+                            value01: _overlayValue.value,
                           ),
                         )),
                     Obx(() => IgnorePointer(
@@ -499,6 +607,7 @@ class _PlayerViewState extends State<PlayerView> {
                         )),
                     if (_channelStripOpen && _channelStripSnapshot.isNotEmpty)
                       LiveChannelStripOverlay(
+                        key: _channelStripKey,
                         channels: _channelStripSnapshot,
                         currentChannelId: controller.channel.value.id,
                         onClose: () {
@@ -541,7 +650,6 @@ class _PortraitOsdPanelState extends State<_PortraitOsdPanel> {
       final isLive = !ch.streamUrl.toLowerCase().contains('/movie/') &&
           !ch.streamUrl.toLowerCase().contains('/series/');
 
-      final videoFit = widget.controller.videoFit.value;
       final layoutTv =
           Get.find<AppSettingsService>().layoutMode.value == AppLayoutMode.tv;
       final landscape =
@@ -563,14 +671,15 @@ class _PortraitOsdPanelState extends State<_PortraitOsdPanel> {
       }
 
       if (bp == null && !useMediaKitPlayer) return const SizedBox.shrink();
+      // Dikey mod: OSD cam şeridine maksimum genişlik (yatay tam ekran OSD’ye dokunulmaz).
       return Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
+        padding: const EdgeInsets.symmetric(horizontal: 8),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(16),
           child: BackdropFilter(
             filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
             child: Container(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.fromLTRB(12, 16, 12, 16),
               decoration: BoxDecoration(
                 color: Colors.white.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(16),
@@ -628,11 +737,6 @@ class _PortraitOsdPanelState extends State<_PortraitOsdPanel> {
                                   : _fav.toggleVod(ch.id),
                               tv: useTvOsdStyle,
                             ),
-                            _osdAction(
-                              icon: _fitIcon(videoFit),
-                              onTap: () => _cycleFit(),
-                              tv: useTvOsdStyle,
-                            ),
                             Obx(() {
                               widget.controller.betterOsdOverride.value;
                               Get.find<AppSettingsService>().useMediaKit.value;
@@ -653,11 +757,39 @@ class _PortraitOsdPanelState extends State<_PortraitOsdPanel> {
                               onTap: () => _showQualityMenu(context),
                               tv: useTvOsdStyle,
                             ),
-                            _osdAction(
-                              icon: Icons.audiotrack_rounded,
-                              onTap: () => _showAudioMenu(context),
-                              tv: useTvOsdStyle,
-                            ),
+                            if (!isLive) ...[
+                              _osdAction(
+                                icon: Icons.audiotrack_rounded,
+                                onTap: () =>
+                                    unawaited(_showAudioMenu(context)),
+                                tv: useTvOsdStyle,
+                              ),
+                              _osdAction(
+                                icon: Icons.closed_caption_rounded,
+                                onTap: () =>
+                                    unawaited(_showSubtitleMenu(context)),
+                                tv: useTvOsdStyle,
+                              ),
+                            ],
+                            if (Platform.isAndroid || Platform.isIOS)
+                              Obx(() {
+                                Get.find<AppSettingsService>().layoutMode.value;
+                                widget.controller.mediaKitFallbackSession.value;
+                                Get.find<AppSettingsService>().useMediaKit.value;
+                                if (widget.controller.effectiveUseMediaKit ||
+                                    Get.find<AppSettingsService>()
+                                            .layoutMode
+                                            .value ==
+                                        AppLayoutMode.tv) {
+                                  return const SizedBox.shrink();
+                                }
+                                return _osdAction(
+                                  icon: Icons.picture_in_picture_alt_rounded,
+                                  onTap: () => unawaited(widget.controller
+                                      .enterPictureInPictureIfSupported()),
+                                  tv: useTvOsdStyle,
+                                );
+                              }),
                           ],
                         );
                       },
@@ -714,11 +846,6 @@ class _PortraitOsdPanelState extends State<_PortraitOsdPanel> {
                                   tv: useTvOsdStyle,
                                 ),
                                 _osdAction(
-                                  icon: _fitIcon(videoFit),
-                                  onTap: () => _cycleFit(),
-                                  tv: useTvOsdStyle,
-                                ),
-                                _osdAction(
                                   icon: Icons.high_quality_rounded,
                                   onTap: () => _showMkQualityMenu(context),
                                   tv: useTvOsdStyle,
@@ -726,6 +853,11 @@ class _PortraitOsdPanelState extends State<_PortraitOsdPanel> {
                                 _osdAction(
                                   icon: Icons.audiotrack_rounded,
                                   onTap: () => _showMkAudioMenu(context),
+                                  tv: useTvOsdStyle,
+                                ),
+                                _osdAction(
+                                  icon: Icons.closed_caption_rounded,
+                                  onTap: () => _showMkSubtitleMenu(context),
                                   tv: useTvOsdStyle,
                                 ),
                                 _osdAction(
@@ -810,9 +942,24 @@ class _PortraitOsdPanelState extends State<_PortraitOsdPanel> {
     );
   }
 
-  void _showAudioMenu(BuildContext context) {
-    final tracks = widget.controller.better?.betterPlayerAsmsAudioTracks ?? [];
-    if (tracks.isEmpty) {
+  Future<void> _showAudioMenu(BuildContext context) async {
+    final asms = widget.controller.better?.betterPlayerAsmsAudioTracks ?? [];
+    if (asms.isNotEmpty) {
+      if (!context.mounted) return;
+      showModalBottomSheet<void>(
+        context: context,
+        backgroundColor: Colors.transparent,
+        isScrollControlled: true,
+        builder: (ctx) => _AudioSelectionSheet(
+          controller: widget.controller,
+          tracks: asms,
+        ),
+      );
+      return;
+    }
+    final exo = await widget.controller.loadExoNativeTracks();
+    if (!context.mounted) return;
+    if (exo.audio.isEmpty) {
       GlassSnackbar.show(
         'player.warn.title'.tr,
         'player.audio.noneShort'.tr,
@@ -820,14 +967,76 @@ class _PortraitOsdPanelState extends State<_PortraitOsdPanel> {
       );
       return;
     }
-
-    showModalBottomSheet(
+    showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
-      builder: (context) => _AudioSelectionSheet(
+      builder: (ctx) => _ExoNativeAudioSheet(
         controller: widget.controller,
-        tracks: tracks,
+        tracks: exo.audio,
+      ),
+    );
+  }
+
+  Future<void> _showSubtitleMenu(BuildContext context) async {
+    final list = widget.controller.availableSubtitleSources;
+    final exo = await widget.controller.loadExoNativeTracks();
+    if (!context.mounted) return;
+    final hasExternal = list.any(
+      (s) => s.type != BetterPlayerSubtitlesSourceType.none,
+    );
+    if (!hasExternal && exo.text.isEmpty) {
+      GlassSnackbar.show(
+        'player.warn.title'.tr,
+        'player.subtitle.noneShort'.tr,
+        snackPosition: SnackPosition.BOTTOM,
+      );
+      return;
+    }
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) => _UnifiedSubtitleSheet(
+        controller: widget.controller,
+        sources: list,
+        exoTextTracks: exo.text,
+      ),
+    );
+  }
+
+  Future<void> _showMkSubtitleMenu(BuildContext context) async {
+    final tracks = widget.controller.mediaKitSubtitleTrackLabels();
+    if (!context.mounted) return;
+    final realCount = tracks.keys.where((k) => k != 'no').length;
+    if (realCount == 0) {
+      GlassSnackbar.show(
+        'player.warn.title'.tr,
+        'player.subtitle.noneShort'.tr,
+        snackPosition: SnackPosition.BOTTOM,
+      );
+      return;
+    }
+    final list = tracks.entries.toList()
+      ..sort((a, b) {
+        if (a.key == 'no') return -1;
+        if (b.key == 'no') return 1;
+        return a.key.compareTo(b.key);
+      });
+    final active = widget.controller.mediaKitPlayer?.state.track.subtitle.id ??
+        'no';
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) => _MkTrackSelectionSheet(
+        title: 'player.sheet.subtitleTitle'.tr,
+        entries: list,
+        selectedId: active,
+        onPick: (id) async {
+          await widget.controller.setMediaKitSubtitleById(id);
+          if (ctx.mounted) Navigator.pop(ctx);
+        },
       ),
     );
   }
@@ -873,34 +1082,41 @@ class _PortraitOsdPanelState extends State<_PortraitOsdPanel> {
     widget.controller.zapTo(target);
   }
 
-  void _cycleFit() {
-    const fits = [BoxFit.fill, BoxFit.contain, BoxFit.cover];
-    final cur = widget.controller.videoFit.value;
-    final ni = (fits.indexOf(cur) + 1) % fits.length;
-    widget.controller.setVideoFit(fits[ni]);
-  }
-
-  IconData _fitIcon(BoxFit f) {
-    if (f == BoxFit.fill) return Icons.aspect_ratio_rounded;
-    if (f == BoxFit.cover) return Icons.fullscreen_rounded;
-    return Icons.fit_screen_rounded;
-  }
-
   Widget _osdControlRow({
     required bool tv,
     required List<Widget> children,
   }) {
-    final row = Row(
-      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-      children: children,
+    final spaced = <Widget>[];
+    for (var i = 0; i < children.length; i++) {
+      if (i > 0) spaced.add(const SizedBox(width: 6));
+      spaced.add(children[i]);
+    }
+    // Sadece bu panel dikey modda; tuşlar sığdığında ortalanır, sığmazsa yatay kaydırma (taşma yok).
+    final scrollable = LayoutBuilder(
+      builder: (context, constraints) {
+        return SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          physics: const BouncingScrollPhysics(),
+          padding: const EdgeInsets.symmetric(horizontal: 2),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minWidth: constraints.maxWidth),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: spaced,
+            ),
+          ),
+        );
+      },
     );
     if (tv) {
       return FocusTraversalGroup(
         policy: OrderedTraversalPolicy(),
-        child: row,
+        child: scrollable,
       );
     }
-    return row;
+    return scrollable;
   }
 
   Widget _osdAction({
@@ -1136,6 +1352,297 @@ class _AudioSelectionSheet extends StatelessWidget {
                 },
               ),
             ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ExoNativeAudioSheet extends StatelessWidget {
+  const _ExoNativeAudioSheet({
+    required this.controller,
+    required this.tracks,
+  });
+
+  final PlayerController controller;
+  final List<ExoNativeTrackOption> tracks;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRRect(
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+      child: GlassPopupPanel(
+        topCornersOnly: true,
+        borderRadius: 24,
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+        child: SafeArea(
+          top: false,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.audiotrack_rounded, color: Colors.white70),
+                  const SizedBox(width: 12),
+                  Text(
+                    'player.mobile.pickAudio'.tr,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    icon: const Icon(Icons.close, color: Colors.white70),
+                    onPressed: () => Get.back<void>(),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Flexible(
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: tracks.length,
+                  separatorBuilder: (_, __) => const Divider(
+                    color: Colors.white10,
+                    height: 1,
+                  ),
+                  itemBuilder: (context, index) {
+                    final t = tracks[index];
+                    final isSelected = t.selected;
+                    return ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      onTap: () async {
+                        await controller.selectExoNativeAudioTrack(t);
+                        if (context.mounted) Get.back<void>();
+                        GlassSnackbar.show(
+                          'player.snackbar.audioChanged'.tr,
+                          t.displayLabel,
+                          snackPosition: SnackPosition.BOTTOM,
+                          duration: const Duration(seconds: 2),
+                        );
+                      },
+                      leading: Icon(
+                        isSelected
+                            ? Icons.radio_button_checked_rounded
+                            : Icons.radio_button_off_rounded,
+                        color: isSelected
+                            ? Theme.of(context).colorScheme.primary
+                            : Colors.white30,
+                      ),
+                      title: Text(
+                        t.displayLabel,
+                        style: TextStyle(
+                          color: isSelected ? Colors.white : Colors.white70,
+                          fontWeight:
+                              isSelected ? FontWeight.bold : FontWeight.normal,
+                        ),
+                      ),
+                      trailing: isSelected
+                          ? const Icon(Icons.check_rounded, color: Colors.green)
+                          : null,
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _UnifiedSubtitleSheet extends StatelessWidget {
+  const _UnifiedSubtitleSheet({
+    required this.controller,
+    required this.sources,
+    required this.exoTextTracks,
+  });
+
+  final PlayerController controller;
+  final List<BetterPlayerSubtitlesSource> sources;
+  final List<ExoNativeTrackOption> exoTextTracks;
+
+  static String _label(BetterPlayerSubtitlesSource s) {
+    if (s.type == BetterPlayerSubtitlesSourceType.none) {
+      return 'player.subtitle.off'.tr;
+    }
+    final n = s.name?.trim();
+    if (n != null && n.isNotEmpty) return n;
+    return 'player.subtitle.track'.tr;
+  }
+
+  static bool _sameSubtitle(
+    BetterPlayerSubtitlesSource? a,
+    BetterPlayerSubtitlesSource b,
+  ) {
+    if (a == null) {
+      return b.type == BetterPlayerSubtitlesSourceType.none;
+    }
+    if (a.type != b.type) return false;
+    if (a.type == BetterPlayerSubtitlesSourceType.none &&
+        b.type == BetterPlayerSubtitlesSourceType.none) {
+      return true;
+    }
+    return (a.name ?? '') == (b.name ?? '');
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final active = controller.currentSubtitleSource;
+    final sorted = List<BetterPlayerSubtitlesSource>.from(sources);
+    sorted.sort((a, b) {
+      if (a.type == BetterPlayerSubtitlesSourceType.none) return -1;
+      if (b.type == BetterPlayerSubtitlesSourceType.none) return 1;
+      return _label(a).toLowerCase().compareTo(_label(b).toLowerCase());
+    });
+
+    final tiles = <Widget>[];
+    for (var i = 0; i < sorted.length; i++) {
+      if (i > 0) {
+        tiles.add(const Divider(color: Colors.white10, height: 1));
+      }
+      final s = sorted[i];
+      final isSelected = _sameSubtitle(active, s);
+      tiles.add(
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          onTap: () async {
+            await controller.setBetterSubtitleSource(s);
+            if (s.type == BetterPlayerSubtitlesSourceType.none) {
+              await controller.disableExoNativeTextTracks();
+            }
+            if (context.mounted) Get.back<void>();
+            GlassSnackbar.show(
+              'player.snackbar.subtitleChanged'.tr,
+              _label(s),
+              snackPosition: SnackPosition.BOTTOM,
+              duration: const Duration(seconds: 2),
+            );
+          },
+          leading: Icon(
+            isSelected
+                ? Icons.radio_button_checked_rounded
+                : Icons.radio_button_off_rounded,
+            color: isSelected
+                ? Theme.of(context).colorScheme.primary
+                : Colors.white30,
+          ),
+          title: Text(
+            _label(s),
+            style: TextStyle(
+              color: isSelected ? Colors.white : Colors.white70,
+              fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+            ),
+          ),
+          trailing: isSelected
+              ? const Icon(Icons.check_rounded, color: Colors.green)
+              : null,
+        ),
+      );
+    }
+
+    if (exoTextTracks.isNotEmpty) {
+      tiles.add(const Divider(color: Colors.white24, height: 24));
+      tiles.add(
+        Padding(
+          padding: const EdgeInsets.only(bottom: 8),
+          child: Text(
+            'player.subtitle.embedded'.tr,
+            style: const TextStyle(
+              color: Colors.white54,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      );
+      for (var j = 0; j < exoTextTracks.length; j++) {
+        if (j > 0) {
+          tiles.add(const Divider(color: Colors.white10, height: 1));
+        }
+        final opt = exoTextTracks[j];
+        final isSelected = opt.selected;
+        tiles.add(
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            onTap: () async {
+              await controller.selectExoNativeTextTrack(opt);
+              if (context.mounted) Get.back<void>();
+              GlassSnackbar.show(
+                'player.snackbar.subtitleChanged'.tr,
+                opt.displayLabel,
+                snackPosition: SnackPosition.BOTTOM,
+                duration: const Duration(seconds: 2),
+              );
+            },
+            leading: Icon(
+              isSelected
+                  ? Icons.radio_button_checked_rounded
+                  : Icons.radio_button_off_rounded,
+              color: isSelected
+                  ? Theme.of(context).colorScheme.primary
+                  : Colors.white30,
+            ),
+            title: Text(
+              opt.displayLabel,
+              style: TextStyle(
+                color: isSelected ? Colors.white : Colors.white70,
+                fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+              ),
+            ),
+            trailing: isSelected
+                ? const Icon(Icons.check_rounded, color: Colors.green)
+                : null,
+          ),
+        );
+      }
+    }
+
+    return ClipRRect(
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+      child: GlassPopupPanel(
+        topCornersOnly: true,
+        borderRadius: 24,
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+        child: SafeArea(
+          top: false,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Row(
+                children: [
+                  const Icon(Icons.closed_caption_rounded,
+                      color: Colors.white70),
+                  const SizedBox(width: 12),
+                  Text(
+                    'player.mobile.pickSubtitle'.tr,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    icon: const Icon(Icons.close, color: Colors.white70),
+                    onPressed: () => Get.back<void>(),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 16),
+              Flexible(
+                child: ListView(
+                  shrinkWrap: true,
+                  children: tiles,
+                ),
+              ),
             ],
           ),
         ),

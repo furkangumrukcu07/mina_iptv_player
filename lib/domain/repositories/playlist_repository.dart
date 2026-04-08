@@ -57,4 +57,19 @@ abstract class PlaylistRepository {
 
   /// Secure storage’daki kayıtlı kaynağı (M3U / Xtream) siler.
   Future<void> clearSavedSource();
+
+  /// İkinci kaynak (isteğe bağlı); canlı kanallar birincil ile birleştirilir.
+  Future<PlaylistSource?> readSecondarySource();
+
+  Future<void> persistSecondarySource(PlaylistSource source);
+
+  Future<void> clearSecondarySource();
+
+  /// İkinci yerel M3U dosyasını kaydeder ve ikinci kaynağı işaretler.
+  Future<M3uResult> persistM3uLocalContentSecondary(String content);
+
+  /// Birincil + varsa ikincil kaynağı yükleyip canlı kanal katmanını birleştirir.
+  Future<M3uResult> loadMergedPlaylist({
+    String secondaryOrphanCategoryName = 'List 2',
+  });
 }

@@ -233,6 +233,8 @@ class VideoPlayerController extends ValueNotifier<VideoPlayerValue> {
           value = value.copyWith(isPip: true);
         case VideoEventType.pipStop:
           value = value.copyWith(isPip: false);
+        case VideoEventType.exoEmbeddedCues:
+          break;
         case VideoEventType.unknown:
           break;
       }
@@ -612,6 +614,36 @@ class VideoPlayerController extends ValueNotifier<VideoPlayerValue> {
 
   void setAudioTrack(String? name, int? index) {
     _videoPlayerPlatform.setAudioTrack(_textureId, name, index);
+  }
+
+  /// Android ExoPlayer: gömülü çoklu ses/altyazı izleri ([Player.getCurrentTracks]).
+  Future<Map<String, dynamic>?> getExoPlayerTracks() async {
+    if (!_created || _isDisposed || _textureId == null) {
+      return null;
+    }
+    final raw = await _videoPlayerPlatform.getExoPlayerTracks(_textureId);
+    if (raw == null) {
+      return null;
+    }
+    return Map<String, dynamic>.from(raw);
+  }
+
+  Future<void> selectExoPlayerTrack(int tracksGroupIndex, int trackIndex) async {
+    if (!_created || _isDisposed || _textureId == null) {
+      return;
+    }
+    await _videoPlayerPlatform.selectExoPlayerTrack(
+      _textureId,
+      tracksGroupIndex: tracksGroupIndex,
+      trackIndex: trackIndex,
+    );
+  }
+
+  Future<void> setExoPlayerTextTrackDisabled(bool disabled) async {
+    if (!_created || _isDisposed || _textureId == null) {
+      return;
+    }
+    await _videoPlayerPlatform.setExoPlayerTextTrackDisabled(_textureId, disabled);
   }
 
   void setMixWithOthers(bool mixWithOthers) {

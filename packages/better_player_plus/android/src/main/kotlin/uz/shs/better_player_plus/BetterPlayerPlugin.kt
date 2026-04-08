@@ -252,6 +252,23 @@ class BetterPlayerPlugin : FlutterPlugin, ActivityAware, MethodCallHandler {
                 result.success(null)
             }
 
+            GET_EXO_PLAYER_TRACKS_METHOD -> {
+                result.success(player.getExoPlayerTracksPayload())
+            }
+
+            SELECT_EXO_PLAYER_TRACK_METHOD -> {
+                val g = call.argument<Int>(TRACKS_GROUP_INDEX_PARAMETER) ?: -1
+                val t = call.argument<Int>(TRACK_INDEX_IN_GROUP_PARAMETER) ?: -1
+                player.selectExoPlayerTrack(g, t)
+                result.success(null)
+            }
+
+            SET_EXO_PLAYER_TEXT_TRACK_DISABLED_METHOD -> {
+                val disabled = call.argument<Boolean>(TEXT_TRACK_DISABLED_PARAMETER) ?: true
+                player.setExoPlayerTextTrackDisabled(disabled)
+                result.success(null)
+            }
+
             SET_MIX_WITH_OTHERS_METHOD -> {
                 val mixWitOthers = call.argument<Boolean?>(
                     MIX_WITH_OTHERS_PARAMETER
@@ -461,14 +478,41 @@ class BetterPlayerPlugin : FlutterPlugin, ActivityAware, MethodCallHandler {
     }
 
     private fun enablePictureInPicture(player: BetterPlayer) {
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-            player.setupMediaSession(flutterState!!.applicationContext)
-            activity!!.enterPictureInPictureMode(PictureInPictureParams.Builder().setAspectRatio(
-                Rational(16, 9)
-            ).build())
-            startPictureInPictureListenerTimer(player)
-            player.onPictureInPictureStatusChanged(true)
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
+        val act = activity ?: return
+        if (!act.packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)) {
+            Log.w(TAG, "Picture-in-picture not supported on this device")
+            return
         }
+        player.setupMediaSession(flutterState!!.applicationContext)
+        val builder = PictureInPictureParams.Builder()
+            .setAspectRatio(Rational(16, 9))
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            builder.setSeamlessResizeEnabled(true)
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            try {
+                val label = act.applicationInfo.loadLabel(act.packageManager)
+                if (label.isNotEmpty()) {
+                    builder.setTitle(label)
+                }
+            } catch (_: Exception) {
+                // ignore
+            }
+        }
+        val params = builder.build()
+        val entered = act.enterPictureInPictureMode(params)
+        if (!entered) {
+            Log.w(
+                TAG,
+                "enterPictureInPictureMode returned false — enable PiP for this app in system settings " +
+                    "(Settings → Apps → Special app access → Picture-in-picture)",
+            )
+            player.disposeMediaSession()
+            return
+        }
+        startPictureInPictureListenerTimer(player)
+        player.onPictureInPictureStatusChanged(true)
     }
 
     private fun disablePictureInPicture(player: BetterPlayer) {
@@ -603,6 +647,12 @@ class BetterPlayerPlugin : FlutterPlugin, ActivityAware, MethodCallHandler {
         private const val SET_SPEED_METHOD = "setSpeed"
         private const val SET_TRACK_PARAMETERS_METHOD = "setTrackParameters"
         private const val SET_AUDIO_TRACK_METHOD = "setAudioTrack"
+        private const val GET_EXO_PLAYER_TRACKS_METHOD = "getExoPlayerTracks"
+        private const val SELECT_EXO_PLAYER_TRACK_METHOD = "selectExoPlayerTrack"
+        private const val SET_EXO_PLAYER_TEXT_TRACK_DISABLED_METHOD = "setExoPlayerTextTrackDisabled"
+        private const val TRACKS_GROUP_INDEX_PARAMETER = "tracksGroupIndex"
+        private const val TRACK_INDEX_IN_GROUP_PARAMETER = "trackIndex"
+        private const val TEXT_TRACK_DISABLED_PARAMETER = "disabled"
         private const val ENABLE_PICTURE_IN_PICTURE_METHOD = "enablePictureInPicture"
         private const val DISABLE_PICTURE_IN_PICTURE_METHOD = "disablePictureInPicture"
         private const val IS_PICTURE_IN_PICTURE_SUPPORTED_METHOD = "isPictureInPictureSupported"

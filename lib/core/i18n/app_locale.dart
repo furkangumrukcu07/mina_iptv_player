@@ -1,12 +1,25 @@
 import 'package:flutter/material.dart';
 
-/// Maps device [Locale] to a supported app language code (`tr` or `en`).
+/// Maps device [Locale] to a supported app language code.
 String languageCodeFromDeviceLocale(Locale locale) {
   final c = locale.languageCode.toLowerCase();
-  if (c == 'tr') return 'tr';
-  return 'en';
+  return switch (c) {
+    'tr' => 'tr',
+    'fr' => 'fr',
+    'ar' => 'ar',
+    'zh' => 'zh',
+    'ru' => 'ru',
+    _ => 'en',
+  };
 }
 
 Locale materialLocaleFromLanguageCode(String code) {
-  return code == 'tr' ? const Locale('tr', 'TR') : const Locale('en', 'US');
+  return switch (code) {
+    'tr' => const Locale('tr', 'TR'),
+    'fr' => const Locale('fr', 'FR'),
+    'ar' => const Locale('ar', 'SA'),
+    'zh' => const Locale('zh', 'CN'),
+    'ru' => const Locale('ru', 'RU'),
+    _ => const Locale('en', 'US'),
+  };
 }

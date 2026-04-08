@@ -25,7 +25,57 @@ abstract final class IptvPlaybackDefaults {
     // Uri.tryParse ve uri.toString() bazen query parametrelerini (username/password)
     // çift encode ederek (double encoding) sunucunun reddetmesine neden olabilir.
     // Sadece boşlukları temizleyip ham URL'i döndürmek M3U mantığına daha yakındır.
-    return preferM3u8LiveManifestIfXtreamTs(t.replaceAll(' ', '%20'));
+    final spaced = t.replaceAll(' ', '%20');
+    return preferM3u8XtreamGetPhpIfTs(
+      preferM3u8VodManifestIfXtreamTs(
+        preferM3u8LiveManifestIfXtreamTs(spaced),
+      ),
+    );
+  }
+
+  /// Xtream VOD: `.../movie/.../id.ts` veya `.../series/.../id.ts` → aynı yol `.m3u8`
+  /// (çoklu ses / altyazı için HLS master).
+  static String preferM3u8VodManifestIfXtreamTs(String url) {
+    final uri = Uri.tryParse(url.trim());
+    if (uri == null) return url;
+    final path = uri.path.toLowerCase().replaceAll('\\', '/');
+    if (!path.endsWith('.ts')) return url;
+    final isMovie = path.contains('/movie/');
+    final isSeries = path.contains('/series/');
+    if (!isMovie && !isSeries) return url;
+    final newPath = '${uri.path.substring(0, uri.path.length - 3)}.m3u8';
+    return uri.replace(path: newPath).toString();
+  }
+
+  /// Xtream `get.php?...&stream_id=...` ile `output=ts` (veya output yok) gelen linkler tek MPEG-TS
+  /// açılır; çoklu dil **HLS master** (#EXT-X-MEDIA) ile gelir. Çoğu panel aynı yayını
+  /// `output=m3u8` ile sunar — OSD ses / kalite seçimi için burada m3u8’e çeviriyoruz.
+  static String preferM3u8XtreamGetPhpIfTs(String url) {
+    final uri = Uri.tryParse(url.trim());
+    if (uri == null) return url;
+    if (!uri.path.toLowerCase().endsWith('get.php')) return url;
+
+    final q = Map<String, String>.from(uri.queryParameters);
+    final sid = q['stream_id']?.trim();
+    if (sid == null || sid.isEmpty) return url;
+
+    final output = (q['output'] ?? '').toLowerCase().trim();
+    if (output == 'm3u8' ||
+        output == 'm3u' ||
+        output == 'hls' ||
+        output == 'mpd' ||
+        output == 'mpegdash') {
+      return url;
+    }
+    if (output.isNotEmpty &&
+        output != 'ts' &&
+        output != 'mpegts' &&
+        output != 'mpeg-ts') {
+      return url;
+    }
+
+    final next = Map<String, String>.from(q)..['output'] = 'm3u8';
+    return uri.replace(queryParameters: next).toString();
   }
 
   /// Xtream tarzı `.../live/kullanıcı/şifre/123.ts` adreslerinde çoğu panel aynı yayını

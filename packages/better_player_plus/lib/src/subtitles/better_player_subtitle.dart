@@ -20,6 +20,28 @@ class BetterPlayerSubtitle {
 
   BetterPlayerSubtitle._({this.index, this.start, this.end, this.texts});
 
+  /// Android ExoPlayer [Player.Listener.onCues] — zaman damgası + satırlar.
+  factory BetterPlayerSubtitle.fromExoTimes({
+    required int startMs,
+    required int endMs,
+    required List<String> texts,
+  }) {
+    final clean = texts.map((t) => t.trim()).where((t) => t.isNotEmpty).toList();
+    if (clean.isEmpty) {
+      return BetterPlayerSubtitle._();
+    }
+    var end = endMs;
+    if (end <= startMs) {
+      end = startMs + 2000;
+    }
+    return BetterPlayerSubtitle._(
+      index: -1,
+      start: Duration(milliseconds: startMs),
+      end: Duration(milliseconds: end),
+      texts: clean,
+    );
+  }
+
   static const String timerSeparator = ' --> ';
   final int? index;
   final Duration? start;

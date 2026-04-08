@@ -8,42 +8,43 @@ import 'package:get/get.dart';
 import '../../core/layout/app_layout_mode.dart';
 import '../../core/services/app_settings_service.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/theme/glass_appearance.dart';
 import 'home_controller.dart';
 import 'widgets/glass_category_card.dart';
 
+const _kHomeIconAsset = 'assets/images/new_logo.png';
+
+String _homeFmtClock(DateTime d) {
+  final h = d.hour.toString().padLeft(2, '0');
+  final m = d.minute.toString().padLeft(2, '0');
+  return '$h:$m';
+}
+
+/// Referans: "Sal 31 Mar"
+String _homeFmtDateRef(DateTime d) {
+  const days = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'];
+  const months = [
+    '',
+    'Oca',
+    'Şub',
+    'Mar',
+    'Nis',
+    'May',
+    'Haz',
+    'Tem',
+    'Ağu',
+    'Eyl',
+    'Eki',
+    'Kas',
+    'Ara',
+  ];
+  final w = days[d.weekday - 1];
+  final mon = months[d.month];
+  return '$w ${d.day} $mon';
+}
+
 class HomeView extends GetView<HomeController> {
   const HomeView({super.key});
-
-  static const _iconAsset = 'assets/images/new_logo.png';
-
-  String _fmtClock(DateTime d) {
-    final h = d.hour.toString().padLeft(2, '0');
-    final m = d.minute.toString().padLeft(2, '0');
-    return '$h:$m';
-  }
-
-  /// Referans: "Sal 31 Mar"
-  String _fmtDateRef(DateTime d) {
-    const days = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'];
-    const months = [
-      '',
-      'Oca',
-      'Şub',
-      'Mar',
-      'Nis',
-      'May',
-      'Haz',
-      'Tem',
-      'Ağu',
-      'Eyl',
-      'Eki',
-      'Kas',
-      'Ara',
-    ];
-    final w = days[d.weekday - 1];
-    final mon = months[d.month];
-    return '$w ${d.day} $mon';
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -77,44 +78,27 @@ class HomeView extends GetView<HomeController> {
           children: [
             Obx(() {
               final settings = Get.find<AppSettingsService>();
+              final themeLabel = settings.themeLabel.value;
               final reduce = settings.reduceBlur.value;
               final tv = settings.layoutMode.value == AppLayoutMode.tv;
               final sigma = reduce ? 14.0 : 22.0;
-              final bgPath = settings.customBackgroundPath.value ?? '';
-              final useFile = bgPath.isNotEmpty;
               final dpr = MediaQuery.devicePixelRatioOf(context);
               final targetW = (MediaQuery.sizeOf(context).width * dpr).round();
               final targetH = (MediaQuery.sizeOf(context).height * dpr).round();
               final scaled = Transform.scale(
                 scale: 1.08,
-                child: useFile
-                    ? Image.file(
-                        File(bgPath),
-                        fit: BoxFit.cover,
-                        width: double.infinity,
-                        height: double.infinity,
-                        alignment: Alignment.center,
-                        cacheWidth: targetW,
-                        cacheHeight: targetH,
-                        errorBuilder: (_, __, ___) => Image.asset(
-                          AppTheme.homeBackgroundAsset(context),
-                          fit: BoxFit.cover,
-                          width: double.infinity,
-                          height: double.infinity,
-                          alignment: Alignment.center,
-                          cacheWidth: targetW,
-                          cacheHeight: targetH,
-                        ),
-                      )
-                    : Image.asset(
-                        AppTheme.homeBackgroundAsset(context),
-                        fit: BoxFit.cover,
-                        width: double.infinity,
-                        height: double.infinity,
-                        alignment: Alignment.center,
-                        cacheWidth: targetW,
-                        cacheHeight: targetH,
-                      ),
+                child: Image.asset(
+                  AppTheme.homeBackgroundAsset(
+                    context,
+                    themeLabel: themeLabel,
+                  ),
+                  fit: BoxFit.cover,
+                  width: double.infinity,
+                  height: double.infinity,
+                  alignment: Alignment.center,
+                  cacheWidth: targetW,
+                  cacheHeight: targetH,
+                ),
               );
               if (reduce || tv) return scaled;
               return ImageFiltered(
@@ -135,195 +119,9 @@ class HomeView extends GetView<HomeController> {
               ),
             ),
             SafeArea(
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    const SizedBox(height: 4),
-                    Obx(() {
-                      final tv = Get.find<AppSettingsService>()
-                              .layoutMode
-                              .value ==
-                          AppLayoutMode.tv;
-                      if (tv) return const SizedBox.shrink();
-                      return const _StatusBarRow();
-                    }),
-                    const SizedBox(height: 12),
-                    Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        _HeaderBrandAndGlass(
-                          iconAsset: _iconAsset,
-                          clockSettings: () => _CombinedGlassClockSettings(
-                            clockBuilder: () => Obx(() {
-                              final n = controller.now.value;
-                              return Column(
-                                crossAxisAlignment: CrossAxisAlignment.end,
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Text(
-                                    _fmtClock(n),
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 20,
-                                      fontWeight: FontWeight.w700,
-                                      height: 1,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    _fmtDateRef(n),
-                                    style: TextStyle(
-                                      color:
-                                          Colors.white.withValues(alpha: 0.88),
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                ],
-                              );
-                            }),
-                            onSettings: controller.openSettings,
-                          ),
-                        ),
-                        Obx(() {
-                          final tv = Get.find<AppSettingsService>()
-                                  .layoutMode
-                                  .value ==
-                              AppLayoutMode.tv;
-                          if (tv) return const SizedBox.shrink();
-                          return _PortraitSearchButton(
-                            onSearch: controller.openLiveTvWithSearch,
-                          );
-                        }),
-                      ],
-                    ),
-                    Expanded(
-                      child: Column(
-                        children: [
-                          if (!isPortrait) const Spacer(flex: 3),
-                          if (isPortrait) const Spacer(flex: 1),
-                          FocusTraversalGroup(
-                            policy: ReadingOrderTraversalPolicy(),
-                            child: LayoutBuilder(
-                              builder: (context, constraints) {
-                                if (isPortrait) {
-                                  return _PortraitHomeCarousel(
-                                    controller: controller,
-                                    constraints: constraints,
-                                  );
-                                }
-
-                                final side = ((constraints.maxHeight *
-                                            0.32) // %26'dan %32'ye çıkararak daha da büyüttük
-                                        .clamp(120.0,
-                                            160.0) * // Clamp değerlerini yükselttik
-                                    1.1);
-                                const gap = 20.0; // Boşluğu artırdık
-
-                                return Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  crossAxisAlignment: CrossAxisAlignment.center,
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    _TvGlassCard(
-                                      width: side *
-                                          1.05, // %95'ten %105'e çıkararak genişliği büyüttük
-                                      height: side *
-                                          1.15, // %100'den %115'e çıkararak yüksekliği büyüttük
-                                      order: 0,
-                                      autofocus: true,
-                                      onActivate: controller.openLiveTv,
-                                      buildCard: (focused) => GlassCategoryCard(
-                                        primaryLabel: 'home.live'.tr,
-                                        secondaryLabel: 'home.live.subtitle'.tr,
-                                        icon: Icons.live_tv_rounded,
-                                        focused: focused,
-                                        onTap: controller.openLiveTv,
-                                        previewImageUrl:
-                                            controller.getLivePreview(),
-                                      ),
-                                    ),
-                                    const SizedBox(width: gap),
-                                    _TvGlassCard(
-                                      width: side * 1.05,
-                                      height: side * 1.15,
-                                      order: 1,
-                                      onActivate: controller.openFilms,
-                                      buildCard: (focused) => GlassCategoryCard(
-                                        primaryLabel: 'home.films'.tr,
-                                        secondaryLabel:
-                                            'home.films.subtitle'.tr,
-                                        icon: Icons.movie_filter_rounded,
-                                        focused: focused,
-                                        onTap: controller.openFilms,
-                                        previewImageUrl:
-                                            controller.getFilmsPreview(),
-                                      ),
-                                    ),
-                                    const SizedBox(width: gap),
-                                    _TvGlassCard(
-                                      width: side * 1.05,
-                                      height: side * 1.15,
-                                      order: 2,
-                                      onActivate: controller.openSeries,
-                                      buildCard: (focused) => GlassCategoryCard(
-                                        primaryLabel: 'home.series'.tr,
-                                        secondaryLabel:
-                                            'home.series.subtitle'.tr,
-                                        icon: Icons.theater_comedy_rounded,
-                                        focused: focused,
-                                        onTap: controller.openSeries,
-                                        previewImageUrl:
-                                            controller.getSeriesPreview(),
-                                      ),
-                                    ),
-                                    const SizedBox(width: gap),
-                                    _TvGlassCard(
-                                      width: side * 1.05,
-                                      height: side * 1.15,
-                                      order: 3,
-                                      onActivate: controller.openFavorites,
-                                      buildCard: (focused) => GlassCategoryCard(
-                                        primaryLabel: 'home.favorites'.tr,
-                                        secondaryLabel: 'Favoriler',
-                                        icon: Icons.favorite_rounded,
-                                        focused: focused,
-                                        onTap: controller.openFavorites,
-                                        previewImageUrl:
-                                            controller.getFavoritesPreview(),
-                                      ),
-                                    ),
-                                  ],
-                                );
-                              },
-                            ),
-                          ),
-                          const Spacer(flex: 1),
-                        ],
-                      ),
-                    ),
-                    Obx(() {
-                      final tv = Get.find<AppSettingsService>()
-                              .layoutMode
-                              .value ==
-                          AppLayoutMode.tv;
-                      if (tv) return const SizedBox.shrink();
-                      return Center(
-                        child: Container(
-                          width: 120,
-                          height: 4,
-                          margin: const EdgeInsets.only(bottom: 8),
-                          decoration: BoxDecoration(
-                            color: Colors.white.withValues(alpha: 0.45),
-                            borderRadius: BorderRadius.circular(2),
-                          ),
-                        ),
-                      );
-                    }),
-                  ],
-                ),
+              child: _HomeMainColumn(
+                controller: controller,
+                isPortrait: isPortrait,
               ),
             ),
           ],
@@ -333,49 +131,215 @@ class HomeView extends GetView<HomeController> {
   }
 }
 
-class _PortraitSearchButton extends StatelessWidget {
-  const _PortraitSearchButton({required this.onSearch});
+class _HomeMainColumn extends StatefulWidget {
+  const _HomeMainColumn({
+    required this.controller,
+    required this.isPortrait,
+  });
 
-  final VoidCallback onSearch;
+  final HomeController controller;
+  final bool isPortrait;
+
+  @override
+  State<_HomeMainColumn> createState() => _HomeMainColumnState();
+}
+
+class _HomeMainColumnState extends State<_HomeMainColumn> {
+  late final FocusNode _searchFocus = FocusNode(debugLabel: 'homeSearch');
+  late final FocusNode _settingsFocus = FocusNode(debugLabel: 'homeSettings');
+
+  @override
+  void dispose() {
+    _searchFocus.dispose();
+    _settingsFocus.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Obx(() {
-      final tv = Get.find<AppSettingsService>().layoutMode.value ==
-          AppLayoutMode.tv;
-      final sigma = tv ? 0.0 : 12.0;
-      final inner = InkWell(
-        onTap: onSearch,
-        borderRadius: BorderRadius.circular(14),
-        child: Container(
-          width: 56,
-          height: 56,
-          decoration: BoxDecoration(
-            color: Colors.white.withValues(alpha: 0.1),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: Colors.white.withValues(alpha: 0.22),
+    final c = widget.controller;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          const SizedBox(height: 4),
+          Obx(() {
+            final tv = Get.find<AppSettingsService>().layoutMode.value ==
+                AppLayoutMode.tv;
+            if (tv) return const SizedBox.shrink();
+            // Android telefon: sahte pil/WiFi yok; sistem durum çubuğu görünsün (iOS’a dokunulmaz).
+            if (Platform.isAndroid) return const SizedBox.shrink();
+            return const _StatusBarRow();
+          }),
+          const SizedBox(height: 12),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              const _BrandGlassCapsule(iconAsset: _kHomeIconAsset),
+              const Spacer(),
+              Obx(() {
+                final tv = Get.find<AppSettingsService>().layoutMode.value ==
+                    AppLayoutMode.tv;
+                return _CombinedGlassClockSettings(
+                  onSearch: c.openLiveTvWithSearch,
+                  clockBuilder: () => Obx(() {
+                    final n = c.now.value;
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Text(
+                          _homeFmtClock(n),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 20,
+                            fontWeight: FontWeight.w700,
+                            height: 1,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          _homeFmtDateRef(n),
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.88),
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    );
+                  }),
+                  onSettings: c.openSettings,
+                  tvDpadNavigation: tv,
+                  searchFocusNode: tv ? _searchFocus : null,
+                  settingsFocusNode: tv ? _settingsFocus : null,
+                );
+              }),
+            ],
+          ),
+          Expanded(
+            child: Column(
+              children: [
+                if (!widget.isPortrait) const Spacer(flex: 3),
+                if (widget.isPortrait) const Spacer(flex: 1),
+                FocusTraversalGroup(
+                  policy: ReadingOrderTraversalPolicy(),
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      if (widget.isPortrait) {
+                        return _PortraitHomeCarousel(
+                          controller: c,
+                          constraints: constraints,
+                        );
+                      }
+
+                      final side = ((constraints.maxHeight * 0.32)
+                              .clamp(120.0, 160.0) *
+                          1.1);
+                      const gap = 20.0;
+
+                      return Obx(() {
+                        final tv = Get.find<AppSettingsService>()
+                                .layoutMode
+                                .value ==
+                            AppLayoutMode.tv;
+                        return Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            _TvGlassCard(
+                              width: side * 1.05,
+                              height: side * 1.15,
+                              order: 0,
+                              autofocus: true,
+                              onActivate: c.openLiveTv,
+                              buildCard: (focused) => GlassCategoryCard(
+                                primaryLabel: 'home.live'.tr,
+                                secondaryLabel: 'home.live.subtitle'.tr,
+                                icon: Icons.live_tv_rounded,
+                                focused: focused,
+                                onTap: c.openLiveTv,
+                                previewImageUrl: c.getLivePreview(),
+                              ),
+                            ),
+                            const SizedBox(width: gap),
+                            _TvGlassCard(
+                              width: side * 1.05,
+                              height: side * 1.15,
+                              order: 1,
+                              onActivate: c.openFilms,
+                              buildCard: (focused) => GlassCategoryCard(
+                                primaryLabel: 'home.films'.tr,
+                                secondaryLabel: 'home.films.subtitle'.tr,
+                                icon: Icons.movie_filter_rounded,
+                                focused: focused,
+                                onTap: c.openFilms,
+                                previewImageUrl: c.getFilmsPreview(),
+                              ),
+                            ),
+                            const SizedBox(width: gap),
+                            _TvGlassCard(
+                              width: side * 1.05,
+                              height: side * 1.15,
+                              order: 2,
+                              onActivate: c.openSeries,
+                              buildCard: (focused) => GlassCategoryCard(
+                                primaryLabel: 'home.series'.tr,
+                                secondaryLabel: 'home.series.subtitle'.tr,
+                                icon: Icons.theater_comedy_rounded,
+                                focused: focused,
+                                onTap: c.openSeries,
+                                previewImageUrl: c.getSeriesPreview(),
+                              ),
+                            ),
+                            const SizedBox(width: gap),
+                            _TvGlassCard(
+                              width: side * 1.05,
+                              height: side * 1.15,
+                              order: 3,
+                              focusOnArrowUp: tv ? _searchFocus : null,
+                              onActivate: c.openFavorites,
+                              buildCard: (focused) => GlassCategoryCard(
+                                primaryLabel: 'home.favorites'.tr,
+                                secondaryLabel: 'Favoriler',
+                                icon: Icons.favorite_rounded,
+                                focused: focused,
+                                onTap: c.openFavorites,
+                                previewImageUrl: c.getFavoritesPreview(),
+                              ),
+                            ),
+                          ],
+                        );
+                      });
+                    },
+                  ),
+                ),
+                const Spacer(flex: 1),
+              ],
             ),
           ),
-          child: const Center(
-            child: Icon(
-              Icons.search_rounded,
-              color: Colors.white,
-              size: 24,
-            ),
-          ),
-        ),
-      );
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(14),
-        child: sigma <= 0
-            ? inner
-            : BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
-                child: inner,
+          Obx(() {
+            final tv =
+                Get.find<AppSettingsService>().layoutMode.value ==
+                    AppLayoutMode.tv;
+            if (tv) return const SizedBox.shrink();
+            return Center(
+              child: Container(
+                width: 120,
+                height: 4,
+                margin: const EdgeInsets.only(bottom: 8),
+                decoration: BoxDecoration(
+                  color: Colors.white.withValues(alpha: 0.45),
+                  borderRadius: BorderRadius.circular(2),
+                ),
               ),
-      );
-    });
+            );
+          }),
+        ],
+      ),
+    );
   }
 }
 
@@ -421,44 +385,6 @@ class _StatusBarRow extends StatelessWidget {
 const double _kHomeHeaderGlassHeight = 56;
 const double _kHomeHeaderGlassRadius = 14;
 
-BoxDecoration _homeHeaderGlassDecoration() {
-  return BoxDecoration(
-    borderRadius: BorderRadius.circular(_kHomeHeaderGlassRadius),
-    border: Border.all(
-      color: Colors.white.withValues(alpha: 0.35),
-    ),
-    gradient: LinearGradient(
-      colors: [
-        Colors.white.withValues(alpha: 0.2),
-        Colors.white.withValues(alpha: 0.08),
-      ],
-    ),
-  );
-}
-
-/// İkinci satır: sol IPTV Player (cam içinde), sağ saat + ayarlar (aynı ebatta cam).
-class _HeaderBrandAndGlass extends StatelessWidget {
-  const _HeaderBrandAndGlass({
-    required this.iconAsset,
-    required this.clockSettings,
-  });
-
-  final String iconAsset;
-  final Widget Function() clockSettings;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.center,
-      children: [
-        _BrandGlassCapsule(iconAsset: iconAsset),
-        const Spacer(),
-        clockSettings(),
-      ],
-    );
-  }
-}
-
 class _BrandGlassCapsule extends StatelessWidget {
   const _BrandGlassCapsule({required this.iconAsset});
 
@@ -467,13 +393,14 @@ class _BrandGlassCapsule extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Obx(() {
-      final tv = Get.find<AppSettingsService>().layoutMode.value ==
-          AppLayoutMode.tv;
+      final settings = Get.find<AppSettingsService>();
+      final tv = settings.layoutMode.value == AppLayoutMode.tv;
       final sigma = tv ? 0.0 : 16.0;
+      final ga = GlassAppearance.fromLabel(settings.themeLabel.value);
       final decorated = Container(
         height: _kHomeHeaderGlassHeight,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: _homeHeaderGlassDecoration(),
+        padding: const EdgeInsets.fromLTRB(10, 6, 10, 6),
+        decoration: ga.homeHeaderDecoration(radius: _kHomeHeaderGlassRadius),
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -481,30 +408,31 @@ class _BrandGlassCapsule extends StatelessWidget {
               borderRadius: BorderRadius.circular(8),
               child: Image.asset(
                 iconAsset,
-                width: 36,
-                height: 36,
+                width: 34,
+                height: 34,
                 filterQuality: FilterQuality.medium,
               ),
             ),
-            const SizedBox(width: 10),
+            const SizedBox(width: 8),
             Column(
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Text(
-                  'IPTV',
+                  'home.header.brandTop'.tr,
                   style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.95),
+                    color: Colors.white.withValues(alpha: 0.96),
                     fontSize: 14,
                     fontWeight: FontWeight.w700,
                     height: 1.05,
                   ),
                 ),
                 Text(
-                  'Player',
+                  'home.header.brandBottom'.tr,
                   style: TextStyle(
                     color: Colors.white.withValues(alpha: 0.88),
-                    fontSize: 13,
+                    fontSize: 12,
                     fontWeight: FontWeight.w500,
                     height: 1.05,
                   ),
@@ -527,28 +455,153 @@ class _BrandGlassCapsule extends StatelessWidget {
   }
 }
 
-class _CombinedGlassClockSettings extends StatelessWidget {
-  const _CombinedGlassClockSettings({
-    required this.clockBuilder,
-    required this.onSettings,
+/// TV kumandası: [FocusNode] odağında çerçeve + gölge (InkWell tek başına göstermez).
+class _TvHeaderIconFocusRing extends StatelessWidget {
+  const _TvHeaderIconFocusRing({
+    required this.focusNode,
+    required this.child,
   });
 
+  final FocusNode focusNode;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: focusNode,
+      builder: (context, _) {
+        final focused = focusNode.hasFocus;
+        final primary = Theme.of(context).colorScheme.primary;
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          curve: Curves.easeOut,
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              width: focused ? 2.5 : 0,
+              color: focused ? primary : Colors.transparent,
+            ),
+            boxShadow: focused
+                ? [
+                    BoxShadow(
+                      color: primary.withValues(alpha: 0.55),
+                      blurRadius: 12,
+                      spreadRadius: 1,
+                    ),
+                  ]
+                : [],
+          ),
+          child: child,
+        );
+      },
+    );
+  }
+}
+
+class _CombinedGlassClockSettings extends StatelessWidget {
+  const _CombinedGlassClockSettings({
+    required this.onSearch,
+    required this.clockBuilder,
+    required this.onSettings,
+    this.tvDpadNavigation = false,
+    this.searchFocusNode,
+    this.settingsFocusNode,
+  });
+
+  final VoidCallback onSearch;
   final Widget Function() clockBuilder;
   final VoidCallback onSettings;
+  final bool tvDpadNavigation;
+  final FocusNode? searchFocusNode;
+  final FocusNode? settingsFocusNode;
 
   @override
   Widget build(BuildContext context) {
     return Obx(() {
-      final tv = Get.find<AppSettingsService>().layoutMode.value ==
-          AppLayoutMode.tv;
+      final settings = Get.find<AppSettingsService>();
+      final tv = settings.layoutMode.value == AppLayoutMode.tv;
       final sigma = tv ? 0.0 : 16.0;
+      final ga = GlassAppearance.fromLabel(settings.themeLabel.value);
       final decorated = Container(
         height: _kHomeHeaderGlassHeight,
-        padding: const EdgeInsets.fromLTRB(12, 8, 4, 8),
-        decoration: _homeHeaderGlassDecoration(),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
+        padding: const EdgeInsets.fromLTRB(4, 8, 4, 8),
+        decoration: ga.homeHeaderDecoration(radius: _kHomeHeaderGlassRadius),
+        child: FocusTraversalGroup(
+          policy: tvDpadNavigation
+              ? OrderedTraversalPolicy()
+              : ReadingOrderTraversalPolicy(),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+            FocusTraversalOrder(
+              order: const NumericFocusOrder(0),
+              child: Focus(
+                focusNode: tvDpadNavigation ? searchFocusNode : null,
+                onKeyEvent: (node, event) {
+                  if (event is! KeyDownEvent) {
+                    return KeyEventResult.ignored;
+                  }
+                  final k = event.logicalKey;
+                  if (tvDpadNavigation &&
+                      settingsFocusNode != null &&
+                      k == LogicalKeyboardKey.arrowRight) {
+                    settingsFocusNode!.requestFocus();
+                    return KeyEventResult.handled;
+                  }
+                  if (k == LogicalKeyboardKey.select ||
+                      k == LogicalKeyboardKey.enter ||
+                      k == LogicalKeyboardKey.numpadEnter ||
+                      k == LogicalKeyboardKey.space ||
+                      k == LogicalKeyboardKey.gameButtonSelect) {
+                    onSearch();
+                    return KeyEventResult.handled;
+                  }
+                  return KeyEventResult.ignored;
+                },
+                child: tvDpadNavigation && searchFocusNode != null
+                    ? _TvHeaderIconFocusRing(
+                        focusNode: searchFocusNode!,
+                        child: Material(
+                          color: Colors.transparent,
+                          child: InkWell(
+                            onTap: onSearch,
+                            borderRadius: BorderRadius.circular(12),
+                            child: Padding(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 6),
+                              child: Icon(
+                                Icons.search_rounded,
+                                color: Colors.white.withValues(alpha: 0.95),
+                                size: 22,
+                              ),
+                            ),
+                          ),
+                        ),
+                      )
+                    : Material(
+                        color: Colors.transparent,
+                        child: InkWell(
+                          onTap: onSearch,
+                          borderRadius: BorderRadius.circular(12),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 8, vertical: 6),
+                            child: Icon(
+                              Icons.search_rounded,
+                              color: Colors.white.withValues(alpha: 0.95),
+                              size: 22,
+                            ),
+                          ),
+                        ),
+                      ),
+              ),
+            ),
+            Container(
+              width: 1,
+              height: 36,
+              color: Colors.white.withValues(alpha: 0.25),
+            ),
+            const SizedBox(width: 8),
             clockBuilder(),
             const SizedBox(width: 12),
             Container(
@@ -556,23 +609,71 @@ class _CombinedGlassClockSettings extends StatelessWidget {
               height: 36,
               color: Colors.white.withValues(alpha: 0.25),
             ),
-            Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: onSettings,
-                borderRadius: BorderRadius.circular(12),
-                child: Padding(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                  child: Icon(
-                    Icons.settings_rounded,
-                    color: Colors.white.withValues(alpha: 0.95),
-                    size: 22,
+            if (tvDpadNavigation && settingsFocusNode != null)
+              FocusTraversalOrder(
+                order: const NumericFocusOrder(1),
+                child: Focus(
+                  focusNode: settingsFocusNode,
+                  onKeyEvent: (node, event) {
+                    if (event is! KeyDownEvent) {
+                      return KeyEventResult.ignored;
+                    }
+                    final k = event.logicalKey;
+                    if (searchFocusNode != null &&
+                        k == LogicalKeyboardKey.arrowLeft) {
+                      searchFocusNode!.requestFocus();
+                      return KeyEventResult.handled;
+                    }
+                    if (k == LogicalKeyboardKey.select ||
+                        k == LogicalKeyboardKey.enter ||
+                        k == LogicalKeyboardKey.numpadEnter ||
+                        k == LogicalKeyboardKey.space ||
+                        k == LogicalKeyboardKey.gameButtonSelect) {
+                      onSettings();
+                      return KeyEventResult.handled;
+                    }
+                    return KeyEventResult.ignored;
+                  },
+                  child: _TvHeaderIconFocusRing(
+                    focusNode: settingsFocusNode!,
+                    child: Material(
+                      color: Colors.transparent,
+                      child: InkWell(
+                        onTap: onSettings,
+                        borderRadius: BorderRadius.circular(12),
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 8, vertical: 6),
+                          child: Icon(
+                            Icons.settings_rounded,
+                            color: Colors.white.withValues(alpha: 0.95),
+                            size: 22,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              )
+            else
+              Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: onSettings,
+                  borderRadius: BorderRadius.circular(12),
+                  child: Padding(
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                    child: Icon(
+                      Icons.settings_rounded,
+                      color: Colors.white.withValues(alpha: 0.95),
+                      size: 22,
+                    ),
                   ),
                 ),
               ),
-            ),
           ],
+          ),
         ),
       );
       return ClipRRect(
@@ -733,6 +834,7 @@ class _TvGlassCard extends StatelessWidget {
     required this.buildCard,
     this.autofocus = false,
     this.onActivate,
+    this.focusOnArrowUp,
   });
 
   final double width;
@@ -741,6 +843,7 @@ class _TvGlassCard extends StatelessWidget {
   final Widget Function(bool focused) buildCard;
   final bool autofocus;
   final VoidCallback? onActivate;
+  final FocusNode? focusOnArrowUp;
 
   @override
   Widget build(BuildContext context) {
@@ -748,6 +851,11 @@ class _TvGlassCard extends StatelessWidget {
       autofocus: autofocus,
       onKeyEvent: (node, event) {
         if (event is! KeyDownEvent) return KeyEventResult.ignored;
+        final up = focusOnArrowUp;
+        if (up != null && event.logicalKey == LogicalKeyboardKey.arrowUp) {
+          up.requestFocus();
+          return KeyEventResult.handled;
+        }
         if (event.logicalKey == LogicalKeyboardKey.select ||
             event.logicalKey == LogicalKeyboardKey.enter) {
           onActivate?.call();

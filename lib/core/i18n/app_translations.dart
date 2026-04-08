@@ -1,11 +1,18 @@
 import 'package:get/get.dart';
 
-/// All user-facing strings for `tr_TR` and `en_US`.
+import 'locale_partials.dart';
+import 'translation_merge.dart';
+
+/// Locales: `tr_TR`, `en_US`, plus `fr_FR`, `ar_SA`, `zh_CN`, `ru_RU` (merged over English).
 class AppTranslations extends Translations {
   @override
   Map<String, Map<String, String>> get keys => {
         'tr_TR': _tr,
         'en_US': _en,
+        'fr_FR': mergeTranslations(_en, kLocalePartialFr),
+        'ar_SA': mergeTranslations(_en, kLocalePartialAr),
+        'zh_CN': mergeTranslations(_en, kLocalePartialZh),
+        'ru_RU': mergeTranslations(_en, kLocalePartialRu),
       };
 }
 
@@ -19,6 +26,8 @@ const Map<String, String> _tr = {
   'home.series': 'Diziler',
   'home.series.subtitle': 'Dizi',
   'home.favorites': 'Favori',
+  'home.header.brandTop': 'Mina',
+  'home.header.brandBottom': 'IPTV Player',
   'splash.preparing': 'Kütüphane hazırlanıyor…',
 
   // Browse
@@ -79,7 +88,11 @@ const Map<String, String> _tr = {
   'common.no': 'Hayır',
   'common.fetching': 'Alınıyor…',
   'common.lang.tr': 'Türkçe',
-  'common.lang.en': 'English',
+  'common.lang.en': 'İngilizce',
+  'common.lang.fr': 'Fransızca',
+  'common.lang.ar': 'Arapça',
+  'common.lang.zh': 'Çince',
+  'common.lang.ru': 'Rusça',
 
   // Search hints
   'search.channel': 'Kanal ara…',
@@ -103,6 +116,7 @@ const Map<String, String> _tr = {
   'theme.greenGlass': 'Yeşil Cam',
   'theme.redGlass': 'Kırmızı Cam',
   'theme.purpleGlass': 'Mor Cam',
+  'theme.darkGlass': 'Koyu Cam',
 
   // Settings — sections & tiles
   'settings.title': 'Ayarlar',
@@ -133,13 +147,20 @@ const Map<String, String> _tr = {
   'settings.tile.clearAll.sub': 'Playlist, önbellek ve tercihleri sıfırla',
   'settings.tile.theme': 'Tema',
   'settings.tile.layout': 'Yerleşim',
-  'settings.tile.background': 'Arka plan',
-  'settings.tile.background.default': 'Varsayılan resmi kullan',
-  'settings.tile.background.custom': 'Özel resim aktif',
   'settings.tile.liveBuffer': 'Düşük Gecikme (Buffer)',
   'settings.tile.liveBuffer.sub': '@n saniye',
   'settings.tile.launchBoot': 'Cihaz Açıldığında Başlat',
   'settings.tile.bgPlayback': 'Arka Planda Oynatma',
+  'settings.tile.miniPlayerHome': 'Küçük ekran (PiP)',
+  'settings.tile.miniPlayerHome.subTv': 'Yalnızca telefon yerleşiminde',
+  'settings.tile.miniPlayerHome.hintTv':
+      'Bu özellik Android telefon yerleşiminde kullanılır.',
+  'settings.tile.miniPlayerHome.subOn':
+      'Açık — ana ekrana dönünce küçük pencerede izle (sürükle). Better/Exo.',
+  'settings.tile.miniPlayerHome.subOff':
+      'Kapalı — arka plana geçince yayın duraklar (arka plan oynatma ayrı).',
+  'settings.tile.miniPlayerHome.subMk':
+      'MediaKit ile otomatik PiP yok; varsayılan oynatıcıda kullanın.',
   'settings.tile.reduceBlur': 'Bulanıklığı Azalt (Hız)',
   'settings.tile.streamPreview': 'Yayın önizlemesi',
   'settings.tile.streamPreview.on':
@@ -151,12 +172,18 @@ const Map<String, String> _tr = {
   'settings.tile.defaultPlayer': 'Varsayılan Oynatıcı',
   'settings.tile.useMediaKit': 'MediaKit (mpv) kullan',
   'settings.tile.useMediaKit.subOn':
-      'Tüm yayınlar doğrudan MediaKit ile açılır',
+      'Açık — film ve dizi MediaKit ile; canlı TV her zaman Better Player ile başlar',
   'settings.tile.useMediaKit.subOff':
-      'Varsayılan Better/Exo; sorun veya OSD ile yedek MediaKit',
+      'Kapalı — film, dizi ve canlı Better/Exo; MediaKit yalnızca OSD veya hata yedeği',
+  'settings.tile.mediaKitHwdec': 'Donanım hızlandırma (MediaKit)',
+  'settings.tile.mediaKitHwdec.subBalanced':
+      'Dengeli — mediacodec-copy (önerilen)',
+  'settings.tile.mediaKitHwdec.subLowPower':
+      'Düşük güç / eski TV kutusu — mediacodec',
   'settings.tile.videoDecoder': 'Video kod çözücü (Android)',
   'settings.tile.about': 'Hakkında',
-  'settings.tile.about.sub': 'Mina IPTV Player v1.0.7',
+  'settings.tile.about.loading': 'Sürüm yükleniyor…',
+  'settings.tile.about.sub': 'Mina IPTV Player @v',
   'settings.tile.help': 'Yardım & Destek',
   'settings.tile.help.sub': 'Sorun bildirin veya yardım alın',
   'settings.tile.privacy': 'Gizlilik politikası',
@@ -167,16 +194,16 @@ const Map<String, String> _tr = {
   'settings.snackbar.privacyManual':
       'Tarayıcıdan şu adresi açmayı deneyin:\nhttps://github.com/furkangumrukcu07/mina_iptv_player',
   'settings.snackbar.aboutTitle': 'Hakkında',
-  'settings.snackbar.aboutBody': 'Mina IPTV Player v1.0.7',
-  'settings.dialog.aboutBody': 'Mina IPTV Player v1.0.7\n\nÖzellikler\n'
-      '• Canlı TV, film ve dizi gözatma; M3U ve Xtream playlist desteği\n'
-      '• Android TV için kumanda odaklı arayüz; telefon ve tablet yerleşimleri\n'
-      '• Kanal / içerik listelerinde arama, kategori ve favoriler\n'
-      '• Detayda sessiz yayın önizlemesi ve tam ekran oynatıcı\n'
-      '• İsteğe bağlı XMLTV (EPG), canlı tampon ve video kod çözücü seçenekleri\n'
-      '• Temalar, bulanık cam efekti ve özel arka plan görseli\n'
-      '• Otomatik içerik yenileme, arka planda oynatma ve hatırlatıcı alarm\n'
-      '• Türkçe ve İngilizce arayüz\n',
+  'settings.snackbar.aboutBody': 'Mina IPTV Player',
+  'settings.dialog.aboutFeatures': 'Özellikler\n'
+      '• Canlı TV, film ve dizi; M3U (URL/dosya) ve Xtream playlist\n'
+      '• Android TV, telefon ve tablet yerleşimleri; çoklu dil arayüzü\n'
+      '• Arama, kategori, favoriler; detayda sessiz yayın önizlemesi\n'
+      '• Oynatıcı: canlıda Better Player (Exo); film/dizide varsayılan MediaKit (mpv, ayarlanabilir)\n'
+      '• XMLTV (EPG), canlı tampon, Android kod çözücü ve MediaKit donanım modu seçenekleri\n'
+      '• Cam temalar, bulanık efekt; otomatik yenileme, arka plan oynatma, uyku zamanlayıcısı, alarm\n'
+      '• PiP (Better, telefon), kayıt (desteklenen ortamlarda), VOD’da ses/altyazı (Better)\n'
+      '• Play: galeri READ_MEDIA izinleri yok; varsayılan tema Varsayılan\n',
   'settings.alarmNotSet': 'Kurulu değil',
   'settings.alarmDailyAt': 'Her gün @time',
   'settings.dialog.sleepTimerTitle': 'Uyku zamanlayıcısı',
@@ -206,9 +233,6 @@ const Map<String, String> _tr = {
   'settings.dialog.refresh.every3': '3 günde bir yenile',
   'settings.dialog.refresh.every7': 'Haftada bir yenile',
   'settings.dialog.refresh.nowOnly': 'Sadece şimdi yenile',
-  'settings.dialog.backgroundTitle': 'Arka plan',
-  'settings.dialog.backgroundBody': 'Uygulama arka planını değiştirin.',
-  'settings.dialog.pickGallery': 'Galeriden seç',
   'settings.dialog.alarmTitle': 'Alarm',
   'settings.dialog.alarmBody':
       'Uygulama içi hatırlatıcı saati seçin. Sistem alarmı için cihaz saat uygulamasını da kullanabilirsiniz.',
@@ -223,27 +247,29 @@ const Map<String, String> _tr = {
   'settings.dialog.bufferTitle': 'Canlı yayın tamponu',
   'settings.dialog.bufferSlider': '@n saniye',
   'settings.dialog.changelogTitle': 'Sürüm notları',
-  'settings.dialog.changelogBody': 'v1.0.7\n'
-      '• Tüm bildirim ve onay pencereleri cam çerçeve (glass) stiline geçirildi\n'
-      '• TV canlı: Better Player tampon ayarı, 15 sn takılmada yeniden bağlanma, gerekirse MediaKit yedek\n'
-      '• Sürüm notları genişletildi (uygulama özellikleri özeti)\n\n'
-      'Uygulama özellikleri\n'
-      '• Canlı TV, film ve dizi gözatma; kanal arama ve favoriler\n'
-      '• M3U URL / yerel dosya ve Xtream (player_api) playlist desteği\n'
-      '• EPG: XMLTV URL ile program rehberi\n'
-      '• Oynatıcı: Better Player (Exo) ve MediaKit; TV’de yedek motora geçiş\n'
-      '• Görünüm: telefon ve TV düzeni, cam temalar, özel arka plan görseli\n'
-      '• Yayın önizleme, canlı tampon süresi, yazılım kod çözücü seçeneği\n'
-      '• Uyku zamanlayıcısı, uygulama içi hatırlatıcı alarm\n'
-      '• Otomatik playlist yenileme (gün seçenekleri)\n'
-      '• Kayıt (desteklenen ortamlarda), ses/görüntü parça seçimi\n'
-      '• Türkçe / İngilizce arayüz\n\n'
-      'v1.0.5\n'
-      '• TV: odak ve liste kaydırma iyileştirmeleri\n'
-      '• TV: üst çubuk geri kaldırıldı (kumanda Geri)\n'
-      '• Dar ekranlarda üçüncü sütun metin ölçeklemesi\n\n'
-      'v1.0.0\n'
-      '• İlk sürüm ve cam arayüz\n',
+  'settings.dialog.changelogBody': 'v1.2.7\n'
+      '• Oynatıcı: canlı yayınlar Better Player; film/dizi varsayılan olarak MediaKit (mpv) — ayarla kapatılabilir\n'
+      '• MediaKit (Android): VideoController kurulum sırası düzeltildi (VOD çökme riski azaltıldı)\n'
+      '• MediaKit: donanım çözücü modu (Dengeli / Düşük güç), libmpv performans ve tampon ayarları\n'
+      '• Ayarlar: MediaKit ve yayın önizlemesi varsayılan açık; “tüm ayarları sil” sonrası da açık kalır\n'
+      '• Canlı + Better OSD: ses ve altyazı düğmeleri yalnızca VOD’da\n\n'
+      'Uygulama özellikleri (güncel)\n'
+      '• Canlı TV, film ve dizi; M3U (URL/dosya) ve Xtream (player_api) playlist\n'
+      '• Android TV, telefon ve tablet yerleşimleri; çoklu dil (TR/EN ve ek yerelleştirmeler)\n'
+      '• Kanal ve VOD listelerinde arama, kategori, favoriler\n'
+      '• Liste detayında sessiz yayın önizlemesi; tam ekran oynatıcı (Better + isteğe bağlı MediaKit)\n'
+      '• Canlıda Better; VOD’da MediaKit (ayar açıkken), OSD’den yedek motora geçiş, TV canlıda takılma yedeği\n'
+      '• XMLTV (EPG), canlı tampon, Android yazılım/donanım kod çözücü tercihleri\n'
+      '• Cam temalar, bulanık cam; otomatik içerik yenileme, arka planda oynatma\n'
+      '• Uyku zamanlayıcısı, uygulama içi alarm; PiP (Better, telefon)\n'
+      '• Kayıt (desteklenen ortamlarda); VOD’da Better ile ses/altyazı izi seçimi\n'
+      '• Play: READ_MEDIA galeri izinleri yok; özel galeri arka planı kaldırıldı; varsayılan tema Varsayılan\n\n'
+      'Önceki sürümler\n'
+      'v1.2.6 — READ_MEDIA manifest kaldırma, özel arka plan kaldırıldı, varsayılan tema Varsayılan\n'
+      'v1.1.0 — package_info sürümü; canlı kesilince Oynat ile aynı kanal; ses/parlaklık jesti ve OSD\n'
+      'v1.0.7 — Glass diyaloglar; TV canlı tampon ve MediaKit yedek\n'
+      'v1.0.5 — TV odak ve kaydırma; üst çubuk geri kaldırıldı\n'
+      'v1.0.0 — İlk sürüm, cam arayüz\n',
   'settings.dialog.developerTitle': 'Geliştirici',
   'settings.dialog.developerBody': 'Geliştirici: furkangumrukcu',
   'settings.snackbar.content': 'İçerik',
@@ -262,6 +288,7 @@ const Map<String, String> _tr = {
   'settings.xtream.connections': 'Aktif Bağlantı:',
   'settings.xtream.trial': 'Deneme Hesabı:',
   'settings.xtream.unlimited': 'Süresiz',
+  'settings.xtreamFooter.line': 'Xtream: @user · @host',
   'settings.snackbar.alarm': 'Alarm',
   'settings.snackbar.alarmSaved':
       'Hatırlatıcı kaydedildi. Sistem alarmı için cihazınızın saat uygulamasını da kullanabilirsiniz.',
@@ -269,9 +296,6 @@ const Map<String, String> _tr = {
   'settings.snackbar.settings': 'Ayarlar',
   'settings.snackbar.cleared': 'Tüm veriler temizlendi.',
   'settings.snackbar.clearFailed': 'Temizlenemedi: @e',
-  'settings.snackbar.backgroundDefault': 'Varsayılan arka plan ayarlandı.',
-  'settings.snackbar.backgroundUpdated': 'Arka plan güncellendi.',
-  'settings.snackbar.backgroundFail': 'Seçilemedi: @e',
   'settings.snackbar.subtitles': 'Altyazı',
   'settings.snackbar.subtitlesSoon':
       'Altyazı görünümü özelleştirmesi yakında eklenecek.',
@@ -306,6 +330,14 @@ const Map<String, String> _tr = {
   'playlist.label.localM3u': 'Yerel M3U',
   'playlist.error.emptyUrl': 'M3U URL boş olamaz',
   'playlist.error.xtream': 'Xtream bilgileri eksik',
+  'playlist.merge.orphanCategory': 'Liste 2',
+  'playlist.secondaryTitle': 'İkinci kaynak (isteğe bağlı)',
+  'playlist.secondarySubtitle':
+      'İkinci M3U veya Xtream yalnızca canlı TV kanallarını birincil listeye ekler; film/dizi birincil kaynaktan gelir.',
+  'playlist.secondaryEnable': 'İkinci listeyi etkinleştir',
+  'playlist.secondaryUrlHint': 'İkinci M3U URL',
+  'playlist.error.secondaryXtream': 'İkinci Xtream bilgileri eksik',
+  'playlist.error.secondaryUrl': 'İkinci M3U URL boş olamaz',
 
   // Player (TV / controls)
   'player.liveBadge': 'CANLI',
@@ -325,6 +357,7 @@ const Map<String, String> _tr = {
   'player.tooltip.fit': 'Görünüm: @fit',
   'player.tooltip.quality': 'Yayın Kalitesi',
   'player.tooltip.audio': 'Ses Kaynağı',
+  'player.tooltip.subtitle': 'Altyazı',
   'player.tooltip.volume': 'Ses Seviyesi',
   'player.tooltip.record': 'Yayın Kaydet',
   'player.tooltip.recordStop': 'Kaydı Durdur',
@@ -340,6 +373,7 @@ const Map<String, String> _tr = {
       'Bu yayın için alternatif ses kaynağı mevcut değil.',
   'player.audio.noneLong': 'Bu yayın için alternatif ses kaynağı mevcut değil.',
   'player.sheet.audioTitle': 'Ses Kaynağı',
+  'player.sheet.subtitleTitle': 'Altyazı',
   'player.sheet.qualityTitle': 'Yayın Kalitesi',
   'player.track.audio': 'Ses @n',
   'player.quality.auto': 'Otomatik (Oto)',
@@ -351,7 +385,15 @@ const Map<String, String> _tr = {
   'player.warn.qualityShort':
       'Çoklu kalite yok: HD/FHD için HLS’te birden fazla varyant gerekir; saf .ts veya tek kaliteli akışta menü boş kalabilir.',
   'player.mobile.pickAudio': 'Ses kaynağı seçin',
+  'player.mobile.pickSubtitle': 'Altyazı seçin',
+  'player.subtitle.off': 'Kapalı',
+  'player.subtitle.track': 'Altyazı',
+  'player.subtitle.embedded': 'Gömülü (dosya içi)',
+  'player.subtitle.noneShort': 'Bu yayın için altyazı seçeneği yok.',
+  'player.subtitle.noneLong':
+      'Manifestte veya akışta altyazı parçası yok; HLS/DASH ile sunulan altyazılar burada listelenir.',
   'player.snackbar.audioChanged': 'Ses değiştirildi',
+  'player.snackbar.subtitleChanged': 'Altyazı değiştirildi',
   'player.snackbar.qualityChanged': 'Kalite değiştirildi',
   'player.track.channel': 'Kanal @n',
 };
@@ -365,6 +407,8 @@ const Map<String, String> _en = {
   'home.series': 'Series',
   'home.series.subtitle': 'TV series',
   'home.favorites': 'Favorites',
+  'home.header.brandTop': 'Mina',
+  'home.header.brandBottom': 'IPTV Player',
   'splash.preparing': 'Preparing your library…',
   'browse.films': 'Movies',
   'browse.series': 'Series',
@@ -420,6 +464,10 @@ const Map<String, String> _en = {
   'common.fetching': 'Fetching…',
   'common.lang.tr': 'Turkish',
   'common.lang.en': 'English',
+  'common.lang.fr': 'French',
+  'common.lang.ar': 'Arabic',
+  'common.lang.zh': 'Chinese',
+  'common.lang.ru': 'Russian',
   'search.channel': 'Search channels…',
   'search.film': 'Search movies…',
   'search.series': 'Search series…',
@@ -437,6 +485,7 @@ const Map<String, String> _en = {
   'theme.greenGlass': 'Green glass',
   'theme.redGlass': 'Red glass',
   'theme.purpleGlass': 'Purple glass',
+  'theme.darkGlass': 'Dark glass',
   'settings.title': 'Settings',
   'settings.language': 'App language',
   'settings.deviceMode': 'Device mode',
@@ -463,13 +512,20 @@ const Map<String, String> _en = {
   'settings.tile.clearAll.sub': 'Reset playlist, cache, and preferences',
   'settings.tile.theme': 'Theme',
   'settings.tile.layout': 'Layout',
-  'settings.tile.background': 'Background',
-  'settings.tile.background.default': 'Using default image',
-  'settings.tile.background.custom': 'Custom image active',
   'settings.tile.liveBuffer': 'Low latency (buffer)',
   'settings.tile.liveBuffer.sub': '@n seconds',
   'settings.tile.launchBoot': 'Launch when device starts',
   'settings.tile.bgPlayback': 'Background playback',
+  'settings.tile.miniPlayerHome': 'Mini player (PiP)',
+  'settings.tile.miniPlayerHome.subTv': 'Phone layout only',
+  'settings.tile.miniPlayerHome.hintTv':
+      'This option is for Android phone layout.',
+  'settings.tile.miniPlayerHome.subOn':
+      'On — return home for a draggable mini window (Better/Exo).',
+  'settings.tile.miniPlayerHome.subOff':
+      'Off — playback pauses when leaving the app (unless background playback is on).',
+  'settings.tile.miniPlayerHome.subMk':
+      'Auto PiP is not available with MediaKit; use the default player.',
   'settings.tile.reduceBlur': 'Reduce blur (speed)',
   'settings.tile.streamPreview': 'Stream preview',
   'settings.tile.streamPreview.on':
@@ -480,12 +536,19 @@ const Map<String, String> _en = {
       'On TV you can turn this on or off in Settings',
   'settings.tile.defaultPlayer': 'Default Player',
   'settings.tile.useMediaKit': 'Use MediaKit (mpv)',
-  'settings.tile.useMediaKit.subOn': 'All streams open directly in MediaKit',
+  'settings.tile.useMediaKit.subOn':
+      'On — movies & series use MediaKit; live TV always starts in Better Player',
   'settings.tile.useMediaKit.subOff':
-      'Better/Exo by default; MediaKit backup from OSD or on failure',
+      'Off — movies, series, and live use Better/Exo; MediaKit only as backup',
+  'settings.tile.mediaKitHwdec': 'Hardware acceleration (MediaKit)',
+  'settings.tile.mediaKitHwdec.subBalanced':
+      'Balanced — mediacodec-copy (recommended)',
+  'settings.tile.mediaKitHwdec.subLowPower':
+      'Low power / older TV box — mediacodec',
   'settings.tile.videoDecoder': 'Video decoder (Android)',
   'settings.tile.about': 'About',
-  'settings.tile.about.sub': 'Mina IPTV Player v1.0.7',
+  'settings.tile.about.loading': 'Loading version…',
+  'settings.tile.about.sub': 'Mina IPTV Player @v',
   'settings.tile.help': 'Help & support',
   'settings.tile.help.sub': 'Report issues or get help',
   'settings.tile.privacy': 'Privacy policy',
@@ -495,16 +558,16 @@ const Map<String, String> _en = {
   'settings.snackbar.privacyManual':
       'Try opening in a browser:\nhttps://github.com/furkangumrukcu07/mina_iptv_player',
   'settings.snackbar.aboutTitle': 'About',
-  'settings.snackbar.aboutBody': 'Mina IPTV Player v1.0.7',
-  'settings.dialog.aboutBody': 'Mina IPTV Player v1.0.7\n\nFeatures\n'
-      '• Live TV, movies, and series; M3U and Xtream playlists\n'
-      '• Remote-friendly UI for Android TV; phone and tablet layouts\n'
-      '• Search, categories, and favorites in channel and VOD lists\n'
-      '• Silent stream preview in details and full-screen playback\n'
-      '• Optional XMLTV (EPG), live buffer, and video decoder options\n'
-      '• Themes, glass blur, and custom background image\n'
-      '• Auto refresh, background playback, and reminder alarm\n'
-      '• Turkish and English UI\n',
+  'settings.snackbar.aboutBody': 'Mina IPTV Player',
+  'settings.dialog.aboutFeatures': 'Features\n'
+      '• Live TV, movies, and series; M3U (URL/file) and Xtream playlists\n'
+      '• Android TV, phone, and tablet layouts; multi-language UI\n'
+      '• Search, categories, favorites; silent stream preview in details\n'
+      '• Playback: live uses Better Player (Exo); VOD defaults to MediaKit (mpv, optional)\n'
+      '• XMLTV (EPG), live buffer, Android decoder options, MediaKit hardware mode\n'
+      '• Glass themes, blur; auto refresh, background playback, sleep timer, alarm\n'
+      '• PiP (Better, phone), recording where supported; VOD audio/subtitles (Better)\n'
+      '• Play: no READ_MEDIA gallery permissions; default theme is Default\n',
   'settings.alarmNotSet': 'Not set',
   'settings.alarmDailyAt': 'Every day at @time',
   'settings.dialog.sleepTimerTitle': 'Sleep timer',
@@ -532,9 +595,6 @@ const Map<String, String> _en = {
   'settings.dialog.refresh.every3': 'Refresh every 3 days',
   'settings.dialog.refresh.every7': 'Refresh every week',
   'settings.dialog.refresh.nowOnly': 'Refresh once now',
-  'settings.dialog.backgroundTitle': 'Background',
-  'settings.dialog.backgroundBody': 'Change the app background image.',
-  'settings.dialog.pickGallery': 'Choose from gallery',
   'settings.dialog.alarmTitle': 'Alarm',
   'settings.dialog.alarmBody':
       'Pick an in-app reminder time. You can also use the system clock app for alarms.',
@@ -549,26 +609,29 @@ const Map<String, String> _en = {
   'settings.dialog.bufferTitle': 'Live stream buffer',
   'settings.dialog.bufferSlider': '@n seconds',
   'settings.dialog.changelogTitle': 'Release notes',
-  'settings.dialog.changelogBody': 'v1.0.7\n'
-      '• Dialogs and snackbars use a unified glass-frame style\n'
-      '• TV live: tuned buffering, 15s stall reconnect, optional MediaKit fallback\n'
-      '• Expanded release notes with full app feature summary\n\n'
-      'App features\n'
-      '• Live TV, movies, and series; search and favorites\n'
-      '• Playlists: M3U URL / local file and Xtream (player_api)\n'
-      '• EPG via XMLTV URL\n'
-      '• Player: Better Player (Exo) and MediaKit; TV backup engine switch\n'
-      '• Phone and TV layouts, glass themes, custom background image\n'
-      '• Stream preview, live buffer size, optional software video decoder\n'
-      '• Sleep timer and in-app reminder alarm\n'
-      '• Optional automatic playlist refresh (day presets)\n'
-      '• Recording where supported; audio / video track selection\n'
-      '• Turkish / English UI\n\n'
-      'v1.0.5\n'
-      '• TV focus and scrolling tweaks; top-bar back removed on main screens\n'
-      '• Third-column text scaling on narrow displays\n\n'
-      'v1.0.0\n'
-      '• Initial release and glass UI\n',
+  'settings.dialog.changelogBody': 'v1.2.7\n'
+      '• Playback: live TV uses Better Player; movies/series default to MediaKit (mpv) — optional in Settings\n'
+      '• MediaKit (Android): fixed VideoController init order (reduced VOD crash risk)\n'
+      '• MediaKit: hardware decoder mode (Balanced / Low power), libmpv performance and buffer tuning\n'
+      '• Settings: MediaKit and stream preview default ON; stay ON after “erase all settings”\n'
+      '• Live + Better OSD: audio and subtitle buttons only for VOD\n\n'
+      'App features (current)\n'
+      '• Live TV, movies, and series; M3U (URL/file) and Xtream (player_api) playlists\n'
+      '• Android TV, phone, and tablet layouts; multi-language (EN/TR and partial locales)\n'
+      '• Channel and VOD lists: search, categories, favorites\n'
+      '• Silent stream preview in details; fullscreen player (Better + optional MediaKit)\n'
+      '• Live: Better; VOD: MediaKit when enabled, OSD backup engine switch, TV live stall fallback\n'
+      '• XMLTV (EPG), live buffer, Android software/hardware decoder options\n'
+      '• Glass themes and blur; automatic content refresh, background playback\n'
+      '• Sleep timer, in-app alarm; PiP (Better, phone)\n'
+      '• Recording where supported; VOD audio/subtitle tracks with Better\n'
+      '• Play: no READ_MEDIA gallery permissions; custom gallery background removed; default theme Default\n\n'
+      'Earlier releases\n'
+      'v1.2.6 — READ_MEDIA manifest removal, custom background removed, default theme Default\n'
+      'v1.1.0 — package_info version; Play reloads same live channel; volume/brightness gestures\n'
+      'v1.0.7 — Glass dialogs; TV live buffering and MediaKit fallback\n'
+      'v1.0.5 — TV focus/scrolling; top-bar back removed\n'
+      'v1.0.0 — Initial glass UI release\n',
   'settings.dialog.developerTitle': 'Developer',
   'settings.dialog.developerBody': 'Developer: furkangumrukcu',
   'settings.snackbar.content': 'Content',
@@ -588,6 +651,7 @@ const Map<String, String> _en = {
   'settings.xtream.connections': 'Active connections:',
   'settings.xtream.trial': 'Trial account:',
   'settings.xtream.unlimited': 'Unlimited',
+  'settings.xtreamFooter.line': 'Xtream: @user · @host',
   'settings.snackbar.alarm': 'Alarm',
   'settings.snackbar.alarmSaved':
       'Reminder saved. You can also use your device clock app for system alarms.',
@@ -595,9 +659,6 @@ const Map<String, String> _en = {
   'settings.snackbar.settings': 'Settings',
   'settings.snackbar.cleared': 'All data cleared.',
   'settings.snackbar.clearFailed': 'Could not clear: @e',
-  'settings.snackbar.backgroundDefault': 'Default background applied.',
-  'settings.snackbar.backgroundUpdated': 'Background updated.',
-  'settings.snackbar.backgroundFail': 'Could not apply: @e',
   'settings.snackbar.subtitles': 'Subtitles',
   'settings.snackbar.subtitlesSoon':
       'Subtitle appearance options are coming soon.',
@@ -629,6 +690,14 @@ const Map<String, String> _en = {
   'playlist.label.localM3u': 'Local M3U',
   'playlist.error.emptyUrl': 'M3U URL cannot be empty',
   'playlist.error.xtream': 'Incomplete Xtream credentials',
+  'playlist.merge.orphanCategory': 'List 2',
+  'playlist.secondaryTitle': 'Second source (optional)',
+  'playlist.secondarySubtitle':
+      'A second M3U or Xtream adds live TV channels only; movies/series stay from the primary source.',
+  'playlist.secondaryEnable': 'Enable second playlist',
+  'playlist.secondaryUrlHint': 'Second M3U URL',
+  'playlist.error.secondaryXtream': 'Incomplete second Xtream credentials',
+  'playlist.error.secondaryUrl': 'Second M3U URL cannot be empty',
   'player.liveBadge': 'LIVE',
   'player.epgLoading': 'Loading EPG…',
   'player.fit.contain': 'Fit',
@@ -646,6 +715,7 @@ const Map<String, String> _en = {
   'player.tooltip.fit': 'View: @fit',
   'player.tooltip.quality': 'Stream quality',
   'player.tooltip.audio': 'Audio track',
+  'player.tooltip.subtitle': 'Subtitles',
   'player.tooltip.volume': 'Volume',
   'player.tooltip.record': 'Record broadcast',
   'player.tooltip.recordStop': 'Stop recording',
@@ -660,6 +730,7 @@ const Map<String, String> _en = {
   'player.audio.noneShort': 'No alternate audio tracks for this stream.',
   'player.audio.noneLong': 'No alternate audio tracks for this stream.',
   'player.sheet.audioTitle': 'Audio track',
+  'player.sheet.subtitleTitle': 'Subtitles',
   'player.sheet.qualityTitle': 'Stream quality',
   'player.track.audio': 'Audio @n',
   'player.quality.auto': 'Auto',
@@ -671,7 +742,15 @@ const Map<String, String> _en = {
   'player.warn.qualityShort':
       'No multi-quality menu: HD/FHD needs multiple HLS variants; plain .ts or single-bitrate streams may leave the menu empty.',
   'player.mobile.pickAudio': 'Select audio track',
+  'player.mobile.pickSubtitle': 'Select subtitles',
+  'player.subtitle.off': 'Off',
+  'player.subtitle.track': 'Subtitle',
+  'player.subtitle.embedded': 'Embedded (in file)',
+  'player.subtitle.noneShort': 'No subtitle tracks for this stream.',
+  'player.subtitle.noneLong':
+      'No subtitle renditions in the manifest or stream; HLS/DASH subtitle tracks appear here when offered.',
   'player.snackbar.audioChanged': 'Audio changed',
+  'player.snackbar.subtitleChanged': 'Subtitles changed',
   'player.snackbar.qualityChanged': 'Quality changed',
   'player.track.channel': 'Channel @n',
 };

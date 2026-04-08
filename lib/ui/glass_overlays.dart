@@ -5,6 +5,7 @@ import 'package:get/get.dart';
 
 import '../core/layout/app_layout_mode.dart';
 import '../core/services/app_settings_service.dart';
+import '../core/theme/glass_appearance.dart';
 
 /// Ortak cam çerçeve: diyaloglar, alt sayfalar ve snackbar kartları.
 class GlassPopupPanel extends StatelessWidget {
@@ -35,6 +36,7 @@ class GlassPopupPanel extends StatelessWidget {
       borderRadius: r,
       child: Obx(() {
         final settings = Get.find<AppSettingsService>();
+        final ga = GlassAppearance.fromLabel(settings.themeLabel.value);
         final reduce = settings.reduceBlur.value;
         final tv = settings.layoutMode.value == AppLayoutMode.tv;
         final sigma = tv ? 0.0 : (reduce ? 6.0 : 10.0);
@@ -42,18 +44,15 @@ class GlassPopupPanel extends StatelessWidget {
           padding: padding,
           decoration: BoxDecoration(
             borderRadius: r,
-            border: Border.all(color: Colors.white.withValues(alpha: 0.22)),
+            border: Border.all(color: ga.popupBorderColor),
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: [
-                Colors.white.withValues(alpha: 0.14),
-                Colors.white.withValues(alpha: 0.05),
-              ],
+              colors: ga.popupGradientColors,
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(alpha: 0.35),
+                color: ga.popupShadowColor,
                 blurRadius: 24,
                 offset: const Offset(0, 12),
               ),

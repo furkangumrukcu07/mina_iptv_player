@@ -6,6 +6,7 @@ import 'package:get/get.dart';
 
 import '../../../core/layout/app_layout_mode.dart';
 import '../../../core/services/app_settings_service.dart';
+import '../../../core/theme/glass_appearance.dart';
 import '../../../core/services/epg_service.dart';
 import '../../../domain/entities/channel.dart';
 import '../player_controller.dart';
@@ -54,6 +55,7 @@ class TvLiveBusyOsd extends StatelessWidget {
         child: ClipRRect(
           borderRadius: BorderRadius.circular(20),
           child: Obx(() {
+            final ga = GlassAppearance.fromLabel(settings.themeLabel.value);
             final reduce = settings.reduceBlur.value;
             final tv = settings.layoutMode.value == AppLayoutMode.tv;
             final sigma = tv ? 0.0 : (reduce ? 10.0 : 20.0);
@@ -62,14 +64,11 @@ class TvLiveBusyOsd extends StatelessWidget {
                   const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(20),
-                border: Border.all(color: Colors.white.withValues(alpha: 0.32)),
+                border: Border.all(color: ga.playerBarBorder),
                 gradient: LinearGradient(
                   begin: Alignment.topLeft,
                   end: Alignment.bottomRight,
-                  colors: [
-                    Colors.white.withValues(alpha: 0.18),
-                    Colors.white.withValues(alpha: 0.06),
-                  ],
+                  colors: ga.playerBarGradientColors,
                 ),
               ),
               child: Row(

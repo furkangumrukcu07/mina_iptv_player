@@ -10,6 +10,8 @@ import '../../core/i18n/theme_label_localized.dart';
 import '../../core/layout/app_layout_mode.dart';
 import '../../core/services/app_settings_service.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/theme/glass_appearance.dart';
+import '../../ui/glass_overlays.dart';
 import 'settings_controller.dart';
 
 class SettingsView extends GetView<SettingsController> {
@@ -40,14 +42,13 @@ class SettingsView extends GetView<SettingsController> {
         fit: StackFit.expand,
         children: [
           Obx(() {
+            final themeLabel = controller.app.themeLabel.value;
             final isPortrait =
                 MediaQuery.orientationOf(context) == Orientation.portrait;
             final reduce = controller.app.reduceBlur.value;
             final tv =
                 controller.app.layoutMode.value == AppLayoutMode.tv;
             final sigma = isPortrait ? 7.0 : 11.0;
-            final bgPath = controller.app.customBackgroundPath.value ?? '';
-            final useFile = bgPath.isNotEmpty;
             final dpr = MediaQuery.devicePixelRatioOf(context);
             final size = MediaQuery.sizeOf(context);
             final decodeScale = (!reduce && isPortrait) ? 1.28 : 1.0;
@@ -57,31 +58,17 @@ class SettingsView extends GetView<SettingsController> {
                 (size.height * dpr * decodeScale).round().clamp(64, 4096);
             final scaled = Transform.scale(
               scale: 1.06,
-              child: useFile
-                  ? Image.file(
-                      File(bgPath),
-                      fit: BoxFit.cover,
-                      width: double.infinity,
-                      height: double.infinity,
-                      cacheWidth: targetW,
-                      cacheHeight: targetH,
-                      errorBuilder: (_, __, ___) => Image.asset(
-                        AppTheme.homeBackgroundAsset(context),
-                        fit: BoxFit.cover,
-                        width: double.infinity,
-                        height: double.infinity,
-                        cacheWidth: targetW,
-                        cacheHeight: targetH,
-                      ),
-                    )
-                  : Image.asset(
-                      AppTheme.homeBackgroundAsset(context),
-                      fit: BoxFit.cover,
-                      width: double.infinity,
-                      height: double.infinity,
-                      cacheWidth: targetW,
-                      cacheHeight: targetH,
-                    ),
+              child: Image.asset(
+                AppTheme.homeBackgroundAsset(
+                  context,
+                  themeLabel: themeLabel,
+                ),
+                fit: BoxFit.cover,
+                width: double.infinity,
+                height: double.infinity,
+                cacheWidth: targetW,
+                cacheHeight: targetH,
+              ),
             );
             if (reduce || tv) {
               return scaled;
@@ -290,26 +277,6 @@ class SettingsView extends GetView<SettingsController> {
                                   ),
                                   _GlassTile(
                                     index: idx(),
-                                    title: 'settings.tile.background'.tr,
-                                    subtitle: Obx(
-                                      () => Text(
-                                        controller.app.customBackgroundPath
-                                                    .value ==
-                                                null
-                                            ? 'settings.tile.background.default'
-                                                .tr
-                                            : 'settings.tile.background.custom'
-                                                .tr,
-                                        style: _subtitleStyle,
-                                      ),
-                                    ),
-                                    icon: Icons.wallpaper_rounded,
-                                    iconColor: primary,
-                                    onTap:
-                                        controller.showBackgroundPickerDialog,
-                                  ),
-                                  _GlassTile(
-                                    index: idx(),
                                     title: 'settings.tile.liveBuffer'.tr,
                                     subtitle: Obx(
                                       () => Text(
@@ -358,6 +325,60 @@ class SettingsView extends GetView<SettingsController> {
                                         .setBackgroundPlayback(!controller
                                             .app.backgroundPlayback.value),
                                   ),
+                                  if (Platform.isAndroid)
+                                    _GlassTile(
+                                      index: idx(),
+                                      title: 'settings.tile.miniPlayerHome'.tr,
+                                      subtitle: Obx(
+                                        () {
+                                          final tv = controller
+                                                  .app.layoutMode.value ==
+                                              AppLayoutMode.tv;
+                                          if (tv) {
+                                            return Text(
+                                              'settings.tile.miniPlayerHome.subTv'
+                                                  .tr,
+                                              style: _subtitleStyle,
+                                            );
+                                          }
+                                          if (controller.app.useMediaKit
+                                              .value) {
+                                            return Text(
+                                              'settings.tile.miniPlayerHome.subMk'
+                                                  .tr,
+                                              style: _subtitleStyle,
+                                            );
+                                          }
+                                          return Text(
+                                            controller.app.miniPlayerOnHome
+                                                    .value
+                                                ? 'settings.tile.miniPlayerHome.subOn'
+                                                    .tr
+                                                : 'settings.tile.miniPlayerHome.subOff'
+                                                    .tr,
+                                            style: _subtitleStyle,
+                                          );
+                                        },
+                                      ),
+                                      icon: Icons.picture_in_picture_alt_rounded,
+                                      iconColor: primary,
+                                      onTap: () {
+                                        if (controller.app.layoutMode.value ==
+                                            AppLayoutMode.tv) {
+                                          GlassSnackbar.show(
+                                            'settings.snackbar.info'.tr,
+                                            'settings.tile.miniPlayerHome.hintTv'
+                                                .tr,
+                                            snackPosition: SnackPosition.BOTTOM,
+                                          );
+                                          return;
+                                        }
+                                        controller.app.setMiniPlayerOnHome(
+                                          !controller
+                                              .app.miniPlayerOnHome.value,
+                                        );
+                                      },
+                                    ),
                                   _GlassTile(
                                     index: idx(),
                                     title: 'settings.tile.reduceBlur'.tr,
@@ -418,6 +439,25 @@ class SettingsView extends GetView<SettingsController> {
                                     ),
                                     _GlassTile(
                                       index: idx(),
+                                      title:
+                                          'settings.tile.mediaKitHwdec'.tr,
+                                      subtitle: Obx(
+                                        () => Text(
+                                          controller
+                                              .app.mediaKitHwdecModeSubtitle,
+                                          style: _subtitleStyle,
+                                        ),
+                                      ),
+                                      icon: Icons.hd_rounded,
+                                      iconColor: primary,
+                                      onTap: () => controller.app
+                                          .setMediaKitLowPowerHwdec(
+                                        !controller.app.mediaKitLowPowerHwdec
+                                            .value,
+                                      ),
+                                    ),
+                                    _GlassTile(
+                                      index: idx(),
                                       title: 'settings.tile.videoDecoder'.tr,
                                       subtitle: Obx(
                                         () => Text(
@@ -450,10 +490,18 @@ class SettingsView extends GetView<SettingsController> {
                                     _GlassTile(
                                       index: ai(),
                                       title: 'settings.tile.about'.tr,
-                                      subtitle: Text(
-                                        'settings.tile.about.sub'.tr,
-                                        style: _subtitleStyle,
-                                      ),
+                                      subtitle: Obx(() {
+                                        final v =
+                                            controller.packageVersionLabel.value;
+                                        return Text(
+                                          v.isEmpty
+                                              ? 'settings.tile.about.loading'
+                                                  .tr
+                                              : 'settings.tile.about.sub'
+                                                  .trParams({'v': v}),
+                                          style: _subtitleStyle,
+                                        );
+                                      }),
                                       icon: Icons.info_outline_rounded,
                                       iconColor: primary,
                                       onTap: controller.showAboutApp,
@@ -485,6 +533,24 @@ class SettingsView extends GetView<SettingsController> {
                                 );
                               },
                             ),
+                            Obx(() {
+                              final t = controller.xtreamFooterLine.value;
+                              if (t.isEmpty) return const SizedBox.shrink();
+                              return Padding(
+                                padding:
+                                    const EdgeInsets.fromLTRB(4, 20, 4, 8),
+                                child: Text(
+                                  t,
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    color: Colors.white.withValues(alpha: 0.5),
+                                    fontSize: 12,
+                                    height: 1.35,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              );
+                            }),
                           ],
                         ),
                       ),
@@ -553,7 +619,7 @@ class _SettingsTopBar extends StatelessWidget {
           return Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              if (!tv) ...[
+              if (!tv && !Platform.isAndroid) ...[
                 Icon(Icons.signal_cellular_alt_rounded,
                     color: Colors.white.withValues(alpha: 0.75), size: 18),
                 const SizedBox(width: 6),
@@ -561,7 +627,7 @@ class _SettingsTopBar extends StatelessWidget {
                     color: Colors.white.withValues(alpha: 0.75), size: 18),
                 const SizedBox(width: 10),
               ],
-              clockBuilder(),
+              if (!tv) clockBuilder(),
             ],
           );
         }),
@@ -633,6 +699,7 @@ class _GlassTile extends StatelessWidget {
         final reduce = settings.reduceBlur.value;
         final tv = settings.layoutMode.value == AppLayoutMode.tv;
         final theme = settings.themeLabel.value;
+        final ga = GlassAppearance.fromLabel(theme);
         final isBlue = theme == 'Mavi Cam';
         final isGreen = theme == 'Yeşil Cam';
         final isRed = theme == 'Kırmızı Cam';
@@ -655,6 +722,8 @@ class _GlassTile extends StatelessWidget {
         final sigma =
             (reduce || tv) ? 0.0 : (isPortrait ? 5.0 : 9.0);
 
+        final gradColors = ga.settingsTileGradient(isAnyColor, themeColor);
+
         final tile = Container(
           padding: const EdgeInsets.fromLTRB(14, 12, 12, 14),
           decoration: BoxDecoration(
@@ -662,19 +731,12 @@ class _GlassTile extends StatelessWidget {
             border: Border.all(
               color: isAnyColor
                   ? themeColor.withValues(alpha: 0.5)
-                  : Colors.white.withValues(alpha: 0.26),
+                  : ga.settingsTileBorder,
             ),
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: [
-                isAnyColor
-                    ? themeColor.withValues(alpha: 0.16)
-                    : Colors.white.withValues(alpha: 0.14),
-                isAnyColor
-                    ? themeColor.withValues(alpha: 0.06)
-                    : Colors.white.withValues(alpha: 0.05),
-              ],
+              colors: gradColors,
             ),
           ),
           child: Column(

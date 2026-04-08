@@ -3,16 +3,31 @@ import 'dart:io';
 
 import 'package:better_player_plus/better_player_plus.dart';
 import 'package:flutter/material.dart';
+import 'package:get/get.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
 import '../../../core/player/iptv_playback_defaults.dart';
+import '../../../core/platform/android_playback_soc_hints.dart';
+import '../../../core/services/app_settings_service.dart';
 
-/// media_kit [PlayerConfiguration] şu an `hwdec` alanı içermiyor (1.2.x); donanım kod çözme
-/// Android’de [_applyMpvAndroidPerformanceTuning] içinde `hwdec` mpv özelliği olarak set edilir.
-const PlayerConfiguration kMinaMediaKitPlayerConfiguration = PlayerConfiguration(
-  title: 'Mina IPTV',
-);
+/// Android’de [vo] burada **ayarlanmaz**: [VideoController] yüzeyi hazır olmadan
+/// `vo=gpu` SIGSEGV üretebilir; media_kit [AndroidVideoController] `vo`/`wid` sırasını yönetir.
+PlayerConfiguration minaMediaKitPlayerConfiguration() {
+  return const PlayerConfiguration(title: 'Mina IPTV');
+}
+
+VideoControllerConfiguration _minaVideoControllerConfiguration() {
+  if (Platform.isAndroid && Get.isRegistered<AppSettingsService>()) {
+    final s = Get.find<AppSettingsService>();
+    return VideoControllerConfiguration(
+      hwdec: s.resolveMediaKitHwdecMpvValue(
+        amlogicLike: AndroidPlaybackSocHints.amlogicLike,
+      ),
+    );
+  }
+  return const VideoControllerConfiguration();
+}
 
 /// libmpv ayarları: [Player.platform] üzerinden (media_kit varsayılanlarından sonra).
 Future<void> _applyMpvIptvTuning(Player player, String rawUrl) async {
@@ -32,32 +47,56 @@ Future<void> _applyMpvIptvTuning(Player player, String rawUrl) async {
   }
 }
 
-/// Görüntü sesi “bekleyerek” yavaşlatılıyorsa (A/V sync), `display-desync` görüntüyü sese kilitlemez;
-/// takılmaları azaltabilir. Tüm native (libmpv) hedeflerde uygulanır.
+/// Video yetişemiyorsa sesi bekletmeyip sese kilitle: görüntü gerekirse kare atarak yakalar.
+/// Tüm native (libmpv) hedeflerde uygulanır.
 Future<void> _applyMpvVideoSyncTuning(Player player) async {
   final plat = player.platform;
   if (plat is! NativePlayer) return;
   try {
-    await plat.setProperty('video-sync', 'display-desync');
+    await plat.setProperty('video-sync', 'audio');
   } catch (e) {
     debugPrint('mina_iptv: mpv video-sync skipped: $e');
   }
 }
 
-/// Android TV / kutularda yazılım kod çözme ve ağır süzgeçler “ağır çekim” hissi verebilir.
+/// Android TV / zayıf GPU — [VideoController] hazır olduktan sonra; `vo`/`hwdec` burada dokunulmaz
+/// (hwdec: [_minaVideoControllerConfiguration], vo: media_kit Android çıktı yöneticisi).
 Future<void> _applyMpvAndroidPerformanceTuning(Player player) async {
   final plat = player.platform;
   if (plat is! NativePlayer) return;
   if (!Platform.isAndroid) return;
   try {
-    // Android TV: genelde mediacodec yolu; sorun çıkarsa 'auto-safe' veya 'mediacodec-copy' denenebilir.
-    await plat.setProperty('hwdec', 'auto');
+    await plat.setProperty('profile', 'fast');
+    // Eski TV kutuları: varsayılan ~32M yerine daha düşük demuxer RAM (media_kit init sonrası override).
+    await plat.setProperty('demuxer-max-bytes', '20M');
+    await plat.setProperty('demuxer-max-back-bytes', '10M');
     await plat.setProperty('vd-lavc-fast', 'yes');
+    // VO takılırsa kare at; ses senkronu için framedrop=vo tercih edilir.
+    await plat.setProperty('framedrop', 'vo');
     await plat.setProperty('vd-lavc-skiploopfilter', 'nonref');
     await plat.setProperty('vd-lavc-threads', '0');
     await plat.setProperty('interpolation', 'no');
   } catch (e) {
     debugPrint('mina_iptv: mpv Android perf tuning skipped: $e');
+  }
+}
+
+/// Eski Amlogic / Meson: kopya tampon yolu ve demuxer baskısı azaltılır.
+Future<void> _applyMpvAmlogicMediaKitTuning(
+  Player player, {
+  required bool live,
+}) async {
+  final plat = player.platform;
+  if (plat is! NativePlayer) return;
+  try {
+    await plat.setProperty('demuxer-max-bytes', '12M');
+    await plat.setProperty('demuxer-max-back-bytes', '6M');
+    await plat.setProperty('sws-fast', 'yes');
+    if (live) {
+      await plat.setProperty('video-latency-hacks', 'yes');
+    }
+  } catch (e) {
+    debugPrint('mina_iptv: mpv Amlogic tuning skipped: $e');
   }
 }
 
@@ -88,10 +127,22 @@ class _UniversalVideoPlayerState extends State<UniversalVideoPlayer> {
   Player? _player;
   VideoController? _videoController;
   int _initId = 0;
+  final GlobalKey _betterPlayerKey = GlobalKey();
+
+  void _attachBetterPlayerGlobalKey() {
+    final c = widget.betterPlayerController;
+    if (c == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        c.setBetterPlayerGlobalKey(_betterPlayerKey);
+      }
+    });
+  }
 
   @override
   void initState() {
     super.initState();
+    _attachBetterPlayerGlobalKey();
     if (widget.useMediaKit) {
       unawaited(_initMediaKit());
     }
@@ -100,6 +151,10 @@ class _UniversalVideoPlayerState extends State<UniversalVideoPlayer> {
   @override
   void didUpdateWidget(UniversalVideoPlayer oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (widget.betterPlayerController != oldWidget.betterPlayerController ||
+        widget.useMediaKit != oldWidget.useMediaKit) {
+      _attachBetterPlayerGlobalKey();
+    }
     if (widget.useMediaKit != oldWidget.useMediaKit ||
         widget.url != oldWidget.url) {
       if (widget.useMediaKit) {
@@ -112,11 +167,39 @@ class _UniversalVideoPlayerState extends State<UniversalVideoPlayer> {
 
   Future<void> _initMediaKit() async {
     final currentId = ++_initId;
+    await AndroidPlaybackSocHints.ensureLoaded();
     await _disposeMediaKit();
     if (!mounted || !widget.useMediaKit || currentId != _initId) return;
 
-    final player = Player(configuration: kMinaMediaKitPlayerConfiguration);
-    final videoController = VideoController(player);
+    if (AndroidPlaybackSocHints.amlogicLike) {
+      debugPrint(
+        'mina_iptv: MediaKit SoC: Amlogic/Meson — hwdec=mediacodec, demuxer tuned',
+      );
+    }
+
+    final player = Player(configuration: minaMediaKitPlayerConfiguration());
+    final videoController = VideoController(
+      player,
+      configuration: _minaVideoControllerConfiguration(),
+    );
+
+    try {
+      await videoController.platform.future;
+    } catch (e, st) {
+      debugPrint('mina_iptv: VideoController init failed: $e\n$st');
+      try {
+        await player.dispose();
+      } catch (_) {}
+      return;
+    }
+
+    if (!mounted || !widget.useMediaKit || currentId != _initId) {
+      try {
+        await player.dispose();
+      } catch (_) {}
+      return;
+    }
+
     _player = player;
     _videoController = videoController;
     widget.onMediaKitPlayerChanged?.call(player);
@@ -124,6 +207,12 @@ class _UniversalVideoPlayerState extends State<UniversalVideoPlayer> {
 
     final headers = IptvPlaybackDefaults.headersForStreamUrl(widget.url);
     await _applyMpvAndroidPerformanceTuning(player);
+    if (Platform.isAndroid && AndroidPlaybackSocHints.amlogicLike) {
+      final live = IptvPlaybackDefaults.isLikelyLiveStream(
+        IptvPlaybackDefaults.normalizeStreamUrl(widget.url),
+      );
+      await _applyMpvAmlogicMediaKitTuning(player, live: live);
+    }
     await _applyMpvVideoSyncTuning(player);
     await _applyMpvIptvTuning(player, widget.url);
 
@@ -213,6 +302,7 @@ class _UniversalVideoPlayerState extends State<UniversalVideoPlayer> {
       return const Center(child: CircularProgressIndicator());
     }
     return BetterPlayer(
+      key: _betterPlayerKey,
       controller: widget.betterPlayerController!,
     );
   }

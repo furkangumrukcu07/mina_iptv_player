@@ -82,6 +82,9 @@ class ChannelsController extends GetxController {
   /// [Get.arguments] ile `{'openSearch': true}` gelince ilk karede arama popup’ı.
   bool _pendingOpenSearch = false;
 
+  /// Ana ekrandan canlı TV: ilk kategori satırı + ilk kanal seçimi ve kategori odağı.
+  bool _resetLiveSelectionFromHome = false;
+
   M3uResult? get snapshot => _data;
 
   List<ChannelCategory> get categories => _data?.channelCategories ?? [];
@@ -99,6 +102,8 @@ class ChannelsController extends GetxController {
     _pendingOpenSearch = a == true ||
         (a is Map &&
             (a['openSearch'] == true || a['openSearch'] == 'true'));
+    _resetLiveSelectionFromHome = a is Map &&
+        (a['resetLiveSelection'] == true || a['resetLiveSelection'] == 'true');
     channelsListFocusNode.addListener(_onChannelsListFocusChanged);
     _clock = Timer.periodic(const Duration(seconds: 30), (_) {
       now.value = DateTime.now();
@@ -543,6 +548,12 @@ class ChannelsController extends GetxController {
       return;
     }
 
+    if (_resetLiveSelectionFromHome) {
+      _resetLiveSelectionFromHome = false;
+      _applyFreshLiveTvEntrySelection();
+      return;
+    }
+
     final tv = _app.layoutMode.value == AppLayoutMode.tv;
     if (tv) {
       selectedCategoryId.value = _app.lastLiveCategoryId.value;
@@ -583,6 +594,35 @@ class ChannelsController extends GetxController {
       _schedulePrecache(cur.streamUrl);
       _schedulePreview(cur);
     }
+  }
+
+  /// Ana ekrandan giriş: "Tüm kanallar" + listedeki ilk kanal; kumanda odağı solda ilk satırda.
+  void _applyFreshLiveTvEntrySelection() {
+    final d = _data;
+    if (d == null) {
+      _ensureSelectionInList();
+      return;
+    }
+    selectedCategoryId.value = null;
+    tvDetailColumnUnlocked.value = false;
+    tvTrapFocusInChannelList.value = false;
+    final all = d.channels;
+    if (all.isEmpty) {
+      selectedChannel.value = null;
+    } else {
+      final first = all.first;
+      selectedChannel.value = first;
+      unawaited(_app.setLastLiveCategoryId(null));
+      unawaited(_app.setLastLiveChannelId(first.id));
+      _schedulePrecache(first.streamUrl);
+      _schedulePreview(first);
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!categoryFocusNode.canRequestFocus) return;
+        categoryFocusNode.requestFocus();
+      });
+    });
   }
 
   void changePlaylist() {

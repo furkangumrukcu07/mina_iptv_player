@@ -1,10 +1,10 @@
-<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<manifest xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32" />
-    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" />
-    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
-    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO" />
+    <!-- Play: READ_MEDIA_* kullanılmıyor; bağımlılık manifest birleşiminde gelirse düşürülür. -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" tools:node="remove" />
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" tools:node="remove" />
 
     <!-- Phone + Android TV: leanback optional so the APK also installs on phones. -->
     <uses-feature
@@ -12,6 +12,12 @@
         android:required="false" />
     <uses-feature
         android:name="android.hardware.touchscreen"
+        android:required="false" />
+    <!-- PiP: Android’de ayrı bir uses-permission yok; etkinlikte supportsPictureInPicture yeterli.
+         İsteğe bağlı özellik bildirimi (Play / uyumluluk). Kullanıcı bazen Ayarlar > Uygulamalar >
+         Özel uygulama erişimi > Resim içinde resim ile uygulama bazında açmalıdır. -->
+    <uses-feature
+        android:name="android.software.picture_in_picture"
         android:required="false" />
 
     <!-- IPTV streams often use http://; without this, ExoPlayer fails on Android 9+. -->
@@ -31,6 +37,8 @@
             android:theme="@style/LaunchTheme"
             android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
             android:hardwareAccelerated="true"
+            android:resizeableActivity="true"
+            android:supportsPictureInPicture="true"
             android:windowSoftInputMode="adjustResize">
             <!-- Specifies an Android theme to apply to this Activity as soon as
                  the Android process has started. This theme is visible to the user

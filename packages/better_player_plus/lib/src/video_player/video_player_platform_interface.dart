@@ -162,6 +162,19 @@ abstract class VideoPlayerPlatform {
     throw UnimplementedError('setMixWithOthers() has not been implemented.');
   }
 
+  /// Android ExoPlayer: [Player.getCurrentTracks] — gömülü ses/altyazı (MKV vb.).
+  Future<Map<String, dynamic>?> getExoPlayerTracks(int? textureId) async => null;
+
+  /// Android: [TrackSelectionParameters] ile iz seçimi; kaynak yeniden yüklenmez.
+  Future<void> selectExoPlayerTrack(
+    int? textureId, {
+    required int tracksGroupIndex,
+    required int trackIndex,
+  }) async {}
+
+  /// Android: gömülü metin renderer’ını kapat/aç.
+  Future<void> setExoPlayerTextTrackDisabled(int? textureId, bool disabled) async {}
+
   Future<void> clearCache() {
     throw UnimplementedError('clearCache() has not been implemented.');
   }
@@ -378,6 +391,7 @@ class VideoEvent {
     this.size,
     this.buffered,
     this.position,
+    this.embeddedExoCues,
   });
 
   /// The type of the event.
@@ -406,6 +420,9 @@ class VideoEvent {
   ///Seek position
   final Duration? position;
 
+  /// Android: ExoPlayer gömülü metin ([onCues]); yalnızca [VideoEventType.exoEmbeddedCues].
+  final List<dynamic>? embeddedExoCues;
+
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -415,10 +432,12 @@ class VideoEvent {
           eventType == other.eventType &&
           duration == other.duration &&
           size == other.size &&
-          listEquals(buffered, other.buffered);
+          listEquals(buffered, other.buffered) &&
+          listEquals(embeddedExoCues, other.embeddedExoCues);
 
   @override
-  int get hashCode => eventType.hashCode ^ duration.hashCode ^ size.hashCode ^ buffered.hashCode;
+  int get hashCode =>
+      eventType.hashCode ^ duration.hashCode ^ size.hashCode ^ buffered.hashCode ^ embeddedExoCues.hashCode;
 }
 
 /// Type of the event.
@@ -455,6 +474,9 @@ enum VideoEventType {
 
   /// Picture in picture mode has been dismissed
   pipStop,
+
+  /// Android ExoPlayer gömülü altyazı satırları (MKV/MP4 metin izi).
+  exoEmbeddedCues,
 
   /// An unknown event has been received.
   unknown,

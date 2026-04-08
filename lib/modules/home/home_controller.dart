@@ -38,12 +38,15 @@ class HomeController extends GetxController {
     now.value = DateTime.now();
   }
 
-  void openLiveTv() => Get.toNamed(AppRoutes.channels);
+  void openLiveTv() => Get.toNamed(
+        AppRoutes.channels,
+        arguments: const {'resetLiveSelection': true},
+      );
 
   /// Ana ekran arama: canlı TV’ye gidip arama popup’ını açar.
   void openLiveTvWithSearch() => Get.toNamed(
         AppRoutes.channels,
-        arguments: const {'openSearch': true},
+        arguments: const {'openSearch': true, 'resetLiveSelection': true},
       );
 
   void openFilms() {

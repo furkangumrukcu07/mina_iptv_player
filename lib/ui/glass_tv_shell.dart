@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 
 import '../core/layout/app_layout_mode.dart';
 import '../core/services/app_settings_service.dart';
+import '../core/theme/glass_appearance.dart';
 import 'glass_overlays.dart';
 
 /// Canlı TV / gözat üst çubuğu ile aynı kanal arama popup’ı.
@@ -143,6 +144,7 @@ class GlassTvSheet extends StatelessWidget {
     return ClipRRect(
       borderRadius: BorderRadius.circular(18),
       child: Obx(() {
+        final ga = GlassAppearance.fromLabel(settings.themeLabel.value);
         final reduce = settings.reduceBlur.value;
         final tv = settings.layoutMode.value == AppLayoutMode.tv;
         final sigma = tv ? 0.0 : (reduce ? 5.0 : 8.0);
@@ -151,15 +153,12 @@ class GlassTvSheet extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(18),
             border: Border.all(
-              color: Colors.white.withValues(alpha: 0.15),
+              color: ga.sheetBorder,
             ),
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: [
-                Colors.white.withValues(alpha: 0.08),
-                Colors.white.withValues(alpha: 0.03),
-              ],
+              colors: ga.sheetGradientColors,
             ),
           ),
           child: child,
@@ -191,6 +190,7 @@ class GlassTopBarCapsule extends StatelessWidget {
     return ClipRRect(
       borderRadius: BorderRadius.circular(14),
       child: Obx(() {
+        final ga = GlassAppearance.fromLabel(settings.themeLabel.value);
         final reduce = settings.reduceBlur.value;
         final tv = settings.layoutMode.value == AppLayoutMode.tv;
         final sigma = tv ? 0.0 : (reduce ? 8.0 : 14.0);
@@ -198,12 +198,9 @@ class GlassTopBarCapsule extends StatelessWidget {
           padding: padding,
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(14),
-            border: Border.all(color: Colors.white.withValues(alpha: 0.3)),
+            border: Border.all(color: ga.topBarCapsuleBorder),
             gradient: LinearGradient(
-              colors: [
-                Colors.white.withValues(alpha: 0.16),
-                Colors.white.withValues(alpha: 0.06),
-              ],
+              colors: ga.topBarCapsuleGradientColors,
             ),
           ),
           child: child,
@@ -653,7 +650,7 @@ class _GlassCategoryRowState extends State<GlassCategoryRow> {
     return _focused && widget.selected;
   }
 
-  Color _borderColor(Color primary) {
+  Color _borderColor(Color primary, GlassAppearance ga) {
     if (widget.emphasizeSelection && widget.selected) {
       return primary.withValues(alpha: 0.92);
     }
@@ -663,7 +660,7 @@ class _GlassCategoryRowState extends State<GlassCategoryRow> {
     if (widget.selected) {
       return primary.withValues(alpha: 0.75);
     }
-    return Colors.white.withValues(alpha: 0.14);
+    return ga.categoryRowBorderIdle();
   }
 
   double _borderWidth() {
@@ -673,23 +670,27 @@ class _GlassCategoryRowState extends State<GlassCategoryRow> {
     return 1;
   }
 
-  Color _fillColor() {
+  Color _fillColor(GlassAppearance ga) {
     if (widget.emphasizeSelection && widget.selected) {
-      return Colors.white.withValues(alpha: 0.14);
+      return ga.categoryRowFillStrong();
     }
     if (_effectiveFocused) {
-      return Colors.white.withValues(alpha: 0.12);
+      return ga.categoryRowFillFocused();
     }
     if (widget.selected) {
-      return Colors.white.withValues(alpha: 0.1);
+      return ga.categoryRowFillSelected();
     }
-    return Colors.white.withValues(alpha: 0.03);
+    return ga.categoryRowFillIdle();
   }
 
   @override
   Widget build(BuildContext context) {
     final primary = Theme.of(context).colorScheme.primary;
-    return Padding(
+    return Obx(() {
+      final ga = GlassAppearance.fromLabel(
+        Get.find<AppSettingsService>().themeLabel.value,
+      );
+      return Padding(
       padding: const EdgeInsets.only(bottom: 6),
       child: Material(
         color: Colors.transparent,
@@ -759,10 +760,10 @@ class _GlassCategoryRowState extends State<GlassCategoryRow> {
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
-                  color: _borderColor(primary),
+                  color: _borderColor(primary, ga),
                   width: _borderWidth(),
                 ),
-                color: _fillColor(),
+                color: _fillColor(ga),
               ),
               child: Row(
                 children: [
@@ -793,6 +794,7 @@ class _GlassCategoryRowState extends State<GlassCategoryRow> {
         ),
       ),
     );
+    });
   }
 }
 
@@ -1122,102 +1124,104 @@ class _GlassListNumberTileState extends State<GlassListNumberTile> {
           child: InkWell(
             onTap: widget.onTap,
             borderRadius: BorderRadius.circular(14),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(14),
-                border: Border.all(
-                  color: strongHighlight
-                      ? primary.withValues(alpha: 0.9)
-                      : softSelected
-                          ? Colors.white.withValues(alpha: 0.3)
-                          : Colors.white.withValues(alpha: 0.2),
-                  width: strongHighlight ? 2 : 1,
+            child: Obx(() {
+              final ga = GlassAppearance.fromLabel(
+                Get.find<AppSettingsService>().themeLabel.value,
+              );
+              return Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(14),
+                  border: Border.all(
+                    color: strongHighlight
+                        ? primary.withValues(alpha: 0.9)
+                        : ga.listTileBorder(softSelected),
+                    width: strongHighlight ? 2 : 1,
+                  ),
+                  color: Colors.white.withValues(
+                    alpha: ga.listTileBackgroundAlpha(
+                      strongHighlight,
+                      softSelected,
+                    ),
+                  ),
                 ),
-                color: Colors.white.withValues(
-                  alpha: strongHighlight
-                      ? 0.2
-                      : softSelected
-                          ? 0.08
-                          : 0.05,
-                ),
-              ),
-              child: Row(
-                children: [
-                  SizedBox(
-                    width: 36,
-                    child: Text(
-                      widget.number,
-                      style: TextStyle(
-                        color: primary.withValues(alpha: 0.95),
-                        fontSize: 13,
-                        fontWeight: FontWeight.w700,
+                child: Row(
+                  children: [
+                    SizedBox(
+                      width: 36,
+                      child: Text(
+                        widget.number,
+                        style: TextStyle(
+                          color: primary.withValues(alpha: 0.95),
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                        ),
                       ),
                     ),
-                  ),
-                  Expanded(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          widget.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                        if (widget.subtitle != null) ...[
-                          const SizedBox(height: 2),
+                    Expanded(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
                           Text(
-                            widget.subtitle!,
+                            widget.title,
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.6),
-                              fontSize: 11,
-                              fontWeight: FontWeight.w500,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w700,
                             ),
                           ),
-                        ],
-                        if (widget.progress != null) ...[
-                          const SizedBox(height: 4),
-                          ClipRRect(
-                            borderRadius: BorderRadius.circular(2),
-                            child: LinearProgressIndicator(
-                              value: widget.progress,
-                              minHeight: 2,
-                              backgroundColor: Colors.white10,
-                              valueColor: AlwaysStoppedAnimation<Color>(
-                                  primary.withValues(alpha: 0.8)),
+                          if (widget.subtitle != null) ...[
+                            const SizedBox(height: 2),
+                            Text(
+                              widget.subtitle!,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.6),
+                                fontSize: 11,
+                                fontWeight: FontWeight.w500,
+                              ),
                             ),
-                          ),
+                          ],
+                          if (widget.progress != null) ...[
+                            const SizedBox(height: 4),
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(2),
+                              child: LinearProgressIndicator(
+                                value: widget.progress,
+                                minHeight: 2,
+                                backgroundColor: Colors.white10,
+                                valueColor: AlwaysStoppedAnimation<Color>(
+                                    primary.withValues(alpha: 0.8)),
+                              ),
+                            ),
+                          ],
                         ],
-                      ],
+                      ),
                     ),
-                  ),
-                  const SizedBox(width: 8),
-                  if (widget.trailing != null) widget.trailing!,
-                  // Oynat ikonu odak almasın; OK/Enter üst Focus + onTap ile açılsın (Android TV).
-                  ExcludeFocus(
-                    child: IconButton(
-                      onPressed: widget.playEnabled ? widget.onPlay : null,
-                      icon: Icon(Icons.play_circle_fill_rounded,
-                          color: widget.playEnabled
-                              ? primary
-                              : Colors.white.withValues(alpha: 0.25),
-                          size: 30),
-                      tooltip: widget.playEnabled
-                          ? 'common.play'.tr
-                          : 'common.notPlayable'.tr,
+                    const SizedBox(width: 8),
+                    if (widget.trailing != null) widget.trailing!,
+                    ExcludeFocus(
+                      child: IconButton(
+                        onPressed: widget.playEnabled ? widget.onPlay : null,
+                        icon: Icon(Icons.play_circle_fill_rounded,
+                            color: widget.playEnabled
+                                ? primary
+                                : Colors.white.withValues(alpha: 0.25),
+                            size: 30),
+                        tooltip: widget.playEnabled
+                            ? 'common.play'.tr
+                            : 'common.notPlayable'.tr,
+                      ),
                     ),
-                  ),
-                ],
-              ),
-            ),
+                  ],
+                ),
+              );
+            }),
           ),
         ),
       ),
@@ -1252,24 +1256,29 @@ class GlassPosterThumb extends StatelessWidget {
   }
 
   Widget _fallback(String initial) {
-    return Container(
-      width: 40,
-      height: 40,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.12),
-        borderRadius: BorderRadius.circular(8),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
-      ),
-      child: Text(
-        initial,
-        style: const TextStyle(
-          color: Colors.white,
-          fontWeight: FontWeight.w800,
-          fontSize: 16,
+    return Obx(() {
+      final ga = GlassAppearance.fromLabel(
+        Get.find<AppSettingsService>().themeLabel.value,
+      );
+      return Container(
+        width: 40,
+        height: 40,
+        alignment: Alignment.center,
+        decoration: BoxDecoration(
+          color: ga.thumbFallbackFill,
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: ga.thumbFallbackBorder),
         ),
-      ),
-    );
+        child: Text(
+          initial,
+          style: const TextStyle(
+            color: Colors.white,
+            fontWeight: FontWeight.w800,
+            fontSize: 16,
+          ),
+        ),
+      );
+    });
   }
 }
 
@@ -1300,31 +1309,36 @@ class GlassDetailPoster extends StatelessWidget {
         aspectRatio: aspectRatio,
         child: ClipRRect(
           borderRadius: BorderRadius.circular(12),
-          child: ColoredBox(
-            color: Colors.white.withValues(alpha: 0.08),
-            child: valid
-                ? Image.network(
-                    url,
-                    fit: BoxFit.cover,
-                    width: double.infinity,
-                    height: double.infinity,
-                    errorBuilder: (_, __, ___) => _fallback(initial),
-                    loadingBuilder: (context, child, prog) {
-                      if (prog == null) return child;
-                      return const Center(
-                        child: SizedBox(
-                          width: 22,
-                          height: 22,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: Colors.white38,
+          child: Obx(() {
+            final ga = GlassAppearance.fromLabel(
+              Get.find<AppSettingsService>().themeLabel.value,
+            );
+            return ColoredBox(
+              color: ga.detailPosterPlaceholder,
+              child: valid
+                  ? Image.network(
+                      url,
+                      fit: BoxFit.cover,
+                      width: double.infinity,
+                      height: double.infinity,
+                      errorBuilder: (_, __, ___) => _fallback(initial),
+                      loadingBuilder: (context, child, prog) {
+                        if (prog == null) return child;
+                        return const Center(
+                          child: SizedBox(
+                            width: 22,
+                            height: 22,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white38,
+                            ),
                           ),
-                        ),
-                      );
-                    },
-                  )
-                : _fallback(initial),
-          ),
+                        );
+                      },
+                    )
+                  : _fallback(initial),
+            );
+          }),
         ),
       ),
     );

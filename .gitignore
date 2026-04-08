@@ -44,3 +44,6 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 /android/build/
+
+# Gradle local caches (örnek / alt paketler)
+**/android/.gradle/
