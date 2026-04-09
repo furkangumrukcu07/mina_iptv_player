@@ -6,7 +6,7 @@ Bu belge, **Mina IPTV Player** mobil ve Android TV uygulamasının kişisel veri
 
 ## 1. Veri sorumlusu ve iletişim
 
-Gizlilikle ilgili sorularınız için: **furkangumrukcu@gmail.com**
+Gizlilikle ilgili sorularınız için: **furkangumrukcu07@gmail.com**
 
 ## 2. Uygulamanın rolü
 
