@@ -6,7 +6,22 @@ import 'package:get/get.dart';
 
 import '../../../core/layout/app_layout_mode.dart';
 import '../../../core/services/app_settings_service.dart';
+import '../../../core/theme/app_performance.dart';
 import '../../../core/theme/glass_appearance.dart';
+import '../../../ui/iptv_channel_logo.dart';
+
+/// Dark Flat: çizgi (outline) ikon eşlemesi.
+IconData minaFlatCategoryIcon(IconData icon) {
+  if (icon == Icons.live_tv_rounded) return Icons.live_tv_outlined;
+  if (icon == Icons.movie_filter_rounded) {
+    return Icons.movie_filter_outlined;
+  }
+  if (icon == Icons.theater_comedy_rounded) {
+    return Icons.theater_comedy_outlined;
+  }
+  if (icon == Icons.favorite_rounded) return Icons.favorite_border_rounded;
+  return icon;
+}
 
 /// Referans düzen: cam panel, ikon sol üst, metinler sol hizalı.
 class GlassCategoryCard extends StatelessWidget {
@@ -29,7 +44,8 @@ class GlassCategoryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final primary = Theme.of(context).colorScheme.primary;
+    final cs = Theme.of(context).colorScheme;
+    final primary = cs.primary;
     final settings = Get.find<AppSettingsService>();
     final isPortrait =
         MediaQuery.orientationOf(context) == Orientation.portrait;
@@ -37,35 +53,25 @@ class GlassCategoryCard extends StatelessWidget {
     return Obx(() {
       final theme = settings.themeLabel.value;
       final ga = GlassAppearance.fromLabel(theme);
-      final isBlueGlass = theme == 'Mavi Cam';
-      final isGreenGlass = theme == 'Yeşil Cam';
-      final isRedGlass = theme == 'Kırmızı Cam';
-      final isPurpleGlass = theme == 'Mor Cam';
-      final isAnyColorGlass =
-          isBlueGlass || isGreenGlass || isRedGlass || isPurpleGlass;
-
-      final themeColor = isBlueGlass
-          ? const Color(0xFF4EC4D4)
-          : isGreenGlass
-              ? const Color(0xFF4ED47C)
-              : isRedGlass
-                  ? const Color(0xFFD44E4E)
-                  : isPurpleGlass
-                      ? const Color(0xFF9D4ED4)
-                      : Colors.white;
 
       final reduce = settings.reduceBlur.value;
       final tv = settings.layoutMode.value == AppLayoutMode.tv;
-      final sigma = (reduce || isPortrait || tv) ? 0.0 : 10.0;
+      final isGm = theme == GlassThemeLabels.glassmorphism;
+      final isGg = theme == GlassThemeLabels.glassGri;
+      final flat = ga.useFlatHomeCategoryStyle;
+      final sigma = flat || reduce || isPortrait || tv
+          ? 0.0
+          : (isGm || isGg ? 14.0 : 10.0);
 
-      final neutralGradient = ga.homeCategoryCardNeutralGradient(isPortrait);
-      final gradientColors = isAnyColorGlass
-          ? [
-              themeColor.withValues(alpha: 0.18),
-              themeColor.withValues(alpha: 0.06),
-              themeColor.withValues(alpha: 0.12),
-            ]
-          : neutralGradient;
+      final cardR = ga.categoryCardBorderRadius;
+      final clipInner = math.max(1.0, cardR - 1);
+      final displayIcon =
+          flat ? minaFlatCategoryIcon(icon) : icon;
+      final iconColor = flat ? cs.onSurface : Colors.white;
+      final subColor =
+          flat ? cs.onSurfaceVariant : Colors.white.withValues(alpha: 0.92);
+
+      final gradientColors = ga.homeCategoryCardNeutralGradient(isPortrait);
 
       final inner = Container(
         width: double.infinity,
@@ -81,18 +87,40 @@ class GlassCategoryCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Icon(icon, color: Colors.white, size: 24),
+            Icon(
+              displayIcon,
+              color: iconColor,
+              size: flat ? 26 : 24,
+              shadows: flat
+                  ? const [
+                      Shadow(
+                        color: Color(0x99000000),
+                        blurRadius: 5,
+                        offset: Offset(0, 1),
+                      ),
+                    ]
+                  : null,
+            ),
             const Spacer(),
             Text(
               primaryLabel,
               maxLines: 2,
               overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                color: Colors.white,
+              style: TextStyle(
+                color: flat ? cs.onSurface : Colors.white,
                 fontSize: 13,
                 fontWeight: FontWeight.w800,
                 height: 1.12,
                 letterSpacing: 0.1,
+                shadows: flat
+                    ? const [
+                        Shadow(
+                          color: Color(0xCC000000),
+                          blurRadius: 6,
+                          offset: Offset(0, 1),
+                        ),
+                      ]
+                    : null,
               ),
             ),
             if (secondaryLabel != null && secondaryLabel!.isNotEmpty) ...[
@@ -102,10 +130,19 @@ class GlassCategoryCard extends StatelessWidget {
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.92),
+                  color: subColor,
                   fontSize: 11,
                   fontWeight: FontWeight.w400,
                   height: 1.15,
+                  shadows: flat
+                      ? const [
+                          Shadow(
+                            color: Color(0xAA000000),
+                            blurRadius: 4,
+                            offset: Offset(0, 1),
+                          ),
+                        ]
+                      : null,
                 ),
               ),
             ],
@@ -124,28 +161,26 @@ class GlassCategoryCard extends StatelessWidget {
       return GestureDetector(
         onTap: onTap,
         child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
+          duration: AppPerformance.uiDuration(
+            const Duration(milliseconds: 180),
+          ),
           curve: Curves.easeOut,
           decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(14),
+            borderRadius: BorderRadius.circular(cardR),
             border: Border.all(
               width: 1,
-              color: isAnyColorGlass
-                  ? themeColor.withValues(alpha: 0.6)
-                  : ga.homeCategoryCardNeutralBorder(isPortrait),
+              color: ga.homeCategoryCardNeutralBorder(isPortrait),
             ),
             boxShadow: [
               BoxShadow(
-                color: isAnyColorGlass
-                    ? themeColor.withValues(alpha: 0.15)
-                    : ga.homeCategoryCardNeutralShadow(),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
+                color: ga.homeCategoryCardNeutralShadow(),
+                blurRadius: flat ? 14 : 10,
+                offset: Offset(0, flat ? 6 : 4),
               ),
             ],
           ),
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(13),
+            borderRadius: BorderRadius.circular(clipInner),
             child: Stack(
               alignment: Alignment.bottomCenter,
               children: [
@@ -166,14 +201,15 @@ class GlassCategoryCard extends StatelessWidget {
                               (constraints.biggest.shortestSide * dpr)
                                   .round(),
                             );
-                            return Image.network(
-                              previewImageUrl!,
+                            return IptvChannelLogo(
+                              imageUrl: previewImageUrl!,
+                              width: constraints.maxWidth,
+                              height: constraints.maxHeight,
                               fit: BoxFit.contain,
-                              cacheWidth: side,
-                              cacheHeight: side,
-                              filterQuality: FilterQuality.low,
-                              errorBuilder: (_, __, ___) =>
-                                  const SizedBox.expand(),
+                              memCacheWidth: side,
+                              memCacheHeight: side,
+                              errorWidget: const SizedBox.expand(),
+                              placeholder: const SizedBox.expand(),
                             );
                           },
                         ),

@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 
 /// Maps device [Locale] to a supported app language code.
+///
+/// Yalnızca uygulamada sunulan dillere eşlenir; aksi [en].
 String languageCodeFromDeviceLocale(Locale locale) {
   final c = locale.languageCode.toLowerCase();
   return switch (c) {
     'tr' => 'tr',
+    'en' => 'en',
     'fr' => 'fr',
     'ar' => 'ar',
     'zh' => 'zh',

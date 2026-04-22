@@ -6,11 +6,11 @@ import '../theme/glass_appearance.dart';
 String localizedThemeStorageLabel(String stored) {
   return switch (stored) {
     GlassThemeLabels.varsayilan => 'theme.defaultName'.tr,
-    'Mavi Cam' => 'theme.blueGlass'.tr,
-    'Yeşil Cam' => 'theme.greenGlass'.tr,
-    'Kırmızı Cam' => 'theme.redGlass'.tr,
-    'Mor Cam' => 'theme.purpleGlass'.tr,
     GlassThemeLabels.koyuCam => 'theme.darkGlass'.tr,
+    GlassThemeLabels.glassmorphism => 'theme.glassmorphism'.tr,
+    GlassThemeLabels.darkFlat => 'theme.darkFlat'.tr,
+    GlassThemeLabels.glassGri => 'theme.glassGri'.tr,
+    GlassThemeLabels.flatBlack => 'theme.flatBlack'.tr,
     _ => stored,
   };
 }

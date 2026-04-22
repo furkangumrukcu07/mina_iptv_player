@@ -21,10 +21,17 @@ class MethodChannelVideoPlayer extends VideoPlayerPlatform {
       _channel.invokeMethod<void>('dispose', <String, dynamic>{'textureId': textureId});
 
   @override
-  Future<int?> create({BetterPlayerBufferingConfiguration? bufferingConfiguration}) async {
+  Future<int?> create({
+    BetterPlayerBufferingConfiguration? bufferingConfiguration,
+    bool useTextureView = false,
+    bool androidScaleVideoToFit = false,
+  }) async {
     final cfg = bufferingConfiguration ?? const BetterPlayerBufferingConfiguration();
     final Map<String, dynamic> args = <String, dynamic>{
       'preferSoftwareVideoDecoder': cfg.preferSoftwareVideoDecoder,
+      'useTextureView': useTextureView,
+      'prioritizeTimeOverSizeThresholds': cfg.prioritizeTimeOverSizeThresholds,
+      'androidScaleVideoToFit': androidScaleVideoToFit,
     };
     if (bufferingConfiguration != null) {
       args['minBufferMs'] = cfg.minBufferMs;
@@ -259,6 +266,7 @@ class MethodChannelVideoPlayer extends VideoPlayerPlatform {
           case 'initialized':
             double width = 0;
             double height = 0;
+            double? frameRateHz;
 
             try {
               if (map.containsKey('width')) {
@@ -268,6 +276,12 @@ class MethodChannelVideoPlayer extends VideoPlayerPlatform {
               if (map.containsKey('height')) {
                 final num heightNum = map['height'] as num;
                 height = heightNum.toDouble();
+              }
+              if (map.containsKey('frameRate')) {
+                final num fr = map['frameRate'] as num;
+                if (fr > 0) {
+                  frameRateHz = fr.toDouble();
+                }
               }
             } on Exception catch (exception) {
               BetterPlayerUtils.log(exception.toString());
@@ -280,6 +294,33 @@ class MethodChannelVideoPlayer extends VideoPlayerPlatform {
               key: key,
               duration: Duration(milliseconds: map['duration'] as int),
               size: size,
+              frameRateHz: frameRateHz,
+            );
+          case 'videoFormat':
+            double vWidth = 0;
+            double vHeight = 0;
+            double? vFr;
+            try {
+              if (map.containsKey('width')) {
+                vWidth = (map['width'] as num).toDouble();
+              }
+              if (map.containsKey('height')) {
+                vHeight = (map['height'] as num).toDouble();
+              }
+              if (map.containsKey('frameRate')) {
+                final num fr = map['frameRate'] as num;
+                if (fr > 0) {
+                  vFr = fr.toDouble();
+                }
+              }
+            } on Exception catch (exception) {
+              BetterPlayerUtils.log(exception.toString());
+            }
+            return VideoEvent(
+              eventType: VideoEventType.videoFormat,
+              key: key,
+              size: vWidth > 0 && vHeight > 0 ? Size(vWidth, vHeight) : null,
+              frameRateHz: vFr,
             );
           case 'completed':
             return VideoEvent(eventType: VideoEventType.completed, key: key);

@@ -10,9 +10,13 @@ internal object DataSourceUtils {
     private const val USER_AGENT = "User-Agent"
     private const val USER_AGENT_PROPERTY = "http.agent"
 
-    /** Varsayılan ~8s read; uzun IPTV / yavaş kutularda segment aralarında yanlışlıkla Source error üretebiliyor. */
-    private const val IPTV_CONNECT_TIMEOUT_MS = 25_000
-    private const val IPTV_READ_TIMEOUT_MS = 90_000
+    /**
+     * IPTV (M3U veya Xtream URL’leri aynı fabrikayı kullanır).
+     * Çok kısa okuma zaman aşımı: HLS’te ara segment gecikmesi veya taşıyıcıdaki uzun
+     * yanıt aralığında [HttpDataSourceException] / yeniden bağlanma tetiklenebilir.
+     */
+    private const val IPTV_CONNECT_TIMEOUT_MS = 30_000
+    private const val IPTV_READ_TIMEOUT_MS = 180_000
 
     @JvmStatic
     fun getUserAgent(headers: Map<String, String>?): String? {

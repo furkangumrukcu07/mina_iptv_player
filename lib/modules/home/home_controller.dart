@@ -1,13 +1,33 @@
+import 'package:flutter/material.dart';
+import 'package:get/get.dart';
 import 'dart:async';
 
-import 'package:get/get.dart';
-
 import '../../core/routes/app_routes.dart';
+import '../../core/services/app_settings_service.dart';
 import '../../core/services/favorites_service.dart';
 import '../../core/services/playlist_cache_service.dart';
+import '../../core/services/playlist_category_hide.dart';
+import '../../domain/entities/channel.dart';
 import '../../domain/entities/m3u_result.dart';
-import '../browse/browse_mode.dart';
+import '../../domain/entities/series.dart';
+import '../../domain/entities/vod.dart';
 import '../../ui/glass_overlays.dart';
+import '../browse/browse_mode.dart';
+import '../player/player_route_args.dart';
+import 'widgets/global_search_dialog.dart';
+
+/// Dikey mod arama popup’ı için gruplu sonuçlar.
+class HomeUnifiedSearchBuckets {
+  const HomeUnifiedSearchBuckets({
+    required this.channels,
+    required this.vods,
+    required this.series,
+  });
+
+  final List<Channel> channels;
+  final List<VodItem> vods;
+  final List<SeriesItem> series;
+}
 
 class HomeController extends GetxController {
   final _cache = Get.find<PlaylistCacheService>();
@@ -15,6 +35,192 @@ class HomeController extends GetxController {
 
   final now = DateTime.now().obs;
   Timer? _clock;
+
+  /// TV: ana ekranda yukarı ok ile odak; OK → birleşik arama diyaloğu.
+  final homeSearchIconFocus = FocusNode(debugLabel: 'homeSearchIcon');
+
+  int _nameMatchScore(String name, String query) {
+    final n = name.trim().toLowerCase();
+    final q = query.trim().toLowerCase();
+    if (q.isEmpty) return -1;
+    if (n == q) return 1000;
+    if (n.startsWith(q)) return 800;
+    if (n.contains(q)) return 500;
+    return -1;
+  }
+
+  static const int _kPortraitSearchLimit = 12;
+
+  List<Channel> _rankedChannelsForQuery(String raw, int limit) {
+    final q = raw.trim();
+    final d = data;
+    if (q.isEmpty || d == null) return [];
+    final app = Get.find<AppSettingsService>();
+    final scored = <(Channel, int)>[];
+    for (final ch in d.channels) {
+      if (PlaylistCategoryHide.channelHiddenInLive(app, _cache, d, ch)) {
+        continue;
+      }
+      final s = _nameMatchScore(ch.name, q);
+      if (s >= 0) scored.add((ch, s));
+    }
+    scored.sort((a, b) => b.$2.compareTo(a.$2));
+    return scored.take(limit).map((e) => e.$1).toList();
+  }
+
+  List<VodItem> _rankedVodsForQuery(String raw, int limit) {
+    final q = raw.trim();
+    final d = data;
+    if (q.isEmpty || d == null) return [];
+    final app = Get.find<AppSettingsService>();
+    final scored = <(VodItem, int)>[];
+    for (final v in d.vod) {
+      if (PlaylistCategoryHide.vodItemHidden(app, _cache, d, v)) continue;
+      final s = _nameMatchScore(v.name, q);
+      if (s >= 0) scored.add((v, s));
+    }
+    scored.sort((a, b) => b.$2.compareTo(a.$2));
+    return scored.take(limit).map((e) => e.$1).toList();
+  }
+
+  List<SeriesItem> _rankedSeriesForQuery(String raw, int limit) {
+    final q = raw.trim();
+    final d = data;
+    if (q.isEmpty || d == null) return [];
+    final app = Get.find<AppSettingsService>();
+    final scored = <(SeriesItem, int)>[];
+    for (final s in d.series) {
+      if (PlaylistCategoryHide.seriesItemHidden(app, _cache, d, s)) {
+        continue;
+      }
+      final sc = _nameMatchScore(s.name, q);
+      if (sc >= 0) scored.add((s, sc));
+    }
+    scored.sort((a, b) => b.$2.compareTo(a.$2));
+    return scored.take(limit).map((e) => e.$1).toList();
+  }
+
+  HomeUnifiedSearchBuckets portraitSearchBuckets(String raw) {
+    return HomeUnifiedSearchBuckets(
+      channels: _rankedChannelsForQuery(raw, _kPortraitSearchLimit),
+      vods: _rankedVodsForQuery(raw, _kPortraitSearchLimit),
+      series: _rankedSeriesForQuery(raw, _kPortraitSearchLimit),
+    );
+  }
+
+  String getChannelCategoryName(int categoryId) {
+    final d = data;
+    if (d == null) return '';
+    return d.channelCategories
+            .firstWhereOrNull((c) => c.id == categoryId)
+            ?.name ??
+        '';
+  }
+
+  String getVodCategoryName(int categoryId) {
+    final d = data;
+    if (d == null) return '';
+    return d.vodCategories.firstWhereOrNull((c) => c.id == categoryId)?.name ??
+        '';
+  }
+
+  String getSeriesCategoryName(int categoryId) {
+    final d = data;
+    if (d == null) return '';
+    return d.seriesCategories
+            .firstWhereOrNull((c) => c.id == categoryId)
+            ?.name ??
+        '';
+  }
+
+  void globalSearchNavigateToChannel(Channel ch) {
+    Get.toNamed(
+      AppRoutes.player,
+      arguments: PlayerScreenArgs(channel: ch),
+    );
+  }
+
+  void globalSearchNavigateToVod(VodItem v) {
+    final ch = Channel(
+      id: v.id,
+      name: v.name,
+      streamUrl: v.streamUrl,
+      categoryId: v.categoryId,
+      logoUrl: v.posterUrl,
+    );
+    Get.toNamed(
+      AppRoutes.player,
+      arguments: PlayerScreenArgs(channel: ch),
+    );
+  }
+
+  void globalSearchNavigateToSeries(SeriesItem s) {
+    Get.toNamed(
+      AppRoutes.browse,
+      arguments: {
+        'mode': BrowseMode.series,
+        'pickSeriesId': s.id,
+        'fromHomeSearch': true,
+      },
+    );
+  }
+
+  void portraitSearchNavigateToChannel(
+    BuildContext dialogContext,
+    Channel ch,
+    String q,
+  ) {
+    Navigator.of(dialogContext).pop();
+    Future.microtask(() {
+      Get.toNamed(
+        AppRoutes.channels,
+        arguments: <String, dynamic>{
+          'initialSearch': q,
+          'fromHomeUnifiedSearch': true,
+          'initialLiveCategoryId': ch.categoryId,
+        },
+      );
+    });
+  }
+
+  void portraitSearchNavigateToVod(
+    BuildContext dialogContext,
+    VodItem v,
+    String q,
+  ) {
+    Navigator.of(dialogContext).pop();
+    Future.microtask(() {
+      Get.toNamed(
+        AppRoutes.browse,
+        arguments: <String, dynamic>{
+          'mode': BrowseMode.films,
+          'initialSearch': q,
+          'fromHomeSearch': true,
+          'initialCategoryId': v.categoryId,
+        },
+      );
+    });
+  }
+
+  void portraitSearchNavigateToSeries(
+    BuildContext dialogContext,
+    SeriesItem s,
+    String q,
+  ) {
+    Navigator.of(dialogContext).pop();
+    Future.microtask(() {
+      Get.toNamed(
+        AppRoutes.browse,
+        arguments: <String, dynamic>{
+          'mode': BrowseMode.series,
+          'initialSearch': q,
+          'fromHomeSearch': true,
+          'initialCategoryId': s.categoryId,
+          'pickSeriesId': s.id,
+        },
+      );
+    });
+  }
 
   M3uResult? get data => _cache.result.value;
 
@@ -43,12 +249,6 @@ class HomeController extends GetxController {
         arguments: const {'resetLiveSelection': true},
       );
 
-  /// Ana ekran arama: canlı TV’ye gidip arama popup’ını açar.
-  void openLiveTvWithSearch() => Get.toNamed(
-        AppRoutes.channels,
-        arguments: const {'openSearch': true, 'resetLiveSelection': true},
-      );
-
   void openFilms() {
     Get.toNamed(AppRoutes.browse, arguments: BrowseMode.films);
   }
@@ -62,6 +262,14 @@ class HomeController extends GetxController {
   }
 
   void openSettings() => Get.toNamed(AppRoutes.settings);
+
+  void showGlobalSearch(BuildContext context) {
+    showDialog(
+      context: context,
+      barrierColor: Colors.black54,
+      builder: (context) => GlobalSearchDialog(controller: this),
+    );
+  }
 
   /// Önizleme URL’leri her rebuild’de değişmesin; aksi halde Image.network sürekli yeniden yüklenir (TV kasması).
   String? _cachedLivePreviewUrl;
@@ -165,6 +373,7 @@ class HomeController extends GetxController {
   @override
   void onClose() {
     _clock?.cancel();
+    homeSearchIconFocus.dispose();
     super.onClose();
   }
 }

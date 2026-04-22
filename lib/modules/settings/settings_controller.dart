@@ -11,8 +11,13 @@ import '../../core/i18n/app_locale.dart';
 import '../../core/i18n/theme_label_localized.dart';
 import '../../core/routes/app_routes.dart';
 import '../../core/services/app_settings_service.dart';
+import '../../core/player/adaptive_stream_quality_ceiling.dart';
+import '../../core/epg/catch_up_url_template.dart';
 import '../../core/services/epg_service.dart';
+import '../../data/local/epg_snapshot_keys.dart';
+import '../../data/remote/xtream_api.dart';
 import '../../core/services/favorites_service.dart';
+import '../../core/services/iptv_logo_cache_service.dart';
 import '../../core/services/playlist_cache_service.dart';
 import '../../core/layout/app_layout_mode.dart';
 import '../../core/theme/glass_appearance.dart';
@@ -21,6 +26,7 @@ import '../../domain/repositories/playlist_repository.dart';
 import '../browse/browse_controller.dart';
 import '../channels/channels_controller.dart';
 import '../../ui/glass_overlays.dart';
+import 'subtitle_font_picker_dialog.dart';
 
 class SettingsController extends GetxController {
   final _repo = Get.find<PlaylistRepository>();
@@ -33,6 +39,7 @@ class SettingsController extends GetxController {
   final isRefreshing = false.obs;
   final isFetchingInfo = false.obs;
   final isXtream = false.obs;
+
   /// Ayarlar altı: Xtream kullanıcı + sunucu (şifre yok).
   final xtreamFooterLine = ''.obs;
 
@@ -40,6 +47,10 @@ class SettingsController extends GetxController {
   final packageVersionLabel = ''.obs;
 
   AppSettingsService get app => _app;
+
+  Future<void> toggleXtreamSkipPanelXmltvEpg() async {
+    await _app.setXtreamSkipPanelXmltvEpg(!_app.xtreamSkipPanelXmltvEpg.value);
+  }
 
   Future<void> toggleStreamPreviewEnabled() async {
     final next = !_app.streamPreviewEnabled.value;
@@ -67,8 +78,7 @@ class SettingsController extends GetxController {
   Future<void> _loadPackageInfo() async {
     try {
       final info = await PackageInfo.fromPlatform();
-      packageVersionLabel.value =
-          '${info.version} (${info.buildNumber})';
+      packageVersionLabel.value = '${info.version} (${info.buildNumber})';
     } catch (_) {
       packageVersionLabel.value = '';
     }
@@ -108,6 +118,35 @@ class SettingsController extends GetxController {
     super.onClose();
   }
 
+  Future<void> _reloadEpgAfterPlaylist(PlaylistSource source) async {
+    final epg = Get.find<EpgService>();
+    try {
+      if (source is XtreamSource) {
+        final u = await _repo.getXtreamEpgUrl();
+        final api = XtreamApi(
+          baseUrl: source.baseUrl,
+          username: source.username,
+          password: source.password,
+        );
+        if (u != null && u.isNotEmpty && !_app.xtreamSkipPanelXmltvEpg.value) {
+          await epg.loadEpg(u);
+        }
+        await epg.loadXtreamAllLiveEpg(api);
+      } else if (source is M3uSource) {
+        final u = _app.xmltvUrl.value.trim();
+        if (u.isNotEmpty) {
+          await epg.loadEpg(u);
+        }
+      }
+      final cacheKey = EpgSnapshotKeys.logicalKeyFor(source, _app);
+      if (cacheKey != null) {
+        await epg.persistSnapshotToDisk(cacheKey);
+      }
+    } catch (e) {
+      debugPrint('mina_iptv: EPG reload after refresh: $e');
+    }
+  }
+
   Future<void> refreshContent() async {
     if (isRefreshing.value) return;
     final source = await _repo.readSource();
@@ -129,25 +168,28 @@ class SettingsController extends GetxController {
           children: [
             Text('settings.dialog.refreshBody'.tr),
             const SizedBox(height: 16),
-            ListTile(
+            GlassListTile(
               title: Text('settings.dialog.refresh.autoOff'.tr),
               trailing: _app.autoRefreshDays.value == 0
-                  ? const Icon(Icons.check_rounded)
+                  ? const Icon(Icons.check_rounded, color: Colors.white)
                   : null,
+              selected: _app.autoRefreshDays.value == 0,
               onTap: () => Navigator.pop(Get.context!, 0),
             ),
-            ListTile(
+            GlassListTile(
               title: Text('settings.dialog.refresh.every3'.tr),
               trailing: _app.autoRefreshDays.value == 3
-                  ? const Icon(Icons.check_rounded)
+                  ? const Icon(Icons.check_rounded, color: Colors.white)
                   : null,
+              selected: _app.autoRefreshDays.value == 3,
               onTap: () => Navigator.pop(Get.context!, 3),
             ),
-            ListTile(
+            GlassListTile(
               title: Text('settings.dialog.refresh.every7'.tr),
               trailing: _app.autoRefreshDays.value == 7
-                  ? const Icon(Icons.check_rounded)
+                  ? const Icon(Icons.check_rounded, color: Colors.white)
                   : null,
+              selected: _app.autoRefreshDays.value == 7,
               onTap: () => Navigator.pop(Get.context!, 7),
             ),
           ],
@@ -179,8 +221,17 @@ class SettingsController extends GetxController {
         XtreamSource() => source.baseUrl,
       };
       final label = sec == null ? urlLabel : '$urlLabel (+2)';
-      _cache.setPlaylist(value: parsed, url: label);
+      final xk = switch (source) {
+        XtreamSource x => AppSettingsService.xtreamPreferenceKey(x),
+        _ => null,
+      };
+      _cache.setPlaylist(
+        value: parsed,
+        url: label,
+        xtreamPreferenceKey: xk,
+      );
       await _app.updateLastRefreshTime();
+      unawaited(_reloadEpgAfterPlaylist(source));
       GlassSnackbar.show(
         'settings.snackbar.content'.tr,
         'settings.snackbar.refreshOk'.tr,
@@ -201,6 +252,14 @@ class SettingsController extends GetxController {
     } finally {
       isRefreshing.value = false;
     }
+  }
+
+  void openParentalControl() {
+    Get.toNamed(AppRoutes.parentalControl);
+  }
+
+  void openCategoryHide() {
+    Get.toNamed(AppRoutes.xtreamCategoryHide);
   }
 
   Future<void> showXtreamInfo() async {
@@ -300,87 +359,6 @@ class SettingsController extends GetxController {
     await _checkSource();
   }
 
-  Future<void> showAlarmDialog() async {
-    final ctx = Get.context;
-    if (ctx == null) return;
-
-    final action = await showDialog<String>(
-      context: ctx,
-      builder: (c) => GlassAlertDialog(
-        title: Text('settings.dialog.alarmTitle'.tr),
-        content: Text('settings.dialog.alarmBody'.tr),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(c, 'cancel'),
-            child: Text('common.cancel'.tr),
-          ),
-          TextButton(
-            onPressed: () => Navigator.pop(c, 'clear'),
-            child: Text('settings.dialog.alarmRemove'.tr),
-          ),
-          FilledButton(
-            onPressed: () => Navigator.pop(c, 'pick'),
-            child: Text('settings.dialog.alarmPick'.tr),
-          ),
-        ],
-      ),
-    );
-
-    if (action == 'clear') {
-      await clearAlarm();
-      return;
-    }
-    if (action != 'pick') return;
-
-    final pickerCtx = Get.context;
-    if (pickerCtx == null || !pickerCtx.mounted) return;
-
-    final initial = TimeOfDay(
-      hour: _app.alarmHour.value ?? 7,
-      minute: _app.alarmMinute.value ?? 0,
-    );
-
-    final picked = await showTimePicker(
-      context: pickerCtx,
-      initialTime: initial,
-      builder: (c, child) {
-        return Theme(
-          data: Theme.of(c).copyWith(
-            colorScheme: Theme.of(c).colorScheme.copyWith(
-                  primary: const Color(0xFF5DD9E8),
-                ),
-          ),
-          child: GlassPopupPanel(
-            padding: EdgeInsets.zero,
-            borderRadius: 28,
-            child: child ?? const SizedBox.shrink(),
-          ),
-        );
-      },
-    );
-
-    if (picked != null) {
-      await _app.setAlarm(hour: picked.hour, minute: picked.minute);
-      if (pickerCtx.mounted) {
-        GlassSnackbar.show(
-          'settings.snackbar.alarm'.tr,
-          'settings.snackbar.alarmSaved'.tr,
-          snackPosition: SnackPosition.BOTTOM,
-          duration: const Duration(seconds: 4),
-        );
-      }
-    }
-  }
-
-  Future<void> clearAlarm() async {
-    await _app.clearAlarm();
-    GlassSnackbar.show(
-      'settings.snackbar.alarm'.tr,
-      'settings.snackbar.alarmCleared'.tr,
-      snackPosition: SnackPosition.BOTTOM,
-    );
-  }
-
   Future<void> showSleepTimerDialog() async {
     final ctx = Get.context;
     if (ctx == null) return;
@@ -404,16 +382,18 @@ class SettingsController extends GetxController {
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
-                          ListTile(
+                          GlassListTile(
                             dense: true,
                             title: Text('settings.sleepTimer.off'.tr),
                             trailing: _app.sleepTimerEndMs.value == null
-                                ? const Icon(Icons.check_rounded)
+                                ? const Icon(Icons.check_rounded,
+                                    color: Colors.white)
                                 : null,
+                            selected: _app.sleepTimerEndMs.value == null,
                             onTap: () => Navigator.pop(c, 0),
                           ),
                           for (final m in [15, 30, 45, 60, 90, 120])
-                            ListTile(
+                            GlassListTile(
                               dense: true,
                               title: Text(
                                 'settings.sleepTimer.optionMinutes'
@@ -492,6 +472,9 @@ class SettingsController extends GetxController {
     try {
       await _repo.clearSavedSource();
       _cache.clear();
+      if (Get.isRegistered<IptvLogoCacheService>()) {
+        unawaited(Get.find<IptvLogoCacheService>().wipeDisk());
+      }
       _fav.clearAll();
       await _app.resetToDefaults();
       Get.updateLocale(
@@ -526,12 +509,12 @@ class SettingsController extends GetxController {
           mainAxisSize: MainAxisSize.min,
           children: [
             Obx(
-              () => ListTile(
+              () => GlassListTile(
                 title: Text('common.lang.tr'.tr),
                 trailing: _app.languageCode.value == 'tr'
-                    ? Icon(Icons.check_rounded,
-                        color: Theme.of(c).colorScheme.primary)
+                    ? const Icon(Icons.check_rounded, color: Colors.white)
                     : null,
+                selected: _app.languageCode.value == 'tr',
                 onTap: () async {
                   await _app.setLanguageCode('tr');
                   if (c.mounted) Navigator.pop(c);
@@ -539,12 +522,12 @@ class SettingsController extends GetxController {
               ),
             ),
             Obx(
-              () => ListTile(
+              () => GlassListTile(
                 title: Text('common.lang.en'.tr),
                 trailing: _app.languageCode.value == 'en'
-                    ? Icon(Icons.check_rounded,
-                        color: Theme.of(c).colorScheme.primary)
+                    ? const Icon(Icons.check_rounded, color: Colors.white)
                     : null,
+                selected: _app.languageCode.value == 'en',
                 onTap: () async {
                   await _app.setLanguageCode('en');
                   if (c.mounted) Navigator.pop(c);
@@ -552,12 +535,12 @@ class SettingsController extends GetxController {
               ),
             ),
             Obx(
-              () => ListTile(
+              () => GlassListTile(
                 title: Text('common.lang.fr'.tr),
                 trailing: _app.languageCode.value == 'fr'
-                    ? Icon(Icons.check_rounded,
-                        color: Theme.of(c).colorScheme.primary)
+                    ? const Icon(Icons.check_rounded, color: Colors.white)
                     : null,
+                selected: _app.languageCode.value == 'fr',
                 onTap: () async {
                   await _app.setLanguageCode('fr');
                   if (c.mounted) Navigator.pop(c);
@@ -565,12 +548,12 @@ class SettingsController extends GetxController {
               ),
             ),
             Obx(
-              () => ListTile(
+              () => GlassListTile(
                 title: Text('common.lang.ar'.tr),
                 trailing: _app.languageCode.value == 'ar'
-                    ? Icon(Icons.check_rounded,
-                        color: Theme.of(c).colorScheme.primary)
+                    ? const Icon(Icons.check_rounded, color: Colors.white)
                     : null,
+                selected: _app.languageCode.value == 'ar',
                 onTap: () async {
                   await _app.setLanguageCode('ar');
                   if (c.mounted) Navigator.pop(c);
@@ -578,12 +561,12 @@ class SettingsController extends GetxController {
               ),
             ),
             Obx(
-              () => ListTile(
+              () => GlassListTile(
                 title: Text('common.lang.zh'.tr),
                 trailing: _app.languageCode.value == 'zh'
-                    ? Icon(Icons.check_rounded,
-                        color: Theme.of(c).colorScheme.primary)
+                    ? const Icon(Icons.check_rounded, color: Colors.white)
                     : null,
+                selected: _app.languageCode.value == 'zh',
                 onTap: () async {
                   await _app.setLanguageCode('zh');
                   if (c.mounted) Navigator.pop(c);
@@ -591,12 +574,12 @@ class SettingsController extends GetxController {
               ),
             ),
             Obx(
-              () => ListTile(
+              () => GlassListTile(
                 title: Text('common.lang.ru'.tr),
                 trailing: _app.languageCode.value == 'ru'
-                    ? Icon(Icons.check_rounded,
-                        color: Theme.of(c).colorScheme.primary)
+                    ? const Icon(Icons.check_rounded, color: Colors.white)
                     : null,
+                selected: _app.languageCode.value == 'ru',
                 onTap: () async {
                   await _app.setLanguageCode('ru');
                   if (c.mounted) Navigator.pop(c);
@@ -621,13 +604,13 @@ class SettingsController extends GetxController {
           mainAxisSize: MainAxisSize.min,
           children: [
             Obx(
-              () => ListTile(
+              () => GlassListTile(
                 title: Text('settings.phone'.tr),
                 subtitle: Text('layout.dialog.phone.sub'.tr),
                 trailing: _app.layoutMode.value == AppLayoutMode.mobile
-                    ? Icon(Icons.check_rounded,
-                        color: Theme.of(c).colorScheme.primary)
+                    ? const Icon(Icons.check_rounded, color: Colors.white)
                     : null,
+                selected: _app.layoutMode.value == AppLayoutMode.mobile,
                 onTap: () async {
                   await _app.setLayoutMode(AppLayoutMode.mobile);
                   if (c.mounted) Navigator.pop(c);
@@ -635,13 +618,13 @@ class SettingsController extends GetxController {
               ),
             ),
             Obx(
-              () => ListTile(
+              () => GlassListTile(
                 title: Text('settings.tv'.tr),
                 subtitle: Text('layout.dialog.tv.sub'.tr),
                 trailing: _app.layoutMode.value == AppLayoutMode.tv
-                    ? Icon(Icons.check_rounded,
-                        color: Theme.of(c).colorScheme.primary)
+                    ? const Icon(Icons.check_rounded, color: Colors.white)
                     : null,
+                selected: _app.layoutMode.value == AppLayoutMode.tv,
                 onTap: () async {
                   await _app.setLayoutMode(AppLayoutMode.tv);
                   if (c.mounted) Navigator.pop(c);
@@ -666,13 +649,13 @@ class SettingsController extends GetxController {
           mainAxisSize: MainAxisSize.min,
           children: [
             Obx(
-              () => ListTile(
+              () => GlassListTile(
                 title: Text(
                     localizedThemeStorageLabel(GlassThemeLabels.varsayilan)),
                 trailing: _app.themeLabel.value == GlassThemeLabels.varsayilan
-                    ? Icon(Icons.check_rounded,
-                        color: Theme.of(c).colorScheme.primary)
+                    ? const Icon(Icons.check_rounded, color: Colors.white)
                     : null,
+                selected: _app.themeLabel.value == GlassThemeLabels.varsayilan,
                 onTap: () async {
                   await _app.setThemeLabel(GlassThemeLabels.varsayilan);
                   if (c.mounted) Navigator.pop(c);
@@ -680,66 +663,73 @@ class SettingsController extends GetxController {
               ),
             ),
             Obx(
-              () => ListTile(
-                title: Text(localizedThemeStorageLabel('Mavi Cam')),
-                trailing: _app.themeLabel.value == 'Mavi Cam'
-                    ? Icon(Icons.check_rounded,
-                        color: Theme.of(c).colorScheme.primary)
-                    : null,
-                onTap: () async {
-                  await _app.setThemeLabel('Mavi Cam');
-                  if (c.mounted) Navigator.pop(c);
-                },
-              ),
-            ),
-            Obx(
-              () => ListTile(
-                title: Text(localizedThemeStorageLabel('Yeşil Cam')),
-                trailing: _app.themeLabel.value == 'Yeşil Cam'
-                    ? Icon(Icons.check_rounded,
-                        color: Theme.of(c).colorScheme.primary)
-                    : null,
-                onTap: () async {
-                  await _app.setThemeLabel('Yeşil Cam');
-                  if (c.mounted) Navigator.pop(c);
-                },
-              ),
-            ),
-            Obx(
-              () => ListTile(
-                title: Text(localizedThemeStorageLabel('Kırmızı Cam')),
-                trailing: _app.themeLabel.value == 'Kırmızı Cam'
-                    ? Icon(Icons.check_rounded,
-                        color: Theme.of(c).colorScheme.primary)
-                    : null,
-                onTap: () async {
-                  await _app.setThemeLabel('Kırmızı Cam');
-                  if (c.mounted) Navigator.pop(c);
-                },
-              ),
-            ),
-            Obx(
-              () => ListTile(
-                title: Text(localizedThemeStorageLabel('Mor Cam')),
-                trailing: _app.themeLabel.value == 'Mor Cam'
-                    ? Icon(Icons.check_rounded,
-                        color: Theme.of(c).colorScheme.primary)
-                    : null,
-                onTap: () async {
-                  await _app.setThemeLabel('Mor Cam');
-                  if (c.mounted) Navigator.pop(c);
-                },
-              ),
-            ),
-            Obx(
-              () => ListTile(
+              () => GlassListTile(
                 title: Text(localizedThemeStorageLabel('Koyu Cam')),
                 trailing: _app.themeLabel.value == 'Koyu Cam'
-                    ? Icon(Icons.check_rounded,
-                        color: Theme.of(c).colorScheme.primary)
+                    ? const Icon(Icons.check_rounded, color: Colors.white)
                     : null,
+                selected: _app.themeLabel.value == 'Koyu Cam',
                 onTap: () async {
                   await _app.setThemeLabel('Koyu Cam');
+                  if (c.mounted) Navigator.pop(c);
+                },
+              ),
+            ),
+            Obx(
+              () => GlassListTile(
+                title: Text(
+                    localizedThemeStorageLabel(GlassThemeLabels.glassmorphism)),
+                trailing:
+                    _app.themeLabel.value == GlassThemeLabels.glassmorphism
+                        ? const Icon(Icons.check_rounded, color: Colors.white)
+                        : null,
+                selected:
+                    _app.themeLabel.value == GlassThemeLabels.glassmorphism,
+                onTap: () async {
+                  await _app.setThemeLabel(GlassThemeLabels.glassmorphism);
+                  if (c.mounted) Navigator.pop(c);
+                },
+              ),
+            ),
+            Obx(
+              () => GlassListTile(
+                title:
+                    Text(localizedThemeStorageLabel(GlassThemeLabels.darkFlat)),
+                trailing: _app.themeLabel.value == GlassThemeLabels.darkFlat
+                    ? const Icon(Icons.check_rounded, color: Colors.white)
+                    : null,
+                selected: _app.themeLabel.value == GlassThemeLabels.darkFlat,
+                onTap: () async {
+                  await _app.setThemeLabel(GlassThemeLabels.darkFlat);
+                  if (c.mounted) Navigator.pop(c);
+                },
+              ),
+            ),
+            Obx(
+              () => GlassListTile(
+                title: Text(
+                    localizedThemeStorageLabel(GlassThemeLabels.flatBlack)),
+                trailing: _app.themeLabel.value == GlassThemeLabels.flatBlack
+                    ? const Icon(Icons.check_rounded, color: Colors.white)
+                    : null,
+                selected: _app.themeLabel.value == GlassThemeLabels.flatBlack,
+                onTap: () async {
+                  await _app.setThemeLabel(GlassThemeLabels.flatBlack);
+                  if (c.mounted) Navigator.pop(c);
+                },
+              ),
+            ),
+            Obx(
+              () => GlassListTile(
+                title: Text(
+                  localizedThemeStorageLabel(GlassThemeLabels.glassGri),
+                ),
+                trailing: _app.themeLabel.value == GlassThemeLabels.glassGri
+                    ? const Icon(Icons.check_rounded, color: Colors.white)
+                    : null,
+                selected: _app.themeLabel.value == GlassThemeLabels.glassGri,
+                onTap: () async {
+                  await _app.setThemeLabel(GlassThemeLabels.glassGri);
                   if (c.mounted) Navigator.pop(c);
                 },
               ),
@@ -786,10 +776,18 @@ class SettingsController extends GetxController {
             onPressed: () async {
               final u = ctrl.text.trim();
               await _app.setXmltvUrl(u);
+              final epg = Get.find<EpgService>();
               if (u.isEmpty) {
-                Get.find<EpgService>().clear();
+                epg.clear();
               } else {
-                unawaited(Get.find<EpgService>().loadEpg(u));
+                await epg.loadEpg(u);
+                final src = await _repo.readSource();
+                final cacheKey = src != null
+                    ? EpgSnapshotKeys.logicalKeyFor(src, _app)
+                    : null;
+                if (cacheKey != null) {
+                  await epg.persistSnapshotToDisk(cacheKey);
+                }
               }
               if (c.mounted) Navigator.pop(c);
             },
@@ -802,9 +800,164 @@ class SettingsController extends GetxController {
     ctrl.dispose();
   }
 
+  Future<void> showAdaptiveQualityCeilingDialog() async {
+    final ctx = Get.context;
+    if (ctx == null) return;
+
+    await showDialog<void>(
+      context: ctx,
+      builder: (c) => GlassAlertDialog(
+        title: Text('settings.dialog.adaptiveQualityTitle'.tr),
+        content: Obx(
+          () => SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (final opt in AdaptiveStreamQualityCeiling.values)
+                  GlassListTile(
+                    title: Text(_adaptiveQualityOptionLabel(opt)),
+                    trailing: _app.adaptiveStreamQualityCeiling.value == opt
+                        ? const Icon(
+                            Icons.check_rounded,
+                            color: Colors.white,
+                          )
+                        : null,
+                    selected: _app.adaptiveStreamQualityCeiling.value == opt,
+                    onTap: () async {
+                      await _app.setAdaptiveStreamQualityCeiling(opt);
+                      if (c.mounted) Navigator.pop(c);
+                    },
+                  ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(c),
+            child: Text('common.close'.tr),
+          ),
+        ],
+      ),
+    );
+  }
+
+  String _adaptiveQualityOptionLabel(AdaptiveStreamQualityCeiling v) {
+    switch (v) {
+      case AdaptiveStreamQualityCeiling.auto:
+        return 'settings.adaptiveQuality.optionAuto'.tr;
+      case AdaptiveStreamQualityCeiling.p720:
+        return 'settings.adaptiveQuality.option720'.tr;
+      case AdaptiveStreamQualityCeiling.p1080:
+        return 'settings.adaptiveQuality.option1080'.tr;
+      case AdaptiveStreamQualityCeiling.p4k:
+        return 'settings.adaptiveQuality.option4k'.tr;
+    }
+  }
+
+  Future<void> showCatchUpUrlTemplateDialog() async {
+    final ctx = Get.context;
+    if (ctx == null) return;
+
+    final customCtrl =
+        TextEditingController(text: _app.catchUpCustomTemplate.value);
+    var local = _app.catchUpUrlPreset.value;
+
+    await showDialog<void>(
+      context: ctx,
+      builder: (c) => StatefulBuilder(
+        builder: (context, setDialogState) => GlassAlertDialog(
+          title: Text('settings.dialog.catchUpTitle'.tr),
+          content: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (final opt in CatchUpUrlPreset.values)
+                  GlassListTile(
+                    title: Text(_catchUpPresetLabel(opt)),
+                    trailing: local == opt
+                        ? const Icon(
+                            Icons.check_rounded,
+                            color: Colors.white,
+                          )
+                        : null,
+                    selected: local == opt,
+                    onTap: () => setDialogState(() => local = opt),
+                  ),
+                if (local == CatchUpUrlPreset.custom) ...[
+                  const SizedBox(height: 8),
+                  Text(
+                    'settings.catchUp.customLabel'.tr,
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                          color: Colors.white70,
+                        ),
+                  ),
+                  const SizedBox(height: 6),
+                  TextField(
+                    controller: customCtrl,
+                    maxLines: 4,
+                    style: const TextStyle(
+                      fontFamily: 'monospace',
+                      fontSize: 12,
+                    ),
+                    decoration: InputDecoration(
+                      hintText: 'settings.catchUp.customHint'.tr,
+                      isDense: true,
+                    ),
+                    keyboardType: TextInputType.url,
+                  ),
+                ],
+                const SizedBox(height: 12),
+                Text(
+                  'settings.catchUp.help'.tr,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                        color: Colors.white54,
+                        height: 1.35,
+                      ),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(c),
+              child: Text('common.cancel'.tr),
+            ),
+            FilledButton(
+              onPressed: () async {
+                await _app.setCatchUpUrlPreset(local);
+                await _app.setCatchUpCustomTemplate(customCtrl.text);
+                if (c.mounted) Navigator.pop(c);
+              },
+              child: Text('common.save'.tr),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    customCtrl.dispose();
+  }
+
+  String _catchUpPresetLabel(CatchUpUrlPreset v) {
+    switch (v) {
+      case CatchUpUrlPreset.off:
+        return 'settings.catchUp.optionOff'.tr;
+      case CatchUpUrlPreset.xtreamTimeshiftPath:
+        return 'settings.catchUp.optionXtreamPath'.tr;
+      case CatchUpUrlPreset.timeshiftPhpQuery:
+        return 'settings.catchUp.optionTimeshiftPhp'.tr;
+      case CatchUpUrlPreset.custom:
+        return 'settings.catchUp.optionCustom'.tr;
+    }
+  }
+
   Future<void> showLiveBufferDialog() async {
     final ctx = Get.context;
     if (ctx == null) return;
+
+    final remoteNav = _app.layoutMode.value.usesRemoteNavigationStyle;
 
     await showDialog<void>(
       context: ctx,
@@ -814,6 +967,7 @@ class SettingsController extends GetxController {
           builder: (context, setDialogState) {
             return GlassAlertDialog(
               scrollable: false,
+              tvOsdStyle: remoteNav,
               title: Text('settings.dialog.bufferTitle'.tr),
               content: FocusTraversalGroup(
                 policy: OrderedTraversalPolicy(),
@@ -822,55 +976,86 @@ class SettingsController extends GetxController {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     Text(
-                      'settings.dialog.bufferSlider'
-                          .trParams({'n': '$local'}),
+                      'settings.dialog.bufferSlider'.trParams({'n': '$local'}),
                     ),
                     const SizedBox(height: 8),
-                    FocusTraversalOrder(
-                      order: const NumericFocusOrder(1),
-                      child: Slider(
-                        autofocus: true,
-                        min: 0,
-                        max: 30,
-                        divisions: 30,
-                        value: local.clamp(0, 30).toDouble(),
-                        onChanged: (nv) {
-                          setDialogState(() {
-                            local = nv.round().clamp(0, 30);
-                          });
-                        },
+                    if (remoteNav) ...[
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          FocusTraversalOrder(
+                            order: const NumericFocusOrder(1),
+                            child: IconButton.filledTonal(
+                              autofocus: true,
+                              icon: const Icon(Icons.remove_rounded),
+                              onPressed: local > 0
+                                  ? () => setDialogState(() {
+                                        local = (local - 1).clamp(0, 30);
+                                      })
+                                  : null,
+                            ),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 20,
+                            ),
+                            child: Text(
+                              '$local',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .headlineSmall
+                                  ?.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                            ),
+                          ),
+                          FocusTraversalOrder(
+                            order: const NumericFocusOrder(2),
+                            child: IconButton.filledTonal(
+                              icon: const Icon(Icons.add_rounded),
+                              onPressed: local < 30
+                                  ? () => setDialogState(() {
+                                        local = (local + 1).clamp(0, 30);
+                                      })
+                                  : null,
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
-                    const SizedBox(height: 20),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.end,
-                      children: [
-                        FocusTraversalOrder(
-                          order: const NumericFocusOrder(2),
-                          child: TextButton(
-                            onPressed: () =>
-                                Navigator.of(dialogContext).pop(),
-                            child: Text('common.cancel'.tr),
-                          ),
+                    ] else
+                      FocusTraversalOrder(
+                        order: const NumericFocusOrder(1),
+                        child: Slider(
+                          autofocus: true,
+                          min: 0,
+                          max: 30,
+                          divisions: 30,
+                          value: local.clamp(0, 30).toDouble(),
+                          onChanged: (nv) {
+                            setDialogState(() {
+                              local = nv.round().clamp(0, 30);
+                            });
+                          },
                         ),
-                        const SizedBox(width: 12),
-                        FocusTraversalOrder(
-                          order: const NumericFocusOrder(3),
-                          child: FilledButton(
-                            onPressed: () async {
-                              await _app.setLiveBufferSeconds(local);
-                              if (dialogContext.mounted) {
-                                Navigator.of(dialogContext).pop();
-                              }
-                            },
-                            child: Text('common.save'.tr),
-                          ),
-                        ),
-                      ],
-                    ),
+                      ),
                   ],
                 ),
               ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                  child: Text('common.cancel'.tr),
+                ),
+                FilledButton(
+                  onPressed: () async {
+                    await _app.setLiveBufferSeconds(local);
+                    if (dialogContext.mounted) {
+                      Navigator.of(dialogContext).pop();
+                    }
+                  },
+                  child: Text('common.save'.tr),
+                ),
+              ],
             );
           },
         );
@@ -878,11 +1063,24 @@ class SettingsController extends GetxController {
     );
   }
 
-  Future<void> showSubtitleSettingsInfo() async {
-    GlassSnackbar.show(
-      'settings.snackbar.subtitles'.tr,
-      'settings.snackbar.subtitlesSoon'.tr,
-      snackPosition: SnackPosition.BOTTOM,
+  Future<void> showSubtitleOptionsDialog() async {
+    final ctx = Get.context;
+    if (ctx == null) return;
+
+    await showDialog<void>(
+      context: ctx,
+      builder: (dialogContext) => SubtitleFontPickerDialog(
+        initialPt: _app.subtitleFontPt.value,
+        tvRemote: _app.layoutMode.value.usesRemoteNavigationStyle,
+        tvOsdStyle: _app.layoutMode.value == AppLayoutMode.tv,
+        onCancel: () => Navigator.of(dialogContext).pop(),
+        onSave: (pt) async {
+          await _app.setSubtitleFontPt(pt);
+          if (dialogContext.mounted) {
+            Navigator.of(dialogContext).pop();
+          }
+        },
+      ),
     );
   }
 
@@ -897,14 +1095,11 @@ class SettingsController extends GetxController {
         content: SingleChildScrollView(
           child: Obx(() {
             final v = packageVersionLabel.value;
-            final head = v.isEmpty
-                ? 'Mina IPTV Player'
-                : 'Mina IPTV Player $v';
+            final head = v.isEmpty ? 'Mina IPTV Player' : 'Mina IPTV Player $v';
             return Text(
               '$head\n\n${'settings.dialog.aboutFeatures'.tr}',
               style: TextStyle(
-                color:
-                    Theme.of(c).colorScheme.onSurface.withValues(alpha: 0.9),
+                color: Theme.of(c).colorScheme.onSurface.withValues(alpha: 0.9),
                 height: 1.45,
               ),
             );
@@ -1032,5 +1227,28 @@ class SettingsController extends GetxController {
         snackPosition: SnackPosition.BOTTOM,
       );
     }
+  }
+
+  /// Alarm subtitle for settings
+  String get alarmSubtitle => 'settings.tile.alarm.sub'.tr;
+
+  /// Show alarm dialog
+  void showAlarmDialog() {
+    final ctx = Get.context;
+    if (ctx == null) return;
+
+    showDialog<void>(
+      context: ctx,
+      builder: (c) => GlassAlertDialog(
+        title: Text('settings.tile.alarm'.tr),
+        content: Text('Alarm ayarleri'),
+        actions: [
+          FilledButton(
+            onPressed: () => Navigator.pop(c),
+            child: Text('common.close'.tr),
+          ),
+        ],
+      ),
+    );
   }
 }

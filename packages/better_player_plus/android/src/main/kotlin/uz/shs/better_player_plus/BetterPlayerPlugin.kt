@@ -109,7 +109,13 @@ class BetterPlayerPlugin : FlutterPlugin, ActivityAware, MethodCallHandler {
         when (call.method) {
             INIT_METHOD -> disposeAllPlayers()
             CREATE_METHOD -> {
+                val useTextureView = call.argument<Boolean>(USE_TEXTURE_VIEW) ?: false
                 val surfaceProducer = flutterState!!.textureRegistry!!.createSurfaceProducer()
+                Log.d(
+                    SURFACE_LOG_TAG,
+                    "CREATE useTextureView=$useTextureView → SurfaceProducer (Exo setVideoSurface); " +
+                        "TV=false önerilir; Xiaomi’de true Flutter tarafında işaret (gelecekte surface yolu genişletilebilir).",
+                )
                 val eventChannel = EventChannel(
                     flutterState?.binaryMessenger, EVENTS_CHANNEL + surfaceProducer.id()
                 )
@@ -122,13 +128,15 @@ class BetterPlayerPlugin : FlutterPlugin, ActivityAware, MethodCallHandler {
                         call.argument(MIN_BUFFER_MS),
                         call.argument(MAX_BUFFER_MS),
                         call.argument(BUFFER_FOR_PLAYBACK_MS),
-                        call.argument(BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS)
+                        call.argument(BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS),
+                        call.argument(PRIORITIZE_TIME_OVER_SIZE_THRESHOLDS),
                     )
                 }
                 val preferSoftwareVideoDecoder = call.argument<Boolean>(PREFER_SOFTWARE_VIDEO_DECODER) ?: true
+                val androidScaleVideoToFit = call.argument<Boolean>(ANDROID_SCALE_VIDEO_TO_FIT) ?: false
                 val player = BetterPlayer(
                     flutterState?.applicationContext!!, eventChannel, surfaceProducer,
-                    customDefaultLoadControl, preferSoftwareVideoDecoder, result
+                    customDefaultLoadControl, preferSoftwareVideoDecoder, androidScaleVideoToFit, result
                 )
                 val tid = surfaceProducer.id()
                 videoPlayers.put(tid, player)
@@ -631,7 +639,10 @@ class BetterPlayerPlugin : FlutterPlugin, ActivityAware, MethodCallHandler {
         const val MAX_BUFFER_MS = "maxBufferMs"
         const val BUFFER_FOR_PLAYBACK_MS = "bufferForPlaybackMs"
         const val BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS = "bufferForPlaybackAfterRebufferMs"
+        const val PRIORITIZE_TIME_OVER_SIZE_THRESHOLDS = "prioritizeTimeOverSizeThresholds"
         const val PREFER_SOFTWARE_VIDEO_DECODER = "preferSoftwareVideoDecoder"
+        const val ANDROID_SCALE_VIDEO_TO_FIT = "androidScaleVideoToFit"
+        const val USE_TEXTURE_VIEW = "useTextureView"
         const val CACHE_KEY_PARAMETER = "cacheKey"
         private const val INIT_METHOD = "init"
         private const val CREATE_METHOD = "create"

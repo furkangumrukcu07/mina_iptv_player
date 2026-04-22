@@ -41,6 +41,17 @@ class BetterPlayerConfiguration {
     this.autoDispose = true,
     this.expandToFill = true,
     this.useRootNavigator = false,
+    /// iOS/Android: arama / bildirim kesintilerinde oynatmayı uygun şekilde duraklat.
+    this.handleAudioInterruption = true,
+    /// Android TV kutusu: `false` = Flutter [SurfaceProducer] ile doğrudan Surface (TextureView widget yolu değil; donanım tamponu).
+    this.useTextureView = false,
+    /// Android: `true` ise ExoPlayer [MediaCodecSelector.DEFAULT] ile donanım kod çözücü öncelikli
+    /// (`preferSoftwareVideoDecoder` ile birlikte: yazılım tercihi baskın gelir).
+    this.useHardwareAcceleration = true,
+    /// Android: `true` iken Exo `SCALE_TO_FIT`; OSD ile [fit] / [BoxFit] döngüsü görünür. Varsayılan `false` → `WITH_CROPPING`.
+    this.androidScaleVideoToFit = false,
+    /// `true`: ağ/medya kaynağı bağlanmadan önce platform sesi 0 yapılır (liste önizlemesi vb.).
+    this.muteAudioBeforeDataSource = false,
   });
 
   /// Play the video as soon as it's displayed
@@ -154,6 +165,21 @@ class BetterPlayerConfiguration {
   ///Default value is false.
   final bool useRootNavigator;
 
+  /// Ses kesintilerini (ör. gelen arama) işle; `true` iken odaklı oynatma (diğer uygulamalarla karışmaz).
+  final bool handleAudioInterruption;
+
+  /// `false` önerilir (TV kutusu): yerleşik TextureView yerine Surface tabanlı çıkış.
+  final bool useTextureView;
+
+  /// Android: donanım MediaCodec hızlandırması (ExoPlayer).
+  final bool useHardwareAcceleration;
+
+  /// Android: Exo ölçeklemesini FIT yap; Flutter tarafındaki [fit] değişimi anlamlı olsun (tablet/TV OSD).
+  final bool androidScaleVideoToFit;
+
+  /// Kaynak bağlanmadan önce sessiz başlat (önizleme penceresinde ilk milisaniye sesini önler).
+  final bool muteAudioBeforeDataSource;
+
   BetterPlayerConfiguration copyWith({
     double? aspectRatio,
     bool? autoPlay,
@@ -184,6 +210,11 @@ class BetterPlayerConfiguration {
     bool? autoDispose,
     bool? expandToFill,
     bool? useRootNavigator,
+    bool? handleAudioInterruption,
+    bool? useTextureView,
+    bool? useHardwareAcceleration,
+    bool? androidScaleVideoToFit,
+    bool? muteAudioBeforeDataSource,
   }) => BetterPlayerConfiguration(
     aspectRatio: aspectRatio ?? this.aspectRatio,
     autoPlay: autoPlay ?? this.autoPlay,
@@ -214,5 +245,12 @@ class BetterPlayerConfiguration {
     autoDispose: autoDispose ?? this.autoDispose,
     expandToFill: expandToFill ?? this.expandToFill,
     useRootNavigator: useRootNavigator ?? this.useRootNavigator,
+    handleAudioInterruption:
+        handleAudioInterruption ?? this.handleAudioInterruption,
+    useTextureView: useTextureView ?? this.useTextureView,
+    useHardwareAcceleration: useHardwareAcceleration ?? this.useHardwareAcceleration,
+    androidScaleVideoToFit: androidScaleVideoToFit ?? this.androidScaleVideoToFit,
+    muteAudioBeforeDataSource:
+        muteAudioBeforeDataSource ?? this.muteAudioBeforeDataSource,
   );
 }

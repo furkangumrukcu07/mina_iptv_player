@@ -1,10 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
-<!-- Telefon / tablet: güvenli alan — üst kısım kırpılmasın (TV: television nitelikli xml). -->
+<!-- Telefon/tablet: arka plan @color/ic_launcher_background (#FFFFFF). Ön planda yalnız şemsiye;
+     düz PNG (ic_launcher_tv) manifest ikonu olmamalı — gömülü lacivert zemin daire dışında kalır. -->
 <adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
   <background android:drawable="@color/ic_launcher_background"/>
-  <foreground>
-      <inset
-          android:drawable="@drawable/ic_launcher_foreground"
-          android:inset="27%" />
-  </foreground>
+  <foreground android:drawable="@drawable/ic_launcher_foreground"/>
 </adaptive-icon>

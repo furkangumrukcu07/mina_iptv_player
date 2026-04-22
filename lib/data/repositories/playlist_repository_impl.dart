@@ -1,11 +1,16 @@
+import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 
+import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../../core/constants/playlist_storage.dart';
+import '../local/playlist_snapshot_store.dart';
 import '../../core/error/app_exception.dart';
 import '../../domain/entities/channel.dart';
 import '../../domain/entities/series_episode_option.dart';
@@ -25,9 +30,29 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
   })  : _dio = dio ??
             Dio(
               BaseOptions(
-                connectTimeout: const Duration(seconds: 10),
-                receiveTimeout: const Duration(seconds: 10),
-                sendTimeout: const Duration(seconds: 10),
+                connectTimeout: const Duration(seconds: 30),
+                receiveTimeout: const Duration(seconds: 120),
+                sendTimeout: const Duration(seconds: 30),
+              ),
+            )..interceptors.add(
+              InterceptorsWrapper(
+                onRequest: (options, handler) {
+                  options.extra['startTime'] = DateTime.now();
+                  debugPrint('🌐 HTTP Request: ${options.method} ${options.uri}');
+                  debugPrint('📦 Headers: ${options.headers}');
+                  return handler.next(options);
+                },
+                onResponse: (response, handler) {
+                  final startTime = response.requestOptions.extra['startTime'] as DateTime?;
+                  final duration = startTime != null ? DateTime.now().difference(startTime).inMilliseconds : 'N/A';
+                  debugPrint('✅ HTTP Response: ${response.statusCode} ${response.requestOptions.uri}');
+                  debugPrint('⏱️ Duration: ${duration}ms');
+                  return handler.next(response);
+                },
+                onError: (error, handler) {
+                  debugPrint('❌ HTTP Error: ${error.message} ${error.requestOptions.uri}');
+                  return handler.next(error);
+                },
               ),
             ),
         _storage = storage ??
@@ -48,6 +73,12 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
   static const _kXtreamBaseUrl2 = 'mina_iptv_xtream_base_url_2';
   static const _kXtreamUsername2 = 'mina_iptv_xtream_username_2';
   static const _kXtreamPassword2 = 'mina_iptv_xtream_password_2';
+
+  /// Çok kategoride tek `get_live_streams` yerine parçalı istek (küçük yanıtlar).
+  static const int _kMaxLiveCategoriesForChunkedFetch = 36;
+  static const int _kLiveCategoryFetchConcurrency = 6;
+  static const Duration _kDelayBetweenLiveCategoryBatches =
+      Duration(milliseconds: 50);
 
   final Dio _dio;
   final FlutterSecureStorage _storage;
@@ -171,6 +202,15 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
   @override
   Future<M3uResult> loadPlaylistFromUrl(String url) => loadFromM3uUrl(url);
 
+  /// Birincil veya ikinci kaynakta Xtream hesabı (dizi API’si için).
+  Future<XtreamSource?> _readAnyXtreamSource() async {
+    final primary = await readSource();
+    if (primary is XtreamSource) return primary;
+    final secondary = await readSecondarySource();
+    if (secondary is XtreamSource) return secondary;
+    return null;
+  }
+
   @override
   Future<Channel?> resolveXtreamSeriesFirstEpisode({
     required int seriesId,
@@ -178,8 +218,8 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
     String? posterUrl,
     required int categoryId,
   }) async {
-    final src = await readSource();
-    if (src is! XtreamSource) return null;
+    final src = await _readAnyXtreamSource();
+    if (src == null) return null;
     final api = XtreamApi(
       baseUrl: src.baseUrl,
       username: src.username,
@@ -195,14 +235,16 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
   }
 
   @override
-  Future<List<SeriesEpisodeOption>> resolveXtreamSeriesEpisodes({
+  Future<XtreamSeriesBrowseDetail> resolveXtreamSeriesEpisodes({
     required int seriesId,
     required String seriesName,
     String? posterUrl,
     required int categoryId,
   }) async {
-    final src = await readSource();
-    if (src is! XtreamSource) return [];
+    final src = await _readAnyXtreamSource();
+    if (src == null) {
+      return const XtreamSeriesBrowseDetail(episodes: []);
+    }
     final api = XtreamApi(
       baseUrl: src.baseUrl,
       username: src.username,
@@ -215,6 +257,18 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
       posterUrl,
       categoryId,
     );
+  }
+
+  @override
+  Future<Map<String, String>?> loadXtreamVodInfoFields(int vodStreamId) async {
+    final src = await _readAnyXtreamSource();
+    if (src == null) return null;
+    final api = XtreamApi(
+      baseUrl: src.baseUrl,
+      username: src.username,
+      password: src.password,
+    );
+    return api.fetchVodInfoFields(_dio, vodStreamId);
   }
 
   @override
@@ -232,6 +286,53 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
     return api.xmlTvUrl;
   }
 
+  Future<List<Channel>> _fetchXtreamLiveStreams(
+    XtreamApi api,
+    List<ChannelCategory> liveCats,
+  ) async {
+    if (liveCats.isEmpty ||
+        liveCats.length > _kMaxLiveCategoriesForChunkedFetch) {
+      return api.getLiveStreams(_dio);
+    }
+    try {
+      final out = <Channel>[];
+      final n = liveCats.length;
+      final step = _kLiveCategoryFetchConcurrency;
+      for (var i = 0; i < n; i += step) {
+        final end = math.min(i + step, n);
+        final batch = liveCats.sublist(i, end);
+        final partial = await Future.wait(
+          batch.map((c) => api.getLiveStreamsForCategory(_dio, c.id)),
+        );
+        for (final list in partial) {
+          out.addAll(list);
+        }
+        if (end < n) {
+          await Future<void>.delayed(_kDelayBetweenLiveCategoryBatches);
+        }
+      }
+      if (out.isEmpty) {
+        return api.getLiveStreams(_dio);
+      }
+      final byId = <int, Channel>{};
+      for (final ch in out) {
+        byId[ch.id] = ch;
+      }
+      final deduped = byId.values.toList()
+        ..sort((a, b) {
+          final c = a.sortOrder.compareTo(b.sortOrder);
+          if (c != 0) return c;
+          return a.name.compareTo(b.name);
+        });
+      return deduped;
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('mina_iptv: chunked live streams failed, fallback: $e');
+      }
+      return api.getLiveStreams(_dio);
+    }
+  }
+
   @override
   Future<M3uResult> loadFromXtream({
     required String baseUrl,
@@ -246,24 +347,28 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
     }
     final api = XtreamApi(baseUrl: b, username: u, password: p);
     try {
-      // Xtream isteklerini paralel hale getirerek toplam yükleme süresini düşürüyoruz.
-      final futures = await Future.wait([
+      // Canlı önce (kategori bazlı veya tek istek), ağır VOD/dizi JSON’ları sırayla.
+      final userAndLiveMeta = await Future.wait([
         api.getUserInfo(_dio),
         api.getLiveCategories(_dio),
-        api.getLiveStreams(_dio),
+      ]);
+      final userInfoMap = userAndLiveMeta[0] as Map<String, dynamic>;
+      final cats = userAndLiveMeta[1] as List<ChannelCategory>;
+      final streams = await _fetchXtreamLiveStreams(api, cats);
+
+      final vodMeta = await Future.wait([
         api.getVodCategories(_dio),
-        api.getVodStreams(_dio),
         api.getSeriesCategories(_dio),
+      ]);
+      final vodCats = vodMeta[0] as List<VodCategory>;
+      final seriesCats = vodMeta[1] as List<SeriesCategory>;
+
+      final vodSeries = await Future.wait([
+        api.getVodStreams(_dio),
         api.getSeriesStreams(_dio),
       ]);
-
-      final userInfoMap = futures[0] as Map<String, dynamic>;
-      final cats = futures[1] as List<ChannelCategory>;
-      final streams = futures[2] as List<Channel>;
-      final vodCats = futures[3] as List<VodCategory>;
-      final vodStreams = futures[4] as List<VodItem>;
-      final seriesCats = futures[5] as List<SeriesCategory>;
-      final seriesStreams = futures[6] as List<SeriesItem>;
+      final vodStreams = vodSeries[0] as List<VodItem>;
+      final seriesStreams = vodSeries[1] as List<SeriesItem>;
 
       UserInfo? userInfo = _parseUserInfo(userInfoMap);
 
@@ -321,7 +426,7 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
     );
     try {
       final cats = await api.getLiveCategories(_dio);
-      final streams = await api.getLiveStreams(_dio);
+      final streams = await _fetchXtreamLiveStreams(api, cats);
       return M3uResult(
         channels: streams,
         channelCategories: cats,
@@ -394,9 +499,75 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
     return int.tryParse(v.toString());
   }
 
+  Future<int> _fileMtimeMs(File f) async {
+    if (!await f.exists()) return 0;
+    try {
+      return (await f.lastModified()).millisecondsSinceEpoch;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  Future<void> _fingerprintSource(StringBuffer buf, PlaylistSource s) async {
+    switch (s) {
+      case M3uSource(:final url):
+        if (isM3uLocalSentinel(url)) {
+          buf.write('L1|${await _fileMtimeMs(await _localM3uFile())}');
+        } else if (isM3uLocalSentinel2(url)) {
+          buf.write('L2|${await _fileMtimeMs(await _localM3uFile2())}');
+        } else {
+          buf.write('U|${url.trim()}');
+        }
+      case XtreamSource(:final baseUrl, :final username, :final password):
+        buf.write('X|${baseUrl.trim()}|${username.trim()}|$password');
+    }
+  }
+
+  Future<String> _mergedSnapshotKey(
+    PlaylistSource primary,
+    PlaylistSource? secondary,
+  ) async {
+    final a = StringBuffer();
+    await _fingerprintSource(a, primary);
+    a.write('||');
+    if (secondary != null) {
+      await _fingerprintSource(a, secondary);
+    } else {
+      a.write('null');
+    }
+    return sha256.convert(utf8.encode(a.toString())).toString();
+  }
+
+  Future<void> _persistMergedPlaylistSnapshot(M3uResult merged) async {
+    try {
+      final primary = await readSource();
+      if (primary == null) return;
+      final secondary = await readSecondarySource();
+      final key = await _mergedSnapshotKey(primary, secondary);
+      await PlaylistSnapshotStore.write(key, merged);
+    } catch (e) {
+      debugPrint('mina_iptv: persist merged snapshot: $e');
+    }
+  }
+
+  @override
+  Future<M3uResult?> restoreMergedPlaylistFromSnapshot() async {
+    try {
+      final primary = await readSource();
+      if (primary == null) return null;
+      final secondary = await readSecondarySource();
+      final key = await _mergedSnapshotKey(primary, secondary);
+      return PlaylistSnapshotStore.tryRead(key);
+    } catch (e) {
+      debugPrint('mina_iptv: restore merged snapshot: $e');
+      return null;
+    }
+  }
+
   @override
   Future<void> persistSource(PlaylistSource source) async {
     try {
+      await PlaylistSnapshotStore.delete();
       switch (source) {
         case M3uSource():
           if (source.url.trim() != kM3uLocalPlaylistSentinel) {
@@ -445,6 +616,7 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
   @override
   Future<void> clearSavedSource() async {
     try {
+      await PlaylistSnapshotStore.delete();
       await _deleteLocalM3uFile();
       await _storage.delete(key: _kSourceType);
       await _storage.delete(key: _kPlaylistUrl);
@@ -494,6 +666,7 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
   @override
   Future<void> persistSecondarySource(PlaylistSource source) async {
     try {
+      await PlaylistSnapshotStore.delete();
       switch (source) {
         case M3uSource():
           if (source.url.trim() != kM3uLocalPlaylistSentinel2) {
@@ -529,6 +702,7 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
   @override
   Future<void> clearSecondarySource() async {
     try {
+      await PlaylistSnapshotStore.delete();
       await _deleteLocalM3uFile2();
       await _storage.delete(key: _kSourceType2);
       await _storage.delete(key: _kPlaylistUrl2);
@@ -562,15 +736,25 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
     }
     final mergedPrimary = await _loadParsedForMerge(primary);
     final secondary = await readSecondarySource();
-    if (secondary == null) return mergedPrimary;
+    if (secondary == null) {
+      unawaited(_persistMergedPlaylistSnapshot(mergedPrimary));
+      return mergedPrimary;
+    }
     final secParsed = await _loadParsedForMerge(
       secondary,
       secondaryXtreamLiveOnly: secondary is XtreamSource,
     );
-    return mergeLiveChannelLayer(
+    final merged = mergeLiveChannelLayer(
       mergedPrimary,
       secParsed,
       orphanCategoryName: secondaryOrphanCategoryName,
     );
+    unawaited(_persistMergedPlaylistSnapshot(merged));
+    return merged;
+  }
+
+  @override
+  Future<void> persistMergedPlaylistSnapshot(M3uResult merged) async {
+    await _persistMergedPlaylistSnapshot(merged);
   }
 }

@@ -1,14 +1,17 @@
 import 'dart:async';
 import 'dart:ui';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:flutter/services.dart';
 
 import '../core/layout/app_layout_mode.dart';
 import '../core/services/app_settings_service.dart';
+import '../core/theme/app_performance.dart';
 import '../core/theme/glass_appearance.dart';
 import 'glass_overlays.dart';
+import 'iptv_channel_logo.dart';
 
 /// Canlı TV / gözat üst çubuğu ile aynı kanal arama popup’ı.
 Future<void> showGlassChannelSearchDialog({
@@ -28,8 +31,9 @@ Future<void> showGlassChannelSearchDialog({
           text: t,
           selection: TextSelection.collapsed(offset: t.length),
         );
-        onSearchChanged(t);
         Navigator.of(ctx).pop();
+        // Gözat TabController + arama: pop ile ağaç değişirken aynı karede Obx tetiklenmesin.
+        Future<void>.microtask(() => onSearchChanged(t));
       }
 
       return GlassAlertDialog(
@@ -102,10 +106,14 @@ class RequestCategoryBarFocus extends StatefulWidget {
     super.key,
     required this.focusNode,
     required this.child,
+    this.enabled = true,
   });
 
   final FocusNode focusNode;
   final Widget child;
+
+  /// false: ilk karede kategori çubuğuna programatik odak verilmez (ör. mobil / tablet).
+  final bool enabled;
 
   @override
   State<RequestCategoryBarFocus> createState() =>
@@ -118,10 +126,12 @@ class _RequestCategoryBarFocusState extends State<RequestCategoryBarFocus> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    if (!widget.enabled) return;
     if (_scheduled) return;
     _scheduled = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
+      if (!widget.enabled) return;
       if (widget.focusNode.canRequestFocus) {
         widget.focusNode.requestFocus();
       }
@@ -145,9 +155,14 @@ class GlassTvSheet extends StatelessWidget {
       borderRadius: BorderRadius.circular(18),
       child: Obx(() {
         final ga = GlassAppearance.fromLabel(settings.themeLabel.value);
-        final reduce = settings.reduceBlur.value;
         final tv = settings.layoutMode.value == AppLayoutMode.tv;
-        final sigma = tv ? 0.0 : (reduce ? 5.0 : 8.0);
+        final sigma = AppPerformance.glassSigma(
+          settings,
+          zeroOnTvLayout: true,
+          isTvLayout: tv,
+          fullSigma: 8,
+          reducedSigma: 5,
+        );
         final decorated = Container(
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
@@ -191,9 +206,14 @@ class GlassTopBarCapsule extends StatelessWidget {
       borderRadius: BorderRadius.circular(14),
       child: Obx(() {
         final ga = GlassAppearance.fromLabel(settings.themeLabel.value);
-        final reduce = settings.reduceBlur.value;
         final tv = settings.layoutMode.value == AppLayoutMode.tv;
-        final sigma = tv ? 0.0 : (reduce ? 8.0 : 14.0);
+        final sigma = AppPerformance.glassSigma(
+          settings,
+          zeroOnTvLayout: true,
+          isTvLayout: tv,
+          fullSigma: 14,
+          reducedSigma: 8,
+        );
         final decorated = Container(
           padding: padding,
           decoration: BoxDecoration(
@@ -228,7 +248,10 @@ class GlassLiveTopBar extends StatelessWidget {
     this.showBackButton = true,
     this.tvSearchFocusNode,
     this.tvSettingsFocusNode,
+    this.tvEpgTimelineFocusNode,
+    this.onOpenEpgTimeline,
     this.onTvNavigateDownFromTopBar,
+    this.onTvNavigateLeftFromTopBar,
   });
 
   final TextEditingController searchController;
@@ -245,7 +268,10 @@ class GlassLiveTopBar extends StatelessWidget {
   /// TV: üst çubukta arama / ayarlar için odak düğümleri (null = dokunmatik davranış).
   final FocusNode? tvSearchFocusNode;
   final FocusNode? tvSettingsFocusNode;
+  final FocusNode? tvEpgTimelineFocusNode;
+  final VoidCallback? onOpenEpgTimeline;
   final VoidCallback? onTvNavigateDownFromTopBar;
+  final VoidCallback? onTvNavigateLeftFromTopBar;
 
   void _openSearchDialog(BuildContext context) {
     showGlassChannelSearchDialog(
@@ -266,60 +292,72 @@ class GlassLiveTopBar extends StatelessWidget {
       children: [
         GlassTopBarCapsule(
           padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              if (showBackButton) ...[
-                IconButton(
-                  onPressed: onBack,
-                  icon: const Icon(Icons.arrow_back_rounded, size: 20),
-                  color: Colors.white,
-                  padding: EdgeInsets.zero,
-                  constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                  tooltip: 'Geri',
-                ),
-                const SizedBox(width: 4),
-              ],
-              ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: Image.asset(
-                  'assets/images/new_logo.png',
-                  width: isPortrait ? 24 : 32,
-                  height: isPortrait ? 24 : 32,
-                  filterQuality: FilterQuality.medium,
-                ),
-              ),
-              if (!isPortrait) ...[
-                const SizedBox(width: 10),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Text(
-                      'Mina',
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.95),
-                        fontSize: 17,
-                        fontWeight: FontWeight.w700,
-                        height: 1,
-                      ),
+          child: Obx(() {
+            final mobile = Get.find<AppSettingsService>().layoutMode.value ==
+                AppLayoutMode.mobile;
+            return Row(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                if (showBackButton) ...[
+                  IconButton(
+                    onPressed: onBack,
+                    icon: const Icon(Icons.arrow_back_rounded, size: 22),
+                    color: Colors.white,
+                    style: IconButton.styleFrom(
+                      foregroundColor: Colors.white,
+                      minimumSize: mobile
+                          ? const Size(48, 48)
+                          : const Size(40, 40),
+                      tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                      padding: mobile
+                          ? const EdgeInsets.all(10)
+                          : EdgeInsets.zero,
                     ),
-                    const SizedBox(height: 3),
-                    Text(
-                      'IPTV Player',
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.85),
-                        fontSize: 11,
-                        fontWeight: FontWeight.w500,
-                        height: 1,
-                      ),
-                    ),
-                  ],
+                    tooltip: 'common.back'.tr,
+                  ),
+                  SizedBox(width: mobile ? 2 : 4),
+                ],
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Image.asset(
+                    'assets/images/new_logo.png',
+                    width: isPortrait ? 24 : 32,
+                    height: isPortrait ? 24 : 32,
+                    filterQuality: FilterQuality.high,
+                  ),
                 ),
+                if (!isPortrait) ...[
+                  const SizedBox(width: 10),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        'Mina',
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.95),
+                          fontSize: 17,
+                          fontWeight: FontWeight.w700,
+                          height: 1,
+                        ),
+                      ),
+                      const SizedBox(height: 3),
+                      Text(
+                        'IPTV Player',
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.85),
+                          fontSize: 11,
+                          fontWeight: FontWeight.w500,
+                          height: 1,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
               ],
-            ],
-          ),
+            );
+          }),
         ),
         const SizedBox(width: 12),
         const Spacer(),
@@ -342,12 +380,17 @@ class GlassLiveTopBar extends StatelessWidget {
           onOpenSearch: () => _openSearchDialog(context),
           tvSearchFocusNode: tvSearchFocusNode,
           tvSettingsFocusNode: tvSettingsFocusNode,
+          tvEpgTimelineFocusNode: tvEpgTimelineFocusNode,
+          onOpenEpgTimeline: onOpenEpgTimeline,
           onTvNavigateDownFromTopBar: onTvNavigateDownFromTopBar,
+          onTvNavigateLeftFromTopBar: onTvNavigateLeftFromTopBar,
         ),
       ],
     );
   }
 }
+
+enum _TvTopBarSlot { search, timeline, settings }
 
 class GlassTopCombinedClockSettings extends StatelessWidget {
   const GlassTopCombinedClockSettings({
@@ -357,7 +400,10 @@ class GlassTopCombinedClockSettings extends StatelessWidget {
     this.onOpenSearch,
     this.tvSearchFocusNode,
     this.tvSettingsFocusNode,
+    this.tvEpgTimelineFocusNode,
+    this.onOpenEpgTimeline,
     this.onTvNavigateDownFromTopBar,
+    this.onTvNavigateLeftFromTopBar,
   });
 
   final Widget Function() clockBuilder;
@@ -365,30 +411,48 @@ class GlassTopCombinedClockSettings extends StatelessWidget {
   final VoidCallback? onOpenSearch;
   final FocusNode? tvSearchFocusNode;
   final FocusNode? tvSettingsFocusNode;
+  final FocusNode? tvEpgTimelineFocusNode;
+  final VoidCallback? onOpenEpgTimeline;
   final VoidCallback? onTvNavigateDownFromTopBar;
+  final VoidCallback? onTvNavigateLeftFromTopBar;
 
-  static KeyEventResult _tvTopBarKey(
-    FocusNode? searchNode,
-    FocusNode? settingsNode,
+  static KeyEventResult _tvTopBarNav({
+    required FocusNode? searchNode,
+    required FocusNode? timelineNode,
+    required FocusNode? settingsNode,
     VoidCallback? onDown,
-    LogicalKeyboardKey k, {
-    required bool isSearchSlot,
+    VoidCallback? onLeft,
+    required LogicalKeyboardKey k,
+    required _TvTopBarSlot slot,
   }) {
     if (k == LogicalKeyboardKey.arrowDown) {
       onDown?.call();
       return KeyEventResult.handled;
     }
-    if (isSearchSlot && k == LogicalKeyboardKey.arrowRight) {
-      settingsNode?.requestFocus();
+    if (k == LogicalKeyboardKey.arrowLeft) {
+      onLeft?.call();
       return KeyEventResult.handled;
     }
-    if (isSearchSlot && k == LogicalKeyboardKey.arrowLeft) {
-      // Arama butonundayken sola basınca dışarı (kategorilere) kaçma
-      return KeyEventResult.handled;
-    }
-    if (!isSearchSlot && k == LogicalKeyboardKey.arrowLeft) {
-      searchNode?.requestFocus();
-      return KeyEventResult.handled;
+    switch (slot) {
+      case _TvTopBarSlot.search:
+        if (k == LogicalKeyboardKey.arrowRight) {
+          (timelineNode ?? settingsNode)?.requestFocus();
+          return KeyEventResult.handled;
+        }
+      case _TvTopBarSlot.timeline:
+        if (k == LogicalKeyboardKey.arrowRight) {
+          settingsNode?.requestFocus();
+          return KeyEventResult.handled;
+        }
+        if (k == LogicalKeyboardKey.arrowLeft) {
+          searchNode?.requestFocus();
+          return KeyEventResult.handled;
+        }
+      case _TvTopBarSlot.settings:
+        if (k == LogicalKeyboardKey.arrowLeft) {
+          (timelineNode ?? searchNode)?.requestFocus();
+          return KeyEventResult.handled;
+        }
     }
     return KeyEventResult.ignored;
   }
@@ -419,12 +483,14 @@ class GlassTopCombinedClockSettings extends StatelessWidget {
               return KeyEventResult.ignored;
             }
             final k = event.logicalKey;
-            final nav = _tvTopBarKey(
-              tvSearchFocusNode,
-              tvSettingsFocusNode,
-              onTvNavigateDownFromTopBar,
-              k,
-              isSearchSlot: true,
+            final nav = _tvTopBarNav(
+              searchNode: tvSearchFocusNode,
+              timelineNode: tvEpgTimelineFocusNode,
+              settingsNode: tvSettingsFocusNode,
+              onDown: onTvNavigateDownFromTopBar,
+              onLeft: onTvNavigateLeftFromTopBar,
+              k: k,
+              slot: _TvTopBarSlot.search,
             );
             if (nav != KeyEventResult.ignored) return nav;
             if (k == LogicalKeyboardKey.select ||
@@ -504,12 +570,14 @@ class GlassTopCombinedClockSettings extends StatelessWidget {
               return KeyEventResult.ignored;
             }
             final k = event.logicalKey;
-            final nav = _tvTopBarKey(
-              tvSearchFocusNode,
-              tvSettingsFocusNode,
-              onTvNavigateDownFromTopBar,
-              k,
-              isSearchSlot: false,
+            final nav = _tvTopBarNav(
+              searchNode: tvSearchFocusNode,
+              timelineNode: tvEpgTimelineFocusNode,
+              settingsNode: tvSettingsFocusNode,
+              onDown: onTvNavigateDownFromTopBar,
+              onLeft: onTvNavigateLeftFromTopBar,
+              k: k,
+              slot: _TvTopBarSlot.settings,
             );
             if (nav != KeyEventResult.ignored) return nav;
             if (k == LogicalKeyboardKey.select ||
@@ -568,6 +636,98 @@ class GlassTopCombinedClockSettings extends StatelessWidget {
       );
     }
 
+    Widget timelineWidget() {
+      void open() => onOpenEpgTimeline?.call();
+      final icon = Padding(
+        padding: const EdgeInsets.all(8),
+        child: Icon(
+          Icons.view_timeline_rounded,
+          color: Colors.white.withValues(alpha: 0.92),
+          size: 20,
+        ),
+      );
+      final tvTimeline =
+          useTvFocus && tvEpgTimelineFocusNode != null && onOpenEpgTimeline != null;
+      if (tvTimeline) {
+        final primary = Theme.of(context).colorScheme.primary;
+        return Focus(
+          focusNode: tvEpgTimelineFocusNode,
+          onKeyEvent: (node, event) {
+            if (event is KeyRepeatEvent) {
+              return KeyEventResult.ignored;
+            }
+            if (event is! KeyDownEvent) {
+              return KeyEventResult.ignored;
+            }
+            final k = event.logicalKey;
+            final nav = _tvTopBarNav(
+              searchNode: tvSearchFocusNode,
+              timelineNode: tvEpgTimelineFocusNode,
+              settingsNode: tvSettingsFocusNode,
+              onDown: onTvNavigateDownFromTopBar,
+              k: k,
+              slot: _TvTopBarSlot.timeline,
+            );
+            if (nav != KeyEventResult.ignored) return nav;
+            if (k == LogicalKeyboardKey.select ||
+                k == LogicalKeyboardKey.enter ||
+                k == LogicalKeyboardKey.numpadEnter ||
+                k == LogicalKeyboardKey.space) {
+              open();
+              return KeyEventResult.handled;
+            }
+            return KeyEventResult.ignored;
+          },
+          child: ListenableBuilder(
+            listenable: tvEpgTimelineFocusNode!,
+            builder: (context, _) {
+              final focused = tvEpgTimelineFocusNode!.hasFocus;
+              return SizedBox(
+                width: 44,
+                height: 44,
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 120),
+                  curve: Curves.easeOut,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: focused
+                          ? primary.withValues(alpha: 0.95)
+                          : Colors.transparent,
+                      width: 2,
+                    ),
+                    color: focused
+                        ? Colors.white.withValues(alpha: 0.14)
+                        : Colors.transparent,
+                  ),
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: onOpenEpgTimeline,
+                      borderRadius: BorderRadius.circular(10),
+                      child: icon,
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        );
+      }
+      if (onOpenEpgTimeline != null) {
+        return Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: onOpenEpgTimeline,
+            borderRadius: BorderRadius.circular(10),
+            child: icon,
+          ),
+        );
+      }
+      return const SizedBox.shrink();
+    }
+
     return GlassTopBarCapsule(
       padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
       child: Row(
@@ -575,6 +735,10 @@ class GlassTopCombinedClockSettings extends StatelessWidget {
         children: [
           if (onOpenSearch != null) ...[
             searchWidget(),
+            const SizedBox(width: 2),
+          ],
+          if (onOpenEpgTimeline != null) ...[
+            timelineWidget(),
             const SizedBox(width: 2),
           ],
           clockBuilder(),
@@ -621,6 +785,9 @@ class GlassCategoryRow extends StatefulWidget {
     /// TV + orta sütun tuzağı: odağı kanallardayken sol sütunda yalnızca gerçek
     /// seçili kategori vurgulansın; eski odak satırı mor çerçeve göstermesin.
     this.tvSuppressFocusRingUnlessSelected = false,
+
+    /// TV: bu satır odağı aldığında (ör. kumanda ile kategoriye gelince) tuzak sıfırlanır.
+    this.onTvFocusGained,
   });
 
   final String label;
@@ -637,6 +804,7 @@ class GlassCategoryRow extends StatefulWidget {
   final bool tvBlockArrowDown;
   final bool tvBlockArrowRight;
   final bool tvSuppressFocusRingUnlessSelected;
+  final VoidCallback? onTvFocusGained;
 
   @override
   State<GlassCategoryRow> createState() => _GlassCategoryRowState();
@@ -691,13 +859,16 @@ class _GlassCategoryRowState extends State<GlassCategoryRow> {
         Get.find<AppSettingsService>().themeLabel.value,
       );
       return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
+      padding: const EdgeInsets.only(bottom: 5),
       child: Material(
         color: Colors.transparent,
         child: Focus(
           focusNode: widget.focusNode,
           autofocus: widget.focusNode == null && widget.autofocus,
-          onFocusChange: (v) => setState(() => _focused = v),
+          onFocusChange: (v) {
+            setState(() => _focused = v);
+            if (v) widget.onTvFocusGained?.call();
+          },
           onKeyEvent: (node, event) {
             final isDown = event is KeyDownEvent;
             final isRepeat = event is KeyRepeatEvent;
@@ -716,6 +887,8 @@ class _GlassCategoryRowState extends State<GlassCategoryRow> {
               if (widget.tvBlockArrowDown) {
                 return KeyEventResult.handled;
               }
+              // Kumanda tekrarı: tek basışta iki satır atlamasın (Android TV / KM2 vb.).
+              if (isRepeat) return KeyEventResult.handled;
               move(TraversalDirection.down);
               return KeyEventResult.handled;
             }
@@ -724,9 +897,11 @@ class _GlassCategoryRowState extends State<GlassCategoryRow> {
                 return KeyEventResult.handled;
               }
               if (widget.tvIsFirstRow && widget.tvArrowUpFocusTarget != null) {
+                if (isRepeat) return KeyEventResult.handled;
                 widget.tvArrowUpFocusTarget!.requestFocus();
                 return KeyEventResult.handled;
               }
+              if (isRepeat) return KeyEventResult.handled;
               move(TraversalDirection.up);
               return KeyEventResult.handled;
             }
@@ -755,8 +930,11 @@ class _GlassCategoryRowState extends State<GlassCategoryRow> {
           child: InkWell(
             onTap: widget.onTap,
             borderRadius: BorderRadius.circular(12),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 240),
+              curve: Curves.easeOutCubic,
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
@@ -774,7 +952,8 @@ class _GlassCategoryRowState extends State<GlassCategoryRow> {
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(
                         color: Colors.white,
-                        fontSize: 13,
+                        fontSize: 12,
+                        height: 1.25,
                         fontWeight: FontWeight.w500,
                       ),
                     ),
@@ -783,7 +962,7 @@ class _GlassCategoryRowState extends State<GlassCategoryRow> {
                     '${widget.count}',
                     style: TextStyle(
                       color: Colors.white.withValues(alpha: 0.65),
-                      fontSize: 12,
+                      fontSize: 11,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -837,11 +1016,20 @@ class GlassListNumberTile extends StatefulWidget {
     /// TV: detay sütunu açıkken sağ ok yine de traversal yapmasın; doğrudan detay odak düğümüne gider.
     this.tvRequestDetailPanelFocus,
 
+    /// TV: sağ ok tuşu için özel callback (örneğin üst menüye geçiş).
+    this.tvOnArrowRight,
+
     /// TV Bölge B: yukarı/aşağı yalnızca liste içinde (yan sütunlara sıçramaz).
     this.tvStrictVerticalList = false,
     this.tvListIndex,
     this.tvListLength,
     this.tvOnVerticalMove,
+
+    /// [tvStrictVerticalList] + [tvOnVerticalMove]: tuş basılıyken bu aralıkta satır atlama
+    /// (KeyRepeat bastırılır; [KeyUpEvent] / odak kaybı ile durur). `null` = sistem tekrar hızı.
+    this.tvVerticalHoldNudgeInterval,
+    this.tvOnVerticalHoldStart,
+    this.tvOnVerticalHoldStop,
   });
 
   final String number;
@@ -867,10 +1055,14 @@ class GlassListNumberTile extends StatefulWidget {
   final bool tvKeepFocusedRowVisible;
   final FocusNode? focusNode;
   final VoidCallback? tvRequestDetailPanelFocus;
+  final VoidCallback? tvOnArrowRight;
   final bool tvStrictVerticalList;
   final int? tvListIndex;
   final int? tvListLength;
   final void Function(int delta)? tvOnVerticalMove;
+  final Duration? tvVerticalHoldNudgeInterval;
+  final void Function(int delta, Duration interval)? tvOnVerticalHoldStart;
+  final VoidCallback? tvOnVerticalHoldStop;
 
   @override
   State<GlassListNumberTile> createState() => _GlassListNumberTileState();
@@ -927,6 +1119,7 @@ class _GlassListNumberTileState extends State<GlassListNumberTile> {
   @override
   void dispose() {
     _detachAnchorListener();
+    widget.tvOnVerticalHoldStop?.call();
     _cancelVerticalHoldScroll();
     super.dispose();
   }
@@ -974,7 +1167,7 @@ class _GlassListNumberTileState extends State<GlassListNumberTile> {
         widget.selected && !strongHighlight && widget.tvStrictVerticalList;
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.only(bottom: 6),
       child: Material(
         color: Colors.transparent,
         child: Focus(
@@ -984,6 +1177,7 @@ class _GlassListNumberTileState extends State<GlassListNumberTile> {
           onFocusChange: (hasFocus) {
             setState(() => _isFocused = hasFocus);
             if (!hasFocus) {
+              widget.tvOnVerticalHoldStop?.call();
               _cancelVerticalHoldScroll();
             }
             if (hasFocus) {
@@ -1015,6 +1209,11 @@ class _GlassListNumberTileState extends State<GlassListNumberTile> {
             }
 
             if (event is KeyUpEvent) {
+              if (widget.tvVerticalHoldNudgeInterval != null &&
+                  (k == LogicalKeyboardKey.arrowDown ||
+                      k == LogicalKeyboardKey.arrowUp)) {
+                widget.tvOnVerticalHoldStop?.call();
+              }
               if (widget.tvAcceleratedListScroll &&
                   (k == LogicalKeyboardKey.arrowDown ||
                       k == LogicalKeyboardKey.arrowUp)) {
@@ -1033,6 +1232,19 @@ class _GlassListNumberTileState extends State<GlassListNumberTile> {
                   widget.tvOnVerticalMove != null &&
                   widget.tvListIndex != null &&
                   widget.tvListLength != null) {
+                final hold = widget.tvVerticalHoldNudgeInterval;
+                if (hold != null) {
+                  if (isRepeat) {
+                    return KeyEventResult.handled;
+                  }
+                  if (isDown) {
+                    if (widget.tvListIndex! < widget.tvListLength! - 1) {
+                      widget.tvOnVerticalMove!(1);
+                      widget.tvOnVerticalHoldStart?.call(1, hold);
+                    }
+                  }
+                  return KeyEventResult.handled;
+                }
                 // Bölge B: yalnızca tuş başına bir satır; basılı tutma zamanlayıcısı
                 // bazı kutularda KeyUp gelmeyince listeyi sürekli kaydırıyordu.
                 if (widget.tvAcceleratedListScroll && isRepeat) {
@@ -1061,6 +1273,19 @@ class _GlassListNumberTileState extends State<GlassListNumberTile> {
                   widget.tvOnVerticalMove != null &&
                   widget.tvListIndex != null &&
                   widget.tvListLength != null) {
+                final hold = widget.tvVerticalHoldNudgeInterval;
+                if (hold != null) {
+                  if (isRepeat) {
+                    return KeyEventResult.handled;
+                  }
+                  if (isDown) {
+                    if (widget.tvListIndex! > 0) {
+                      widget.tvOnVerticalMove!(-1);
+                      widget.tvOnVerticalHoldStart?.call(-1, hold);
+                    }
+                  }
+                  return KeyEventResult.handled;
+                }
                 if (widget.tvAcceleratedListScroll && isRepeat) {
                   return KeyEventResult.handled;
                 }
@@ -1090,6 +1315,10 @@ class _GlassListNumberTileState extends State<GlassListNumberTile> {
             }
             if (k == LogicalKeyboardKey.arrowRight) {
               if (widget.tvBlockArrowRight) {
+                // Sağ ok engellendiğinde özel callback varsa çağır
+                if (isDown && widget.tvOnArrowRight != null) {
+                  widget.tvOnArrowRight!.call();
+                }
                 return KeyEventResult.handled;
               }
               if (widget.tvGateDetailColumn) {
@@ -1125,17 +1354,27 @@ class _GlassListNumberTileState extends State<GlassListNumberTile> {
             onTap: widget.onTap,
             borderRadius: BorderRadius.circular(14),
             child: Obx(() {
-              final ga = GlassAppearance.fromLabel(
-                Get.find<AppSettingsService>().themeLabel.value,
-              );
-              return Container(
+              final tl = Get.find<AppSettingsService>().themeLabel.value;
+              final ga = GlassAppearance.fromLabel(tl);
+              final isFb = tl == GlassThemeLabels.flatBlack;
+              final listTv = widget.tvStrictVerticalList;
+              final dur = listTv
+                  ? const Duration(milliseconds: 260)
+                  : const Duration(milliseconds: 200);
+              const curve = Curves.easeOutCubic;
+              // Odakta AnimatedScale kullanma: üst [ClipRRect] çerçeveyi kırpıyordu.
+              return AnimatedContainer(
+                duration: dur,
+                curve: curve,
                 padding:
-                    const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                    const EdgeInsets.symmetric(horizontal: 8, vertical: 7),
                 decoration: BoxDecoration(
                   borderRadius: BorderRadius.circular(14),
                   border: Border.all(
                     color: strongHighlight
-                        ? primary.withValues(alpha: 0.9)
+                        ? (isFb
+                            ? const Color(0xFF2A2A30)
+                            : primary.withValues(alpha: 0.9))
                         : ga.listTileBorder(softSelected),
                     width: strongHighlight ? 2 : 1,
                   ),
@@ -1149,12 +1388,12 @@ class _GlassListNumberTileState extends State<GlassListNumberTile> {
                 child: Row(
                   children: [
                     SizedBox(
-                      width: 36,
+                      width: 32,
                       child: Text(
                         widget.number,
                         style: TextStyle(
                           color: primary.withValues(alpha: 0.95),
-                          fontSize: 13,
+                          fontSize: 12,
                           fontWeight: FontWeight.w700,
                         ),
                       ),
@@ -1170,25 +1409,27 @@ class _GlassListNumberTileState extends State<GlassListNumberTile> {
                             overflow: TextOverflow.ellipsis,
                             style: const TextStyle(
                               color: Colors.white,
-                              fontSize: 14,
+                              fontSize: 12.5,
+                              height: 1.2,
                               fontWeight: FontWeight.w700,
                             ),
                           ),
                           if (widget.subtitle != null) ...[
-                            const SizedBox(height: 2),
+                            const SizedBox(height: 1),
                             Text(
                               widget.subtitle!,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
                                 color: Colors.white.withValues(alpha: 0.6),
-                                fontSize: 11,
+                                fontSize: 10,
+                                height: 1.2,
                                 fontWeight: FontWeight.w500,
                               ),
                             ),
                           ],
                           if (widget.progress != null) ...[
-                            const SizedBox(height: 4),
+                            const SizedBox(height: 3),
                             ClipRRect(
                               borderRadius: BorderRadius.circular(2),
                               child: LinearProgressIndicator(
@@ -1203,16 +1444,47 @@ class _GlassListNumberTileState extends State<GlassListNumberTile> {
                         ],
                       ),
                     ),
-                    const SizedBox(width: 8),
+                    const SizedBox(width: 6),
                     if (widget.trailing != null) widget.trailing!,
                     ExcludeFocus(
                       child: IconButton(
                         onPressed: widget.playEnabled ? widget.onPlay : null,
-                        icon: Icon(Icons.play_circle_fill_rounded,
-                            color: widget.playEnabled
-                                ? primary
-                                : Colors.white.withValues(alpha: 0.25),
-                            size: 30),
+                        style: IconButton.styleFrom(
+                          padding: const EdgeInsets.all(2),
+                          minimumSize: const Size(34, 34),
+                          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                          visualDensity: VisualDensity.compact,
+                        ),
+                        icon: isFb
+                            ? Container(
+                                width: 26,
+                                height: 26,
+                                alignment: Alignment.center,
+                                decoration: BoxDecoration(
+                                  color: const Color(0xFF0C0C0C),
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: Colors.white.withValues(
+                                      alpha:
+                                          widget.playEnabled ? 0.14 : 0.06,
+                                    ),
+                                  ),
+                                ),
+                                child: Icon(
+                                  Icons.play_arrow_rounded,
+                                  color: widget.playEnabled
+                                      ? Colors.white
+                                      : Colors.white.withValues(alpha: 0.25),
+                                  size: 18,
+                                ),
+                              )
+                            : Icon(
+                                Icons.play_circle_fill_rounded,
+                                color: widget.playEnabled
+                                    ? primary
+                                    : Colors.white.withValues(alpha: 0.25),
+                                size: 26,
+                              ),
                         tooltip: widget.playEnabled
                             ? 'common.play'.tr
                             : 'common.notPlayable'.tr,
@@ -1230,25 +1502,40 @@ class _GlassListNumberTileState extends State<GlassListNumberTile> {
 }
 
 class GlassPosterThumb extends StatelessWidget {
-  const GlassPosterThumb(
-      {super.key, required this.imageUrl, required this.name});
+  const GlassPosterThumb({
+    super.key,
+    required this.imageUrl,
+    required this.name,
+    /// Liste satırındaki logo; küçültünce odak çerçevesi ve metin için yer açılır.
+    this.size = 40,
+  });
 
   final String? imageUrl;
   final String name;
+  final double size;
 
   @override
   Widget build(BuildContext context) {
     final initial = name.isNotEmpty ? name[0].toUpperCase() : '?';
     final url = imageUrl?.trim();
     if (url != null && url.isNotEmpty && Uri.tryParse(url)?.hasScheme == true) {
+      final dpr = MediaQuery.devicePixelRatioOf(context);
+      final px = (size * dpr).round();
+      final r = BorderRadius.circular(size >= 36 ? 8 : 6);
       return ClipRRect(
-        borderRadius: BorderRadius.circular(8),
-        child: Image.network(
-          url,
-          width: 40,
-          height: 40,
+        borderRadius: r,
+        child: IptvChannelLogo(
+          imageUrl: url,
+          width: size,
+          height: size,
           fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => _fallback(initial),
+          memCacheWidth: px,
+          memCacheHeight: px,
+          placeholder: ColoredBox(
+            color: Colors.black.withValues(alpha: 0.22),
+            child: SizedBox(width: size, height: size),
+          ),
+          errorWidget: _fallback(initial),
         ),
       );
     }
@@ -1260,21 +1547,22 @@ class GlassPosterThumb extends StatelessWidget {
       final ga = GlassAppearance.fromLabel(
         Get.find<AppSettingsService>().themeLabel.value,
       );
+      final r = BorderRadius.circular(size >= 36 ? 8 : 6);
       return Container(
-        width: 40,
-        height: 40,
+        width: size,
+        height: size,
         alignment: Alignment.center,
         decoration: BoxDecoration(
           color: ga.thumbFallbackFill,
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: r,
           border: Border.all(color: ga.thumbFallbackBorder),
         ),
         child: Text(
           initial,
-          style: const TextStyle(
+          style: TextStyle(
             color: Colors.white,
             fontWeight: FontWeight.w800,
-            fontSize: 16,
+            fontSize: (14 * (size / 40)).clamp(11.0, 16.0),
           ),
         ),
       );
@@ -1303,6 +1591,10 @@ class GlassDetailPoster extends StatelessWidget {
     final url = imageUrl?.trim();
     final valid =
         url != null && url.isNotEmpty && Uri.tryParse(url)?.hasScheme == true;
+    final dpr = MediaQuery.devicePixelRatioOf(context);
+    final h = width / aspectRatio;
+    final memW = (width * dpr).round();
+    final memH = (h * dpr).round();
     return SizedBox(
       width: width,
       child: AspectRatio(
@@ -1316,25 +1608,29 @@ class GlassDetailPoster extends StatelessWidget {
             return ColoredBox(
               color: ga.detailPosterPlaceholder,
               child: valid
-                  ? Image.network(
-                      url,
+                  ? CachedNetworkImage(
+                      imageUrl: url,
                       fit: BoxFit.cover,
                       width: double.infinity,
                       height: double.infinity,
-                      errorBuilder: (_, __, ___) => _fallback(initial),
-                      loadingBuilder: (context, child, prog) {
-                        if (prog == null) return child;
-                        return const Center(
-                          child: SizedBox(
-                            width: 22,
-                            height: 22,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 2,
-                              color: Colors.white38,
-                            ),
+                      memCacheWidth: memW,
+                      memCacheHeight: memH,
+                      fadeInDuration: Duration.zero,
+                      fadeOutDuration: Duration.zero,
+                      filterQuality: FilterQuality.high,
+                      errorWidget: (_, __, ___) => _fallback(initial),
+                      progressIndicatorBuilder:
+                          (context, imageUrl, downloadProgress) =>
+                              const Center(
+                        child: SizedBox(
+                          width: 22,
+                          height: 22,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white38,
                           ),
-                        );
-                      },
+                        ),
+                      ),
                     )
                   : _fallback(initial),
             );

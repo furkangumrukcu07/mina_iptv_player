@@ -9,15 +9,20 @@ import '../../core/services/app_settings_service.dart';
 import '../../core/services/favorites_service.dart';
 import '../../core/services/iptv_precache_service.dart';
 import '../../core/services/playlist_cache_service.dart';
+import '../../core/services/playlist_category_hide.dart';
 import 'package:better_player_plus/better_player_plus.dart';
-import '../../core/player/better_player_iptv_config.dart';
+import '../../core/player/better_player_iptv_config.dart'
+    show
+        IptvBetterPlayerConfig,
+        iptvApplyBetterPlayerLowRam720CapIfNeeded,
+        iptvBetterPlayerDataSource;
 import '../../core/player/iptv_playback_defaults.dart';
 import '../../domain/entities/channel.dart';
 import '../../domain/entities/m3u_result.dart';
 import '../../ui/glass_tv_shell.dart';
 
 class ChannelsController extends GetxController {
-  static const _previewFocusHoldDelay = Duration(seconds: 5);
+  static const _previewFocusHoldDelay = Duration(seconds: 2);
 
   bool _effectiveRemoteNav() {
     final m = _app.layoutMode.value;
@@ -60,6 +65,8 @@ class ChannelsController extends GetxController {
   final channelsBarSearchFocusNode = FocusNode(debugLabel: 'channelsBarSearch');
   final channelsBarSettingsFocusNode =
       FocusNode(debugLabel: 'channelsBarSettings');
+  final channelsBarEpgTimelineFocusNode =
+      FocusNode(debugLabel: 'channelsBarEpgTimeline');
 
   /// TV yatay: kategori seçildikten sonra oklarla sol sütuna dönmesin; Geri ile kalkar.
   final tvTrapFocusInChannelList = false.obs;
@@ -85,9 +92,26 @@ class ChannelsController extends GetxController {
   /// Ana ekrandan canlı TV: ilk kategori satırı + ilk kanal seçimi ve kategori odağı.
   bool _resetLiveSelectionFromHome = false;
 
+  /// Ana ekran birleşik arama: doğrudan kanal seçimi.
+  int? _routePickChannelId;
+  String? _routeInitialSearch;
+
+  /// Ana ekran birleşik arama: filtre + isteğe bağlı kategori; son kayıt geri yüklemesini atla.
+  bool _routeHomeUnifiedSearch = false;
+  int? _routeHomeUnifiedChannelCategoryId;
+
   M3uResult? get snapshot => _data;
 
-  List<ChannelCategory> get categories => _data?.channelCategories ?? [];
+  List<ChannelCategory> get categories {
+    final raw = _data?.channelCategories ?? [];
+    return raw
+        .where((c) => !PlaylistCategoryHide.liveCategoryRowHidden(
+              _app,
+              _cache,
+              c,
+            ))
+        .toList();
+  }
 
   @override
   void onInit() {
@@ -104,6 +128,26 @@ class ChannelsController extends GetxController {
             (a['openSearch'] == true || a['openSearch'] == 'true'));
     _resetLiveSelectionFromHome = a is Map &&
         (a['resetLiveSelection'] == true || a['resetLiveSelection'] == 'true');
+    if (a is Map) {
+      final id = a['pickChannelId'];
+      if (id != null) {
+        _routePickChannelId = int.tryParse(id.toString());
+        if (_routePickChannelId != null && _routePickChannelId! <= 0) {
+          _routePickChannelId = null;
+        }
+      }
+      final ins = a['initialSearch'];
+      if (ins is String) _routeInitialSearch = ins;
+      _routeHomeUnifiedSearch = a['fromHomeUnifiedSearch'] == true ||
+          a['fromHomeUnifiedSearch'] == 'true';
+      final ilc = a['initialLiveCategoryId'];
+      if (ilc != null) {
+        final parsed = int.tryParse(ilc.toString());
+        if (parsed != null && parsed > 0) {
+          _routeHomeUnifiedChannelCategoryId = parsed;
+        }
+      }
+    }
     channelsListFocusNode.addListener(_onChannelsListFocusChanged);
     _clock = Timer.periodic(const Duration(seconds: 30), (_) {
       now.value = DateTime.now();
@@ -146,16 +190,25 @@ class ChannelsController extends GetxController {
 
   @override
   void onClose() {
+    stopTvChannelListVerticalHold();
     _clock?.cancel();
     _precacheDebounce?.cancel();
     _previewDebounce?.cancel();
-    previewController?.dispose(forceDispose: true);
+    try {
+      final old = previewController;
+      previewController = null;
+      if (old != null) {
+        old.pause();
+        old.dispose(forceDispose: true);
+      }
+    } catch (_) {}
     searchController.dispose();
     channelsListFocusNode.removeListener(_onChannelsListFocusChanged);
     categoryFocusNode.dispose();
     channelsListFocusNode.dispose();
     channelsBarSearchFocusNode.dispose();
     channelsBarSettingsFocusNode.dispose();
+    channelsBarEpgTimelineFocusNode.dispose();
     detailPanelFocusNode.dispose();
     detailFullscreenFocusNode.dispose();
     detailPreviewFocusNode.dispose();
@@ -165,7 +218,20 @@ class ChannelsController extends GetxController {
   List<Channel> get visibleChannels {
     final base = _data?.channels ?? [];
     final id = selectedCategoryId.value;
-    if (id == null) return base;
+    final d = _data;
+    if (d == null) return base;
+    if (id == null) {
+      return base
+          .where(
+            (c) => !PlaylistCategoryHide.channelHiddenInLive(
+              _app,
+              _cache,
+              d,
+              c,
+            ),
+          )
+          .toList();
+    }
     return base.where((c) => c.categoryId == id).toList();
   }
 
@@ -178,7 +244,20 @@ class ChannelsController extends GetxController {
 
   int countForCategory(int? categoryId) {
     final all = _data?.channels ?? [];
-    if (categoryId == null) return all.length;
+    final d = _data;
+    if (d == null) return all.length;
+    if (categoryId == null) {
+      return all
+          .where(
+            (c) => !PlaylistCategoryHide.channelHiddenInLive(
+              _app,
+              _cache,
+              d,
+              c,
+            ),
+          )
+          .length;
+    }
     return all.where((c) => c.categoryId == categoryId).length;
   }
 
@@ -231,6 +310,15 @@ class ChannelsController extends GetxController {
       } else {
         _ensureSelectionInList();
       }
+    }
+  }
+
+  /// TV: kumanda ile kategori satırına gelindiğinde tuzak kalkar; odak çerçevesi görünür.
+  void syncTvCategoryFocusFromRow(int? categoryId) {
+    if (!_effectiveRemoteNav()) return;
+    tvTrapFocusInChannelList.value = false;
+    if (selectedCategoryId.value != categoryId) {
+      selectCategory(categoryId, moveFocusToChannels: false);
     }
   }
 
@@ -319,14 +407,61 @@ class ChannelsController extends GetxController {
     focusChannel(list[next]);
   }
 
+  static const _tvChannelVerticalHoldPauseBeforeRepeat =
+      Duration(milliseconds: 420);
+
+  Timer? _tvListVerticalHoldInitial;
+  Timer? _tvListVerticalHoldPeriodic;
+
+  /// Basılı tutma: ilk adım tuş inişinde; periyodik adımlar kısa gecikmeden sonra.
+  void beginTvChannelListVerticalHold(int delta, Duration interval) {
+    if (!_effectiveRemoteNav()) return;
+    if (delta == 0) return;
+    stopTvChannelListVerticalHold();
+    _tvListVerticalHoldInitial =
+        Timer(_tvChannelVerticalHoldPauseBeforeRepeat, () {
+      _tvListVerticalHoldInitial = null;
+      if (isClosed) return;
+      _tvListVerticalHoldPeriodic = Timer.periodic(interval, (_) {
+        if (isClosed) {
+          stopTvChannelListVerticalHold();
+          return;
+        }
+        final list = filteredChannels;
+        if (list.isEmpty) {
+          stopTvChannelListVerticalHold();
+          return;
+        }
+        final cur = selectedChannel.value;
+        var i = cur != null ? list.indexWhere((c) => c.id == cur.id) : 0;
+        if (i < 0) i = 0;
+        // Remove boundary stopping - allow continuous scroll even at list edges
+        // User should be able to hold arrow key and stay at top/bottom
+        tvNudgeChannelListRow(delta);
+      });
+    });
+  }
+
+  void stopTvChannelListVerticalHold() {
+    _tvListVerticalHoldInitial?.cancel();
+    _tvListVerticalHoldPeriodic?.cancel();
+    _tvListVerticalHoldInitial = null;
+    _tvListVerticalHoldPeriodic = null;
+  }
+
   /// Kumanda ile listede gezinirken seçimi günceller; aynı kanalı tekrar seçince oynatıcı açılmaz.
+  ///
+  /// TV’de tek paylaşımlı [channelsListFocusNode] satır değişiminde bazen odağı/scroll’u
+  /// yeniden bağlamadan erken dönüş, bir üst kanalı “atlamış” gibi görünüyordu.
   void focusChannel(Channel channel) {
-    if (selectedChannel.value?.id == channel.id) return;
-    selectedChannel.value = channel;
-    unawaited(_app.setLastLiveCategoryId(selectedCategoryId.value));
-    unawaited(_app.setLastLiveChannelId(channel.id));
-    _schedulePrecache(channel.streamUrl);
-    _schedulePreview(channel);
+    final same = selectedChannel.value?.id == channel.id;
+    if (!same) {
+      selectedChannel.value = channel;
+      unawaited(_app.setLastLiveCategoryId(selectedCategoryId.value));
+      unawaited(_app.setLastLiveChannelId(channel.id));
+      _schedulePrecache(channel.streamUrl);
+      _schedulePreview(channel);
+    }
     _reattachSharedListFocusAfterRebuild();
   }
 
@@ -346,17 +481,15 @@ class ChannelsController extends GetxController {
   /// [onFocusChange] kaydırmaz — seçili satırı görünür yap.
   void _scheduleScrollLiveListToFocusedRow() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        final ctx = channelsListFocusNode.context;
-        if (ctx == null || !ctx.mounted) return;
-        Scrollable.ensureVisible(
-          ctx,
-          duration: Duration.zero,
-          curve: Curves.linear,
-          alignment: 0.22,
-          alignmentPolicy: ScrollPositionAlignmentPolicy.explicit,
-        );
-      });
+      final ctx = channelsListFocusNode.context;
+      if (ctx == null || !ctx.mounted) return;
+      Scrollable.ensureVisible(
+        ctx,
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOutCubic,
+        alignment: 0.28,
+        alignmentPolicy: ScrollPositionAlignmentPolicy.explicit,
+      );
     });
   }
 
@@ -462,6 +595,7 @@ class ChannelsController extends GetxController {
         autoDispose: false,
         fullScreenByDefault: false,
         allowedScreenSleep: false,
+        muteAudioBeforeDataSource: true,
       );
 
       final ds = iptvBetterPlayerDataSource(
@@ -470,10 +604,19 @@ class ChannelsController extends GetxController {
         cacheConfiguration: null,
         preferSoftwareVideoDecoder:
             live && _app.preferSoftwareVideoDecoder.value,
+        liveBufferSeconds: live
+            ? _app.liveBufferSeconds.value
+            : IptvBetterPlayerConfig.defaultLiveBufferSecondsForExo,
       );
 
       final ctrl = BetterPlayerController(cfg);
       await ctrl.setupDataSource(ds);
+      await iptvApplyBetterPlayerLowRam720CapIfNeeded(ctrl);
+      if (gen != _previewLoadGeneration) {
+        ctrl.dispose(forceDispose: true);
+        return;
+      }
+      await ctrl.setVolume(0);
       if (gen != _previewLoadGeneration) {
         ctrl.dispose(forceDispose: true);
         return;
@@ -483,7 +626,6 @@ class ChannelsController extends GetxController {
         ctrl.dispose(forceDispose: true);
         return;
       }
-      ctrl.setVolume(0);
       previewController = ctrl;
       isPreviewLoading.value = false;
       update(['preview']);
@@ -493,16 +635,18 @@ class ChannelsController extends GetxController {
     }
   }
 
-  void _ensureSelectionInList() {
+  void _ensureSelectionInList({bool fromPlaylistRestore = false}) {
     final list = filteredChannels;
     if (list.isEmpty) {
       selectedChannel.value = null;
       return;
     }
     final cur = selectedChannel.value;
-    if (cur == null || !list.any((c) => c.id == cur.id)) {
-      selectedChannel.value = list.first;
-    }
+    final inList = cur != null && list.any((c) => c.id == cur.id);
+    if (inList) return;
+    final preferNone = fromPlaylistRestore &&
+        _app.layoutMode.value != AppLayoutMode.tv;
+    selectedChannel.value = preferNone ? null : list.first;
   }
 
   void openSelectedPlayer() {
@@ -544,8 +688,69 @@ class ChannelsController extends GetxController {
   void _restoreLastSelection() {
     final d = _data;
     if (d == null) {
-      _ensureSelectionInList();
+      _ensureSelectionInList(fromPlaylistRestore: true);
       return;
+    }
+
+    if (_routePickChannelId != null) {
+      final want = _routePickChannelId!;
+      Channel? picked;
+      for (final c in d.channels) {
+        if (c.id == want) {
+          picked = c;
+          break;
+        }
+      }
+      _routePickChannelId = null;
+      if (picked != null) {
+        if (_routeInitialSearch != null &&
+            _routeInitialSearch!.trim().isNotEmpty) {
+          searchQuery.value = _routeInitialSearch!.trim();
+          searchController.text = _routeInitialSearch!.trim();
+        }
+        _routeInitialSearch = null;
+        selectedCategoryId.value = null;
+        selectedChannel.value = picked;
+        unawaited(_app.setLastLiveCategoryId(null));
+        unawaited(_app.setLastLiveChannelId(picked.id));
+        _schedulePrecache(picked.streamUrl);
+        _schedulePreview(picked);
+        _ensureSelectionInList(fromPlaylistRestore: false);
+        // Ana ekran birleşik arama: seçilen kanalı doğrudan oynat.
+        final toPlay = picked;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (isClosed) return;
+          openChannel(toPlay);
+        });
+        return;
+      }
+    } else if (_routeInitialSearch != null &&
+        _routeInitialSearch!.trim().isNotEmpty) {
+      searchQuery.value = _routeInitialSearch!.trim();
+      searchController.text = _routeInitialSearch!.trim();
+      _routeInitialSearch = null;
+      if (_routeHomeUnifiedSearch) {
+        _routeHomeUnifiedSearch = false;
+        final wantCat = _routeHomeUnifiedChannelCategoryId;
+        _routeHomeUnifiedChannelCategoryId = null;
+        if (wantCat != null) {
+          ChannelCategory? cat;
+          for (final c in d.channelCategories) {
+            if (c.id == wantCat) {
+              cat = c;
+              break;
+            }
+          }
+          final hidden = cat != null &&
+              PlaylistCategoryHide.liveCategoryRowHidden(_app, _cache, cat);
+          if (!hidden) {
+            selectedCategoryId.value = wantCat;
+            unawaited(_app.setLastLiveCategoryId(wantCat));
+          }
+        }
+        _ensureSelectionInList();
+        return;
+      }
     }
 
     if (_resetLiveSelectionFromHome) {
@@ -554,9 +759,27 @@ class ChannelsController extends GetxController {
       return;
     }
 
+    void sanitizeLiveCategoryIfHidden() {
+      final cid = selectedCategoryId.value;
+      if (cid == null) return;
+      ChannelCategory? cat;
+      for (final c in d.channelCategories) {
+        if (c.id == cid) {
+          cat = c;
+          break;
+        }
+      }
+      if (cat != null &&
+          PlaylistCategoryHide.liveCategoryRowHidden(_app, _cache, cat)) {
+        selectedCategoryId.value = null;
+        unawaited(_app.setLastLiveCategoryId(null));
+      }
+    }
+
     final tv = _app.layoutMode.value == AppLayoutMode.tv;
     if (tv) {
       selectedCategoryId.value = _app.lastLiveCategoryId.value;
+      sanitizeLiveCategoryIfHidden();
       final lastId = _app.lastLiveChannelId.value;
       if (lastId != null) {
         for (final c in d.channels) {
@@ -572,6 +795,7 @@ class ChannelsController extends GetxController {
     }
 
     selectedCategoryId.value = _app.lastLiveCategoryId.value;
+    sanitizeLiveCategoryIfHidden();
 
     final lastId = _app.lastLiveChannelId.value;
     if (lastId != null) {
@@ -588,7 +812,7 @@ class ChannelsController extends GetxController {
       }
     }
 
-    _ensureSelectionInList();
+    _ensureSelectionInList(fromPlaylistRestore: true);
     final cur = selectedChannel.value;
     if (cur != null) {
       _schedulePrecache(cur.streamUrl);
@@ -600,23 +824,27 @@ class ChannelsController extends GetxController {
   void _applyFreshLiveTvEntrySelection() {
     final d = _data;
     if (d == null) {
-      _ensureSelectionInList();
+      _ensureSelectionInList(fromPlaylistRestore: true);
       return;
     }
     selectedCategoryId.value = null;
     tvDetailColumnUnlocked.value = false;
     tvTrapFocusInChannelList.value = false;
-    final all = d.channels;
+    final all = visibleChannels;
+    final tv = _app.layoutMode.value == AppLayoutMode.tv;
     if (all.isEmpty) {
       selectedChannel.value = null;
-    } else {
+    } else if (tv) {
       final first = all.first;
       selectedChannel.value = first;
       unawaited(_app.setLastLiveCategoryId(null));
       unawaited(_app.setLastLiveChannelId(first.id));
       _schedulePrecache(first.streamUrl);
       _schedulePreview(first);
+    } else {
+      selectedChannel.value = null;
     }
+    if (!tv) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!categoryFocusNode.canRequestFocus) return;
@@ -630,6 +858,26 @@ class ChannelsController extends GetxController {
   }
 
   void goHome() => Get.back();
+
+  /// Portre canlı TV (mobil/tablet): EPG → detay → kanallar → kategoriler → [goHome]. TV düzeninde kullanılmaz.
+  void onPortraitChannelsStepBack(BuildContext context) {
+    final tc = DefaultTabController.maybeOf(context);
+    if (tc == null) {
+      goHome();
+      return;
+    }
+    if (tc.index == 1 && searchQuery.value.trim().isNotEmpty) {
+      searchQuery.value = '';
+      searchController.clear();
+      tc.animateTo(0);
+      return;
+    }
+    if (tc.index > 0) {
+      tc.animateTo(tc.index - 1);
+    } else {
+      goHome();
+    }
+  }
 
   /// TV: üst çubuk geri — kategori tuzağındaysa önce sol sütuna dön.
   void onTopBarBack() {

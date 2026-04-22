@@ -58,6 +58,10 @@ class M3uParser {
       final logo = info['logo'];
       final group = info['group'] ?? 'Uncategorised';
       final tvgId = info['tvg_id'];
+      final plot = info['plot'] ??
+          info['description'] ??
+          info['summary'] ??
+          info['info'];
 
       final lowerUrl = url.toLowerCase();
       final lowerGroup = group.toLowerCase();
@@ -71,6 +75,7 @@ class M3uParser {
           categoryId: catId,
           streamUrl: url,
           posterUrl: logo,
+          plot: plot,
         ));
       } else if (_isMovie(lowerUrl, lowerGroup)) {
         final catId = vodCatNames.putIfAbsent(group, () => vodCatId++);
@@ -83,6 +88,7 @@ class M3uParser {
           categoryId: catId,
           posterUrl: logo,
           containerExtension: ext,
+          plot: plot,
         ));
       } else {
         final catId = channelCatNames.putIfAbsent(group, () => channelCatId++);
@@ -135,6 +141,10 @@ class M3uParser {
       'tvg_id': _attr(attrSection, 'tvg-id'),
       'logo': _attr(attrSection, 'tvg-logo'),
       'group': _attr(attrSection, 'group-title') ?? 'Uncategorised',
+      'plot': _attr(attrSection, 'plot'),
+      'description': _attr(attrSection, 'description'),
+      'summary': _attr(attrSection, 'summary'),
+      'info': _attr(attrSection, 'info'),
     };
   }
 

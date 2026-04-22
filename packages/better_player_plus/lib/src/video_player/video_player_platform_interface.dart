@@ -66,7 +66,11 @@ abstract class VideoPlayerPlatform {
   }
 
   /// Creates an instance of a video player and returns its textureId.
-  Future<int?> create({BetterPlayerBufferingConfiguration? bufferingConfiguration}) {
+  Future<int?> create({
+    BetterPlayerBufferingConfiguration? bufferingConfiguration,
+    bool useTextureView = false,
+    bool androidScaleVideoToFit = false,
+  }) {
     throw UnimplementedError('create() has not been implemented.');
   }
 
@@ -392,6 +396,7 @@ class VideoEvent {
     this.buffered,
     this.position,
     this.embeddedExoCues,
+    this.frameRateHz,
   });
 
   /// The type of the event.
@@ -423,6 +428,9 @@ class VideoEvent {
   /// Android: ExoPlayer gömülü metin ([onCues]); yalnızca [VideoEventType.exoEmbeddedCues].
   final List<dynamic>? embeddedExoCues;
 
+  /// Android Exo: [Format.frameRate] (initialized / videoFormat olayları).
+  final double? frameRateHz;
+
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -433,11 +441,17 @@ class VideoEvent {
           duration == other.duration &&
           size == other.size &&
           listEquals(buffered, other.buffered) &&
-          listEquals(embeddedExoCues, other.embeddedExoCues);
+          listEquals(embeddedExoCues, other.embeddedExoCues) &&
+          frameRateHz == other.frameRateHz;
 
   @override
   int get hashCode =>
-      eventType.hashCode ^ duration.hashCode ^ size.hashCode ^ buffered.hashCode ^ embeddedExoCues.hashCode;
+      eventType.hashCode ^
+      duration.hashCode ^
+      size.hashCode ^
+      buffered.hashCode ^
+      embeddedExoCues.hashCode ^
+      frameRateHz.hashCode;
 }
 
 /// Type of the event.
@@ -477,6 +491,9 @@ enum VideoEventType {
 
   /// Android ExoPlayer gömülü altyazı satırları (MKV/MP4 metin izi).
   exoEmbeddedCues,
+
+  /// Android: çözünürlük veya kare hızı güncellendi (ör. ilk kare sonrası FPS).
+  videoFormat,
 
   /// An unknown event has been received.
   unknown,

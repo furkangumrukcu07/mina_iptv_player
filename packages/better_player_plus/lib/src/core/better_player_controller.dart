@@ -41,6 +41,21 @@ class BetterPlayerController {
   ///Playlist configuration used in controller instance.
   final BetterPlayerPlaylistConfiguration? betterPlayerPlaylistConfiguration;
 
+  /// Ayarlardan güncellenen altyazı stili; null ise [betterPlayerConfiguration] kullanılır.
+  BetterPlayerSubtitlesConfiguration? _subtitleStyleRuntime;
+
+  /// Görüntülemede kullanılacak altyazı yapılandırması.
+  BetterPlayerSubtitlesConfiguration get effectiveSubtitlesConfiguration =>
+      _subtitleStyleRuntime ?? betterPlayerConfiguration.subtitlesConfiguration;
+
+  /// Altyazı punto vb. çalışırken değiştirilebilir (Better OSD).
+  void setSubtitlesStyleConfiguration(BetterPlayerSubtitlesConfiguration configuration) {
+    _subtitleStyleRuntime = configuration;
+    if (!_disposed) {
+      _postControllerEvent(BetterPlayerControllerEvent.changeSubtitles);
+    }
+  }
+
   ///List of event listeners, which listen to events.
   final List<void Function(BetterPlayerEvent)?> _eventListeners = [];
 
@@ -232,6 +247,23 @@ class BetterPlayerController {
     return betterPLayerControllerProvider.controller;
   }
 
+  /// Android: [BetterPlayerConfiguration.useHardwareAcceleration] ile
+  /// [BetterPlayerBufferingConfiguration.preferSoftwareVideoDecoder] birleştirilir.
+  BetterPlayerBufferingConfiguration _mergedBufferingForPlatform(
+    BetterPlayerBufferingConfiguration buf,
+  ) {
+    final preferSoftware = buf.preferSoftwareVideoDecoder ||
+        !betterPlayerConfiguration.useHardwareAcceleration;
+    return BetterPlayerBufferingConfiguration(
+      minBufferMs: buf.minBufferMs,
+      maxBufferMs: buf.maxBufferMs,
+      bufferForPlaybackMs: buf.bufferForPlaybackMs,
+      bufferForPlaybackAfterRebufferMs: buf.bufferForPlaybackAfterRebufferMs,
+      preferSoftwareVideoDecoder: preferSoftware,
+      prioritizeTimeOverSizeThresholds: buf.prioritizeTimeOverSizeThresholds,
+    );
+  }
+
   ///Setup new data source in Better Player.
   Future<void> setupDataSource(BetterPlayerDataSource betterPlayerDataSource) async {
     postEvent(
@@ -249,7 +281,11 @@ class BetterPlayerController {
     ///Build videoPlayerController if null
     if (videoPlayerController == null) {
       videoPlayerController = VideoPlayerController(
-        bufferingConfiguration: betterPlayerDataSource.bufferingConfiguration,
+        bufferingConfiguration: _mergedBufferingForPlatform(
+          betterPlayerDataSource.bufferingConfiguration,
+        ),
+        useTextureView: betterPlayerConfiguration.useTextureView,
+        androidScaleVideoToFit: betterPlayerConfiguration.androidScaleVideoToFit,
       );
       videoPlayerController?.addListener(_onVideoPlayerChanged);
     }
@@ -263,18 +299,23 @@ class BetterPlayerController {
       _betterPlayerSubtitlesSourceList.addAll(betterPlayerDataSource.subtitles!);
     }
 
+    // Master playlist (HLS/DASH) ve varyant listesi Exo’ya gitmeden yüklensin;
+    // aksi halde [betterPlayerAsmsTracks] boş kalır ve kalite seçimi/ABR ipuçları çalışmaz.
     if (_isDataSourceAsms(betterPlayerDataSource)) {
-      unawaited(
-        _setupAsmsDataSource(betterPlayerDataSource).then((value) {
-          _setupSubtitles();
-        }),
-      );
-    } else {
-      _setupSubtitles();
+      await _setupAsmsDataSource(betterPlayerDataSource);
     }
+    _setupSubtitles();
 
     ///Process data source
+    if (betterPlayerConfiguration.muteAudioBeforeDataSource) {
+      await videoPlayerController?.setVolume(0);
+    }
     await _setupDataSource(betterPlayerDataSource);
+    if (videoPlayerController != null) {
+      videoPlayerController!.setMixWithOthers(
+        !betterPlayerConfiguration.handleAudioInterruption,
+      );
+    }
     setTrack(BetterPlayerAsmsTrack.defaultTrack());
   }
 
@@ -1162,6 +1203,8 @@ class BetterPlayerController {
         _postEvent(BetterPlayerEvent(BetterPlayerEventType.bufferingEnd));
       case VideoEventType.exoEmbeddedCues:
         _applyExoEmbeddedCuesFromEvent(event);
+      case VideoEventType.videoFormat:
+        break;
       default:
         break;
     }

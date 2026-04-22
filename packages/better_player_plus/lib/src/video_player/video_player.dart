@@ -34,6 +34,7 @@ class VideoPlayerValue {
     this.speed = 1.0,
     this.errorDescription,
     this.isPip = false,
+    this.videoFrameRateHz,
   });
 
   /// Returns an instance with a `null` [Duration].
@@ -87,6 +88,9 @@ class VideoPlayerValue {
   ///Is in Picture in Picture Mode
   final bool isPip;
 
+  /// Android Exo: seçili video parçasının bildirdiği kare hızı (yoksa null).
+  final double? videoFrameRateHz;
+
   /// Indicates whether or not the video has been loaded and is ready to play.
   bool get initialized => duration != null;
 
@@ -122,6 +126,7 @@ class VideoPlayerValue {
     String? errorDescription,
     double? speed,
     bool? isPip,
+    double? videoFrameRateHz,
   }) => VideoPlayerValue(
     duration: duration ?? this.duration,
     size: size ?? this.size,
@@ -135,6 +140,7 @@ class VideoPlayerValue {
     speed: speed ?? this.speed,
     errorDescription: errorDescription ?? this.errorDescription,
     isPip: isPip ?? this.isPip,
+    videoFrameRateHz: videoFrameRateHz ?? this.videoFrameRateHz,
   );
 
   @override
@@ -166,6 +172,8 @@ class VideoPlayerController extends ValueNotifier<VideoPlayerValue> {
   /// Constructs a [VideoPlayerController] and creates video controller on platform side.
   VideoPlayerController({
     this.bufferingConfiguration = const BetterPlayerBufferingConfiguration(),
+    this.useTextureView = false,
+    this.androidScaleVideoToFit = false,
     bool autoCreate = true,
   }) : super(VideoPlayerValue(duration: null)) {
     if (autoCreate) {
@@ -174,6 +182,12 @@ class VideoPlayerController extends ValueNotifier<VideoPlayerValue> {
   }
 
   final BetterPlayerBufferingConfiguration bufferingConfiguration;
+
+  /// Android: `false` = SurfaceProducer/Surface yolu (TV kutusu; [useTextureView] native create’a iletilir).
+  final bool useTextureView;
+
+  /// Android: Exo `SCALE_TO_FIT` — Flutter [BoxFit] / OSD fit döngüsü için.
+  final bool androidScaleVideoToFit;
 
   final StreamController<VideoEvent> videoEventStreamController = StreamController.broadcast();
   final Completer<void> _creatingCompleter = Completer<void>();
@@ -194,12 +208,18 @@ class VideoPlayerController extends ValueNotifier<VideoPlayerValue> {
 
   /// Attempts to open the given [dataSource] and load metadata about the video.
   Future<void> _create() async {
-    _textureId = await _videoPlayerPlatform.create(bufferingConfiguration: bufferingConfiguration);
+    _textureId = await _videoPlayerPlatform.create(
+      bufferingConfiguration: bufferingConfiguration,
+      useTextureView: useTextureView,
+      androidScaleVideoToFit: androidScaleVideoToFit,
+    );
     BetterPlayerSurfaceLog.textureCreate(_textureId);
+    // Varsayılan ses (1.0) yerelde uygulanmadan `setDataSource`/`prepare` olursa
+    // kısa ses sıçraması olabilir; önce hacim, sonra texture hazır sayılır.
+    await _applyVolume();
     _creatingCompleter.complete(null);
 
     unawaited(_applyLooping());
-    unawaited(_applyVolume());
 
     void eventListener(VideoEvent event) {
       if (_isDisposed) {
@@ -208,9 +228,18 @@ class VideoPlayerController extends ValueNotifier<VideoPlayerValue> {
       videoEventStreamController.add(event);
       switch (event.eventType) {
         case VideoEventType.initialized:
-          value = value.copyWith(duration: event.duration, size: event.size);
+          value = value.copyWith(
+            duration: event.duration,
+            size: event.size,
+            videoFrameRateHz: event.frameRateHz ?? value.videoFrameRateHz,
+          );
           _initializingCompleter.complete(null);
           _applyPlayPause();
+        case VideoEventType.videoFormat:
+          value = value.copyWith(
+            size: event.size ?? value.size,
+            videoFrameRateHz: event.frameRateHz ?? value.videoFrameRateHz,
+          );
         case VideoEventType.completed:
           value = value.copyWith(isPlaying: false, position: value.duration);
           _timer?.cancel();

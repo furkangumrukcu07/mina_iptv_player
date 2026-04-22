@@ -6,16 +6,19 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:media_kit/media_kit.dart';
-import 'package:screen_brightness/screen_brightness.dart';
+import 'package:volume_controller/volume_controller.dart';
 
 import '../../../core/layout/app_layout_mode.dart';
 import '../../../core/services/app_settings_service.dart';
+import '../../../core/theme/app_performance.dart';
 import '../../../core/theme/glass_appearance.dart';
 import '../../../core/services/epg_service.dart';
 import '../../../core/services/favorites_service.dart';
 import '../../../domain/entities/channel.dart';
 import '../player_controller.dart';
 import '../../../ui/glass_overlays.dart';
+import '../../../ui/iptv_channel_logo.dart';
+import 'osd_stream_quality_badges.dart';
 import 'player_glass_level_overlay.dart';
 
 /// MediaKit için [TvBetterPlayerControls] ile aynı cam OSD düzeni (yatay tam ekran).
@@ -56,6 +59,8 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
 
   Worker? _tvOsdVisibleWorker;
   Worker? _stripOverlayWorker;
+  Worker? _vodBrowseRailWorker;
+  Worker? _tvOsdKeyBumpWorker;
   Timer? _hideTimer;
 
   bool _visible = true;
@@ -67,12 +72,22 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
   final FocusNode _mainFocusNode = FocusNode();
   final FocusNode _firstOsdButtonFocus = FocusNode(debugLabel: 'mkOsdFirst');
 
-  double? _dragStartValue;
+  double? _verticalGestureOriginY;
+  double _verticalGestureStartLevel = 1.0;
   bool _isDraggingLeft = false;
   final RxDouble _overlayValue = 0.0.obs;
   final Rxn<IconData> _overlayIcon = Rxn<IconData>();
   final RxBool _showOverlay = false.obs;
   Timer? _overlayTimer;
+
+  // System volume management
+  StreamSubscription<double>? _volumeListener;
+  final RxDouble _systemVolume = 0.5.obs;
+
+  Timer? _liveOsdPlayPauseCenterHoldTimer;
+  bool _liveOsdPlayPauseCenterHoldPending = false;
+  Timer? _vodOsdBrowseRailHoldTimer;
+  bool _vodOsdBrowseRailHoldPending = false;
 
   FavoritesService get _fav => Get.find<FavoritesService>();
 
@@ -80,22 +95,45 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
 
   Channel get _channel => _pc.channel.value;
 
-  bool get _useVodFavorite =>
-      _channel.streamUrl.toLowerCase().contains('/movie/') ||
-      _channel.streamUrl.toLowerCase().contains('/series/');
-
+  
   Player? get _player => _pc.mediaKitPlayer;
+
+  void _initializeVolumeListener() async {
+    try {
+      // Get current system volume
+      final currentVolume = await VolumeController().getVolume();
+      _systemVolume.value = currentVolume;
+      _overlayValue.value = currentVolume;
+      
+      // Listen to system volume changes
+      VolumeController().listener((volume) {
+        if (mounted) {
+          _systemVolume.value = volume;
+          _overlayValue.value = volume;
+          _overlayIcon.value = playerVolumeIconFor(volume);
+          _showOverlay.value = true;
+          _overlayTimer?.cancel();
+          _overlayTimer = Timer(const Duration(seconds: 2), () {
+            if (mounted) _showOverlay.value = false;
+          });
+        }
+      });
+    } catch (e) {
+      debugPrint('Volume listener initialization error: $e');
+    }
+  }
 
   @override
   void initState() {
     super.initState();
     final settings = Get.find<AppSettingsService>();
-    if (settings.layoutMode.value == AppLayoutMode.tv) {
+    final remoteLayout = settings.layoutMode.value.usesRemoteNavigationStyle;
+    if (remoteLayout) {
       _visible = _pc.tvOsdVisible.value;
       _tvOsdVisibleWorker = ever(_pc.tvOsdVisible, (bool visible) {
         if (!mounted) return;
-        if (Get.find<AppSettingsService>().layoutMode.value !=
-            AppLayoutMode.tv) {
+        if (!Get.find<AppSettingsService>().layoutMode.value
+            .usesRemoteNavigationStyle) {
           return;
         }
         if (_visible == visible) return;
@@ -105,7 +143,11 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
           widget.onPlayerVisibilityChanged(true);
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (!mounted) return;
-            if (_pc.liveChannelStripOverlayOpen.value) return;
+            if (_pc.liveChannelStripOverlayOpen.value ||
+                _pc.liveSingleChannelEpgOpen.value ||
+                _pc.vodBrowseRailOpen.value) {
+              return;
+            }
             _firstOsdButtonFocus.requestFocus();
           });
         } else {
@@ -113,32 +155,64 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
           widget.onPlayerVisibilityChanged(false);
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (!mounted) return;
-            if (_pc.liveChannelStripOverlayOpen.value) return;
+            if (_pc.liveChannelStripOverlayOpen.value ||
+                _pc.liveSingleChannelEpgOpen.value ||
+                _pc.vodBrowseRailOpen.value) {
+              return;
+            }
+            if (_pc.vodResumeDialogOpen.value) return;
             _mainFocusNode.requestFocus();
           });
         }
       });
       _stripOverlayWorker = ever(_pc.liveChannelStripOverlayOpen, (bool open) {
         if (!mounted) return;
-        if (Get.find<AppSettingsService>().layoutMode.value !=
-            AppLayoutMode.tv) {
+        if (!Get.find<AppSettingsService>().layoutMode.value
+            .usesRemoteNavigationStyle) {
           return;
         }
         if (open) return;
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) _mainFocusNode.requestFocus();
+          if (!mounted) return;
+          if (_pc.vodResumeDialogOpen.value) return;
+          _mainFocusNode.requestFocus();
+        });
+      });
+      _vodBrowseRailWorker = ever(_pc.vodBrowseRailOpen, (bool open) {
+        if (!mounted) return;
+        if (!Get.find<AppSettingsService>().layoutMode.value
+            .usesRemoteNavigationStyle) {
+          return;
+        }
+        if (open) return;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          if (_pc.vodResumeDialogOpen.value) return;
+          _mainFocusNode.requestFocus();
+        });
+      });
+      _tvOsdKeyBumpWorker = ever(_pc.tvOsdKeyFocusBump, (_) {
+        if (!mounted) return;
+        if (!Get.find<AppSettingsService>().layoutMode.value
+            .usesRemoteNavigationStyle) {
+          return;
+        }
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          if (_pc.vodResumeDialogOpen.value) return;
+          _requestTvPlayerFocus();
         });
       });
     }
+    _initializeVolumeListener();
     _attachMediaKitListener();
-    if (Get.find<AppSettingsService>().layoutMode.value != AppLayoutMode.tv) {
+    if (!remoteLayout) {
       _restartHideTimer();
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       widget.onPlayerVisibilityChanged(_visible);
       _requestTvPlayerFocus();
-      _pc.setVolume(1.0);
-      if (Get.find<AppSettingsService>().layoutMode.value == AppLayoutMode.tv) {
+      if (remoteLayout) {
         Future<void>.delayed(const Duration(milliseconds: 320), () {
           if (mounted) _requestTvPlayerFocus();
         });
@@ -150,7 +224,8 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
   void didUpdateWidget(covariant TvMediaKitPlayerControls oldWidget) {
     super.didUpdateWidget(oldWidget);
     _attachMediaKitListener();
-    if (Get.find<AppSettingsService>().layoutMode.value == AppLayoutMode.tv) {
+    if (Get.find<AppSettingsService>().layoutMode.value
+        .usesRemoteNavigationStyle) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _requestTvPlayerFocus();
       });
@@ -219,7 +294,11 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
   }
 
   void _requestTvPlayerFocus() {
-    if (_pc.liveChannelStripOverlayOpen.value) return;
+    if (_pc.liveChannelStripOverlayOpen.value ||
+        _pc.liveSingleChannelEpgOpen.value ||
+        _pc.vodBrowseRailOpen.value) {
+      return;
+    }
     if (_visible) {
       _firstOsdButtonFocus.requestFocus();
     } else {
@@ -227,12 +306,55 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
     }
   }
 
+  void _suspendOsdFocusForDialog() {
+    _mainFocusNode.unfocus();
+    _firstOsdButtonFocus.unfocus();
+  }
+
+  void _pauseOsdHideForModal() {
+    _pc.cancelTvOsdAutoHide();
+    _hideTimer?.cancel();
+  }
+
+  void _resumeOsdAfterSubDialog() {
+    if (!mounted) return;
+    final remote = Get.find<AppSettingsService>().layoutMode.value
+        .usesRemoteNavigationStyle;
+    if (remote) {
+      _pc.tvOsdVisible.value = true;
+    }
+    setState(() => _visible = true);
+    widget.onPlayerVisibilityChanged(true);
+    _restartHideTimer();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (_pc.liveChannelStripOverlayOpen.value ||
+          _pc.liveSingleChannelEpgOpen.value ||
+          _pc.vodBrowseRailOpen.value) {
+        return;
+      }
+      _firstOsdButtonFocus.requestFocus();
+    });
+  }
+
+  /// Worker'lari guvenli sekilde dispose et - memory leak onleme
+  void _safeDisposeWorker(Worker? worker) {
+    if (worker != null) {
+      worker.dispose();
+    }
+  }
+
   @override
   void dispose() {
-    _stripOverlayWorker?.dispose();
-    _tvOsdVisibleWorker?.dispose();
+    _cancelLiveOsdPlayPauseCenterHold();
+    // TUM Worker'lari guvenli sekilde dispose et - memory leak kritik fix
+    _safeDisposeWorker(_tvOsdVisibleWorker);
+    _safeDisposeWorker(_stripOverlayWorker);
+    _safeDisposeWorker(_vodBrowseRailWorker);
+    _safeDisposeWorker(_tvOsdKeyBumpWorker);
     _hideTimer?.cancel();
     _overlayTimer?.cancel();
+    _volumeListener?.cancel();
     _cancelMkSubs();
     _mkListenerTarget = null;
     _mainFocusNode.dispose();
@@ -241,13 +363,15 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
   }
 
   Duration get _hideAfter {
-    final tv =
-        Get.find<AppSettingsService>().layoutMode.value == AppLayoutMode.tv;
-    return tv ? _hideAfterTv : _hideAfterMobile;
+    final remote =
+        Get.find<AppSettingsService>().layoutMode.value
+            .usesRemoteNavigationStyle;
+    return remote ? _hideAfterTv : _hideAfterMobile;
   }
 
   void _restartHideTimer() {
-    if (Get.find<AppSettingsService>().layoutMode.value == AppLayoutMode.tv) {
+    if (Get.find<AppSettingsService>().layoutMode.value
+        .usesRemoteNavigationStyle) {
       _pc.scheduleTvOsdAutoHide();
       return;
     }
@@ -258,74 +382,109 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
       widget.onPlayerVisibilityChanged(false);
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        if (_pc.liveChannelStripOverlayOpen.value) return;
+        if (_pc.liveChannelStripOverlayOpen.value ||
+            _pc.liveSingleChannelEpgOpen.value ||
+            _pc.vodBrowseRailOpen.value) {
+          return;
+        }
         _mainFocusNode.requestFocus();
       });
     });
   }
 
   void _showControls() {
+    if (Get.find<AppSettingsService>().layoutMode.value
+        .usesRemoteNavigationStyle) {
+      _pc.tvOsdVisible.value = true;
+    }
     setState(() => _visible = true);
     widget.onPlayerVisibilityChanged(true);
     _restartHideTimer();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      if (_pc.liveChannelStripOverlayOpen.value) return;
+      if (_pc.liveChannelStripOverlayOpen.value ||
+          _pc.liveSingleChannelEpgOpen.value ||
+          _pc.vodBrowseRailOpen.value) {
+        return;
+      }
       _firstOsdButtonFocus.requestFocus();
     });
   }
 
   void _handleVerticalDragStart(DragStartDetails details) async {
-    final width = MediaQuery.of(context).size.width;
+    final width = MediaQuery.sizeOf(context).width;
     _isDraggingLeft = details.globalPosition.dx < width / 2;
+    _verticalGestureOriginY = details.globalPosition.dy;
+    
     if (_isDraggingLeft) {
-      try {
-        _dragStartValue = await ScreenBrightness().application;
-      } catch (_) {
-        _dragStartValue = null;
-      }
+      _verticalGestureStartLevel = _pc.inAppPlaybackBrightness.value;
     } else {
-      _dragStartValue = _pc.currentVolume;
+      // Use system volume for gesture start level
+      try {
+        final currentVolume = await VolumeController().getVolume();
+        _verticalGestureStartLevel = currentVolume;
+        _systemVolume.value = currentVolume;
+      } catch (e) {
+        _verticalGestureStartLevel = _pc.currentVolume;
+      }
     }
   }
 
-  void _handleVerticalDragUpdate(DragUpdateDetails details) {
-    if (_dragStartValue == null) return;
-    final height = MediaQuery.of(context).size.height;
-    final dy = details.primaryDelta ?? details.delta.dy;
-    final delta = -dy / height;
-    final newValue = (_dragStartValue! + delta).clamp(0.0, 1.0);
-    _dragStartValue = newValue;
+  void _handleVerticalDragUpdate(DragUpdateDetails details) async {
+    final originY = _verticalGestureOriginY;
+    if (originY == null) return;
+
+    final height = MediaQuery.sizeOf(context).height;
+    if (height <= 1) return;
+
+    final dy = details.globalPosition.dy - originY;
+    final gain = PlayerController.verticalPlaybackGestureGain;
+    final delta = -(dy / height) * gain;
+    final newValue = (_verticalGestureStartLevel + delta).clamp(0.0, 1.0);
 
     if (_isDraggingLeft) {
-      try {
-        ScreenBrightness().setApplicationScreenBrightness(newValue);
-      } catch (_) {}
+      _pc.setInAppPlaybackBrightness(newValue);
       _overlayIcon.value = Icons.brightness_6_rounded;
     } else {
-      _pc.setVolume(newValue);
-      _overlayIcon.value = playerVolumeIconFor(newValue);
+      try {
+        // Update system volume directly
+        VolumeController().setVolume(newValue);
+        _systemVolume.value = newValue;
+        _overlayIcon.value = playerVolumeIconFor(newValue);
+      } catch (e) {
+        // Fallback to internal volume control
+        _pc.setVolume(newValue);
+        _overlayIcon.value = playerVolumeIconFor(newValue);
+      }
     }
     _overlayValue.value = newValue;
 
     _showOverlay.value = true;
     _overlayTimer?.cancel();
-    _overlayTimer = Timer(const Duration(milliseconds: 800), () {
-      _showOverlay.value = false;
+    _overlayTimer = Timer(const Duration(seconds: 2), () {
+      if (mounted) _showOverlay.value = false;
     });
   }
 
-  void _nudgeVolumeFromKey(double delta) {
+  void _nudgeVolumeFromKey(double delta) async {
     _restartHideTimer();
-    final v = (_pc.currentVolume + delta).clamp(0.0, 1.0);
-    _pc.setVolume(v);
-    _overlayIcon.value = playerVolumeIconFor(v);
-    _overlayValue.value = v;
-    _showOverlay.value = true;
-    _overlayTimer?.cancel();
-    _overlayTimer = Timer(const Duration(milliseconds: 1200), () {
-      _showOverlay.value = false;
-    });
+    final currentVolume = _systemVolume.value;
+    final newVolume = (currentVolume + delta).clamp(0.0, 1.0);
+    
+    try {
+      // Update system volume
+      VolumeController().setVolume(newVolume);
+      _systemVolume.value = newVolume;
+      _overlayValue.value = newVolume;
+      _overlayIcon.value = playerVolumeIconFor(newVolume);
+      _showOverlay.value = true;
+      _overlayTimer?.cancel();
+      _overlayTimer = Timer(const Duration(seconds: 2), () {
+        if (mounted) _showOverlay.value = false;
+      });
+    } catch (e) {
+      debugPrint('Volume control error: $e');
+    }
   }
 
   void _togglePlay() {
@@ -366,7 +525,7 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
   String _liveEpgSubtitle(bool live) {
     if (!live) return '';
     final epg = Get.find<EpgService>();
-    final prog = epg.getCurrentProgramme(_channel.epgChannelId);
+    final prog = epg.getCurrentProgrammeForLiveChannel(_channel);
     String fmt(DateTime d) =>
         '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
     if (prog != null) {
@@ -435,9 +594,14 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
       borderRadius: BorderRadius.circular(radius),
       child: Obx(() {
         final ga = GlassAppearance.fromLabel(settings.themeLabel.value);
-        final reduce = settings.reduceBlur.value;
-        final tv = settings.layoutMode.value == AppLayoutMode.tv;
-        final sigma = tv ? 0.0 : (reduce ? 10.0 : 20.0);
+        final remoteStyle = settings.layoutMode.value
+            .usesRemoteNavigationStyle;
+        final sigma = AppPerformance.glassSigmaRemoteStyle(
+          settings,
+          remoteStyle: remoteStyle,
+          fullSigma: 20,
+          reducedSigma: 10,
+        );
         final decorated = Container(
           padding: padding,
           decoration: BoxDecoration(
@@ -450,7 +614,7 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
             ),
             boxShadow: [
               BoxShadow(
-                color: ga.popupShadowColor,
+                color: ga.playerBarShadowColor,
                 blurRadius: 24,
                 offset: const Offset(0, 10),
               ),
@@ -467,6 +631,86 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
     );
   }
 
+  static const _liveStripHoldFromOsd = Duration(milliseconds: 520);
+
+  bool _deferLiveStripHoldForOsdPlayPause(PlayerController pc) {
+    final url = pc.channel.value.streamUrl.toLowerCase();
+    final vod = pc.isMovie ||
+        pc.isSeries ||
+        url.contains('/movie/') ||
+        url.contains('/series/');
+    final liveCh = !vod;
+    return liveCh && !pc.liveTimeshiftSeekAvailable;
+  }
+
+  void _cancelLiveOsdPlayPauseCenterHold() {
+    _liveOsdPlayPauseCenterHoldTimer?.cancel();
+    _liveOsdPlayPauseCenterHoldTimer = null;
+    _liveOsdPlayPauseCenterHoldPending = false;
+    _vodOsdBrowseRailHoldTimer?.cancel();
+    _vodOsdBrowseRailHoldTimer = null;
+    _vodOsdBrowseRailHoldPending = false;
+  }
+
+  void _liveOsdPlayPauseCenterKeyDown() {
+    _restartHideTimer();
+    if (_deferLiveStripHoldForOsdPlayPause(_pc)) {
+      _cancelLiveOsdPlayPauseCenterHold();
+      _liveOsdPlayPauseCenterHoldPending = true;
+      _liveOsdPlayPauseCenterHoldTimer =
+          Timer(_liveStripHoldFromOsd, () {
+        _liveOsdPlayPauseCenterHoldTimer = null;
+        if (!mounted) return;
+        if (!_liveOsdPlayPauseCenterHoldPending) return;
+        _liveOsdPlayPauseCenterHoldPending = false;
+        _pc.requestOpenLiveChannelStripFromTvOsd();
+      });
+      return;
+    }
+    if (_pc.vodBrowseRailAvailable) {
+      _cancelLiveOsdPlayPauseCenterHold();
+      _vodOsdBrowseRailHoldPending = true;
+      _vodOsdBrowseRailHoldTimer = Timer(_liveStripHoldFromOsd, () {
+        _vodOsdBrowseRailHoldTimer = null;
+        if (!mounted) return;
+        if (!_vodOsdBrowseRailHoldPending) return;
+        _vodOsdBrowseRailHoldPending = false;
+        _pc.requestOpenVodBrowseRailFromTvOsd();
+      });
+      return;
+    }
+    _togglePlay();
+  }
+
+  void _liveOsdPlayPauseCenterKeyUp() {
+    _liveOsdPlayPauseCenterHoldTimer?.cancel();
+    _liveOsdPlayPauseCenterHoldTimer = null;
+    final liveWasPending = _liveOsdPlayPauseCenterHoldPending;
+    _liveOsdPlayPauseCenterHoldPending = false;
+
+    _vodOsdBrowseRailHoldTimer?.cancel();
+    _vodOsdBrowseRailHoldTimer = null;
+    final vodWasPending = _vodOsdBrowseRailHoldPending;
+    _vodOsdBrowseRailHoldPending = false;
+
+    if (vodWasPending && _pc.vodBrowseRailAvailable) {
+      _togglePlay();
+      return;
+    }
+    if (liveWasPending && _deferLiveStripHoldForOsdPlayPause(_pc)) {
+      _togglePlay();
+    }
+  }
+
+  void _openQuickMenuFromOsd() {
+    _restartHideTimer();
+    if (_pc.vodBrowseRailAvailable) {
+      _pc.requestOpenVodBrowseRailFromTvOsd();
+    } else {
+      _pc.requestOpenLiveChannelStripFromTvOsd();
+    }
+  }
+
   Widget _osdButton(
     BuildContext context, {
     required String tooltip,
@@ -478,6 +722,7 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
     Color? iconColor,
     FocusNode? focusNode,
     KeyEventResult Function(FocusNode, KeyEvent)? onKeyEvent,
+    bool deferLiveOsdCenterForStrip = false,
   }) {
     assert(icon != null || (letter != null && letter.isNotEmpty));
     final primaryColor = Theme.of(context).colorScheme.primary;
@@ -488,6 +733,9 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
           focusNode: focusNode,
           descendantsAreFocusable: false,
           onFocusChange: (hasFocus) {
+            if (!hasFocus && deferLiveOsdCenterForStrip) {
+              _cancelLiveOsdPlayPauseCenterHold();
+            }
             if (hasFocus) {
               _restartHideTimer();
             }
@@ -499,34 +747,97 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
               if (res != KeyEventResult.ignored) return res;
             }
 
+            final key = event.logicalKey;
+            final centerKey = key == LogicalKeyboardKey.select ||
+                key == LogicalKeyboardKey.enter ||
+                key == LogicalKeyboardKey.numpadEnter ||
+                key == LogicalKeyboardKey.space ||
+                key == LogicalKeyboardKey.gameButtonSelect;
+
+            if (deferLiveOsdCenterForStrip && centerKey) {
+              if (event is KeyUpEvent) {
+                _liveOsdPlayPauseCenterKeyUp();
+                return KeyEventResult.handled;
+              }
+            }
+
             if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
               return KeyEventResult.ignored;
             }
-            final key = event.logicalKey;
             final url = _pc.channel.value.streamUrl.toLowerCase();
-            final vod = url.contains('/movie/') || url.contains('/series/');
+            final vod = _pc.isMovie ||
+                _pc.isSeries ||
+                url.contains('/movie/') ||
+                url.contains('/series/');
             final liveCh = !vod;
+            final liveTs = liveCh && _pc.liveTimeshiftSeekAvailable;
+
+            if (deferLiveOsdCenterForStrip && centerKey) {
+              if (event is KeyDownEvent) {
+                _liveOsdPlayPauseCenterKeyDown();
+                return KeyEventResult.handled;
+              }
+              if (event is KeyRepeatEvent) {
+                _restartHideTimer();
+                return KeyEventResult.handled;
+              }
+            }
 
             if (key == LogicalKeyboardKey.select ||
                 key == LogicalKeyboardKey.enter ||
+                key == LogicalKeyboardKey.numpadEnter ||
                 key == LogicalKeyboardKey.space ||
                 key == LogicalKeyboardKey.gameButtonSelect) {
               if (event is KeyRepeatEvent) {
                 _restartHideTimer();
-                if (liveCh) {
-                  _zap(1);
-                } else {
-                  _skipForward15();
+                // Canlý (timeshift deðil): uzun OK tekrarýnda zýplatma yok; þerit OSD/PlayerView ile açýlýr.
+                if (liveCh && !liveTs) {
+                  return KeyEventResult.handled;
                 }
+                _skipForward15();
                 return KeyEventResult.handled;
               }
               onPressed();
               return KeyEventResult.handled;
             }
+            if (key == LogicalKeyboardKey.arrowUp) {
+              // Yukarý tuþu: OSD'yi hemen göster ve önceki kanala geç
+              if (!_visible) {
+                setState(() => _visible = true);
+                widget.onPlayerVisibilityChanged(true);
+              }
+              _restartHideTimer();
+              if (event is KeyRepeatEvent) {
+                return KeyEventResult.handled;
+              }
+              if (liveCh && !liveTs) {
+                _zap(-1);
+              } else {
+                _skipBack15();
+              }
+              return KeyEventResult.handled;
+            }
+            if (key == LogicalKeyboardKey.arrowDown) {
+              // Aþaðý tuþu: OSD'yi hemen göster ve sonraki kanala geç
+              if (!_visible) {
+                setState(() => _visible = true);
+                widget.onPlayerVisibilityChanged(true);
+              }
+              _restartHideTimer();
+              if (event is KeyRepeatEvent) {
+                return KeyEventResult.handled;
+              }
+              if (liveCh && !liveTs) {
+                _zap(1);
+              } else {
+                _skipForward15();
+              }
+              return KeyEventResult.handled;
+            }
             if (key == LogicalKeyboardKey.arrowLeft) {
               if (event is KeyRepeatEvent) {
                 _restartHideTimer();
-                if (liveCh) {
+                if (liveCh && !liveTs) {
                   _zap(-1);
                 } else {
                   _skipBack15();
@@ -539,7 +850,7 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
             if (key == LogicalKeyboardKey.arrowRight) {
               if (event is KeyRepeatEvent) {
                 _restartHideTimer();
-                if (liveCh) {
+                if (liveCh && !liveTs) {
                   _zap(1);
                 } else {
                   _skipForward15();
@@ -554,12 +865,22 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
           child: Builder(builder: (innerCtx) {
             final focused = Focus.of(innerCtx).hasFocus;
             return Obx(() {
-              final ga = GlassAppearance.fromLabel(
-                Get.find<AppSettingsService>().themeLabel.value,
-              );
+              final tl = Get.find<AppSettingsService>().themeLabel.value;
+              final ga = GlassAppearance.fromLabel(tl);
+              final isFb = tl == GlassThemeLabels.flatBlack;
               final unfocusedBg = primary
-                  ? const Color(0xFF4EC4D4).withValues(alpha: 0.45)
+                  ? (isFb
+                      ? const Color(0xFF0C0C0C)
+                      : const Color(0xFF4EC4D4).withValues(alpha: 0.45))
                   : ga.playerBarDimColor;
+              final focusedFill = focused
+                  ? (primary && isFb
+                      ? const Color(0xFF141414)
+                      : primaryColor.withValues(alpha: 0.6))
+                  : unfocusedBg;
+              final borderClr = focused
+                  ? (isFb ? const Color(0xFF1A1A1A) : Colors.white)
+                  : Colors.transparent;
               return Tooltip(
                 message: tooltip,
                 child: AnimatedContainer(
@@ -567,12 +888,10 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
                   width: size,
                   height: size,
                   decoration: BoxDecoration(
-                    color: focused
-                        ? primaryColor.withValues(alpha: 0.6)
-                        : unfocusedBg,
+                    color: focusedFill,
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(
-                      color: focused ? Colors.white : Colors.transparent,
+                      color: borderClr,
                       width: 2,
                     ),
                   ),
@@ -616,68 +935,77 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
 
   void _switchToBetterPlayer() {
     _restartHideTimer();
-    unawaited(_pc.switchToBetterPlayer());
+    unawaited(_pc.promptSwitchToBetterFromMediaKit());
   }
 
   Future<void> _showQualityDialog() async {
-    _restartHideTimer();
     final tracks = _pc.mediaKitVideoTrackLabels();
     if (!mounted) return;
     if (tracks.length <= 1) {
-      _osdInfoDialog(
+      await _osdInfoDialog(
         'player.quality.title'.tr,
         'player.quality.noneLong'.tr,
       );
       return;
     }
-    final active = _player?.state.track.video.id;
-    await Get.dialog<void>(
-      _MkTrackPickDialog(
-        title: 'player.sheet.qualityTitle'.tr,
-        entries: tracks.entries.toList()
-          ..sort((a, b) => a.key.compareTo(b.key)),
-        selectedId: active,
-        onPick: (id) {
-          unawaited(_pc.setMediaKitVideoTrackById(id));
-          Get.back<void>();
-        },
-      ),
-    );
+    _pauseOsdHideForModal();
+    _suspendOsdFocusForDialog();
+    try {
+      final active = _player?.state.track.video.id;
+      await Get.dialog<void>(
+        _MkTrackPickDialog(
+          title: 'player.sheet.qualityTitle'.tr,
+          entries: tracks.entries.toList()
+            ..sort((a, b) => a.key.compareTo(b.key)),
+          selectedId: active,
+          onPick: (id) {
+            unawaited(_pc.setMediaKitVideoTrackById(id));
+            Get.back<void>();
+          },
+        ),
+      );
+    } finally {
+      _resumeOsdAfterSubDialog();
+    }
   }
 
   Future<void> _showAudioDialog() async {
-    _restartHideTimer();
     final tracks = _pc.mediaKitAudioTrackLabels();
     if (!mounted) return;
     if (tracks.isEmpty) {
-      _osdInfoDialog(
+      await _osdInfoDialog(
         'player.audio.title'.tr,
         'player.audio.noneLong'.tr,
       );
       return;
     }
-    final active = _player?.state.track.audio.id;
-    await Get.dialog<void>(
-      _MkTrackPickDialog(
-        title: 'player.sheet.audioTitle'.tr,
-        entries: tracks.entries.toList()
-          ..sort((a, b) => a.key.compareTo(b.key)),
-        selectedId: active,
-        onPick: (id) {
-          unawaited(_pc.setMediaKitAudioTrackById(id));
-          Get.back<void>();
-        },
-      ),
-    );
+    _pauseOsdHideForModal();
+    _suspendOsdFocusForDialog();
+    try {
+      final active = _player?.state.track.audio.id;
+      await Get.dialog<void>(
+        _MkTrackPickDialog(
+          title: 'player.sheet.audioTitle'.tr,
+          entries: tracks.entries.toList()
+            ..sort((a, b) => a.key.compareTo(b.key)),
+          selectedId: active,
+          onPick: (id) {
+            unawaited(_pc.setMediaKitAudioTrackById(id));
+            Get.back<void>();
+          },
+        ),
+      );
+    } finally {
+      _resumeOsdAfterSubDialog();
+    }
   }
 
   Future<void> _showSubtitleDialog() async {
-    _restartHideTimer();
     final tracks = _pc.mediaKitSubtitleTrackLabels();
     if (!mounted) return;
     final realCount = tracks.keys.where((k) => k != 'no').length;
     if (realCount == 0) {
-      _osdInfoDialog(
+      await _osdInfoDialog(
         'player.sheet.subtitleTitle'.tr,
         'player.subtitle.noneLong'.tr,
       );
@@ -689,34 +1017,46 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
         if (b.key == 'no') return 1;
         return a.key.compareTo(b.key);
       });
-    final active = _player?.state.track.subtitle.id ?? 'no';
-    await Get.dialog<void>(
-      _MkTrackPickDialog(
-        title: 'player.sheet.subtitleTitle'.tr,
-        entries: list,
-        selectedId: active,
-        onPick: (id) {
-          unawaited(_pc.setMediaKitSubtitleById(id));
-          Get.back<void>();
-        },
-      ),
-    );
+    _pauseOsdHideForModal();
+    _suspendOsdFocusForDialog();
+    try {
+      final active = _player?.state.track.subtitle.id ?? 'no';
+      await Get.dialog<void>(
+        _MkTrackPickDialog(
+          title: 'player.sheet.subtitleTitle'.tr,
+          entries: list,
+          selectedId: active,
+          onPick: (id) {
+            unawaited(_pc.setMediaKitSubtitleById(id));
+            Get.back<void>();
+          },
+        ),
+      );
+    } finally {
+      _resumeOsdAfterSubDialog();
+    }
   }
 
-  void _osdInfoDialog(String title, String body) {
-    Get.dialog<void>(
-      GlassAlertDialog(
-        tvOsdStyle: true,
-        title: Text(title),
-        content: Text(body),
-        actions: [
-          TextButton(
-            onPressed: () => Get.back<void>(),
-            child: Text('common.ok'.tr),
-          ),
-        ],
-      ),
-    );
+  Future<void> _osdInfoDialog(String title, String body) async {
+    _pauseOsdHideForModal();
+    _suspendOsdFocusForDialog();
+    try {
+      await Get.dialog<void>(
+        GlassAlertDialog(
+          tvOsdStyle: true,
+          title: Text(title),
+          content: Text(body),
+          actions: [
+            TextButton(
+              onPressed: () => Get.back<void>(),
+              child: Text('common.ok'.tr),
+            ),
+          ],
+        ),
+      );
+    } finally {
+      _resumeOsdAfterSubDialog();
+    }
   }
 
   @override
@@ -734,13 +1074,17 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
       final ch = _pc.channel.value;
       _pc.mediaKitAttachEpoch.value;
       final streamUrl = ch.streamUrl.toLowerCase();
-      final isVod =
-          streamUrl.contains('/movie/') || streamUrl.contains('/series/');
+      final isVod = _pc.isMovie ||
+          _pc.isSeries ||
+          streamUrl.contains('/movie/') ||
+          streamUrl.contains('/series/');
       final live = !isVod;
       final fit = _pc.videoFit.value;
       final _ = _pc.osdQualityStamp.value;
-      final qualityLabel = _pc.osdStreamQualityLabel;
+      final resolutionTier = _pc.osdStreamResolutionTierLabel;
+      final hzLabel = _pc.osdStreamFrameRateHzLabel;
       final epgLine = _liveEpgSubtitle(live);
+      final quickMenuBadge = _pc.osdQuickMenuHoldBadgeVisible;
 
       return GestureDetector(
         behavior: HitTestBehavior.opaque,
@@ -752,6 +1096,18 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
           autofocus: true,
           onKeyEvent: (node, event) {
             if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+              return KeyEventResult.ignored;
+            }
+            final pcDialog = _pc.vodResumeDialogOpen.value;
+            if (pcDialog) {
+              return KeyEventResult.ignored;
+            }
+            if (_pc.vodAutoplayCountdown.value != null) {
+              return KeyEventResult.ignored;
+            }
+
+            final route = ModalRoute.of(context);
+            if (route != null && !route.isCurrent) {
               return KeyEventResult.ignored;
             }
 
@@ -767,18 +1123,29 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
             }
 
             if (key == LogicalKeyboardKey.arrowUp) {
-              _zap(-1);
-              if (!_visible) _showControls();
+              if (!_visible) {
+                _showControls();
+                return KeyEventResult.handled;
+              }
+              if (live) {
+                _zap(-1);
+              }
               return KeyEventResult.handled;
             }
             if (key == LogicalKeyboardKey.arrowDown) {
-              _zap(1);
-              if (!_visible) _showControls();
+              if (!_visible) {
+                _showControls();
+                return KeyEventResult.handled;
+              }
+              if (live) {
+                _zap(1);
+              }
               return KeyEventResult.handled;
             }
 
             if (key == LogicalKeyboardKey.select ||
                 key == LogicalKeyboardKey.enter ||
+                key == LogicalKeyboardKey.numpadEnter ||
                 key == LogicalKeyboardKey.space ||
                 key == LogicalKeyboardKey.gameButtonSelect) {
               if (!_visible) {
@@ -799,6 +1166,13 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
             }
 
             if (!_visible && isVod) {
+              if (key == LogicalKeyboardKey.arrowLeft ||
+                  key == LogicalKeyboardKey.arrowRight) {
+                _showControls();
+                return KeyEventResult.handled;
+              }
+            }
+            if (_visible && isVod) {
               if (key == LogicalKeyboardKey.arrowLeft) {
                 _skipBack15();
                 return KeyEventResult.handled;
@@ -833,7 +1207,9 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
                 left: 12 + leftInset,
                 right: 12 + rightInset,
                 bottom: 12 + bottomInset,
-                child: AnimatedSlide(
+                child: ExcludeFocus(
+                  excluding: !_visible,
+                  child: AnimatedSlide(
                   duration: const Duration(milliseconds: 260),
                   curve: Curves.easeOutCubic,
                   offset: _visible ? Offset.zero : const Offset(0, 1.2),
@@ -876,6 +1252,9 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
                                     mainAxisSize: MainAxisSize.min,
                                     children: [
                                       _ChannelLogoBadge(
+                                        key: ValueKey(
+                                          '${ch.id}_${ch.logoUrl ?? ''}',
+                                        ),
                                         logoUrl: ch.logoUrl,
                                         size: 42,
                                       ),
@@ -906,42 +1285,33 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
                                                     ),
                                                   ),
                                                 ),
-                                                if (qualityLabel != null &&
-                                                    qualityLabel
-                                                        .isNotEmpty) ...[
-                                                  const SizedBox(width: 6),
-                                                  Container(
-                                                    padding: const EdgeInsets
-                                                        .symmetric(
+                                                ...() {
+                                                  final badges =
+                                                      osdStreamQualityBadgeWidgets(
+                                                    resolutionTier:
+                                                        resolutionTier,
+                                                    hzLabel: hzLabel,
+                                                    fontSize: 9,
+                                                    borderRadius: 6,
+                                                    padding:
+                                                        const EdgeInsets
+                                                            .symmetric(
                                                       horizontal: 5,
                                                       vertical: 2,
                                                     ),
-                                                    decoration: BoxDecoration(
-                                                      color: Colors.white
-                                                          .withValues(
-                                                              alpha: 0.14),
-                                                      borderRadius:
-                                                          BorderRadius.circular(
-                                                              6),
-                                                      border: Border.all(
-                                                        color: Colors.white
-                                                            .withValues(
-                                                                alpha: 0.28),
-                                                      ),
+                                                  );
+                                                  if (badges.isEmpty) {
+                                                    return <Widget>[];
+                                                  }
+                                                  return <Widget>[
+                                                    const SizedBox(width: 6),
+                                                    Row(
+                                                      mainAxisSize:
+                                                          MainAxisSize.min,
+                                                      children: badges,
                                                     ),
-                                                    child: Text(
-                                                      qualityLabel,
-                                                      style: const TextStyle(
-                                                        color: Colors.white,
-                                                        fontSize: 9,
-                                                        fontWeight:
-                                                            FontWeight.w800,
-                                                        letterSpacing: 0.3,
-                                                        height: 1,
-                                                      ),
-                                                    ),
-                                                  ),
-                                                ],
+                                                  ];
+                                                }(),
                                               ],
                                             ),
                                             const SizedBox(height: 2),
@@ -1013,7 +1383,6 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
                                             onPressed: live
                                                 ? () => _zap(-1)
                                                 : _skipBack15,
-                                            focusNode: _firstOsdButtonFocus,
                                           ),
                                           const SizedBox(width: 6),
                                           _osdButton(
@@ -1026,6 +1395,8 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
                                                 : Icons.play_arrow_rounded,
                                             onPressed: _togglePlay,
                                             primary: true,
+                                            focusNode: _firstOsdButtonFocus,
+                                            deferLiveOsdCenterForStrip: true,
                                           ),
                                           const SizedBox(width: 6),
                                           _osdButton(
@@ -1073,6 +1444,17 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
                                               );
                                             },
                                           ),
+                                          if (quickMenuBadge) ...[
+                                            const SizedBox(width: 6),
+                                            _osdButton(
+                                              context,
+                                              tooltip:
+                                                  'player.tooltip.quickMenuOpen'
+                                                      .tr,
+                                              icon: Icons.view_sidebar_rounded,
+                                              onPressed: _openQuickMenuFromOsd,
+                                            ),
+                                          ],
                                           const SizedBox(width: 6),
                                           _osdButton(
                                             context,
@@ -1082,6 +1464,46 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
                                             icon: _fitIcon(fit),
                                             onPressed: _cycleFit,
                                           ),
+                                          Obx(() {
+                                            final s =
+                                                Get.find<AppSettingsService>();
+                                            if (s.layoutMode.value !=
+                                                AppLayoutMode.mobile) {
+                                              return const SizedBox.shrink();
+                                            }
+                                            return Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                const SizedBox(width: 6),
+                                                _osdButton(
+                                                  context,
+                                                  tooltip: 'player.tooltip.toPortrait'
+                                                      .tr,
+                                                  icon: Icons
+                                                      .stay_current_portrait_rounded,
+                                                  onPressed: () {
+                                                    _restartHideTimer();
+                                                    unawaited(
+                                                      s.requestMobileHandheldPortraitPlayback(),
+                                                    );
+                                                  },
+                                                ),
+                                              ],
+                                            );
+                                          }),
+                                          if (live) ...[
+                                            const SizedBox(width: 6),
+                                            _osdButton(
+                                              context,
+                                              tooltip:
+                                                  'player.tooltip.liveEpg'.tr,
+                                              icon: Icons.view_timeline_rounded,
+                                              onPressed: () {
+                                                _restartHideTimer();
+                                                _pc.openLiveSingleChannelEpgOverlay();
+                                              },
+                                            ),
+                                          ],
                                           const SizedBox(width: 6),
                                           _osdButton(
                                             context,
@@ -1201,6 +1623,7 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
                     ),
                   ),
                 ),
+                ),
               ),
               Obx(() => AnimatedOpacity(
                     duration: const Duration(milliseconds: 200),
@@ -1234,56 +1657,72 @@ class _MkTrackPickDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Material(
-        color: Colors.transparent,
-        child: SizedBox(
-          width: 320,
-          height: MediaQuery.sizeOf(context).height * 0.72,
-          child: GlassPopupPanel(
-            padding: const EdgeInsets.all(20),
-            borderRadius: 24,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 20,
-                    fontWeight: FontWeight.w800,
-                  ),
+    return CallbackShortcuts(
+      bindings: <ShortcutActivator, VoidCallback>{
+        const SingleActivator(LogicalKeyboardKey.goBack): () => Get.back<void>(),
+        const SingleActivator(LogicalKeyboardKey.escape): () => Get.back<void>(),
+      },
+      child: FocusScope(
+        autofocus: true,
+        child: Center(
+          child: Material(
+            color: Colors.transparent,
+            child: SizedBox(
+              width: 320,
+              height: MediaQuery.sizeOf(context).height * 0.72,
+              child: GlassPopupPanel(
+                padding: const EdgeInsets.all(20),
+                borderRadius: 24,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      title,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 20,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Flexible(
+                      child: ListView.separated(
+                      shrinkWrap: true,
+                      itemCount: entries.length,
+                      separatorBuilder: (_, __) =>
+                          const Divider(color: Colors.white12, height: 1),
+                      itemBuilder: (context, i) {
+                        final e = entries[i];
+                        final cur = selectedId != null && e.key == selectedId;
+                        final tile = ListTile(
+                          textColor: cur ? Colors.white : Colors.white70,
+                          title: Text(e.value.isNotEmpty ? e.value : e.key),
+                          trailing: cur
+                              ? Icon(Icons.check_circle_rounded,
+                                  color: Theme.of(context).colorScheme.primary)
+                              : null,
+                          onTap: () => onPick(e.key),
+                        );
+                        if (i == 0) {
+                          return Focus(
+                            autofocus: true,
+                            child: tile,
+                          );
+                        }
+                        return tile;
+                      },
+                    ),
+                    ),
+                    TextButton(
+                      onPressed: () => Get.back<void>(),
+                      child: Text(
+                        'common.close'.tr,
+                        style: const TextStyle(color: Colors.white54),
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 16),
-                Flexible(
-                  child: ListView.separated(
-                  shrinkWrap: true,
-                  itemCount: entries.length,
-                  separatorBuilder: (_, __) =>
-                      const Divider(color: Colors.white12, height: 1),
-                  itemBuilder: (context, i) {
-                    final e = entries[i];
-                    final cur = selectedId != null && e.key == selectedId;
-                    return ListTile(
-                      textColor: cur ? Colors.white : Colors.white70,
-                      title: Text(e.value.isNotEmpty ? e.value : '${e.key}'),
-                      trailing: cur
-                          ? Icon(Icons.check_circle_rounded,
-                              color: Theme.of(context).colorScheme.primary)
-                          : null,
-                      onTap: () => onPick(e.key),
-                    );
-                  },
-                ),
-                ),
-                TextButton(
-                  onPressed: () => Get.back<void>(),
-                  child: Text(
-                    'common.close'.tr,
-                    style: const TextStyle(color: Colors.white54),
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
         ),
@@ -1378,7 +1817,7 @@ class _MkProgressBar extends StatelessWidget {
 }
 
 class _ChannelLogoBadge extends StatelessWidget {
-  const _ChannelLogoBadge({this.logoUrl, this.size = 48.0});
+  const _ChannelLogoBadge({super.key, this.logoUrl, this.size = 48.0});
 
   final String? logoUrl;
   final double size;
@@ -1393,21 +1832,20 @@ class _ChannelLogoBadge extends StatelessWidget {
         height: size,
         color: Colors.white.withValues(alpha: 0.08),
         child: url != null && url.isNotEmpty
-            ? Image.network(
-                url,
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => const _LogoFallback(),
-                loadingBuilder: (context, child, progress) {
-                  if (progress == null) return child;
-                  return const Center(
-                    child: SizedBox(
-                      width: 22,
-                      height: 22,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white54,
-                      ),
-                    ),
+            ? Builder(
+                builder: (context) {
+                  final px =
+                      (size * MediaQuery.devicePixelRatioOf(context)).round();
+                  return IptvChannelLogo(
+                    imageUrl: url,
+                    width: size,
+                    height: size,
+                    fit: BoxFit.cover,
+                    memCacheWidth: px,
+                    memCacheHeight: px,
+                    showProgressIndicator: true,
+                    progressIndicatorColor: Colors.white54,
+                    errorWidget: const _LogoFallback(),
                   );
                 },
               )

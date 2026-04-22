@@ -26,13 +26,16 @@ abstract class PlaylistRepository {
     required int categoryId,
   });
 
-  /// Xtream `get_series_info` ile tüm bölümleri döndürür; kaynak Xtream değilse boş liste.
-  Future<List<SeriesEpisodeOption>> resolveXtreamSeriesEpisodes({
+  /// Xtream `get_series_info` ile bölümler + dizi özeti; kaynak Xtream değilse boş.
+  Future<XtreamSeriesBrowseDetail> resolveXtreamSeriesEpisodes({
     required int seriesId,
     required String seriesName,
     String? posterUrl,
     required int categoryId,
   });
+
+  /// Xtream `get_vod_info` ile film metası (plot, tür, yönetmen…).
+  Future<Map<String, String>?> loadXtreamVodInfoFields(int vodStreamId);
 
   Future<String?> getXtreamEpgUrl();
 
@@ -72,4 +75,10 @@ abstract class PlaylistRepository {
   Future<M3uResult> loadMergedPlaylist({
     String secondaryOrphanCategoryName = 'List 2',
   });
+
+  /// Ağdan yeni çekilmiş birleşik sonucu anlık görüntü olarak yazar (ilk kurulumda tekrar indirmeyi önler).
+  Future<void> persistMergedPlaylistSnapshot(M3uResult merged);
+
+  /// Kayıtlı kaynak(lar) ile parmak izi eşleşen yerel birleşik playlist anlık görüntüsü.
+  Future<M3uResult?> restoreMergedPlaylistFromSnapshot();
 }

@@ -1,5 +1,85 @@
 # Changelog
 
+## Uygulama özellikleri (genel)
+
+- **Kaynaklar:** M3U / M3U8 (URL veya yerel dosya), **Xtream Codes** API; birincil ve isteğe bağlı ikinci kaynak.
+- **Canlı TV:** Kategori ve kanal listesi, arama, favoriler, yatay/dikey ve **Android TV** kumanda odakları; hızlı kanal şeridi ve cam OSD.
+- **VOD ve diziler:** Gözatma, önizleme, **kaldığın yerden devam**, otomatik sıradaki içerik; MediaKit ve Better Player (ExoPlayer).
+- **EPG:** XMLTV ve Xtream EPG; tam ekran zaman çizelgesi; **catch-up / arşiv** için panel şablonu (timeshift yolu, `timeshift.php`, özel URL).
+- **Kategori gizleme:** Xtream’de panel kategori ID’leri; M3U’da **group-title** (normalize ad) — canlı, film ve dizi sekmeleri.
+- **Ebeveyn denetimi:** PIN ile korunan kategori gizleme ekranı.
+- **Görseller:** Kanal logoları için **yerel disk önbelleği** (indirme, yeniden boyutlandırma, sınırlı paralel ön yükleme); liste kaydırmada daha az ağ yükü.
+- **Ayarlar:** Tema (cam), dil, canlı tampon, HLS/DASH **adaptif kalite tavanı**, altyazı punto (MediaKit), PiP (telefon), düşük performans modu, decoder tercihi, uyku zamanlayıcısı, vb.
+
+---
+
+## 1.5.20 (build 3024)
+
+- **Kanal logosu önbelleği:** Logolar indirilip izole iş parçacığında yeniden boyutlandırılarak uygulama destek dizinine yazılır; playlist yüklendikten sonra sınırlı sayıda URL **ön alınır**. Kanal listesi, EPG, oynatıcı OSD ve ilgili tüm logo noktaları ortak akışa alındı. Liste/ayar temizliğinde logo önbelleği de silinir.
+- **Kategori gizleme (M3U):** Yerel veya URL M3U listelerinde gizleme, parse’a göre değişen sayısal ID yerine **kategori adı** (normalize `group-title`) ile saklanır; kaynak URL’süne bağlı anahtar. Canlı, gözat (VOD/dizi) ve ana ekran araması aynı kuralları kullanır (`PlaylistCategoryHide`).
+- **Metinler:** Kategori gizleme başlığı ve kullanılamaz mesajı M3U’yu da kapsayacak şekilde güncellendi.
+
+## 1.2.23 (build 2039)
+
+- **Ebeveyn denetimi (Ayarlar, Xtream):** Güvenli depoda saklanan **PIN** (4–6 rakam) oluşturma; PIN doğrulamasından sonra **canlı / film / dizi** Xtream kategorilerini gizleme (mevcut kategori gizleme verisiyle aynı; ayarlardaki doğrudan “kategori gizleme” kutusu **ebeveyn** akışına taşındı).
+- **Kategori gizleme ekranı:** **D-pad** — satır odağında **OK / Space** ile gizle/göster; `FocusTraversalGroup` + odak vurgulu satırlar. **Gömülü mod:** ebeveyn ekranı içinde üstte sekmeler + **Kaydet**; kayıtta tam sayfa kapanmaz.
+- **Hızlı menü (oynatıcı):** Kanallar başlığı kaldırıldı; kategori kutusunda **sol/sağ ok** (çok kategori) ve **dokunmatik** ok alanları; yatayda **daha sıkı** satır yüksekliği / küçük logo ve metin; üstteki **X** kaldırıldı (kapatma: dış alan + Geri).
+- **Android TV / Play:** `drawable-xhdpi` **320×180** banner PNG, **512×512** simge; TV için `drawable-television-*` ön plan; `tv_banner.xml` kaldırıldı.
+
+## 1.2.18 (build 2034)
+
+- **Canlı oynatıcı (TV):** OSD’de **dur/durdur** odağındayken **OK uzun basış** yalnızca **hızlı kanal şeridini** açar; kısa basış yine duraklat/devam. Şerit kapanınca (Geri / arka plan) **cam OSD** yeniden açılır ve otomatik gizlenir. **Geri** ile şerit kapanırken aynı sistem pop’unda oyuncudan çıkılması engellendi (`PopScope` tüketimi).
+- **Tek kanal EPG (TV):** Kumanda **Geri** ile kapanırken çift pop nedeniyle oyuncudan çıkma giderildi (`onHardwareBack` + `PopScope`).
+- **Better Player / Android:** IPTV için **canlı** (daha düşük gecikme) ve **VOD** (daha geniş tampon) tampon profilleri; Exo `setPrioritizeTimeOverSizeThresholds` desteği (`BetterPlayerBufferingConfiguration` + Kotlin `DefaultLoadControl`).
+- **Kanallar / Gözat (TV):** Liste ve **sol kategori** satırlarında tek basışta **iki satır atlaması** giderildi (`KeyRepeat` yutma; basılı tutmada ilk tekrar için **~420 ms** bekleme, sonra periyodik adım).
+- **Ana ekran (TV):** **Arama** ikonunda odak varken **OK**’nin bazen tepki vermemesi giderildi (`Focus.descendantsAreFocusable` + `InkWell.canRequestFocus: false`); ayarlar ikonu aynı mantıkla hizalandı.
+
+## 1.2.14 (build 2029)
+
+- **VOD / dizi:** Film ve bölüm için **kaldığın yerden devam** — izleme konumu kaydedilir; açılışta konum sorulur (`WatchProgressService`).
+- **VOD:** İzleme bitince **sonraki film veya bölüm** için geri sayımlı **otomatik oynatma** (iptal / hemen oynat; TV kumandası ile uyum).
+- **Ana ekran arama:** Kapsam seçimi — **tümü**, yalnızca **canlı**, **filmler**, **diziler** veya **favoriler** (`HomeSearchScope`).
+- **EPG:** Tam ekran **zaman çizelgesi** gövdesi (`ChannelsEpgTimelineScaffold` / `ChannelsEpgTimelineBody`); EPG yükleme ve kullanım akışında iyileştirmeler.
+- **Catch-up (arşiv):** Panel türüne göre arşiv URL’si — **kapalı**, klasik **Xtream timeshift yolu**, **`timeshift.php` sorgusu** veya **özel şablon** (`CatchUpUrlPreset`).
+- **Xtream:** **Kategori gizleme** — canlı, VOD ve dizi sekmelerinde istenmeyen kategorileri listeden çıkarma (`XtreamCategoryHideView`).
+- **Ayarlar — oynatma:** HLS/DASH için **adaptif kalite üst sınırı** (otomatik / en fazla 720p / 1080p / 4K).
+- **Ayarlar — altyazı:** **MediaKit altyazı punto** seçimi (Better tarafında mevcut davranış korunur).
+- **Android:** **SoC / bellek** ipuçları (ör. Amlogic benzeri kutularda tampon ve MediaKit yolu); `MainActivity` içinde PiP ve **cihaz profili** kanalı (`mediaKitSoCProfile`, TV algısı) iyileştirmeleri.
+- **Oynatıcı / TV:** Canlı ve VOD için OSD, kumanda ve cam panellerde kapsamlı düzenlemeler; ayrı TV “meşgul” OSD katmanı kaldırıldı, durum tek akışta birleştirildi.
+- **Gözat / Kanallar / playlist:** Düzen, odak ve liste davranışlarında güncellemeler; çeviriler genişletildi.
+- **better_player_plus (fork):** Altyazı çizimi ve yapılandırma uyarlama; Android tarafında küçük düzeltmeler.
+
+## 1.2.13 (build 2028)
+
+- **Playlist kurulum (TV düzeni):** **Xtream** sekmesi solda / ilk sırada, **M3U** sağda; birincil ve ikinci kaynak aynı sırayı kullanır (`tabIndex` / `secondaryTabIndex`: 0 = Xtream, 1 = M3U).
+- **TV kumanda odak:** `OrderedTraversalPolicy` + `NumericFocusOrder` ile ayarlar, sekmeler, alanlar, dosya seç ve **Listeyi yükle** sıralı gezilebilir; sekme dilimlerinde odak çerçevesi.
+- **TV URL girişi:** Sanal klavye açıkken alanın görünür kalması için `resizeToAvoidBottomInset: false`, kaydırılabilir içerikte ek alt boşluk, metin alanlarında büyük `scrollPadding` ve odakta `Scrollable.ensureVisible` (`_PlaylistTextField`).
+
+## 1.2.12 (build 2027)
+
+- **Canlı yayın — hızlı zapping:** Kumanda **yukarı / aşağı** (veya OSD’de kanal adımları) ile kanal değiştirirken bekleme süresi canlı akışta **~200 ms** olacak şekilde kısaltıldı (önceki ~500 ms). Ardışık basışlar yine tek `zapTo` ile birleştirilir; ağ ve oynatıcı yükü korunur.
+- **Canlı yayın — OSD:** TV’de kanal değişiminde mümkün olduğunda aynı Better/Exo örneği yeniden kullanılır; cam OSD kapanıp ikinci “yükleniyor” şeridine düşmez, kanal adı/logo OSD üzerinde hızlı güncellenir.
+- **Kanallar — EPG zaman çizelgesi:** Yatay düzende üst çubukta zaman çizelgesi ikonu; **dikey (telefon)** düzende de aynı ikon + sekmeler **kaydırılabilir** (dördüncü sekme EPG). Tam ekran EPG için `ChannelsEpgTimelineScaffold`.
+
+## 1.2.11 (build 2026)
+
+- **Android TV — canlı yayın, hızlı kanal şeridi:** OK’ye uzun basınca açılan şerit açıkken **Geri** (veya Escape) artık yayından çıkmıyor; şerit kapanıyor ve ana oynatıcı OSD (cam panel) açılıyor. Sistem geri hareketi (`PopScope`) aynı davranışı izler.
+
+## 1.2.10 (build 2025)
+
+- **Tablet düzeni — oynatıcı:** Yayın izlenirken üst durum çubuğu gizlenir; `immersiveSticky` ile tam ekran oynatma (çıkışta tablet chrome geri yüklenir).
+
+## 1.2.9 (build 2024)
+
+- **Tema (Koyu Cam):** Yeni arka plan görseli hem dikey hem yatayda kullanılıyor.
+- **Telefon düzeni — yatay oynatma:** Durum çubuğu gizli tam ekran (immersive); dikeyde edge-to-edge + sistem çubuğu. Yön değişiminde chrome senkronu.
+- **Telefon düzeni — yön kilidi:** “Yataya çevir” sonrası ekranın hemen tekrar dikeye dönmesi giderildi; yön kilidi yalnızca fiziksel **dikeyde** kaldırılıyor.
+- **Dikey oynatıcı OSD:** Yatay moda geçiş için **ekran döndürme** ikonu (`screen_rotation`); kilit ikonu kaldırıldı.
+- **Dikey oynatıcı — kanal şeridi:** Şerit genişletildi; kanal adının altında logo; izlenen kanal şeridin soluna kaydırılarak hizalanıyor.
+- **Wakelock (telefon):** Dikeyde yayın oynatılırken / tamponlanırken ekranın kapanması engellenir; duraklatınca normal; tablet/TV’de oynatıcı açıkken önceki davranış korunur.
+- **Canlı TV / Gözat (telefon):** Yatay geniş düzende üst cam çubukta **geri** düğmesi; dokunma alanı büyütüldü (48×48).
+- **Ana ekran:** Alttaki dekoratif (sahte) beyaz çizgi kaldırıldı — tüm düzenler ve yönler.
+
 ## 1.2.1 (build 2016)
 
 - **Playlist kurulumu:** M3U sekmesinde `IndexedStack` tüm sekmelerin yüksekliğini (Xtream formu) ayırdığı için “Dosya Seç” altında büyük boşluk oluşuyordu; yalnızca seçilen sekme çiziliyor. Kaynak kartı alt/ara boşlukları ve kartlar arası mesafe sıkılaştırıldı.
