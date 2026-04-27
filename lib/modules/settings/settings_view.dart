@@ -13,6 +13,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/theme/glass_appearance.dart';
 import '../../ui/glass_overlays.dart';
 import 'settings_controller.dart';
+import 'speed_test_screen.dart';
 
 class SettingsView extends GetView<SettingsController> {
   const SettingsView({super.key});
@@ -46,16 +47,15 @@ class SettingsView extends GetView<SettingsController> {
             final isPortrait =
                 MediaQuery.orientationOf(context) == Orientation.portrait;
             final reduce = controller.app.reduceBlur.value;
-            final tv =
-                controller.app.layoutMode.value == AppLayoutMode.tv;
+            final tv = controller.app.layoutMode.value == AppLayoutMode.tv;
             final sigma = isPortrait ? 7.0 : 11.0;
-            final dpr = MediaQuery.devicePixelRatioOf(context);
-            final size = MediaQuery.sizeOf(context);
-            final decodeScale = (!reduce && isPortrait) ? 1.28 : 1.0;
-            final targetW =
-                (size.width * dpr * decodeScale).round().clamp(64, 4096);
-            final targetH =
-                (size.height * dpr * decodeScale).round().clamp(64, 4096);
+            final bgDecode = AppTheme.homeBackgroundImageDecodeParams(
+              context,
+              themeLabel,
+              decodeWidthFactor: (!reduce && isPortrait) ? 1.28 : 1.0,
+              decodeHeightFactor: (!reduce && isPortrait) ? 1.28 : 1.0,
+              isTvLayout: tv,
+            );
             final scaled = Transform.scale(
               scale: 1.06,
               child: Image.asset(
@@ -66,16 +66,16 @@ class SettingsView extends GetView<SettingsController> {
                 fit: BoxFit.cover,
                 width: double.infinity,
                 height: double.infinity,
-                cacheWidth: targetW,
-                cacheHeight: targetH,
+                cacheWidth: bgDecode.cacheWidth,
+                cacheHeight: bgDecode.cacheHeight,
+                filterQuality: FilterQuality.high,
               ),
             );
             if (reduce || tv) {
               return scaled;
             }
             return ImageFiltered(
-              imageFilter:
-                  ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
+              imageFilter: ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
               child: scaled,
             );
           }),
@@ -113,7 +113,7 @@ class SettingsView extends GetView<SettingsController> {
                   const SizedBox(height: 16),
                   Expanded(
                     child: FocusTraversalGroup(
-                      policy: OrderedTraversalPolicy(),
+                      policy: WidgetOrderTraversalPolicy(),
                       child: SingleChildScrollView(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -145,12 +145,22 @@ class SettingsView extends GetView<SettingsController> {
                                   ),
                                   _GlassTile(
                                     index: idx(),
+                                    title: 'settings.tile.categoryHide'.tr,
+                                    subtitle: Text(
+                                      'settings.tile.categoryHide.sub'.tr,
+                                      style: _subtitleStyle,
+                                    ),
+                                    icon: Icons.visibility_off_rounded,
+                                    iconColor: primary,
+                                    onTap: controller.openCategoryHide,
+                                  ),
+                                  _GlassTile(
+                                    index: idx(),
                                     title: 'settings.tile.refresh'.tr,
                                     subtitle: Obx(
                                       () => Text(
                                         controller.isRefreshing.value
-                                            ? 'settings.tile.refresh.loading'
-                                                .tr
+                                            ? 'settings.tile.refresh.loading'.tr
                                             : 'settings.tile.refresh.sub'.tr,
                                         style: _subtitleStyle,
                                       ),
@@ -160,26 +170,6 @@ class SettingsView extends GetView<SettingsController> {
                                     onTap: controller.isRefreshing.value
                                         ? null
                                         : controller.refreshContent,
-                                  ),
-                                  _GlassTile(
-                                    index: idx(),
-                                    title: 'settings.tile.autoRefresh'.tr,
-                                    subtitle: Obx(
-                                      () => Text(
-                                        controller.app.autoRefreshDays.value ==
-                                                0
-                                            ? 'common.off'.tr
-                                            : 'settings.tile.autoRefresh.sub'
-                                                .trParams({
-                                                'days':
-                                                    '${controller.app.autoRefreshDays.value}',
-                                              }),
-                                        style: _subtitleStyle,
-                                      ),
-                                    ),
-                                    icon: Icons.auto_mode_rounded,
-                                    iconColor: primary,
-                                    onTap: controller.refreshContent,
                                   ),
                                   if (xt)
                                     _GlassTile(
@@ -199,19 +189,6 @@ class SettingsView extends GetView<SettingsController> {
                                           ? null
                                           : controller.showXtreamInfo,
                                     ),
-                                  _GlassTile(
-                                    index: idx(),
-                                    title: 'settings.tile.alarm'.tr,
-                                    subtitle: Obx(
-                                      () => Text(
-                                        controller.app.alarmSubtitle,
-                                        style: _subtitleStyle,
-                                      ),
-                                    ),
-                                    icon: Icons.alarm_rounded,
-                                    iconColor: primary,
-                                    onTap: controller.showAlarmDialog,
-                                  ),
                                   _GlassTile(
                                     index: idx(),
                                     title: 'settings.tile.sleepTimer'.tr,
@@ -294,6 +271,19 @@ class SettingsView extends GetView<SettingsController> {
                                   ),
                                   _GlassTile(
                                     index: idx(),
+                                    title: 'settings.tile.speedTest'.tr,
+                                    subtitle: Text(
+                                      'settings.tile.speedTest.sub'.tr,
+                                      style: _subtitleStyle,
+                                    ),
+                                    icon: Icons.network_check_rounded,
+                                    iconColor: primary,
+                                    onTap: () {
+                                      Get.to(() => const SpeedTestScreen());
+                                    },
+                                  ),
+                                  _GlassTile(
+                                    index: idx(),
                                     title: 'settings.tile.launchBoot'.tr,
                                     subtitle: Obx(
                                       () => Text(
@@ -331,9 +321,9 @@ class SettingsView extends GetView<SettingsController> {
                                       title: 'settings.tile.miniPlayerHome'.tr,
                                       subtitle: Obx(
                                         () {
-                                          final tv = controller
-                                                  .app.layoutMode.value ==
-                                              AppLayoutMode.tv;
+                                          final tv =
+                                              controller.app.layoutMode.value ==
+                                                  AppLayoutMode.tv;
                                           if (tv) {
                                             return Text(
                                               'settings.tile.miniPlayerHome.subTv'
@@ -341,8 +331,8 @@ class SettingsView extends GetView<SettingsController> {
                                               style: _subtitleStyle,
                                             );
                                           }
-                                          if (controller.app.useMediaKit
-                                              .value) {
+                                          if (controller
+                                              .app.useMediaKit.value) {
                                             return Text(
                                               'settings.tile.miniPlayerHome.subMk'
                                                   .tr,
@@ -350,8 +340,8 @@ class SettingsView extends GetView<SettingsController> {
                                             );
                                           }
                                           return Text(
-                                            controller.app.miniPlayerOnHome
-                                                    .value
+                                            controller
+                                                    .app.miniPlayerOnHome.value
                                                 ? 'settings.tile.miniPlayerHome.subOn'
                                                     .tr
                                                 : 'settings.tile.miniPlayerHome.subOff'
@@ -360,7 +350,8 @@ class SettingsView extends GetView<SettingsController> {
                                           );
                                         },
                                       ),
-                                      icon: Icons.picture_in_picture_alt_rounded,
+                                      icon:
+                                          Icons.picture_in_picture_alt_rounded,
                                       iconColor: primary,
                                       onTap: () {
                                         if (controller.app.layoutMode.value ==
@@ -434,13 +425,13 @@ class SettingsView extends GetView<SettingsController> {
                                       ),
                                       icon: Icons.play_circle_outline_rounded,
                                       iconColor: primary,
-                                      onTap: () => controller.app.setUseMediaKit(
-                                          !controller.app.useMediaKit.value),
+                                      onTap: () => controller.app
+                                          .setUseMediaKit(!controller
+                                              .app.useMediaKit.value),
                                     ),
                                     _GlassTile(
                                       index: idx(),
-                                      title:
-                                          'settings.tile.mediaKitHwdec'.tr,
+                                      title: 'settings.tile.mediaKitHwdec'.tr,
                                       subtitle: Obx(
                                         () => Text(
                                           controller
@@ -452,8 +443,8 @@ class SettingsView extends GetView<SettingsController> {
                                       iconColor: primary,
                                       onTap: () => controller.app
                                           .setMediaKitLowPowerHwdec(
-                                        !controller.app.mediaKitLowPowerHwdec
-                                            .value,
+                                        !controller
+                                            .app.mediaKitLowPowerHwdec.value,
                                       ),
                                     ),
                                     _GlassTile(
@@ -461,7 +452,8 @@ class SettingsView extends GetView<SettingsController> {
                                       title: 'settings.tile.videoDecoder'.tr,
                                       subtitle: Obx(
                                         () => Text(
-                                          controller.app.videoDecoderModeSubtitle,
+                                          controller
+                                              .app.videoDecoderModeSubtitle,
                                           style: _subtitleStyle,
                                         ),
                                       ),
@@ -469,7 +461,8 @@ class SettingsView extends GetView<SettingsController> {
                                       iconColor: primary,
                                       onTap: () => controller.app
                                           .setPreferSoftwareVideoDecoder(
-                                              !controller.app
+                                              !controller
+                                                  .app
                                                   .preferSoftwareVideoDecoder
                                                   .value),
                                     ),
@@ -483,20 +476,18 @@ class SettingsView extends GetView<SettingsController> {
                             Builder(
                               builder: (_) {
                                 var a = 0;
-                                String ai() =>
-                                    (++a).toString().padLeft(2, '0');
+                                String ai() => (++a).toString().padLeft(2, '0');
                                 return _SettingsGrid(
                                   children: [
                                     _GlassTile(
                                       index: ai(),
                                       title: 'settings.tile.about'.tr,
                                       subtitle: Obx(() {
-                                        final v =
-                                            controller.packageVersionLabel.value;
+                                        final v = controller
+                                            .packageVersionLabel.value;
                                         return Text(
                                           v.isEmpty
-                                              ? 'settings.tile.about.loading'
-                                                  .tr
+                                              ? 'settings.tile.about.loading'.tr
                                               : 'settings.tile.about.sub'
                                                   .trParams({'v': v}),
                                           style: _subtitleStyle,
@@ -527,7 +518,7 @@ class SettingsView extends GetView<SettingsController> {
                                       icon: Icons.help_outline_rounded,
                                       iconColor: primary,
                                       onTap: () => launchUrl(Uri.parse(
-                                          'https://github.com/mina-iptv')),
+                                          'https://t.me/minaiptvplayerpro')),
                                     ),
                                   ],
                                 );
@@ -537,8 +528,7 @@ class SettingsView extends GetView<SettingsController> {
                               final t = controller.xtreamFooterLine.value;
                               if (t.isEmpty) return const SizedBox.shrink();
                               return Padding(
-                                padding:
-                                    const EdgeInsets.fromLTRB(4, 20, 4, 8),
+                                padding: const EdgeInsets.fromLTRB(4, 20, 4, 8),
                                 child: Text(
                                   t,
                                   textAlign: TextAlign.center,
@@ -596,14 +586,17 @@ class _SettingsTopBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final tv =
+        Get.find<AppSettingsService>().layoutMode.value == AppLayoutMode.tv;
     return Row(
       children: [
-        IconButton(
-          onPressed: onBack,
-          icon: const Icon(Icons.arrow_back_rounded),
-          color: Colors.white,
-          tooltip: 'common.back'.tr,
-        ),
+        if (!tv)
+          IconButton(
+            onPressed: onBack,
+            icon: const Icon(Icons.arrow_back_rounded),
+            color: Colors.white,
+            tooltip: 'common.back'.tr,
+          ),
         Text(
           'settings.title'.tr,
           style: const TextStyle(
@@ -672,7 +665,7 @@ class _SettingsGrid extends StatelessWidget {
   }
 }
 
-class _GlassTile extends StatelessWidget {
+class _GlassTile extends StatefulWidget {
   const _GlassTile({
     required this.index,
     required this.title,
@@ -690,9 +683,33 @@ class _GlassTile extends StatelessWidget {
   final VoidCallback? onTap;
 
   @override
+  State<_GlassTile> createState() => _GlassTileState();
+}
+
+class _GlassTileState extends State<_GlassTile> {
+  final FocusNode _focusNode = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    _focusNode.addListener(_onFocusChange);
+  }
+
+  @override
+  void dispose() {
+    _focusNode.removeListener(_onFocusChange);
+    _focusNode.dispose();
+    super.dispose();
+  }
+
+  void _onFocusChange() {
+    setState(() {});
+  }
+
+  @override
   Widget build(BuildContext context) {
     final settings = Get.find<AppSettingsService>();
-    final tappable = onTap != null;
+    final tappable = widget.onTap != null;
     final child = ClipRRect(
       borderRadius: BorderRadius.circular(16),
       child: Obx(() {
@@ -719,8 +736,7 @@ class _GlassTile extends StatelessWidget {
 
         final isPortrait =
             MediaQuery.orientationOf(context) == Orientation.portrait;
-        final sigma =
-            (reduce || tv) ? 0.0 : (isPortrait ? 5.0 : 9.0);
+        final sigma = (reduce || tv) ? 0.0 : (isPortrait ? 5.0 : 9.0);
 
         final gradColors = ga.settingsTileGradient(isAnyColor, themeColor);
 
@@ -729,9 +745,12 @@ class _GlassTile extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: isAnyColor
-                  ? themeColor.withValues(alpha: 0.5)
-                  : ga.settingsTileBorder,
+              color: _focusNode.hasFocus
+                  ? Colors.white
+                  : isAnyColor
+                      ? themeColor.withValues(alpha: 0.5)
+                      : ga.settingsTileBorder,
+              width: _focusNode.hasFocus ? 2.0 : 1.0,
             ),
             gradient: LinearGradient(
               begin: Alignment.topLeft,
@@ -746,7 +765,7 @@ class _GlassTile extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    index,
+                    widget.index,
                     style: const TextStyle(
                       color: SettingsView._indexColor,
                       fontSize: 13,
@@ -755,17 +774,17 @@ class _GlassTile extends StatelessWidget {
                     ),
                   ),
                   const Spacer(),
-                  if (icon != null)
+                  if (widget.icon != null)
                     Icon(
-                      icon,
-                      color: iconColor ?? Colors.white70,
+                      widget.icon,
+                      color: widget.iconColor ?? Colors.white70,
                       size: 26,
                     ),
                 ],
               ),
               const SizedBox(height: 10),
               Text(
-                title,
+                widget.title,
                 style: const TextStyle(
                   color: Colors.white,
                   fontSize: 15,
@@ -774,7 +793,7 @@ class _GlassTile extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 6),
-              subtitle,
+              widget.subtitle,
             ],
           ),
         );
@@ -797,7 +816,9 @@ class _GlassTile extends StatelessWidget {
     return Material(
       color: Colors.transparent,
       child: InkWell(
-        onTap: onTap,
+        onTap: widget.onTap,
+        focusNode: _focusNode,
+        onFocusChange: (v) => setState(() {}),
         borderRadius: BorderRadius.circular(16),
         child: child,
       ),

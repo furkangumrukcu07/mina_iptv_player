@@ -47,3 +47,6 @@ app.*.map.json
 
 # Gradle local caches (örnek / alt paketler)
 **/android/.gradle/
+
+# Play Integrity API anahtarı (release derleme — tool/build_release_obfuscated.sh)
+tool/secrets/play_integrity.env

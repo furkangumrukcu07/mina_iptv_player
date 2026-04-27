@@ -4,6 +4,7 @@ import '../../domain/entities/channel.dart';
 import '../../domain/entities/m3u_result.dart';
 import '../../domain/entities/series.dart';
 import '../../domain/entities/vod.dart';
+import '../recent_vod_selection.dart';
 
 /// Parses extended M3U playlists into typed entities (aligned with izoiptv `M3uParser`).
 class M3uParser {
@@ -58,6 +59,10 @@ class M3uParser {
       final logo = info['logo'];
       final group = info['group'] ?? 'Uncategorised';
       final tvgId = info['tvg_id'];
+      final plot = info['plot'] ??
+          info['description'] ??
+          info['summary'] ??
+          info['info'];
 
       final lowerUrl = url.toLowerCase();
       final lowerGroup = group.toLowerCase();
@@ -71,6 +76,7 @@ class M3uParser {
           categoryId: catId,
           streamUrl: url,
           posterUrl: logo,
+          plot: plot,
         ));
       } else if (_isMovie(lowerUrl, lowerGroup)) {
         final catId = vodCatNames.putIfAbsent(group, () => vodCatId++);
@@ -83,6 +89,7 @@ class M3uParser {
           categoryId: catId,
           posterUrl: logo,
           containerExtension: ext,
+          plot: plot,
         ));
       } else {
         final catId = channelCatNames.putIfAbsent(group, () => channelCatId++);
@@ -114,6 +121,9 @@ class M3uParser {
         .toList()
       ..sort((a, b) => a.name.compareTo(b.name));
 
+    final recentVodIds = m3uRecentVodIdsFromListOrder(vod);
+    final recentSeriesIds = m3uRecentSeriesIdsFromListOrder(seriesList);
+
     return M3uResult(
       channels: channels,
       channelCategories: channelCats,
@@ -121,6 +131,8 @@ class M3uParser {
       vodCategories: vodCats,
       series: seriesList,
       seriesCategories: seriesCats,
+      recentVodIds: recentVodIds,
+      recentSeriesIds: recentSeriesIds,
     );
   }
 
@@ -135,6 +147,10 @@ class M3uParser {
       'tvg_id': _attr(attrSection, 'tvg-id'),
       'logo': _attr(attrSection, 'tvg-logo'),
       'group': _attr(attrSection, 'group-title') ?? 'Uncategorised',
+      'plot': _attr(attrSection, 'plot'),
+      'description': _attr(attrSection, 'description'),
+      'summary': _attr(attrSection, 'summary'),
+      'info': _attr(attrSection, 'info'),
     };
   }
 

@@ -1,21 +1,38 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:better_player_plus/better_player_plus.dart';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:get/get.dart';
 
+import '../layout/app_layout_mode.dart';
+import '../services/app_settings_service.dart';
+import '../platform/android_playback_soc_hints.dart';
 import 'iptv_playback_defaults.dart';
 
-/// Android [BetterPlayer] içinde `formatHint == null` iken uzantı `split('.')[1]` ile okunuyor;
-/// uzantı yoksa **IndexOutOfBoundsException (Index: 1, Size: 1)** oluşuyor. Her zaman [videoFormat]
-/// vererek bu dalı atlıyoruz.
+/// URL’den iç mantık (ASMS vb.) için ipucu. **VOD’da** [iptvBetterPlayerDataSource] `videoFormat: null`
+/// geçirir; Exo uzantı / MIME ile tanır. `.ts` burada **MPEG-TS** (`other`), HLS değil.
 BetterPlayerVideoFormat iptvVideoFormatHintForUrl(String url) {
   final lower = url.trim().toLowerCase();
   final path = lower.split('?').first;
 
-  // Xtream URL'leri çoğu zaman `get.php?...&output=m3u8|mpd|ts` şeklinde olur.
-  // Bu yüzden sadece path değil query kısmını da kontrol ediyoruz.
+  // Ağ progressive: uzantı mp4/mkv/... → Exo "other" (tek dosya akışı).
+  if (path.endsWith('.mp4') ||
+      path.endsWith('.mkv') ||
+      path.endsWith('.avi') ||
+      path.endsWith('.mov') ||
+      path.endsWith('.webm') ||
+      path.endsWith('.m4v') ||
+      path.endsWith('.wmv') ||
+      path.endsWith('.mpg') ||
+      path.endsWith('.mpeg') ||
+      path.endsWith('.ts')) {
+    return BetterPlayerVideoFormat.other;
+  }
+
+  // HLS: yol veya `output=` / `type=` ile belirtilen manifest.
   final isHls = lower.contains('m3u8') ||
       lower.contains('output=m3u8') ||
       lower.contains('output=m3u') ||
@@ -38,24 +55,53 @@ BetterPlayerVideoFormat iptvVideoFormatHintForUrl(String url) {
   return BetterPlayerVideoFormat.other;
 }
 
-/// IPTV için **Better Player** (Android’de ExoPlayer2) ayarları.
+/// IPTV için **Better Player** (Android’de ExoPlayer / Media3) ayarları.
 ///
-/// **Video yüzeyi (Android):** `better_player_plus` artık Flutter
-/// [TextureRegistry.createSurfaceProducer] kullanır; motor tarafında çoğu cihazda
-/// **ImageReader / donanım tamponu** yolu (SurfaceTexture yerine), Impeller/Vulkan
-/// ile uyumlu ve TV’de daha verimli kısayol. Klasik `TextureView` widget’ı kullanılmaz.
+/// **Video yüzeyi (Android):** `better_player_plus` Flutter
+/// [TextureRegistry.createSurfaceProducer] ile **Surface → MediaCodec** (donanım
+/// kod çözücü) yolunu kullanır; `preferSoftwareVideoDecoder: false` iken Exo
+/// [MediaCodecSelector.DEFAULT] donanımı önceler. Ayarlardaki «yazılım video kod
+/// çözücü» tercihi burayı geçersiz kılabilir.
 abstract final class IptvBetterPlayerConfig {
-  /// ExoPlayer [DefaultLoadControl] — **Optimized buffer**: dalgalı internet / TV kutusu için
-  /// hızlı kurtarma sağlayan tampon ayarları.
-  /// [minBufferMs] 10s, [maxBufferMs] 45s, [bufferForPlaybackMs] 1.5s, [bufferForPlaybackAfterRebufferMs] 2.5s.
-  static const BetterPlayerBufferingConfiguration iptvLargeBufferBuffering =
+  /// Geçmiş uyumluluk: ayar anahtarı korunur; Exo tampon ms [iptvLiveBufferingTv] / [iptvVodBuffering].
+  static const int defaultLiveBufferSecondsForExo = 3;
+
+  /// Canlı: düşük gecikme / hızlı zapping (kısa Exo [DefaultLoadControl] penceresi).
+  static const BetterPlayerBufferingConfiguration iptvLiveBufferingTv =
       BetterPlayerBufferingConfiguration(
-    minBufferMs: 10000,
-    maxBufferMs: 45000,
-    bufferForPlaybackMs: 1500,
-    bufferForPlaybackAfterRebufferMs: 2500,
+    // İlk kare donma riskini azaltmak için daha stabil eşikler.
+    minBufferMs: 3000,
+    maxBufferMs: 8000,
+    bufferForPlaybackMs: 1000,
+    bufferForPlaybackAfterRebufferMs: 1500,
     preferSoftwareVideoDecoder: false,
+    prioritizeTimeOverSizeThresholds: true,
   );
+
+  static const BetterPlayerBufferingConfiguration iptvLiveBufferingTvStabilized =
+      BetterPlayerBufferingConfiguration(
+    minBufferMs: 3000,
+    maxBufferMs: 8000,
+    bufferForPlaybackMs: 1000,
+    bufferForPlaybackAfterRebufferMs: 1500,
+    preferSoftwareVideoDecoder: false,
+    prioritizeTimeOverSizeThresholds: true,
+  );
+
+  /// VOD: aynı tampon penceresi; sarma için `prioritizeTimeOverSizeThresholds` kapalı.
+  static const BetterPlayerBufferingConfiguration iptvVodBuffering =
+      BetterPlayerBufferingConfiguration(
+    minBufferMs: 15000,
+    maxBufferMs: 60000,
+    bufferForPlaybackMs: 2500,
+    bufferForPlaybackAfterRebufferMs: 5000,
+    preferSoftwareVideoDecoder: false,
+    prioritizeTimeOverSizeThresholds: false,
+  );
+
+  /// Eski ad — [iptvLiveBufferingTv] ile aynı profil (Exo [DefaultLoadControl]).
+  static const BetterPlayerBufferingConfiguration iptvLargeBufferBuffering =
+      iptvLiveBufferingTv;
 
   /// [precacheStreamUrl] ve oynatıcı aynı anahtarı kullanır.
   static String cacheKeyForUrl(String url) {
@@ -63,18 +109,104 @@ abstract final class IptvBetterPlayerConfig {
     return h.toString().substring(0, 24);
   }
 
-  /// Ön önbellek: ilk birkaç MB’ı indirir (Android `CacheWorker`).
-  static BetterPlayerCacheConfiguration iptvPrecacheConfig(String cacheKey) {
+  /// Düşük donanımlı Android’de disk önbelleği: tek dosya ve toplam alan için üst sınır (~50 MiB).
+  static const int iptvLowEndDiskCacheMaxBytes = 50 * 1024 * 1024;
+
+  /// Android’de güçlü cihazlarda disk önbelleği kapalı kalır (bazı TV / OEM’lerde sorun raporu).
+  /// Düşük RAM veya az çekirdekte [useCache]: true ve [maxCacheFileSize] [iptvLowEndDiskCacheMaxBytes].
+  ///
+  /// **Yalnızca VOD** ile kullanılmalı; canlıda `SimpleCache` ilk segmentleri kilitleyip birkaç saniye
+  /// sonra durma ve tekrar açılınca aynı kesitin oynatılması gibi hatalara yol açar.
+  ///
+  /// [AndroidPlaybackSocHints.ensureLoaded] öncesi [weakMpvDevice] false olabilir; kısa süre önbellek kapalı kalır.
+  static BetterPlayerCacheConfiguration? iptvPlaybackCacheConfigurationForUrl(
+    String url,
+  ) {
+    if (!Platform.isAndroid) return null;
+    final lowEnd = AndroidPlaybackSocHints.weakMpvDevice ||
+        AndroidPlaybackSocHints.isTotalRamBelowBytes(
+          AndroidPlaybackSocHints.lowRamThresholdBytes,
+        );
+    if (!lowEnd) return null;
     return BetterPlayerCacheConfiguration(
       useCache: true,
-      maxCacheSize: 48 * 1024 * 1024,
-      maxCacheFileSize: 48 * 1024 * 1024,
-      preCacheSize: 1536 * 1024,
+      maxCacheSize: iptvLowEndDiskCacheMaxBytes,
+      maxCacheFileSize: iptvLowEndDiskCacheMaxBytes,
+      preCacheSize: 2 * 1024 * 1024,
+      key: cacheKeyForUrl(url),
+    );
+  }
+
+  /// Ön önbellek: ilk birkaç MB’ı indirir (Android `CacheWorker`).
+  ///
+  /// Düşük donanımda [iptvLowEndDiskCacheMaxBytes]; aksi halde 48 MiB (yalnızca bu API’yi kullanan kod).
+  static BetterPlayerCacheConfiguration iptvPrecacheConfig(String cacheKey) {
+    final lowEnd = Platform.isAndroid &&
+        (AndroidPlaybackSocHints.weakMpvDevice ||
+            AndroidPlaybackSocHints.isTotalRamBelowBytes(
+              AndroidPlaybackSocHints.lowRamThresholdBytes,
+            ));
+    final maxBytes =
+        lowEnd ? iptvLowEndDiskCacheMaxBytes : 48 * 1024 * 1024;
+    final preBytes = lowEnd ? 2 * 1024 * 1024 : 1536 * 1024;
+    return BetterPlayerCacheConfiguration(
+      useCache: true,
+      maxCacheSize: maxBytes,
+      maxCacheFileSize: maxBytes,
+      preCacheSize: preBytes,
       key: cacheKey,
     );
   }
 
   /// [customControlsBuilder] ile Android TV / D-pad dostu bar (`TvBetterPlayerControls`).
+  /// TV / tablet / mobil: kırpma ve ölçekleme (4K farklı en-boy için güvenli).
+  static BoxFit iptvVideoFitForLayout(AppLayoutMode mode) => switch (mode) {
+        AppLayoutMode.tv => BoxFit.contain,
+        AppLayoutMode.tablet => BoxFit.contain,
+        AppLayoutMode.mobile => BoxFit.contain,
+      };
+
+  /// Tam ekranda yatay; TV’de çıkışta da yatay kilit, tablet/mobilde tüm yönler.
+  static List<DeviceOrientation> iptvFullscreenOrientations() => const [
+        DeviceOrientation.landscapeLeft,
+        DeviceOrientation.landscapeRight,
+      ];
+
+  static List<DeviceOrientation> iptvOrientationsAfterFullscreen(
+    AppLayoutMode mode,
+  ) {
+    switch (mode) {
+      case AppLayoutMode.tv:
+        return iptvFullscreenOrientations();
+      case AppLayoutMode.tablet:
+      case AppLayoutMode.mobile:
+        return const [
+          DeviceOrientation.portraitUp,
+          DeviceOrientation.portraitDown,
+          DeviceOrientation.landscapeLeft,
+          DeviceOrientation.landscapeRight,
+        ];
+    }
+  }
+
+  /// Better tam ekrandan çıkışta [BetterPlayer] içindeki [SystemChrome.setPreferredOrientations]
+  /// ile [PlaybackOrientationManager] / OSD kilidi aynı davranışı korur.
+  static List<DeviceOrientation> mobileBetterPlayerAfterFullscreenOrientations(
+    AppLayoutMode mode,
+    AppSettingsService app,
+  ) {
+    if (mode != AppLayoutMode.mobile) {
+      return iptvOrientationsAfterFullscreen(mode);
+    }
+    if (app.mobilePlaybackPortraitUserLocked.value) {
+      return const <DeviceOrientation>[
+        DeviceOrientation.portraitUp,
+        DeviceOrientation.portraitDown,
+      ];
+    }
+    return AppSettingsService.sensorHandheldOrientations;
+  }
+
   static BetterPlayerControlsConfiguration tvControls({
     Widget Function(
       BetterPlayerController controller,
@@ -118,37 +250,115 @@ abstract final class IptvBetterPlayerConfig {
     void Function(BetterPlayerEvent)? eventListener,
     bool handleLifecycle = true,
     bool autoDispose = true,
+    /// Android Exo donanım kod çözücü; `false` yapılırsa (veya veri kaynağında yazılım tercihi) OMX/CPU yolu.
+    bool useHardwareAcceleration = true,
+    /// `true`: gelen arama vb. kesintilerde [VideoPlayerController.setMixWithOthers] ile medya ses odağı (Exo [USAGE_MEDIA] ile uyumlu).
+    bool handleAudioInterruption = true,
+    /// Android TV: `false` = SurfaceProducer ile doğrudan Surface (TextureView widget değil).
+    bool useTextureView = false,
+    AppLayoutMode? layoutMode,
     List<DeviceOrientation>? deviceOrientationsOnFullScreen,
     List<DeviceOrientation>? deviceOrientationsAfterFullScreen,
+    BetterPlayerSubtitlesConfiguration? subtitlesConfiguration,
+    /// Video üstü (sistem parlaklığı değil); altyazı ve kontroller bundan üsttedir.
+    Widget? overlay,
   }) {
+    final lm = layoutMode ?? AppLayoutMode.mobile;
+    final onFs = deviceOrientationsOnFullScreen ?? iptvFullscreenOrientations();
+    final afterFs =
+        deviceOrientationsAfterFullScreen ?? iptvOrientationsAfterFullscreen(lm);
     return BetterPlayerConfiguration(
       autoPlay: true,
-      fit: BoxFit.fill,
+      fit: iptvVideoFitForLayout(lm),
       looping: false,
       aspectRatio: 16 / 9,
       expandToFill: true,
       allowedScreenSleep: false,
+      useTextureView: useTextureView,
+      androidScaleVideoToFit: lm.usesRemoteNavigationStyle,
       fullScreenByDefault: false,
-      deviceOrientationsOnFullScreen: deviceOrientationsOnFullScreen ??
-          const [
-            DeviceOrientation.landscapeLeft,
-            DeviceOrientation.landscapeRight,
-          ],
-      deviceOrientationsAfterFullScreen: deviceOrientationsAfterFullScreen ??
-          const [
-            DeviceOrientation.landscapeLeft,
-            DeviceOrientation.landscapeRight,
-          ],
+      overlay: overlay,
+      deviceOrientationsOnFullScreen: onFs,
+      deviceOrientationsAfterFullScreen: afterFs,
       controlsConfiguration: controls,
       handleLifecycle: handleLifecycle,
       autoDispose: autoDispose,
+      handleAudioInterruption: handleAudioInterruption,
+      useHardwareAcceleration: useHardwareAcceleration,
+      // Tam ekran / görünürlük: Better tarafında otomatik yön ve yerleşim (odak = medya oturumu ile birlikte).
+      autoDetectFullscreenDeviceOrientation: true,
+      autoDetectFullscreenAspectRatio: true,
       eventListener: eventListener,
       showPlaceholderUntilPlay: false,
+      subtitlesConfiguration:
+          subtitlesConfiguration ?? const BetterPlayerSubtitlesConfiguration(),
+      // TV Box specific audio configuration handled in player controller
+      errorBuilder: (context, _) {
+        final ctrl = BetterPlayerController.of(context);
+        final cfg = ctrl.betterPlayerControlsConfiguration;
+        final textStyle = TextStyle(color: cfg.textColor);
+        return Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                Icons.warning_amber_rounded,
+                color: cfg.iconsColor.withValues(alpha: 0.9),
+                size: 42,
+              ),
+              const SizedBox(height: 16),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 28),
+                child: Text(
+                  'player.error.playbackGeneric'.tr,
+                  textAlign: TextAlign.center,
+                  style: textStyle.copyWith(
+                    fontSize: 16,
+                    height: 1.35,
+                  ),
+                ),
+              ),
+              if (cfg.enableRetry) ...[
+                const SizedBox(height: 18),
+                TextButton(
+                  onPressed: () => ctrl.retryDataSource(),
+                  child: Text(
+                    ctrl.translations.generalRetry,
+                    style: textStyle.copyWith(fontWeight: FontWeight.w700),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        );
+      },
     );
   }
 }
 
+/// Android’de toplam RAM &lt; 2 GiB ise Exo [TrackSelectionParameters] ile başlangıç üst sınırı 720p.
+///
+/// [AndroidPlaybackSocHints.ensureLoaded] çağrılmış olmalı; aksi halde RAM bilinmez ve kısıt uygulanmaz.
+Future<void> iptvApplyBetterPlayerLowRam720CapIfNeeded(
+  BetterPlayerController ctrl,
+) async {
+  if (!Platform.isAndroid) return;
+  if (!AndroidPlaybackSocHints.isTotalRamBelowBytes(
+        AndroidPlaybackSocHints.lowRamThresholdBytes,
+      )) {
+    return;
+  }
+  final vpc = ctrl.videoPlayerController;
+  if (vpc == null) return;
+  await vpc.setTrackParameters(1280, 720, 0);
+}
+
 /// Tek tip ağ kaynağı: başlıklar + düşük gecikme + canlı bayrağı + isteğe bağlı önbellek.
+///
+/// [cacheConfiguration] null iken **canlı** akışlarda disk önbelleği **asla** açılmaz (eski TV kutularında
+/// kısa kesinti + tekrar açılınca aynı segment). **VOD** için Android düşük donanımda
+/// [IptvBetterPlayerConfig.iptvPlaybackCacheConfigurationForUrl] uygulanır.
 BetterPlayerDataSource iptvBetterPlayerDataSource(
   String url, {
   bool liveStream = true,
@@ -162,58 +372,64 @@ BetterPlayerDataSource iptvBetterPlayerDataSource(
   /// VOD (film/dizi) için donanım dekoderi genellikle ses uyumluluğu (AC3/DTS) için daha iyidir.
   bool preferSoftwareVideoDecoder = false,
 
-  /// TV kutusu canlı: daha düşük üst tampon — gecikme birikimini ve “ağır çekim” hissini azaltır;
-  /// kesintide canlı kenara daha hızlı yaklaşır.
-  bool tvBoxLiveOptimize = false,
+  /// Ayarlardan canlı tampon (saniye); üst katman tampon profili artık sabit ms ile
+  /// hizalı — bu parametre geriye dönük API için tutulur.
+  int liveBufferSeconds = IptvBetterPlayerConfig.defaultLiveBufferSecondsForExo,
 }) {
-  final format = iptvVideoFormatHintForUrl(url);
+  final hint = iptvVideoFormatHintForUrl(url);
+  // Canlıda tüm URL’leri HLS sanmak (özellikle `.ts` / MPEG-TS) TV kutularında Exo
+  // «Source error» / b0.L ile biter; URL ipucunu kullan.
+  final BetterPlayerVideoFormat? videoFormat = liveStream ? hint : null;
 
   // VOD (canlı olmayan) içeriklerde donanım dekoderini zorla (ses sorunlarını önlemek için).
   // Xiaomi ve bazı Android cihazlarda yazılım dekoderi AC3/DTS desteklemez.
   // Ancak VOD TS dosyalarında bazen yazılım dekoderi daha iyi sonuç verebilir.
   final effectivePreferSoftware = preferSoftwareVideoDecoder;
 
-  // TS akışları için ASMS (Adaptive) genellikle donanım çözücülerini zorlar.
-  // Varsayılan olarak TS için kapalı tutuyoruz.
-  final isTs = format == BetterPlayerVideoFormat.other;
-  final isAdaptive = format == BetterPlayerVideoFormat.hls ||
-      format == BetterPlayerVideoFormat.dash;
+  final isTs = hint == BetterPlayerVideoFormat.other;
+  final isAdaptive = liveStream ||
+      hint == BetterPlayerVideoFormat.hls ||
+      hint == BetterPlayerVideoFormat.dash;
 
-  // Filmlerde (VOD) ses parçalarının doğru algılanması için ASMS ses parçalarını aktif etmeyi dene.
-  // Sadece HLS/DASH için ASMS ses kanallarını zorla. Direct MP4/MKV için kapat.
-  final effectiveUseAsmsAudio = useAsmsAudioTracks ?? isAdaptive;
+  // VOD: çoklu ses (HLS/DASH master; Exo ses seçimi) — her zaman açık; canlıda yalnız uyarlanabilir akışta.
+  final effectiveUseAsmsAudio = useAsmsAudioTracks ??
+      (!liveStream ? true : isAdaptive);
 
-  // Canlı yayınlarda daha agresif (düşük gecikmeli) tampon ayarları kullan.
-  // TV + canlı: max tamponu sınırla (PTS kayması / yapay yavaşlık riskini düşürür).
-  final buffering = tvBoxLiveOptimize && liveStream
-      ? BetterPlayerBufferingConfiguration(
-          minBufferMs: 4000,
-          maxBufferMs: 22000,
-          bufferForPlaybackMs: 700,
-          bufferForPlaybackAfterRebufferMs: 1100,
-          preferSoftwareVideoDecoder: effectivePreferSoftware,
-        )
-      : BetterPlayerBufferingConfiguration(
-          minBufferMs: liveStream ? 8000 : 12000,
-          maxBufferMs: liveStream ? 30000 : 50000,
-          bufferForPlaybackMs: liveStream ? 1000 : 2000,
-          bufferForPlaybackAfterRebufferMs: liveStream ? 1500 : 3000,
-          preferSoftwareVideoDecoder: effectivePreferSoftware,
-        );
+  final baseBuffering = liveStream
+      ? IptvBetterPlayerConfig.iptvLiveBufferingTv
+      : IptvBetterPlayerConfig.iptvVodBuffering;
 
-  // TS akışları için ASMS (Adaptive) genellikle donanım çözücülerini zorlar.
-  // Varsayılan olarak TS için kapalı tutuyoruz.
+  final BetterPlayerBufferingConfiguration buffering =
+      BetterPlayerBufferingConfiguration(
+    minBufferMs: baseBuffering.minBufferMs,
+    maxBufferMs: baseBuffering.maxBufferMs,
+    bufferForPlaybackMs: baseBuffering.bufferForPlaybackMs,
+    bufferForPlaybackAfterRebufferMs:
+        baseBuffering.bufferForPlaybackAfterRebufferMs,
+    preferSoftwareVideoDecoder: effectivePreferSoftware,
+    prioritizeTimeOverSizeThresholds:
+        baseBuffering.prioritizeTimeOverSizeThresholds,
+  );
+
   final defaultAsms = !isTs && isAdaptive;
+
+  final mergedHeaders = Map<String, String>.from(
+    headers ?? IptvPlaybackDefaults.headersForStreamUrl(url),
+  );
+  mergedHeaders['User-Agent'] = IptvPlaybackDefaults.httpHeaders['User-Agent']!;
+
+  final mergedCache = cacheConfiguration ??
+      (liveStream
+          ? null
+          : IptvBetterPlayerConfig.iptvPlaybackCacheConfigurationForUrl(url));
 
   return BetterPlayerDataSource.network(
     url,
     liveStream: liveStream,
-    headers: Map<String, String>.from(
-      headers ?? IptvPlaybackDefaults.headersForStreamUrl(url),
-    ),
+    headers: mergedHeaders,
     bufferingConfiguration: buffering,
-    cacheConfiguration: cacheConfiguration,
-    videoFormat: format,
+    cacheConfiguration: mergedCache,
+    videoFormat: videoFormat,
     useAsmsSubtitles: useAsmsSubtitles ?? defaultAsms,
     useAsmsTracks: useAsmsTracks ?? defaultAsms,
     useAsmsAudioTracks: effectiveUseAsmsAudio,

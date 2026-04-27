@@ -1,8 +1,12 @@
 /// IPTV akışları için varsayılan HTTP başlıkları (ExoPlayer / ağ katmanına iletilir).
+///
+/// **M3U ve Xtream:** Liste kaynağı fark etmez; oynatılan `streamUrl` burada
+/// [normalizeStreamUrl] ile aynı kurallara tabi, Android’de Better/Exo ise
+/// `DataSourceUtils` HTTP zaman aşımlarını paylaşır.
 abstract final class IptvPlaybackDefaults {
   static const Map<String, String> httpHeaders = {
     'User-Agent':
-        'Mozilla/5.0 (Linux; Android 14; TV) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
     'Accept': '*/*',
     'Icy-MetaData': '1',
   };
@@ -17,65 +21,18 @@ abstract final class IptvPlaybackDefaults {
     return m;
   }
 
-  /// M3U satırındaki boşluk / geçersiz karakterleri düzeltir; aksi halde ExoPlayer URL’yi reddedebilir.
-  /// Xtream `/live/.../*.ts` → aynı yol `.m3u8` ile de açılabilir; kalite menüsü için burada uygulanır.
-  static String normalizeStreamUrl(String raw) {
+  /// Boşluk temizliği; film/dizi/get.php için **uzantı veya output zorlanmaz**.
+  /// Yalnızca **canlı** Xtream tarzı `/live/.../*.ts` → `.m3u8` (HLS; OSD çoklu kalite)
+  /// dönüşümü uygulanır — hem M3U’dan gelen hem API’den üretilen aynı yolu kullanır.
+  /// `get.php?...&output=ts` burada değiştirilmez (VOD ile karışmaması için).
+  static String normalizeStreamUrl(String raw, {bool xtreamSeriesEpisode = false}) {
     final t = raw.trim();
     if (t.isEmpty) return t;
-    // Uri.tryParse ve uri.toString() bazen query parametrelerini (username/password)
-    // çift encode ederek (double encoding) sunucunun reddetmesine neden olabilir.
-    // Sadece boşlukları temizleyip ham URL'i döndürmek M3U mantığına daha yakındır.
     final spaced = t.replaceAll(' ', '%20');
-    return preferM3u8XtreamGetPhpIfTs(
-      preferM3u8VodManifestIfXtreamTs(
-        preferM3u8LiveManifestIfXtreamTs(spaced),
-      ),
-    );
-  }
-
-  /// Xtream VOD: `.../movie/.../id.ts` veya `.../series/.../id.ts` → aynı yol `.m3u8`
-  /// (çoklu ses / altyazı için HLS master).
-  static String preferM3u8VodManifestIfXtreamTs(String url) {
-    final uri = Uri.tryParse(url.trim());
-    if (uri == null) return url;
-    final path = uri.path.toLowerCase().replaceAll('\\', '/');
-    if (!path.endsWith('.ts')) return url;
-    final isMovie = path.contains('/movie/');
-    final isSeries = path.contains('/series/');
-    if (!isMovie && !isSeries) return url;
-    final newPath = '${uri.path.substring(0, uri.path.length - 3)}.m3u8';
-    return uri.replace(path: newPath).toString();
-  }
-
-  /// Xtream `get.php?...&stream_id=...` ile `output=ts` (veya output yok) gelen linkler tek MPEG-TS
-  /// açılır; çoklu dil **HLS master** (#EXT-X-MEDIA) ile gelir. Çoğu panel aynı yayını
-  /// `output=m3u8` ile sunar — OSD ses / kalite seçimi için burada m3u8’e çeviriyoruz.
-  static String preferM3u8XtreamGetPhpIfTs(String url) {
-    final uri = Uri.tryParse(url.trim());
-    if (uri == null) return url;
-    if (!uri.path.toLowerCase().endsWith('get.php')) return url;
-
-    final q = Map<String, String>.from(uri.queryParameters);
-    final sid = q['stream_id']?.trim();
-    if (sid == null || sid.isEmpty) return url;
-
-    final output = (q['output'] ?? '').toLowerCase().trim();
-    if (output == 'm3u8' ||
-        output == 'm3u' ||
-        output == 'hls' ||
-        output == 'mpd' ||
-        output == 'mpegdash') {
-      return url;
+    if (xtreamSeriesEpisode) {
+      return spaced;
     }
-    if (output.isNotEmpty &&
-        output != 'ts' &&
-        output != 'mpegts' &&
-        output != 'mpeg-ts') {
-      return url;
-    }
-
-    final next = Map<String, String>.from(q)..['output'] = 'm3u8';
-    return uri.replace(queryParameters: next).toString();
+    return preferM3u8LiveManifestIfXtreamTs(spaced);
   }
 
   /// Xtream tarzı `.../live/kullanıcı/şifre/123.ts` adreslerinde çoğu panel aynı yayını
@@ -96,8 +53,12 @@ abstract final class IptvPlaybackDefaults {
     if (lower.contains('/movie/')) return false;
     if (lower.contains('/series/')) return false;
 
-    // Dosya uzantılarını kontrol et
     final path = lower.split('?').first;
+    final pathNorm = path.replaceAll('\\', '/');
+    // Xtream/M3U canlı: .../live/kullanıcı/şifre/id.* — bazı paneller .mp4/.mkv uzantısı verir;
+    // uzantıya bakmadan canlı sayılmalı (aksi halde VOD sanılıp otomatik MediaKit/Exo yolu karışır).
+    if (pathNorm.contains('/live/')) return true;
+
     if (path.endsWith('.mp4') ||
         path.endsWith('.mkv') ||
         path.endsWith('.avi') ||

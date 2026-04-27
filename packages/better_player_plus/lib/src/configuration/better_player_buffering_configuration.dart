@@ -8,6 +8,9 @@ class BetterPlayerBufferingConfiguration {
     this.bufferForPlaybackAfterRebufferMs = defaultBufferForPlaybackAfterRebufferMs,
     /// Android: `true` ise yazılım (Google OMX) kod çözücü önce; `false` ise donanım önce.
     this.preferSoftwareVideoDecoder = true,
+    /// Android Exo: [DefaultLoadControl.Builder.setPrioritizeTimeOverSizeThresholds] —
+    /// `true` canlıda gecikmeyi azaltmaya yardımcı olur; VOD’da `false` daha akıcı sarma.
+    this.prioritizeTimeOverSizeThresholds = true,
   });
 
   ///Constants values are from the offical exoplayer documentation
@@ -36,4 +39,7 @@ class BetterPlayerBufferingConfiguration {
 
   /// Android ExoPlayer: yazılım kod çözücüyü tercih et (MPEG-TS / sorunlu donanımda daha stabil).
   final bool preferSoftwareVideoDecoder;
+
+  /// Android Exo: zaman tabanlı tampon eşiklerini boyuta göre önceliklendir.
+  final bool prioritizeTimeOverSizeThresholds;
 }

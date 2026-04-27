@@ -3,7 +3,10 @@ import 'package:get/get.dart';
 import 'locale_partials.dart';
 import 'translation_merge.dart';
 
-/// Locales: `tr_TR`, `en_US`, plus `fr_FR`, `ar_SA`, `zh_CN`, `ru_RU` (merged over English).
+import 'locale_es.dart';
+import 'locale_ja.dart';
+
+/// Locales: `tr_TR`, `en_US`, plus partials merged over English (incl. `es_ES`, `ja_JP`).
 class AppTranslations extends Translations {
   @override
   Map<String, Map<String, String>> get keys => {
@@ -13,6 +16,8 @@ class AppTranslations extends Translations {
         'ar_SA': mergeTranslations(_en, kLocalePartialAr),
         'zh_CN': mergeTranslations(_en, kLocalePartialZh),
         'ru_RU': mergeTranslations(_en, kLocalePartialRu),
+        'ja_JP': mergeTranslations(_en, kLocalePartialJa),
+        'es_ES': mergeTranslations(_en, kLocalePartialEs),
       };
 }
 
@@ -26,9 +31,68 @@ const Map<String, String> _tr = {
   'home.series': 'Diziler',
   'home.series.subtitle': 'Dizi',
   'home.favorites': 'Favori',
+  'home.continue_watching': 'İzlemeye Devam Et',
+  'marquee.monday':
+      'Haftaya enerjik bir başlangıç yapın! İyi haftalar dileriz.',
+  'marquee.tuesday': 'Haftanın temposu artıyor, keyifli seyirler dileriz.',
+  'marquee.wednesday':
+      'Haftanın ortasına geldik! En sevdiğiniz içeriklerle mola verin.',
+  'marquee.thursday':
+      'Hafta sonuna az kaldı, Mina IPTV ile günün yorgunluğunu atın.',
+  'marquee.friday': 'Mina İle Hafta sonu keyfi şimdiden başlasın.',
+  'marquee.saturday': 'Hafta sonu eğlencesi burada! İyi istirahatler.',
+  'marquee.sunday':
+      'Pazar keyfiniz bol olsun! Yeni haftaya hazırlanırken yanınızdayız.',
   'home.header.brandTop': 'Mina',
   'home.header.brandBottom': 'IPTV Player',
+  'home.search.hint': 'Ara…',
+  'home.search.dialogTitle': 'Ara',
+  'home.search.typeToSeeResults': 'Sonuçlar için yazmaya başlayın.',
+  'home.search.sectionLive': 'Canlı yayın',
+  'home.search.sectionFilms': 'Filmler',
+  'home.search.sectionSeries': 'Diziler',
+  'home.search.noResults': 'Eşleşen sonuç yok.',
   'splash.preparing': 'Kütüphane hazırlanıyor…',
+  'setup.wizardTitle': 'Hoş geldiniz',
+  'setup.stepLanguage': 'Dil',
+  'setup.stepTheme': 'Görünüm',
+  'setup.stepPlayer': 'Oynatıcı',
+  'setup.stepSource': 'Oynatma listesi',
+  'setup.next': 'İlerle',
+  'setup.back': 'Geri',
+  'setup.finish': 'Kurulumu bitir',
+  'setup.finishRequiresSource':
+      'Önce oynatma listesini yükleyin (M3U veya Xtream).',
+  'setup.skip': 'Atla',
+  'setup.sourceHint':
+      'M3U veya Xtream bilgilerinizi girin; listeyi yükledikten sonra uygulama açılır.',
+  'setup.tvTitle': 'Oynatma listesini girin',
+  'setup.tv.brand': 'Mina Player TV',
+  'setup.tv.welcome': 'Kuruluma hoş geldiniz',
+  'setup.tv.subtitle': 'Aşağıdan bir yöntem seçin; liste eklendikten sonra uygulama açılır.',
+  'setup.tv.methodUrl': '1. Yöntem: M3U URL',
+  'setup.tv.methodFile': '2. Yöntem: M3U dosyası',
+  'setup.tv.methodXtream': '3. Yöntem: Xtream',
+  'setup.tv.urlConnect': 'URL ile bağlan',
+  'setup.tv.filePick': 'Dosya seç',
+  'setup.tv.xtreamLogin': 'Giriş yap',
+  'setup.tv.demo': 'Demo modu',
+  'setup.tv.langLine': 'Dil, cihazla aynı (otomatik).',
+  'setup.tv.xtreamServer': 'Sunucu URL',
+  'setup.tv.xtreamUser': 'Kullanıcı adı',
+  'setup.tv.xtreamPass': 'Şifre',
+  'setup.tv.urlFieldHint': 'M3U çalma listesi URL’si',
+  'setup.playerExoTitle': 'Better / ExoPlayer',
+  'setup.playerExoSub':
+      'Düşük gecikme, Android önerisi; çoğu canlı ve film için uygundur.',
+  'setup.playerMkvTitle': 'MediaKit (mpv)',
+  'setup.playerMkvSub':
+      'Daha ağır akışlarda / özel altyapıda alternatif; ayarlardan değiştirilebilir.',
+  'integrity.dialog.title': 'Resmi sürüm önerisi',
+  'integrity.dialog.body':
+      'Bu kopya Google Play lisansıyla eşleşmiyor. En güvenli deneyim için uygulamayı Google Play’den yüklemenizi öneririz.',
+  'integrity.dialog.later': 'Daha sonra',
+  'integrity.dialog.openPlay': 'Google Play’de aç',
 
   // Browse
   'browse.films': 'Filmler',
@@ -39,9 +103,12 @@ const Map<String, String> _tr = {
   'browse.tab.category': 'Kategori',
   'browse.tab.detail': 'Detay',
   'browse.categoriesHeader': 'Kategoriler',
+  'browse.recentAdded': 'Son Eklenenler',
   'browse.seriesShort': 'Dizi',
   'browse.season': 'Sezon',
   'browse.episodes': 'Bölümler',
+  'browse.seriesEpgButton': 'Detay',
+  'browse.seriesEpgEmpty': 'Bu dizi için ayrıntılı bilgi bulunamadı.',
   'browse.playFullscreen': 'Tam ekran oynat',
   'browse.selectEpisode': 'Bölüm seçin',
   'browse.notPlayable': 'Oynatılamıyor',
@@ -56,6 +123,17 @@ const Map<String, String> _tr = {
       'Film detayı ve açıklama kaynaktan gelmediğinde burada özet gösterilir.\n\nSüre: @duration\nSeçili: @name',
   'browse.duration.unknown': 'Süre bilgisi yok',
   'browse.duration.minutes': '@n dk',
+  'browse.vod.trailer': 'Fragman',
+  'browse.vod.trailerMissing': 'Bu film için fragman bağlantısı yok.',
+  'browse.vod.overview': 'Özet:',
+  'browse.vod.shortInfo': 'Kısa film bilgisi',
+  'browse.vod.metaLine.genre': 'Tür: @v',
+  'browse.vod.metaLine.director': 'Yönetmen: @v',
+  'browse.vod.metaLine.cast': 'Oyuncular: @v',
+  'browse.vod.metaLine.release': 'Yayın: @v',
+  'browse.vod.metaLine.rating': 'Puan: @v',
+  'browse.vod.noSynopsis': 'Bu film için kaynakta özet bulunmuyor.',
+  'browse.vod.trailerOpenFail': 'Fragman açılamadı.',
 
   // Channels
   'channels.search': 'Kanal ara…',
@@ -67,6 +145,18 @@ const Map<String, String> _tr = {
   'channels.tab.categories': 'Kategoriler',
   'channels.tab.channels': 'Kanallar',
   'channels.tab.detail': 'Detay',
+  'channels.tab.epgTimeline': 'EPG',
+  'channels.epgTimeline.title': 'EPG zaman çizelgesi',
+  'channels.epgTimeline.axis': 'Saat',
+  'channels.epgTimeline.truncated':
+      'Liste uzun; yalnızca ilk @n kanal gösteriliyor.',
+  'channels.epgTimeline.upNext': 'Sırada',
+  'channels.epgTimeline.noSummary': 'Özet yok.',
+  'channels.epgTimeline.playlistSource': 'Oynatma listesi',
+  'channels.epgTimeline.noProgrammeInfo': 'Program bilgisi yok',
+  'channels.epgTimeline.minutesLeft': '@n dk kaldı',
+  'channels.epgTimeline.endsUnderMinute': 'Bir dakikadan az kaldı',
+  'channels.epgTimeline.metaGroup': 'Grup: @name',
   'channels.allChannels': 'Tüm kanallar',
 
   // Common
@@ -74,25 +164,58 @@ const Map<String, String> _tr = {
   'common.notPlayable': 'Oynatılamıyor',
   'common.favorite': 'Favori',
   'common.back': 'Geri',
-  'common.ok': 'Tamam',
-  'common.cancel': 'İptal',
   'common.close': 'Kapat',
-  'common.save': 'Kaydet',
+  'common.cancel': 'Vazgeç',
   'common.delete': 'Sil',
+  'common.save': 'Kaydet',
   'common.clear': 'Temizle',
+  'common.done': 'Tamam',
+  'common.ok': 'Tamam',
+  'common.yes': 'Evet',
+  'common.no': 'Hayır',
   'common.active': 'Aktif',
   'common.inactive': 'Pasif',
   'common.off': 'Kapalı',
   'common.loading': 'Yükleniyor…',
-  'common.yes': 'Evet',
-  'common.no': 'Hayır',
-  'common.fetching': 'Alınıyor…',
+  'common.fetching': 'Yükleniyor…',
+
+  // Speed Test
+  'settings.speed_test.title': 'Hız Testi',
+  'settings.speed_test.start': 'Testi Başlat',
+  'settings.speed_test.testing': 'Test Ediliyor...',
+  'settings.speed_test.completed': 'Test Tamamlandı',
+  'settings.speed_test.retry': 'Tekrar Dene',
+  'settings.speed_test.download': 'İndirme Hızı',
+  'settings.speed_test.last_result': 'Son Test Sonucu',
+  'settings.speed_test.info.title': 'Hız Sınırları',
+  'settings.speed_test.threshold.very_slow':
+      'Çok Yavaş - Donmalar ve takılmalar yaşayabilirsiniz',
+  'settings.speed_test.threshold.borderline':
+      'Sınırda - HD yayınlarda anlık takılmalar olabilir',
+  'settings.speed_test.threshold.excellent':
+      'Harika - Kesintisiz yayın izleyebilirsiniz',
+  'settings.speed_test.message.very_slow':
+      'İnternet hızınız çok düşük. Donmalar yaşamanız normaldir. Lütfen ağınızı kontrol edin.',
+  'settings.speed_test.message.borderline':
+      'İnternet hızınız sınırda. HD yayınlarda anlık takılmalar olabilir.',
+  'settings.speed_test.message.excellent':
+      'İnternet hızınız harika. Kesintisiz yayın izleyebilirsiniz.',
+  'settings.speed_test.analysis.very_slow': 'Çok Düşük Hız',
+  'settings.speed_test.analysis.borderline': 'Sınır Hız',
+  'settings.speed_test.analysis.excellent': 'Harika Hız',
+  'settings.speed_test.error.title': 'Hata',
+  'settings.speed_test.error.no_internet': 'Lütfen internete bağlanın',
+  'settings.speed_test.error.test_failed': 'Test başarısız oldu: @error',
+  'settings.tile.speedTest': 'Hız Testi',
+  'settings.tile.speedTest.sub': 'İnternet hızını ölç',
   'common.lang.tr': 'Türkçe',
   'common.lang.en': 'İngilizce',
   'common.lang.fr': 'Fransızca',
   'common.lang.ar': 'Arapça',
   'common.lang.zh': 'Çince',
   'common.lang.ru': 'Rusça',
+  'common.lang.ja': 'Japonca',
+  'common.lang.es': 'İspanyolca',
 
   // Search hints
   'search.channel': 'Kanal ara…',
@@ -112,11 +235,11 @@ const Map<String, String> _tr = {
 
   // Theme (display names)
   'theme.defaultName': 'Varsayılan',
-  'theme.blueGlass': 'Mavi Cam',
-  'theme.greenGlass': 'Yeşil Cam',
-  'theme.redGlass': 'Kırmızı Cam',
-  'theme.purpleGlass': 'Mor Cam',
   'theme.darkGlass': 'Koyu Cam',
+  'theme.glassmorphism': 'Glassmorphism',
+  'theme.darkFlat': 'Dark Flat',
+  'theme.glassGri': 'Glass Gri',
+  'theme.flatBlack': 'Flat Black',
 
   // Settings — sections & tiles
   'settings.title': 'Ayarlar',
@@ -141,14 +264,77 @@ const Map<String, String> _tr = {
   'settings.tile.autoRefresh.sub': '@days günde bir',
   'settings.tile.account': 'Hesap Bilgileri',
   'settings.tile.account.sub': 'Xtream abonelik bilgilerini gör',
-  'settings.tile.alarm': 'Alarm kur',
+  'settings.tile.parental': 'Ebeveyn denetimi',
+  'settings.tile.parental.sub':
+      'PIN ile koruma; Xtream kategorilerini gizleyin (canlı, film, dizi)',
+  'settings.tile.xtreamApiEpgOnly': 'Yalnızca Xtream API EPG',
+  'settings.tile.xtreamApiEpgOnly.on':
+      'Açık: panel XMLTV atlanıyor, yalnızca get_all_live_epg',
+  'settings.tile.xtreamApiEpgOnly.off':
+      'Kapalı: panel XMLTV ile API EPG birlikte (paralel)',
+  'settings.xtreamCategoryHide.title': 'Kategori gizleme',
+  'settings.xtreamCategoryHide.unavailable':
+      'Önce bir oynatma listesi yükleyin (Xtream veya M3U).',
+  'settings.xtreamCategoryHide.tabLive': 'Canlı',
+  'settings.xtreamCategoryHide.tabVod': 'Filmler',
+  'settings.xtreamCategoryHide.tabSeries': 'Diziler',
+  'settings.xtreamCategoryHide.emptyLive': 'Canlı kategori listesi boş.',
+  'settings.xtreamCategoryHide.emptyVod': 'Film kategorisi listesi boş.',
+  'settings.xtreamCategoryHide.emptySeries': 'Dizi kategorisi listesi boş.',
+  'settings.xtreamCategoryHide.idLabel': 'Kimlik: @id',
+  'settings.xtreamCategoryHide.m3uNameHint':
+      'M3U: group-title adına göre (liste yenilense de kalır)',
+  'settings.xtreamCategoryHide.saved': 'Kategori gizleme kaydedildi.',
+  'settings.tile.categoryHide': 'Kategori gizleme',
+  'settings.tile.categoryHide.sub':
+      'Kanallar, filmler ve diziler için kategori gizleme',
+  'settings.parental.title': 'Ebeveyn denetimi',
+  'settings.parental.createIntro':
+      '4–6 haneli bir PIN belirleyin. Kategori gizleme bu PIN ile açılır.',
+  'settings.parental.verifyIntro':
+      'Kategori ayarlarını açmak için PIN’inizi girin.',
+  'settings.parental.pinNew': 'Yeni PIN',
+  'settings.parental.pinConfirm': 'PIN tekrar',
+  'settings.parental.pinEnter': 'PIN',
+  'settings.parental.savePin': 'PIN’i kaydet',
+  'settings.parental.unlock': 'Devam',
+  'settings.parental.pinInvalid': 'PIN 4–6 rakam olmalıdır.',
+  'settings.parental.pinMismatch': 'PIN’ler eşleşmiyor.',
+  'settings.parental.pinWrong': 'PIN yanlış.',
   'settings.tile.sleepTimer': 'Uyku zamanlayıcısı',
   'settings.tile.clearAll': 'Tüm ayarları sil',
   'settings.tile.clearAll.sub': 'Playlist, önbellek ve tercihleri sıfırla',
   'settings.tile.theme': 'Tema',
+  'settings.tile.subtitleOptions': 'Altyazı seçenekleri',
+  'settings.tile.subtitleOptions.sub': '@pt pt',
   'settings.tile.layout': 'Yerleşim',
   'settings.tile.liveBuffer': 'Düşük Gecikme (Buffer)',
   'settings.tile.liveBuffer.sub': '@n saniye',
+  'settings.tile.adaptiveQuality': 'HLS kalite tavanı',
+  'settings.dialog.adaptiveQualityTitle': 'Çoklu kalite (HLS)',
+  'settings.adaptiveQuality.optionAuto':
+      'Otomatik — ekran boyutuna göre (önerilen)',
+  'settings.adaptiveQuality.option720': 'En fazla 720p',
+  'settings.adaptiveQuality.option1080': 'En fazla 1080p',
+  'settings.adaptiveQuality.option4k': 'En fazla 4K (2160p)',
+  'settings.adaptiveQuality.shortAuto': 'Otomatik (cihaz)',
+  'settings.adaptiveQuality.short720': 'En fazla 720p',
+  'settings.adaptiveQuality.short1080': 'En fazla 1080p',
+  'settings.adaptiveQuality.short4k': 'En fazla 4K',
+  'settings.tile.catchUpUrl': 'EPG catch-up (panel şablonu)',
+  'settings.dialog.catchUpTitle': 'Catch-up URL şablonu',
+  'settings.catchUp.optionOff': 'Kapalı',
+  'settings.catchUp.optionXtreamPath': 'Klasik timeshift yolu (çoğu Xtream)',
+  'settings.catchUp.optionTimeshiftPhp': 'timeshift.php sorgusu',
+  'settings.catchUp.optionCustom': 'Özel şablon',
+  'settings.catchUp.shortOff': 'Kapalı',
+  'settings.catchUp.shortXtreamPath': '/timeshift/…',
+  'settings.catchUp.shortPhp': 'timeshift.php',
+  'settings.catchUp.shortCustom': 'Özel',
+  'settings.catchUp.customLabel': 'Tam adres satırı (yer tutucular {...})',
+  'settings.catchUp.customHint': '{server}/timeshift/{username}/…',
+  'settings.catchUp.help':
+      '{server} {username} {password} {stream_id} {duration} {start_utc_ymd_hms} {start_local_ymd_hms} {start_unix} {extension} — sağlayıcınızın biçimine göre düzenleyin.',
   'settings.tile.launchBoot': 'Cihaz Açıldığında Başlat',
   'settings.tile.bgPlayback': 'Arka Planda Oynatma',
   'settings.tile.miniPlayerHome': 'Küçük ekran (PiP)',
@@ -158,10 +344,10 @@ const Map<String, String> _tr = {
   'settings.tile.miniPlayerHome.subOn':
       'Açık — ana ekrana dönünce küçük pencerede izle (sürükle). Better/Exo.',
   'settings.tile.miniPlayerHome.subOff':
-      'Kapalı — arka plana geçince yayın duraklar (arka plan oynatma ayrı).',
+      'Kapalı — oynatıcıdan çıkınca PiP yok (Better/Exo, telefon yerleşimi).',
   'settings.tile.miniPlayerHome.subMk':
       'MediaKit ile otomatik PiP yok; varsayılan oynatıcıda kullanın.',
-  'settings.tile.reduceBlur': 'Bulanıklığı Azalt (Hız)',
+  'settings.tile.reduceBlur': 'Bulanıklığı Kapat',
   'settings.tile.streamPreview': 'Yayın önizlemesi',
   'settings.tile.streamPreview.on':
       'Liste detayında sessiz önizleme (~1,8 sn sonra)',
@@ -170,11 +356,19 @@ const Map<String, String> _tr = {
   'settings.tile.streamPreview.tvLocked':
       'TV’de de Ayarlar’dan açıp kapatabilirsiniz',
   'settings.tile.defaultPlayer': 'Varsayılan Oynatıcı',
+  'settings.tile.filmVodPlayer': 'Film / dizi oynatıcı',
+  'settings.tile.filmVodPlayer.subExo':
+      'ExoPlayer (Better) — varsayılan; kod çözücü hatasında MediaKit’e geçilir',
+  'settings.tile.filmVodPlayer.subMediaKit':
+      'MediaKit (mpv) — doğrudan mpv ile oynat',
   'settings.tile.useMediaKit': 'MediaKit (mpv) kullan',
   'settings.tile.useMediaKit.subOn':
       'Açık — film ve dizi MediaKit ile; canlı TV her zaman Better Player ile başlar',
   'settings.tile.useMediaKit.subOff':
       'Kapalı — film, dizi ve canlı Better/Exo; MediaKit yalnızca OSD veya hata yedeği',
+  'settings.tile.tvOsdAutoHide': 'OSD Otomatik Gizlenme',
+  'settings.tile.tvOsdAutoHide.sub':
+      'TV modunda OSD panelinin kaç saniye sonra gizleneceğini ayarlayın',
   'settings.tile.mediaKitHwdec': 'Donanım hızlandırma (MediaKit)',
   'settings.tile.mediaKitHwdec.subBalanced':
       'Dengeli — mediacodec-copy (önerilen)',
@@ -187,8 +381,7 @@ const Map<String, String> _tr = {
   'settings.tile.help': 'Yardım & Destek',
   'settings.tile.help.sub': 'Sorun bildirin veya yardım alın',
   'settings.tile.privacy': 'Gizlilik politikası',
-  'settings.tile.privacy.sub':
-      'GitHub: furkangumrukcu07/mina_iptv_player',
+  'settings.tile.privacy.sub': 'GitHub: furkangumrukcu07/mina_iptv_player',
   'settings.snackbar.privacy': 'Gizlilik politikası',
   'settings.snackbar.privacyFail': 'Bağlantı açılamadı.',
   'settings.snackbar.privacyManual':
@@ -199,13 +392,11 @@ const Map<String, String> _tr = {
       '• Canlı TV, film ve dizi; M3U (URL/dosya) ve Xtream playlist\n'
       '• Android TV, telefon ve tablet yerleşimleri; çoklu dil arayüzü\n'
       '• Arama, kategori, favoriler; detayda sessiz yayın önizlemesi\n'
-      '• Oynatıcı: canlıda Better Player (Exo); film/dizide varsayılan MediaKit (mpv, ayarlanabilir)\n'
+      '• Oynatıcı: canlıda Better Player (Exo); film/dizide varsayılan Exo (Better), isteğe MediaKit\n'
       '• XMLTV (EPG), canlı tampon, Android kod çözücü ve MediaKit donanım modu seçenekleri\n'
-      '• Cam temalar, bulanık efekt; otomatik yenileme, arka plan oynatma, uyku zamanlayıcısı, alarm\n'
+      '• Cam temalar, bulanık efekt; otomatik yenileme, arka plan oynatma, uyku zamanlayıcısı\n'
       '• PiP (Better, telefon), kayıt (desteklenen ortamlarda), VOD’da ses/altyazı (Better)\n'
       '• Play: galeri READ_MEDIA izinleri yok; varsayılan tema Varsayılan\n',
-  'settings.alarmNotSet': 'Kurulu değil',
-  'settings.alarmDailyAt': 'Her gün @time',
   'settings.dialog.sleepTimerTitle': 'Uyku zamanlayıcısı',
   'settings.sleepTimer.off': 'Kapalı',
   'settings.sleepTimer.optionMinutes': '@n dakika',
@@ -225,6 +416,10 @@ const Map<String, String> _tr = {
   // Settings dialogs & snackbars (controller)
   'settings.dialog.languageTitle': 'Uygulama dili',
   'settings.dialog.themeTitle': 'Tema',
+  'settings.dialog.subtitleTitle': 'Altyazı punto',
+  'settings.dialog.subtitleHint':
+      'ExoPlayer (Better Player) ve MediaKit gömülü altyazıları için punto. Kumanda ile listede gezinin; Kaydet altta.',
+  'settings.dialog.subtitleChoice': '@pt pt',
   'settings.dialog.layoutTitle': 'Cihaz modu',
   'settings.dialog.refreshTitle': 'İçerikleri Yenile',
   'settings.dialog.refreshBody':
@@ -233,11 +428,6 @@ const Map<String, String> _tr = {
   'settings.dialog.refresh.every3': '3 günde bir yenile',
   'settings.dialog.refresh.every7': 'Haftada bir yenile',
   'settings.dialog.refresh.nowOnly': 'Sadece şimdi yenile',
-  'settings.dialog.alarmTitle': 'Alarm',
-  'settings.dialog.alarmBody':
-      'Uygulama içi hatırlatıcı saati seçin. Sistem alarmı için cihaz saat uygulamasını da kullanabilirsiniz.',
-  'settings.dialog.alarmRemove': 'Kaldır',
-  'settings.dialog.alarmPick': 'Saat seç',
   'settings.dialog.clearTitle': 'Tüm ayarları sil',
   'settings.dialog.clearBody':
       'Playlist bilgisi, önbellek, favoriler ve uygulama tercihleri sıfırlanacak. Emin misiniz?',
@@ -261,7 +451,7 @@ const Map<String, String> _tr = {
       '• Canlıda Better; VOD’da MediaKit (ayar açıkken), OSD’den yedek motora geçiş, TV canlıda takılma yedeği\n'
       '• XMLTV (EPG), canlı tampon, Android yazılım/donanım kod çözücü tercihleri\n'
       '• Cam temalar, bulanık cam; otomatik içerik yenileme, arka planda oynatma\n'
-      '• Uyku zamanlayıcısı, uygulama içi alarm; PiP (Better, telefon)\n'
+      '• Uyku zamanlayıcısı; PiP (Better, telefon)\n'
       '• Kayıt (desteklenen ortamlarda); VOD’da Better ile ses/altyazı izi seçimi\n'
       '• Play: READ_MEDIA galeri izinleri yok; özel galeri arka planı kaldırıldı; varsayılan tema Varsayılan\n\n'
       'Önceki sürümler\n'
@@ -289,10 +479,6 @@ const Map<String, String> _tr = {
   'settings.xtream.trial': 'Deneme Hesabı:',
   'settings.xtream.unlimited': 'Süresiz',
   'settings.xtreamFooter.line': 'Xtream: @user · @host',
-  'settings.snackbar.alarm': 'Alarm',
-  'settings.snackbar.alarmSaved':
-      'Hatırlatıcı kaydedildi. Sistem alarmı için cihazınızın saat uygulamasını da kullanabilirsiniz.',
-  'settings.snackbar.alarmCleared': 'Alarm kaldırıldı.',
   'settings.snackbar.settings': 'Ayarlar',
   'settings.snackbar.cleared': 'Tüm veriler temizlendi.',
   'settings.snackbar.clearFailed': 'Temizlenemedi: @e',
@@ -313,9 +499,13 @@ const Map<String, String> _tr = {
   'playlist.sourceSubtitle': 'M3U URL, yerel dosya veya Xtream hesabı.',
   'playlist.loadList': 'Listeyi Yükle',
   'playlist.m3uUrl': 'M3U URL',
+  'playlist.m3uUrlHint': 'https://example.com/playlist.m3u',
   'playlist.pickFile': 'Dosya Seç',
+  'playlist.m3uXtreamRecommendation':
+      'Daha iyi verim ve deneyim için Xtream ile giriş yapmanızı öneririz.',
   'playlist.noFile': '.m3u / .m3u8 dosyası seçilmedi',
   'playlist.xtream.server': 'Sunucu Adresi',
+  'playlist.xtream.serverPlaceholder': 'Sunucu URL (Host)',
   'playlist.xtream.user': 'Kullanıcı Adı',
   'playlist.xtream.pass': 'Şifre',
   'playlist.xtream.hint':
@@ -338,6 +528,7 @@ const Map<String, String> _tr = {
   'playlist.secondaryUrlHint': 'İkinci M3U URL',
   'playlist.error.secondaryXtream': 'İkinci Xtream bilgileri eksik',
   'playlist.error.secondaryUrl': 'İkinci M3U URL boş olamaz',
+  'playlist.demoList': 'Demo Liste (Test)',
 
   // Player (TV / controls)
   'player.liveBadge': 'CANLI',
@@ -346,11 +537,26 @@ const Map<String, String> _tr = {
   'player.fit.cover': 'Doldur',
   'player.fit.fill': 'Ger',
   'player.fit.label': 'Görünüm',
+  'player.vodAutoplay.titleEpisode': 'Sonraki bölüm',
+  'player.vodAutoplay.titleMovie': 'Sıradaki film',
+  'player.vodAutoplay.secondsHint': 'saniye sonra oynatılacak',
+  'player.vodAutoplay.cancel': 'İptal',
+  'player.vodAutoplay.playNow': 'Şimdi oynat',
+  'player.vodAutoplay.backHint': 'Geri tuşu ile iptal',
+  'player.vodRail.title': 'Bu kategoride',
+  'player.vodRail.hint': 'OK ile seç · Geri ile devam',
+  'player.vodRail.hintCategories': '◀ ▶ kategori · OK ile seç · Geri ile devam',
+  'player.liveRail.title': 'Kanallar',
+  'player.liveRail.hint': 'OK ile geç · Geri ile kapat',
+  'player.liveRail.hintCategories':
+      '◀ ▶ kategori · OK ile geç · Geri ile kapat',
   'player.tooltip.prevCh': 'Önceki kanal',
   'player.tooltip.nextCh': 'Sonraki kanal',
   'player.tooltip.rewind': '15 sn geri',
   'player.tooltip.forward': '15 sn ileri',
   'player.tooltip.pause': 'Duraklat',
+  'player.tooltip.quickMenuHold': 'Hızlı liste: OK uzun bas',
+  'player.tooltip.quickMenuOpen': 'Hızlı liste',
   'player.tooltip.play': 'Oynat',
   'player.tooltip.favOff': 'Favorilere ekle',
   'player.tooltip.favOn': 'Favorilerden çıkar',
@@ -364,6 +570,12 @@ const Map<String, String> _tr = {
   'player.tooltip.backupPlayer': 'Yedek oynatıcıya geç (MediaKit)',
   'player.tooltip.toMediaKit': 'MediaKit ile oynat (M)',
   'player.tooltip.toBetter': 'Better Player ile oynat (B)',
+  'player.tooltip.liveEpg': 'Bu kanalın EPG rehberi',
+  'player.tooltip.toPortrait': 'Dikey moda geç',
+  'player.tooltip.toLandscape': 'Yatay izle (telefonu çevirin)',
+  'player.engine.switchToBetter.title': 'Better Player (Exo) ile oynat?',
+  'player.engine.switchToBetter.body':
+      'Dizi akışlarında önerilen motor MediaKit’tir. ExoPlayer’a geçmek istediğinize emin misiniz?',
   'player.quality.title': 'Yayın kalitesi',
   'player.quality.noneShort': 'Bu yayın için kalite seçenekleri mevcut değil.',
   'player.quality.noneLong':
@@ -378,9 +590,18 @@ const Map<String, String> _tr = {
   'player.track.audio': 'Ses @n',
   'player.quality.auto': 'Otomatik (Oto)',
   'player.quality.unknown': 'Bilinmeyen Kalite',
+  'player.quality.withFps': '@res · @fps fps',
   'player.loading.decoder': 'Kod çözücü hatası düzeltiliyor (Adım @step)...',
   'player.loading.stream': 'Akış açılıyor...',
+  'player.error.contentNotFound': 'İçerik sunucuda bulunamadı',
+  'player.error.playbackGeneric': 'Yayın şu anda açılamıyor',
+  'player.error.invalidStreamUrl': 'Geçersiz yayın adresi',
   'player.notReady': 'Oynatıcı hazır değil',
+  'player.resume.title': 'Kaldığınız yerden devam?',
+  'player.resume.body':
+      'Bu içeriği daha önce izlemeye başlamıştınız. Nasıl devam etmek istersiniz?',
+  'player.resume.fromLast': 'Kaldığım yerden',
+  'player.resume.fromStart': 'Baştan başla',
   'player.warn.title': 'Uyarı',
   'player.warn.qualityShort':
       'Çoklu kalite yok: HD/FHD için HLS’te birden fazla varyant gerekir; saf .ts veya tek kaliteli akışta menü boş kalabilir.',
@@ -407,9 +628,67 @@ const Map<String, String> _en = {
   'home.series': 'Series',
   'home.series.subtitle': 'TV series',
   'home.favorites': 'Favorites',
+  'home.continue_watching': 'Continue Watching',
+  'marquee.monday': 'Start the week with energy! Have a great week.',
+  'marquee.tuesday': 'The pace of the week is increasing, enjoy your viewing.',
+  'marquee.wednesday':
+      'We reached the middle of the week! Take a break with your favorite content.',
+  'marquee.thursday':
+      'Almost weekend, relieve the day\'s fatigue with Mina IPTV.',
+  'marquee.friday': 'Weekend fun starts now with Mina.',
+  'marquee.saturday': 'Weekend entertainment is here! Have a good rest.',
+  'marquee.sunday':
+      'Enjoy your Sunday! We are with you while preparing for the new week.',
   'home.header.brandTop': 'Mina',
   'home.header.brandBottom': 'IPTV Player',
+  'home.search.hint': 'Search…',
+  'home.search.dialogTitle': 'Search',
+  'home.search.typeToSeeResults': 'Type to see results.',
+  'home.search.sectionLive': 'Live TV',
+  'home.search.sectionFilms': 'Movies',
+  'home.search.sectionSeries': 'Series',
+  'home.search.noResults': 'No matching results.',
   'splash.preparing': 'Preparing your library…',
+  'setup.wizardTitle': 'Welcome',
+  'setup.stepLanguage': 'Language',
+  'setup.stepTheme': 'Appearance',
+  'setup.stepPlayer': 'Player',
+  'setup.stepSource': 'Playlist',
+  'setup.next': 'Continue',
+  'setup.back': 'Back',
+  'setup.finish': 'Finish setup',
+  'setup.finishRequiresSource':
+      'Load your playlist first (M3U or Xtream credentials).',
+  'setup.skip': 'Skip',
+  'setup.sourceHint':
+      'Enter your M3U or Xtream details; the app will open after the list loads.',
+  'setup.tvTitle': 'Enter your playlist',
+  'setup.tv.brand': 'Mina Player TV',
+  'setup.tv.welcome': 'Welcome to setup',
+  'setup.tv.subtitle': 'Choose a method below. The app will open after the playlist is added.',
+  'setup.tv.methodUrl': '1. M3U URL',
+  'setup.tv.methodFile': '2. M3U file',
+  'setup.tv.methodXtream': '3. Xtream',
+  'setup.tv.urlConnect': 'Connect with URL',
+  'setup.tv.filePick': 'Choose file',
+  'setup.tv.xtreamLogin': 'Sign in',
+  'setup.tv.demo': 'Demo mode',
+  'setup.tv.langLine': 'Language matches your device (automatic).',
+  'setup.tv.xtreamServer': 'Server URL',
+  'setup.tv.xtreamUser': 'Username',
+  'setup.tv.xtreamPass': 'Password',
+  'setup.tv.urlFieldHint': 'M3U playlist URL',
+  'setup.playerExoTitle': 'Better / ExoPlayer',
+  'setup.playerExoSub':
+      'Lower latency, recommended on most devices for live and VOD.',
+  'setup.playerMkvTitle': 'MediaKit (mpv)',
+  'setup.playerMkvSub':
+      'Alternative for difficult streams; you can change this later in settings.',
+  'integrity.dialog.title': 'Use the official version',
+  'integrity.dialog.body':
+      'This install doesn’t match a Google Play license. For the safest experience, we recommend installing the app from Google Play.',
+  'integrity.dialog.later': 'Not now',
+  'integrity.dialog.openPlay': 'Open in Google Play',
   'browse.films': 'Movies',
   'browse.series': 'Series',
   'browse.favorites': 'Favorites',
@@ -418,9 +697,12 @@ const Map<String, String> _en = {
   'browse.tab.category': 'Category',
   'browse.tab.detail': 'Details',
   'browse.categoriesHeader': 'Categories',
+  'browse.recentAdded': 'Recently Added',
   'browse.seriesShort': 'Series',
   'browse.season': 'Season',
   'browse.episodes': 'Episodes',
+  'browse.seriesEpgButton': 'Details',
+  'browse.seriesEpgEmpty': 'No detailed information for this series.',
   'browse.playFullscreen': 'Play full screen',
   'browse.selectEpisode': 'Select an episode',
   'browse.notPlayable': 'Not playable',
@@ -435,6 +717,17 @@ const Map<String, String> _en = {
       'When the provider does not supply a synopsis, a short summary is shown here.\n\nDuration: @duration\nSelected: @name',
   'browse.duration.unknown': 'Duration unknown',
   'browse.duration.minutes': '@n min',
+  'browse.vod.trailer': 'Trailer',
+  'browse.vod.trailerMissing': 'No trailer link for this title.',
+  'browse.vod.overview': 'Overview:',
+  'browse.vod.shortInfo': 'Film details',
+  'browse.vod.metaLine.genre': 'Genre: @v',
+  'browse.vod.metaLine.director': 'Director: @v',
+  'browse.vod.metaLine.cast': 'Cast: @v',
+  'browse.vod.metaLine.release': 'Released: @v',
+  'browse.vod.metaLine.rating': 'Rating: @v',
+  'browse.vod.noSynopsis': 'No synopsis from the source.',
+  'browse.vod.trailerOpenFail': 'Could not open the trailer.',
   'channels.search': 'Search channels…',
   'channels.searchDialogTitle': 'Search channels',
   'channels.searchSubmit': 'Search',
@@ -444,6 +737,18 @@ const Map<String, String> _en = {
   'channels.tab.categories': 'Categories',
   'channels.tab.channels': 'Channels',
   'channels.tab.detail': 'Details',
+  'channels.tab.epgTimeline': 'EPG',
+  'channels.epgTimeline.title': 'EPG timeline',
+  'channels.epgTimeline.axis': 'Time',
+  'channels.epgTimeline.truncated':
+      'Long list; showing only the first @n channels.',
+  'channels.epgTimeline.upNext': 'Up next',
+  'channels.epgTimeline.noSummary': 'No synopsis.',
+  'channels.epgTimeline.playlistSource': 'Playlist',
+  'channels.epgTimeline.noProgrammeInfo': 'No programme information',
+  'channels.epgTimeline.minutesLeft': '@n min left',
+  'channels.epgTimeline.endsUnderMinute': 'Less than a minute left',
+  'channels.epgTimeline.metaGroup': 'Group: @name',
   'channels.allChannels': 'All channels',
   'common.play': 'Play',
   'common.notPlayable': 'Not playable',
@@ -454,6 +759,7 @@ const Map<String, String> _en = {
   'common.close': 'Close',
   'common.save': 'Save',
   'common.delete': 'Delete',
+  'common.done': 'Done',
   'common.clear': 'Clear',
   'common.active': 'On',
   'common.inactive': 'Off',
@@ -468,6 +774,38 @@ const Map<String, String> _en = {
   'common.lang.ar': 'Arabic',
   'common.lang.zh': 'Chinese',
   'common.lang.ru': 'Russian',
+  'common.lang.ja': 'Japanese',
+  'common.lang.es': 'Spanish',
+
+  // Speed Test
+  'settings.speed_test.title': 'Speed Test',
+  'settings.speed_test.start': 'Start Test',
+  'settings.speed_test.testing': 'Testing...',
+  'settings.speed_test.completed': 'Test Completed',
+  'settings.speed_test.retry': 'Retry',
+  'settings.speed_test.download': 'Download Speed',
+  'settings.speed_test.last_result': 'Last Test Result',
+  'settings.speed_test.info.title': 'Speed Limits',
+  'settings.speed_test.threshold.very_slow':
+      'Very Slow - You may experience buffering and freezes',
+  'settings.speed_test.threshold.borderline':
+      'Borderline - HD streams may have occasional stuttering',
+  'settings.speed_test.threshold.excellent':
+      'Excellent - You can enjoy seamless streaming',
+  'settings.speed_test.message.very_slow':
+      'Your internet speed is very low. Buffering is normal. Please check your network.',
+  'settings.speed_test.message.borderline':
+      'Your internet speed is borderline. HD streams may have occasional stuttering.',
+  'settings.speed_test.message.excellent':
+      'Your internet speed is excellent. You can enjoy seamless streaming.',
+  'settings.speed_test.analysis.very_slow': 'Very Low Speed',
+  'settings.speed_test.analysis.borderline': 'Borderline Speed',
+  'settings.speed_test.analysis.excellent': 'Excellent Speed',
+  'settings.speed_test.error.title': 'Error',
+  'settings.speed_test.error.no_internet': 'Please connect to the internet',
+  'settings.speed_test.error.test_failed': 'Test failed: @error',
+  'settings.tile.speedTest': 'Speed Test',
+  'settings.tile.speedTest.sub': 'Test your internet speed',
   'search.channel': 'Search channels…',
   'search.film': 'Search movies…',
   'search.series': 'Search series…',
@@ -481,11 +819,11 @@ const Map<String, String> _en = {
   'layout.dialog.phone.sub': 'Portrait and landscape allowed',
   'layout.dialog.tv.sub': 'Landscape lock (remote-focused)',
   'theme.defaultName': 'Default',
-  'theme.blueGlass': 'Blue glass',
-  'theme.greenGlass': 'Green glass',
-  'theme.redGlass': 'Red glass',
-  'theme.purpleGlass': 'Purple glass',
   'theme.darkGlass': 'Dark glass',
+  'theme.glassmorphism': 'Glassmorphism',
+  'theme.darkFlat': 'Dark Flat',
+  'theme.glassGri': 'Glass Gri',
+  'theme.flatBlack': 'Flat Black',
   'settings.title': 'Settings',
   'settings.language': 'App language',
   'settings.deviceMode': 'Device mode',
@@ -506,14 +844,76 @@ const Map<String, String> _en = {
   'settings.tile.autoRefresh.sub': 'Every @days days',
   'settings.tile.account': 'Account info',
   'settings.tile.account.sub': 'View Xtream subscription details',
-  'settings.tile.alarm': 'Alarm',
+  'settings.tile.parental': 'Parental controls',
+  'settings.tile.parental.sub':
+      'PIN protection; hide Xtream categories (live, movies, series)',
+  'settings.tile.xtreamApiEpgOnly': 'Xtream API EPG only',
+  'settings.tile.xtreamApiEpgOnly.on':
+      'On: panel XMLTV skipped; get_all_live_epg only',
+  'settings.tile.xtreamApiEpgOnly.off':
+      'Off: panel XMLTV and API EPG together (parallel)',
+  'settings.xtreamCategoryHide.title': 'Hide categories',
+  'settings.xtreamCategoryHide.unavailable':
+      'Load a playlist first (Xtream or M3U).',
+  'settings.xtreamCategoryHide.tabLive': 'Live',
+  'settings.xtreamCategoryHide.tabVod': 'Movies',
+  'settings.xtreamCategoryHide.tabSeries': 'Series',
+  'settings.xtreamCategoryHide.emptyLive': 'No live categories.',
+  'settings.xtreamCategoryHide.emptyVod': 'No movie categories.',
+  'settings.xtreamCategoryHide.emptySeries': 'No series categories.',
+  'settings.xtreamCategoryHide.idLabel': 'ID: @id',
+  'settings.xtreamCategoryHide.m3uNameHint':
+      'M3U: by group-title name (persists after refresh)',
+  'settings.xtreamCategoryHide.saved': 'Category hiding saved.',
+  'settings.tile.categoryHide': 'Hide categories',
+  'settings.tile.categoryHide.sub':
+      'Hide categories for channels, movies and series',
+  'settings.parental.title': 'Parental controls',
+  'settings.parental.createIntro':
+      'Choose a 4–6 digit PIN. Category hiding opens with this PIN.',
+  'settings.parental.verifyIntro': 'Enter your PIN to open category settings.',
+  'settings.parental.pinNew': 'New PIN',
+  'settings.parental.pinConfirm': 'Confirm PIN',
+  'settings.parental.pinEnter': 'PIN',
+  'settings.parental.savePin': 'Save PIN',
+  'settings.parental.unlock': 'Continue',
+  'settings.parental.pinInvalid': 'PIN must be 4–6 digits.',
+  'settings.parental.pinMismatch': 'PINs do not match.',
+  'settings.parental.pinWrong': 'Incorrect PIN.',
   'settings.tile.sleepTimer': 'Sleep timer',
   'settings.tile.clearAll': 'Erase all settings',
   'settings.tile.clearAll.sub': 'Reset playlist, cache, and preferences',
   'settings.tile.theme': 'Theme',
+  'settings.tile.subtitleOptions': 'Subtitle options',
+  'settings.tile.subtitleOptions.sub': '@pt pt',
   'settings.tile.layout': 'Layout',
   'settings.tile.liveBuffer': 'Low latency (buffer)',
   'settings.tile.liveBuffer.sub': '@n seconds',
+  'settings.tile.adaptiveQuality': 'HLS quality ceiling',
+  'settings.dialog.adaptiveQualityTitle': 'Multi-quality streams (HLS)',
+  'settings.adaptiveQuality.optionAuto':
+      'Automatic — based on screen size (recommended)',
+  'settings.adaptiveQuality.option720': 'Up to 720p',
+  'settings.adaptiveQuality.option1080': 'Up to 1080p',
+  'settings.adaptiveQuality.option4k': 'Up to 4K (2160p)',
+  'settings.adaptiveQuality.shortAuto': 'Automatic (device)',
+  'settings.adaptiveQuality.short720': 'Up to 720p',
+  'settings.adaptiveQuality.short1080': 'Up to 1080p',
+  'settings.adaptiveQuality.short4k': 'Up to 4K',
+  'settings.tile.catchUpUrl': 'EPG catch-up URL template',
+  'settings.dialog.catchUpTitle': 'Catch-up URL template',
+  'settings.catchUp.optionOff': 'Off',
+  'settings.catchUp.optionXtreamPath': 'Classic timeshift path (most Xtream)',
+  'settings.catchUp.optionTimeshiftPhp': 'timeshift.php query',
+  'settings.catchUp.optionCustom': 'Custom template',
+  'settings.catchUp.shortOff': 'Off',
+  'settings.catchUp.shortXtreamPath': '/timeshift/…',
+  'settings.catchUp.shortPhp': 'timeshift.php',
+  'settings.catchUp.shortCustom': 'Custom',
+  'settings.catchUp.customLabel': 'Full URL line (placeholders in braces)',
+  'settings.catchUp.customHint': '{server}/timeshift/{username}/…',
+  'settings.catchUp.help':
+      'Placeholders: {server} {username} {password} {stream_id} {duration} {start_utc_ymd_hms} {start_local_ymd_hms} {start_unix} {extension}. Match your provider.',
   'settings.tile.launchBoot': 'Launch when device starts',
   'settings.tile.bgPlayback': 'Background playback',
   'settings.tile.miniPlayerHome': 'Mini player (PiP)',
@@ -523,7 +923,7 @@ const Map<String, String> _en = {
   'settings.tile.miniPlayerHome.subOn':
       'On — return home for a draggable mini window (Better/Exo).',
   'settings.tile.miniPlayerHome.subOff':
-      'Off — playback pauses when leaving the app (unless background playback is on).',
+      'Off — no PiP when leaving the player (Better/Exo, phone layout).',
   'settings.tile.miniPlayerHome.subMk':
       'Auto PiP is not available with MediaKit; use the default player.',
   'settings.tile.reduceBlur': 'Reduce blur (speed)',
@@ -535,11 +935,19 @@ const Map<String, String> _en = {
   'settings.tile.streamPreview.tvLocked':
       'On TV you can turn this on or off in Settings',
   'settings.tile.defaultPlayer': 'Default Player',
+  'settings.tile.filmVodPlayer': 'Movies / series player',
+  'settings.tile.filmVodPlayer.subExo':
+      'ExoPlayer (Better) — default; switches to MediaKit on decoder failure',
+  'settings.tile.filmVodPlayer.subMediaKit':
+      'MediaKit (mpv) — play directly with mpv',
   'settings.tile.useMediaKit': 'Use MediaKit (mpv)',
   'settings.tile.useMediaKit.subOn':
       'On — movies & series use MediaKit; live TV always starts in Better Player',
   'settings.tile.useMediaKit.subOff':
       'Off — movies, series, and live use Better/Exo; MediaKit only as backup',
+  'settings.tile.tvOsdAutoHide': 'OSD auto hide',
+  'settings.tile.tvOsdAutoHide.sub':
+      'How many seconds the TV on-screen display stays open before it hides in TV mode',
   'settings.tile.mediaKitHwdec': 'Hardware acceleration (MediaKit)',
   'settings.tile.mediaKitHwdec.subBalanced':
       'Balanced — mediacodec-copy (recommended)',
@@ -565,11 +973,9 @@ const Map<String, String> _en = {
       '• Search, categories, favorites; silent stream preview in details\n'
       '• Playback: live uses Better Player (Exo); VOD defaults to MediaKit (mpv, optional)\n'
       '• XMLTV (EPG), live buffer, Android decoder options, MediaKit hardware mode\n'
-      '• Glass themes, blur; auto refresh, background playback, sleep timer, alarm\n'
+      '• Glass themes, blur; auto refresh, background playback, sleep timer\n'
       '• PiP (Better, phone), recording where supported; VOD audio/subtitles (Better)\n'
       '• Play: no READ_MEDIA gallery permissions; default theme is Default\n',
-  'settings.alarmNotSet': 'Not set',
-  'settings.alarmDailyAt': 'Every day at @time',
   'settings.dialog.sleepTimerTitle': 'Sleep timer',
   'settings.sleepTimer.off': 'Off',
   'settings.sleepTimer.optionMinutes': '@n minutes',
@@ -587,6 +993,10 @@ const Map<String, String> _en = {
       'Hardware first — ExoPlayer (default). MediaKit: libmpv auto-safe.',
   'settings.dialog.languageTitle': 'App language',
   'settings.dialog.themeTitle': 'Theme',
+  'settings.dialog.subtitleTitle': 'Subtitle size',
+  'settings.dialog.subtitleHint':
+      'Font size for embedded subtitles in ExoPlayer (Better Player) and MediaKit. Use the remote to move; Save is at the bottom.',
+  'settings.dialog.subtitleChoice': '@pt pt',
   'settings.dialog.layoutTitle': 'Device mode',
   'settings.dialog.refreshTitle': 'Refresh content',
   'settings.dialog.refreshBody':
@@ -595,11 +1005,6 @@ const Map<String, String> _en = {
   'settings.dialog.refresh.every3': 'Refresh every 3 days',
   'settings.dialog.refresh.every7': 'Refresh every week',
   'settings.dialog.refresh.nowOnly': 'Refresh once now',
-  'settings.dialog.alarmTitle': 'Alarm',
-  'settings.dialog.alarmBody':
-      'Pick an in-app reminder time. You can also use the system clock app for alarms.',
-  'settings.dialog.alarmRemove': 'Remove',
-  'settings.dialog.alarmPick': 'Pick time',
   'settings.dialog.clearTitle': 'Erase all settings',
   'settings.dialog.clearBody':
       'Playlist data, cache, favorites, and preferences will be reset. Continue?',
@@ -610,7 +1015,7 @@ const Map<String, String> _en = {
   'settings.dialog.bufferSlider': '@n seconds',
   'settings.dialog.changelogTitle': 'Release notes',
   'settings.dialog.changelogBody': 'v1.2.7\n'
-      '• Playback: live TV uses Better Player; movies/series default to MediaKit (mpv) — optional in Settings\n'
+      '• Playback: live TV uses Better Player; movies/series default to Exo (Better), optional MediaKit in Settings\n'
       '• MediaKit (Android): fixed VideoController init order (reduced VOD crash risk)\n'
       '• MediaKit: hardware decoder mode (Balanced / Low power), libmpv performance and buffer tuning\n'
       '• Settings: MediaKit and stream preview default ON; stay ON after “erase all settings”\n'
@@ -623,7 +1028,7 @@ const Map<String, String> _en = {
       '• Live: Better; VOD: MediaKit when enabled, OSD backup engine switch, TV live stall fallback\n'
       '• XMLTV (EPG), live buffer, Android software/hardware decoder options\n'
       '• Glass themes and blur; automatic content refresh, background playback\n'
-      '• Sleep timer, in-app alarm; PiP (Better, phone)\n'
+      '• Sleep timer; PiP (Better, phone)\n'
       '• Recording where supported; VOD audio/subtitle tracks with Better\n'
       '• Play: no READ_MEDIA gallery permissions; custom gallery background removed; default theme Default\n\n'
       'Earlier releases\n'
@@ -652,10 +1057,6 @@ const Map<String, String> _en = {
   'settings.xtream.trial': 'Trial account:',
   'settings.xtream.unlimited': 'Unlimited',
   'settings.xtreamFooter.line': 'Xtream: @user · @host',
-  'settings.snackbar.alarm': 'Alarm',
-  'settings.snackbar.alarmSaved':
-      'Reminder saved. You can also use your device clock app for system alarms.',
-  'settings.snackbar.alarmCleared': 'Alarm removed.',
   'settings.snackbar.settings': 'Settings',
   'settings.snackbar.cleared': 'All data cleared.',
   'settings.snackbar.clearFailed': 'Could not clear: @e',
@@ -673,9 +1074,13 @@ const Map<String, String> _en = {
   'playlist.sourceSubtitle': 'M3U URL, local file, or Xtream account.',
   'playlist.loadList': 'Load playlist',
   'playlist.m3uUrl': 'M3U URL',
+  'playlist.m3uUrlHint': 'https://example.com/playlist.m3u',
   'playlist.pickFile': 'Choose file',
+  'playlist.m3uXtreamRecommendation':
+      'For better performance and features, we recommend signing in with Xtream.',
   'playlist.noFile': 'No .m3u / .m3u8 file selected',
   'playlist.xtream.server': 'Server URL',
+  'playlist.xtream.serverPlaceholder': 'Server URL (host)',
   'playlist.xtream.user': 'Username',
   'playlist.xtream.pass': 'Password',
   'playlist.xtream.hint':
@@ -698,17 +1103,34 @@ const Map<String, String> _en = {
   'playlist.secondaryUrlHint': 'Second M3U URL',
   'playlist.error.secondaryXtream': 'Incomplete second Xtream credentials',
   'playlist.error.secondaryUrl': 'Second M3U URL cannot be empty',
+  'playlist.demoList': 'Demo Playlist (Test)',
   'player.liveBadge': 'LIVE',
   'player.epgLoading': 'Loading EPG…',
   'player.fit.contain': 'Fit',
   'player.fit.cover': 'Fill',
   'player.fit.fill': 'Stretch',
   'player.fit.label': 'View',
+  'player.vodAutoplay.titleEpisode': 'Next episode',
+  'player.vodAutoplay.titleMovie': 'Next movie',
+  'player.vodAutoplay.secondsHint': 'seconds until playback',
+  'player.vodAutoplay.cancel': 'Cancel',
+  'player.vodAutoplay.playNow': 'Play now',
+  'player.vodAutoplay.backHint': 'Press back to cancel',
+  'player.vodRail.title': 'In this category',
+  'player.vodRail.hint': 'OK to switch · Back to keep watching',
+  'player.vodRail.hintCategories':
+      '◀ ▶ category · OK to switch · Back to keep watching',
+  'player.liveRail.title': 'Channels',
+  'player.liveRail.hint': 'OK to switch · Back to close',
+  'player.liveRail.hintCategories':
+      '◀ ▶ category · OK to switch · Back to close',
   'player.tooltip.prevCh': 'Previous channel',
   'player.tooltip.nextCh': 'Next channel',
   'player.tooltip.rewind': '15 s back',
   'player.tooltip.forward': '15 s forward',
   'player.tooltip.pause': 'Pause',
+  'player.tooltip.quickMenuHold': 'Quick list: long OK',
+  'player.tooltip.quickMenuOpen': 'Quick list',
   'player.tooltip.play': 'Play',
   'player.tooltip.favOff': 'Add to favorites',
   'player.tooltip.favOn': 'Remove from favorites',
@@ -722,6 +1144,12 @@ const Map<String, String> _en = {
   'player.tooltip.backupPlayer': 'Switch to backup player (MediaKit)',
   'player.tooltip.toMediaKit': 'Play with MediaKit (M)',
   'player.tooltip.toBetter': 'Play with Better Player (B)',
+  'player.tooltip.liveEpg': 'This channel’s TV guide',
+  'player.tooltip.toPortrait': 'Switch to portrait',
+  'player.tooltip.toLandscape': 'Landscape: rotate your phone',
+  'player.engine.switchToBetter.title': 'Switch to Better Player (Exo)?',
+  'player.engine.switchToBetter.body':
+      'MediaKit is recommended for series streams. Are you sure you want to use ExoPlayer?',
   'player.quality.title': 'Stream quality',
   'player.quality.noneShort': 'No quality options for this stream.',
   'player.quality.noneLong':
@@ -735,9 +1163,18 @@ const Map<String, String> _en = {
   'player.track.audio': 'Audio @n',
   'player.quality.auto': 'Auto',
   'player.quality.unknown': 'Unknown quality',
+  'player.quality.withFps': '@res · @fps fps',
   'player.loading.decoder': 'Fixing decoder error (step @step)...',
   'player.loading.stream': 'Opening stream…',
+  'player.error.contentNotFound': 'Content was not found on the server',
+  'player.error.playbackGeneric': 'Playback is unavailable right now',
+  'player.error.invalidStreamUrl': 'Invalid stream address',
   'player.notReady': 'Player is not ready',
+  'player.resume.title': 'Resume where you left off?',
+  'player.resume.body':
+      'You have watched this title before. How would you like to continue?',
+  'player.resume.fromLast': 'Resume',
+  'player.resume.fromStart': 'Start over',
   'player.warn.title': 'Notice',
   'player.warn.qualityShort':
       'No multi-quality menu: HD/FHD needs multiple HLS variants; plain .ts or single-bitrate streams may leave the menu empty.',

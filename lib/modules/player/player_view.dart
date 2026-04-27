@@ -8,20 +8,85 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:media_kit/media_kit.dart';
-import 'package:screen_brightness/screen_brightness.dart';
-import '../../../core/layout/app_layout_mode.dart';
-import '../../../core/services/app_settings_service.dart';
+import '../../core/player/playback_orientation_manager.dart';
+import '../../core/services/app_settings_service.dart';
+import '../../core/layout/app_layout_mode.dart';
+import '../../../core/theme/app_performance.dart';
+import '../../../core/theme/glass_appearance.dart';
 import '../../../core/services/favorites_service.dart';
 import '../../../core/player/exo_native_track_option.dart';
-import '../../../core/services/playlist_cache_service.dart';
+import '../../../core/player/better_player_video_track_label.dart';
+import '../../../core/player/iptv_playback_defaults.dart';
 import '../../../domain/entities/channel.dart';
+import '../../../domain/entities/series.dart';
+import 'widgets/osd_stream_quality_badges.dart';
 import 'widgets/live_channel_strip_overlay.dart';
+import 'widgets/vod_browse_rail_overlay.dart';
+import 'widgets/player_live_epg_overlay.dart';
+import 'widgets/vod_autoplay_overlay.dart';
 import 'widgets/player_glass_level_overlay.dart';
-import 'widgets/tv_live_busy_osd.dart';
 import 'widgets/tv_media_kit_player_controls.dart';
 import 'widgets/universal_video_player.dart';
 import 'player_controller.dart';
 import '../../../ui/glass_overlays.dart';
+import '../../../ui/iptv_channel_logo.dart';
+
+/// TV / yatay kumanda: oynatıcı yüzeyi veya cam OSD henüz yokken bile canlıda kanal değişimi.
+Widget _liveRemoteZapWhenPlayerChromeMissing({
+  required PlayerController controller,
+  required bool enable,
+  required Widget child,
+}) {
+  if (!enable) return child;
+  return Focus(
+    autofocus: true,
+    onKeyEvent: (node, event) {
+      if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+        return KeyEventResult.ignored;
+      }
+      if (controller.vodResumeDialogOpen.value ||
+          controller.vodAutoplayCountdown.value != null) {
+        return KeyEventResult.ignored;
+      }
+      final k = event.logicalKey;
+      if (k == LogicalKeyboardKey.arrowUp ||
+          k == LogicalKeyboardKey.arrowLeft) {
+        controller.zapRelativeDebounced(-1);
+        return KeyEventResult.handled;
+      }
+      if (k == LogicalKeyboardKey.arrowDown ||
+          k == LogicalKeyboardKey.arrowRight) {
+        controller.zapRelativeDebounced(1);
+        return KeyEventResult.handled;
+      }
+      return KeyEventResult.ignored;
+    },
+    child: child,
+  );
+}
+
+/// Sistem parlaklığına dokunmadan yalnızca video alanını karartır ([PlayerController.inAppPlaybackBrightness]).
+class _PlaybackVideoDimmer extends StatelessWidget {
+  const _PlaybackVideoDimmer({required this.controller});
+
+  final PlayerController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    return Obx(() {
+      final dim =
+          (1.0 - controller.inAppPlaybackBrightness.value).clamp(0.0, 1.0);
+      if (dim < 0.003) return const SizedBox.shrink();
+      return Positioned.fill(
+        child: IgnorePointer(
+          child: ColoredBox(
+            color: Colors.black.withValues(alpha: dim),
+          ),
+        ),
+      );
+    });
+  }
+}
 
 class PlayerView extends StatefulWidget {
   const PlayerView({super.key});
@@ -36,19 +101,23 @@ class _PlayerViewState extends State<PlayerView> with WidgetsBindingObserver {
   /// Dikey ↔ yatay geçişte üst widget ağacı değişince [UniversalVideoPlayer] yeniden kurulmasın.
   final GlobalKey _videoSurfaceKey = GlobalKey(debugLabel: 'minaPlayerVideo');
 
-  double? _dragStartValue;
+  double? _verticalGestureOriginY;
+  double _verticalGestureStartLevel = 1.0;
   bool _isDraggingLeft = false;
   final RxDouble _overlayValue = 0.0.obs;
   final Rxn<IconData> _overlayIcon = Rxn<IconData>();
   final RxBool _showOverlay = false.obs;
   Timer? _overlayTimer;
 
-  bool _channelStripOpen = false;
-  List<Channel> _channelStripSnapshot = const [];
   final GlobalKey<LiveChannelStripOverlayState> _channelStripKey =
       GlobalKey<LiveChannelStripOverlayState>();
   Timer? _centerKeyHoldTimer;
   bool _centerKeyDown = false;
+  Timer? _vodCenterHoldTimer;
+  bool _vodCenterKeyDown = false;
+
+  /// Şerit / tek-kanal EPG kumanda Geri sonrası, aynı sistem pop’unda [handleBack] çalışmasın.
+  bool _consumeNextSystemBackPop = false;
 
   Worker? _busyWorker;
 
@@ -57,33 +126,29 @@ class _PlayerViewState extends State<PlayerView> with WidgetsBindingObserver {
 
   bool _hardwareKeyHandler(KeyEvent event) => _onGlobalHardwareKey(event);
 
-  void _handleVerticalDragStart(DragStartDetails details) async {
-    final width = MediaQuery.of(context).size.width;
+  void _handleVerticalDragStart(DragStartDetails details) {
+    final width = MediaQuery.sizeOf(context).width;
     _isDraggingLeft = details.globalPosition.dx < width / 2;
-    if (_isDraggingLeft) {
-      try {
-        _dragStartValue = await ScreenBrightness().application;
-      } catch (_) {
-        _dragStartValue = null;
-      }
-    } else {
-      _dragStartValue = controller.currentVolume;
-    }
+    _verticalGestureOriginY = details.globalPosition.dy;
+    _verticalGestureStartLevel = _isDraggingLeft
+        ? controller.inAppPlaybackBrightness.value
+        : controller.currentVolume;
   }
 
   void _handleVerticalDragUpdate(DragUpdateDetails details) {
-    if (_dragStartValue == null) return;
+    final originY = _verticalGestureOriginY;
+    if (originY == null) return;
 
-    final height = MediaQuery.of(context).size.height;
-    final dy = details.primaryDelta ?? details.delta.dy;
-    final delta = -dy / height;
-    final newValue = (_dragStartValue! + delta).clamp(0.0, 1.0);
-    _dragStartValue = newValue;
+    final height = MediaQuery.sizeOf(context).height;
+    if (height <= 1) return;
+
+    final dy = details.globalPosition.dy - originY;
+    final gain = PlayerController.verticalPlaybackGestureGain;
+    final delta = -(dy / height) * gain;
+    final newValue = (_verticalGestureStartLevel + delta).clamp(0.0, 1.0);
 
     if (_isDraggingLeft) {
-      try {
-        ScreenBrightness().setApplicationScreenBrightness(newValue);
-      } catch (_) {}
+      controller.setInAppPlaybackBrightness(newValue);
       _overlayIcon.value = Icons.brightness_6_rounded;
     } else {
       controller.setVolume(newValue);
@@ -93,7 +158,7 @@ class _PlayerViewState extends State<PlayerView> with WidgetsBindingObserver {
 
     _showOverlay.value = true;
     _overlayTimer?.cancel();
-    _overlayTimer = Timer(const Duration(milliseconds: 800), () {
+    _overlayTimer = Timer(const Duration(seconds: 2), () {
       _showOverlay.value = false;
     });
   }
@@ -113,29 +178,68 @@ class _PlayerViewState extends State<PlayerView> with WidgetsBindingObserver {
   void _syncPlayerSystemChrome() {
     if (!mounted) return;
     final settings = Get.find<AppSettingsService>();
-    if (settings.layoutMode.value != AppLayoutMode.mobile) return;
+    final layout = settings.layoutMode.value;
     if (kIsWeb) return;
     if (defaultTargetPlatform != TargetPlatform.android &&
         defaultTargetPlatform != TargetPlatform.iOS) {
       return;
     }
-    final landscape =
-        MediaQuery.orientationOf(context) == Orientation.landscape;
-    unawaited(
-      settings.applyMobilePlayerOrientationChrome(landscapePlayback: landscape),
-    );
-    if (landscape) {
-      void redo() {
-        if (!mounted) return;
-        if (MediaQuery.orientationOf(context) != Orientation.landscape) return;
-        unawaited(
-          settings.applyMobilePlayerOrientationChrome(landscapePlayback: true),
-        );
-      }
 
-      Future<void>.delayed(const Duration(milliseconds: 120), redo);
-      Future<void>.delayed(const Duration(milliseconds: 400), redo);
-      Future<void>.delayed(const Duration(milliseconds: 900), redo);
+    if (layout == AppLayoutMode.mobile) {
+      final portraitLocked = settings.mobilePlaybackPortraitUserLocked.value;
+      final landscape = portraitLocked
+          ? false
+          : MediaQuery.orientationOf(context) == Orientation.landscape;
+      unawaited(
+        settings.applyMobilePlayerOrientationChrome(
+          landscapePlayback: landscape,
+        ),
+      );
+      if (landscape && !portraitLocked) {
+        void redo() {
+          if (!mounted) return;
+          if (MediaQuery.orientationOf(context) != Orientation.landscape) {
+            return;
+          }
+          unawaited(
+            settings.applyMobilePlayerOrientationChrome(
+              landscapePlayback: true,
+            ),
+          );
+        }
+
+        Future<void>.delayed(const Duration(milliseconds: 120), redo);
+        Future<void>.delayed(const Duration(milliseconds: 400), redo);
+        Future<void>.delayed(const Duration(milliseconds: 900), redo);
+      }
+      return;
+    }
+
+    if (layout == AppLayoutMode.tablet) {
+      final landscape =
+          MediaQuery.orientationOf(context) == Orientation.landscape;
+      unawaited(
+        settings.applyTabletPlayerOrientationChrome(
+          landscapePlayback: landscape,
+        ),
+      );
+      if (landscape) {
+        void redoTablet() {
+          if (!mounted) return;
+          if (MediaQuery.orientationOf(context) != Orientation.landscape) {
+            return;
+          }
+          unawaited(
+            settings.applyTabletPlayerOrientationChrome(
+              landscapePlayback: true,
+            ),
+          );
+        }
+
+        Future<void>.delayed(const Duration(milliseconds: 120), redoTablet);
+        Future<void>.delayed(const Duration(milliseconds: 400), redoTablet);
+        Future<void>.delayed(const Duration(milliseconds: 900), redoTablet);
+      }
     }
   }
 
@@ -157,7 +261,10 @@ class _PlayerViewState extends State<PlayerView> with WidgetsBindingObserver {
         });
       }
     });
-    WidgetsBinding.instance.addPostFrameCallback((_) => _syncPlayerSystemChrome());
+    WidgetsBinding.instance
+        .addPostFrameCallback((_) => _syncPlayerSystemChrome());
+    controller.onRequestLiveChannelStripFromTvOsd = _openLiveChannelStrip;
+    controller.onRequestVodBrowseRailFromTvOsd = _openVodBrowseRail;
   }
 
   @override
@@ -169,11 +276,16 @@ class _PlayerViewState extends State<PlayerView> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
-    unawaited(Get.find<AppSettingsService>().syncSystemChromeWithLayout());
+    final settings = Get.find<AppSettingsService>();
+    unawaited(settings.clearMobilePlaybackPortraitLockForLeavingPlayer());
+    unawaited(settings.syncSystemChromeWithLayout());
     _busyWorker?.dispose();
     HardwareKeyboard.instance.removeHandler(_hardwareKeyHandler);
     _centerKeyHoldTimer?.cancel();
+    _vodCenterHoldTimer?.cancel();
     _overlayTimer?.cancel();
+    controller.onRequestLiveChannelStripFromTvOsd = null;
+    controller.onRequestVodBrowseRailFromTvOsd = null;
     super.dispose();
   }
 
@@ -182,45 +294,92 @@ class _PlayerViewState extends State<PlayerView> with WidgetsBindingObserver {
     return !u.contains('/movie/') && !u.contains('/series/');
   }
 
-  List<Channel> _sortedLiveChannels() {
-    final cache = Get.find<PlaylistCacheService>();
-    final data = cache.result.value;
-    if (data == null) return [];
-    final list = List<Channel>.from(data.channels)
-      ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
-    return list;
-  }
-
   void _openLiveChannelStrip() {
-    if (_channelStripOpen) return;
-    final list = _sortedLiveChannels();
+    if (controller.liveChannelStripOverlayOpen.value) return;
+    controller.prepareLiveChannelStrip();
+    final list = controller.liveChannelStripChannelsForOverlay();
     if (list.isEmpty) return;
     controller.liveChannelStripOverlayOpen.value = true;
     controller.hideTvOsdNow();
-    setState(() {
-      _channelStripSnapshot = list;
-      _channelStripOpen = true;
-    });
+  }
+
+  /// [showOsdAfter]: `true` = şerit kapanınca kumanda OSD (cam panel) açılır; yayın açık kalır.
+  void _closeLiveChannelStrip({required bool showOsdAfter}) {
+    if (!controller.liveChannelStripOverlayOpen.value) return;
+    controller.liveChannelStripOverlayOpen.value = false;
+    if (showOsdAfter) {
+      controller.tvOsdVisible.value = true;
+      controller.bumpTvOsdKeyFocus();
+      controller.scheduleTvOsdAutoHide();
+    }
+  }
+
+  void _onLiveChannelStripOverlayBackToOsd() {
+    _consumeNextSystemBackPop = true;
+    _closeLiveChannelStrip(showOsdAfter: true);
+  }
+
+  void _openVodBrowseRail() {
+    if (!controller.vodBrowseRailAvailable) return;
+    controller.openVodBrowseRail();
+  }
+
+  void _onVodBrowseRailHardwareBack() {
+    _consumeNextSystemBackPop = true;
+    controller.closeVodBrowseRail(showOsdAfter: true);
   }
 
   bool _onGlobalHardwareKey(KeyEvent event) {
     if (!mounted) return false;
+    if (controller.liveSingleChannelEpgOpen.value) {
+      final k = event.logicalKey;
+      if (k == LogicalKeyboardKey.goBack || k == LogicalKeyboardKey.escape) {
+        if (event is KeyDownEvent) {
+          _consumeNextSystemBackPop = true;
+          controller.closeLiveSingleChannelEpgOverlay(showOsdAfter: true);
+        }
+        return true;
+      }
+      return false;
+    }
     if (event is KeyDownEvent || event is KeyRepeatEvent) {
       final k = event.logicalKey;
       if (k == LogicalKeyboardKey.audioVolumeUp) {
-        if (_channelStripOpen) return false;
+        if (controller.liveChannelStripOverlayOpen.value ||
+            controller.vodBrowseRailOpen.value) {
+          return false;
+        }
         _nudgeInAppVolume(0.06);
         return true;
       }
       if (k == LogicalKeyboardKey.audioVolumeDown) {
-        if (_channelStripOpen) return false;
+        if (controller.liveChannelStripOverlayOpen.value ||
+            controller.vodBrowseRailOpen.value) {
+          return false;
+        }
         _nudgeInAppVolume(-0.06);
         return true;
       }
     }
-    if (_channelStripOpen) {
+    if (controller.vodBrowseRailOpen.value) {
+      final k = event.logicalKey;
+      if (k == LogicalKeyboardKey.goBack || k == LogicalKeyboardKey.escape) {
+        if (event is KeyDownEvent) {
+          _onVodBrowseRailHardwareBack();
+        }
+        return true;
+      }
+      return false;
+    }
+    if (controller.liveChannelStripOverlayOpen.value) {
+      final k = event.logicalKey;
+      if (k == LogicalKeyboardKey.goBack || k == LogicalKeyboardKey.escape) {
+        if (event is KeyDownEvent) {
+          _closeLiveChannelStrip(showOsdAfter: true);
+        }
+        return true;
+      }
       if (event is KeyDownEvent) {
-        final k = event.logicalKey;
         if (k == LogicalKeyboardKey.select ||
             k == LogicalKeyboardKey.enter ||
             k == LogicalKeyboardKey.numpadEnter ||
@@ -233,7 +392,29 @@ class _PlayerViewState extends State<PlayerView> with WidgetsBindingObserver {
       return false;
     }
     final ch = controller.channel.value;
-    if (!_isLiveChannel(ch)) return false;
+    if (!_isLiveChannel(ch)) {
+      final tv =
+          Get.find<AppSettingsService>().layoutMode.value == AppLayoutMode.tv;
+      if (!tv || !controller.vodBrowseRailAvailable) return false;
+      final centerKey = event.logicalKey == LogicalKeyboardKey.select ||
+          event.logicalKey == LogicalKeyboardKey.enter ||
+          event.logicalKey == LogicalKeyboardKey.numpadEnter;
+      if (!centerKey) return false;
+      if (event is KeyDownEvent) {
+        if (!_vodCenterKeyDown) {
+          _vodCenterKeyDown = true;
+          _vodCenterHoldTimer?.cancel();
+          _vodCenterHoldTimer = Timer(const Duration(milliseconds: 520), () {
+            if (!mounted || controller.vodBrowseRailOpen.value) return;
+            _openVodBrowseRail();
+          });
+        }
+      } else if (event is KeyUpEvent) {
+        _vodCenterKeyDown = false;
+        _vodCenterHoldTimer?.cancel();
+      }
+      return false;
+    }
 
     final centerKey = event.logicalKey == LogicalKeyboardKey.select ||
         event.logicalKey == LogicalKeyboardKey.enter ||
@@ -246,7 +427,9 @@ class _PlayerViewState extends State<PlayerView> with WidgetsBindingObserver {
         _centerKeyDown = true;
         _centerKeyHoldTimer?.cancel();
         _centerKeyHoldTimer = Timer(const Duration(milliseconds: 520), () {
-          if (!mounted || _channelStripOpen) return;
+          if (!mounted || controller.liveChannelStripOverlayOpen.value) {
+            return;
+          }
           _openLiveChannelStrip();
         });
       }
@@ -268,7 +451,9 @@ class _PlayerViewState extends State<PlayerView> with WidgetsBindingObserver {
       });
     }
 
-    final uiStyle = landscape
+    final tabletPlayback =
+        Get.find<AppSettingsService>().layoutMode.value == AppLayoutMode.tablet;
+    final uiStyle = (landscape || tabletPlayback)
         ? const SystemUiOverlayStyle(
             statusBarColor: Colors.transparent,
             statusBarIconBrightness: Brightness.light,
@@ -285,9 +470,33 @@ class _PlayerViewState extends State<PlayerView> with WidgetsBindingObserver {
         canPop: false,
         onPopInvokedWithResult: (didPop, _) {
           if (didPop) return;
-          if (_channelStripOpen) {
-            controller.liveChannelStripOverlayOpen.value = false;
-            setState(() => _channelStripOpen = false);
+          if (_consumeNextSystemBackPop) {
+            _consumeNextSystemBackPop = false;
+            return;
+          }
+          // Sistem Geri: önce tam ekran overlay’ler (yayından çıkma yok).
+          if (controller.liveSingleChannelEpgOpen.value) {
+            controller.closeLiveSingleChannelEpgOverlay(showOsdAfter: true);
+            return;
+          }
+          if (controller.vodBrowseRailOpen.value) {
+            controller.closeVodBrowseRail(showOsdAfter: true);
+            return;
+          }
+          if (controller.liveChannelStripOverlayOpen.value) {
+            _closeLiveChannelStrip(showOsdAfter: true);
+            return;
+          }
+          if (controller.vodAutoplayCountdown.value != null) {
+            controller.cancelVodAutoplayCountdown(cancelledByUser: true);
+            return;
+          }
+          if (Get.isDialogOpen == true) {
+            if (controller.vodResumeDialogOpen.value) {
+              Get.back<bool>(result: false);
+            } else {
+              Get.back<void>();
+            }
             return;
           }
           controller.handleBack();
@@ -305,132 +514,27 @@ class _PlayerViewState extends State<PlayerView> with WidgetsBindingObserver {
                 final playerWidget = Obx(() {
                   // Tüm ilgili Rx’leri erken return’lerden önce oku; iç içe Obx kullanma.
                   final busy = controller.isBusy.value;
-                  final decoderStep = controller.decoderFallbackStep.value;
+                  controller.suppressLiveZapLoadingUi.value;
+                  controller.vodResumeDialogOpen.value;
                   final message = controller.error.value;
                   final fit = controller.videoFit.value;
+                  controller.betterSurfaceEpoch.value;
                   final bp = controller.better;
                   final settings = Get.find<AppSettingsService>();
                   controller.betterOsdOverride.value;
                   final useMediaKitPlayer = controller.effectiveUseMediaKit;
+                  controller.orphanBetterSurfaceRecoveryAttempts.value;
 
-                  final layoutTv = settings.layoutMode.value == AppLayoutMode.tv;
+                  final remoteNav = remoteNavForScreenLayout(
+                      context, settings.layoutMode.value);
                   final liveCh =
-                      layoutTv && _isLiveChannel(controller.channel.value);
-                  final keepPlayerDuringTvLiveBusy =
-                      busy && liveCh && bp != null;
+                      remoteNav && _isLiveChannel(controller.channel.value);
+                  final live = _isLiveChannel(controller.channel.value);
 
-                  if (busy && !keepPlayerDuringTvLiveBusy) {
-                    final loadMsg = decoderStep > 0
-                        ? 'player.loading.decoder'
-                            .trParams({'step': '$decoderStep'})
-                        : 'player.loading.stream'.tr;
-                    final liveTvBusy =
-                        layoutTv && _isLiveChannel(controller.channel.value);
-                    if (liveTvBusy) {
-                      return Focus(
-                        autofocus: true,
-                        onKeyEvent: (node, event) {
-                          if (event is! KeyDownEvent) {
-                            return KeyEventResult.ignored;
-                          }
-                          final k = event.logicalKey;
-                          if (k == LogicalKeyboardKey.arrowUp) {
-                            controller.zapRelativeDebounced(-1);
-                            return KeyEventResult.handled;
-                          }
-                          if (k == LogicalKeyboardKey.arrowDown) {
-                            controller.zapRelativeDebounced(1);
-                            return KeyEventResult.handled;
-                          }
-                          return KeyEventResult.ignored;
-                        },
-                        child: Stack(
-                          fit: StackFit.expand,
-                          children: [
-                            const ColoredBox(color: Colors.black),
-                            Center(
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  const SizedBox(
-                                    width: 40,
-                                    height: 40,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 3,
-                                      color: Color(0xFF6ECFE0),
-                                    ),
-                                  ),
-                                  const SizedBox(height: 12),
-                                  Text(
-                                    loadMsg,
-                                    style: const TextStyle(
-                                      color: Colors.white70,
-                                      fontSize: 14,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            TvLiveBusyOsd(controller: controller),
-                          ],
-                        ),
-                      );
-                    }
-                    return _PlayerMessage(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          const SizedBox(
-                            width: 40,
-                            height: 40,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 3,
-                              color: Color(0xFF6ECFE0),
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          Text(
-                            loadMsg,
-                            style: const TextStyle(
-                              color: Colors.white70,
-                              fontSize: 14,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ],
-                      ),
-                    );
-                  }
+                  final loadMsg = 'player.loading.stream'.tr;
+
                   if (message != null) {
-                    if (kReleaseMode) {
-                      return _PlayerMessage(
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            const SizedBox(
-                              width: 40,
-                              height: 40,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 3,
-                                color: Color(0xFF6ECFE0),
-                              ),
-                            ),
-                            const SizedBox(height: 16),
-                            Text(
-                              'player.loading.stream'.tr,
-                              textAlign: TextAlign.center,
-                              style: const TextStyle(
-                                color: Colors.white70,
-                                fontSize: 14,
-                                fontWeight: FontWeight.w500,
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    }
-                    return _PlayerMessage(
+                    final err = _PlayerMessage(
                       child: LayoutBuilder(
                         builder: (context, constraints) {
                           final h = constraints.maxHeight;
@@ -465,16 +569,107 @@ class _PlayerViewState extends State<PlayerView> with WidgetsBindingObserver {
                         },
                       ),
                     );
+                    return _liveRemoteZapWhenPlayerChromeMissing(
+                      controller: controller,
+                      enable: liveCh,
+                      child: err,
+                    );
                   }
 
-                  if (!useMediaKitPlayer && bp == null) {
-                    return _PlayerMessage(
-                      child: Text(
-                        'player.notReady'.tr,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                            color: Colors.white70, fontSize: 16),
+                  final hasSurface = useMediaKitPlayer || bp != null;
+
+                  if (!hasSurface) {
+                    if (busy) {
+                      if (liveCh) {
+                        final suppress =
+                            controller.suppressLiveZapLoadingUi.value;
+                        return Focus(
+                          autofocus: true,
+                          onKeyEvent: (node, event) {
+                            if (event is! KeyDownEvent &&
+                                event is! KeyRepeatEvent) {
+                              return KeyEventResult.ignored;
+                            }
+                            if (controller.vodResumeDialogOpen.value ||
+                                controller.vodAutoplayCountdown.value != null) {
+                              return KeyEventResult.ignored;
+                            }
+                            final k = event.logicalKey;
+                            if (k == LogicalKeyboardKey.arrowUp ||
+                                k == LogicalKeyboardKey.arrowLeft) {
+                              controller.zapRelativeDebounced(-1);
+                              return KeyEventResult.handled;
+                            }
+                            if (k == LogicalKeyboardKey.arrowDown ||
+                                k == LogicalKeyboardKey.arrowRight) {
+                              controller.zapRelativeDebounced(1);
+                              return KeyEventResult.handled;
+                            }
+                            return KeyEventResult.ignored;
+                          },
+                          child: Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              const ColoredBox(color: Color(0xFF0D0D0F)),
+                              if (!suppress)
+                                _PlayerLoadingOverlay(
+                                  channel: controller.channel.value,
+                                  subtitle: loadMsg,
+                                ),
+                              // TV'de yüzey henüz yokken bile OSD'yi göster (logo/kanal ismi güncellenir)
+                              if (useMediaKitPlayer)
+                                Obx(() {
+                                  final cid = controller.channel.value.id;
+                                  return TvMediaKitPlayerControls(
+                                    key: ValueKey('mk_osd_init_$cid'),
+                                    onPlayerVisibilityChanged: (v) {
+                                      controller
+                                          .syncTvOsdVisibilityFromControls(v);
+                                    },
+                                  );
+                                }),
+                            ],
+                          ),
+                        );
+                      }
+                      return _PlayerMessage(
+                        child: _PlayerLoadingCenter(
+                          channel: controller.channel.value,
+                          subtitle: loadMsg,
+                        ),
+                      );
+                    }
+                    if (!useMediaKitPlayer &&
+                        controller.orphanBetterSurfaceRecoveryAttempts.value >=
+                            controller.effectiveMaxOrphanBetterSurfaceRetries) {
+                      final notReady = _PlayerMessage(
+                        child: Text(
+                          'player.notReady'.tr,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                              color: Colors.white70, fontSize: 16),
+                        ),
+                      );
+                      return _liveRemoteZapWhenPlayerChromeMissing(
+                        controller: controller,
+                        enable: liveCh,
+                        child: notReady,
+                      );
+                    }
+                    WidgetsBinding.instance.addPostFrameCallback((_) {
+                      if (!mounted) return;
+                      unawaited(controller.ensureOrphanBetterBootRetry());
+                    });
+                    final recovering = _PlayerMessage(
+                      child: _PlayerLoadingCenter(
+                        channel: controller.channel.value,
+                        subtitle: loadMsg,
                       ),
+                    );
+                    return _liveRemoteZapWhenPlayerChromeMissing(
+                      controller: controller,
+                      enable: liveCh,
+                      child: recovering,
                     );
                   }
 
@@ -482,10 +677,9 @@ class _PlayerViewState extends State<PlayerView> with WidgetsBindingObserver {
                     controller.mediaKitAttachEpoch.value;
                   }
 
-                  final live = _isLiveChannel(controller.channel.value);
                   final player = UniversalVideoPlayer(
                     key: _videoSurfaceKey,
-                    url: controller.channel.value.streamUrl,
+                    url: controller.surfaceStreamUrl,
                     useMediaKit: useMediaKitPlayer,
                     betterPlayerController: bp,
                     fit: fit,
@@ -494,95 +688,171 @@ class _PlayerViewState extends State<PlayerView> with WidgetsBindingObserver {
 
                   final mkOsd = useMediaKitPlayer && !isPortrait
                       ? Obx(() {
-                          controller.mediaKitAttachEpoch.value;
+                          final epoch = controller.mediaKitAttachEpoch.value;
+                          final cid = controller.channel.value.id;
                           return TvMediaKitPlayerControls(
+                            key: ValueKey('mk_osd_${cid}_$epoch'),
                             onPlayerVisibilityChanged: (v) {
-                              controller.tvOsdVisible.value = v;
+                              controller.syncTvOsdVisibilityFromControls(v);
                             },
                           );
                         })
                       : null;
 
-                  if (layoutTv) {
-                    // TV modunda MediaKit aktifse veya BetterPlayer hazırsa odak yönetimini sağla.
-                    return Focus(
-                      autofocus: true,
-                      onKeyEvent: (node, event) {
-                        if (event is! KeyDownEvent) {
-                          return KeyEventResult.ignored;
-                        }
-                        final k = event.logicalKey;
-                        // OSD kapalıyken ok tuşları ile kanal değiştirme (Zapping)
-                        if (!controller.tvOsdVisible.value) {
-                          if (k == LogicalKeyboardKey.arrowUp) {
-                            controller.zapRelativeDebounced(-1);
-                            return KeyEventResult.handled;
-                          }
-                          if (k == LogicalKeyboardKey.arrowDown) {
-                            controller.zapRelativeDebounced(1);
-                            return KeyEventResult.handled;
-                          }
-                          if (k == LogicalKeyboardKey.select ||
-                              k == LogicalKeyboardKey.enter ||
-                              k == LogicalKeyboardKey.numpadEnter) {
-                            controller.tvOsdVisible.value = true;
-                            controller.scheduleTvOsdAutoHide();
-                            return KeyEventResult.handled;
-                          }
-                        }
-                        return KeyEventResult.ignored;
-                      },
-                      child: Stack(
+                  Widget addBusyShell(Widget core) {
+                    if (!busy) return core;
+                    final suppress = controller.suppressLiveZapLoadingUi.value;
+                    if (liveCh || suppress) {
+                      return core;
+                    }
+                    // Mobil dikey: kanal değişiminde tam ekran logo/splash yerine
+                    // mevcut player kontrolleri kalsın, yalnız merkezde loading görünsün.
+                    if (isPortrait) {
+                      return Stack(
                         fit: StackFit.expand,
                         children: [
-                          player,
-                          if (useMediaKitPlayer && mkOsd != null) mkOsd,
+                          core,
+                          const Positioned.fill(
+                            child: _PlayerCenterLoadingSpinner(),
+                          ),
                         ],
+                      );
+                    }
+                    return Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        core,
+                        Positioned.fill(
+                          child: _PlayerLoadingOverlay(
+                            channel: controller.channel.value,
+                            subtitle: loadMsg,
+                          ),
+                        ),
+                      ],
+                    );
+                  }
+
+                  if (remoteNav) {
+                    // TV / tablet kumanda veya mobil yatay: ok ile OSD, oklar ile kanal (canlı).
+                    return ExcludeFocus(
+                      excluding: controller.vodResumeDialogOpen.value,
+                      child: Focus(
+                        // Yalnızca yedek: birincil odak Tv*PlayerControls’ta olmalı; burada
+                        // autofocus verilirse dış düğüm odak çalar ve oklar yalnız zap yapıp
+                        // OSD açılmaz (kilitlenme).
+                        autofocus: false,
+                        canRequestFocus: false,
+                        onKeyEvent: (node, event) {
+                          if (event is! KeyDownEvent) {
+                            return KeyEventResult.ignored;
+                          }
+                          // VOD devam diyaloğu açıkken yut. [Get.isDialogOpen] kapanışta
+                          // yanlışlıkla true kalabildiği için burada kullanılmıyor.
+                          if (controller.vodResumeDialogOpen.value) {
+                            return KeyEventResult.ignored;
+                          }
+                          final k = event.logicalKey;
+                          // Odak üst katmana kaçtıysa: tek ok basışı yalnız OSD aç (zap yok).
+                          if (!controller.tvOsdVisible.value) {
+                            if (k == LogicalKeyboardKey.arrowUp ||
+                                k == LogicalKeyboardKey.arrowDown ||
+                                k == LogicalKeyboardKey.arrowLeft ||
+                                k == LogicalKeyboardKey.arrowRight) {
+                              controller.tvOsdVisible.value = true;
+                              controller.scheduleTvOsdAutoHide();
+                              return KeyEventResult.handled;
+                            }
+                            if (k == LogicalKeyboardKey.select ||
+                                k == LogicalKeyboardKey.enter ||
+                                k == LogicalKeyboardKey.numpadEnter) {
+                              controller.tvOsdVisible.value = true;
+                              controller.scheduleTvOsdAutoHide();
+                              return KeyEventResult.handled;
+                            }
+                          }
+                          return KeyEventResult.ignored;
+                        },
+                        child: addBusyShell(
+                          GestureDetector(
+                            onVerticalDragStart: _handleVerticalDragStart,
+                            onVerticalDragUpdate: _handleVerticalDragUpdate,
+                            onLongPress: live
+                                ? _openLiveChannelStrip
+                                : (controller.vodBrowseRailAvailable
+                                    ? _openVodBrowseRail
+                                    : null),
+                            child: Stack(
+                              fit: StackFit.expand,
+                              children: [
+                                player,
+                                if (useMediaKitPlayer)
+                                  _PlaybackVideoDimmer(controller: controller),
+                                if (useMediaKitPlayer && mkOsd != null) mkOsd,
+                              ],
+                            ),
+                          ),
+                        ),
                       ),
                     );
                   }
                   if (useMediaKitPlayer && mkOsd != null) {
-                    return GestureDetector(
+                    return addBusyShell(
+                      GestureDetector(
+                        onVerticalDragStart: _handleVerticalDragStart,
+                        onVerticalDragUpdate: _handleVerticalDragUpdate,
+                        onLongPress: live
+                            ? _openLiveChannelStrip
+                            : (controller.vodBrowseRailAvailable
+                                ? _openVodBrowseRail
+                                : null),
+                        child: Stack(
+                          fit: StackFit.expand,
+                          children: [
+                            player,
+                            if (useMediaKitPlayer)
+                              _PlaybackVideoDimmer(controller: controller),
+                            mkOsd,
+                          ],
+                        ),
+                      ),
+                    );
+                  }
+                  return addBusyShell(
+                    GestureDetector(
                       onVerticalDragStart: _handleVerticalDragStart,
                       onVerticalDragUpdate: _handleVerticalDragUpdate,
-                      onLongPress: live ? _openLiveChannelStrip : null,
+                      onLongPress: live
+                          ? _openLiveChannelStrip
+                          : (controller.vodBrowseRailAvailable
+                              ? _openVodBrowseRail
+                              : null),
                       child: Stack(
                         fit: StackFit.expand,
                         children: [
                           player,
-                          mkOsd,
+                          if (useMediaKitPlayer)
+                            _PlaybackVideoDimmer(controller: controller),
                         ],
                       ),
-                    );
-                  }
-                  return GestureDetector(
-                    onVerticalDragStart: _handleVerticalDragStart,
-                    onVerticalDragUpdate: _handleVerticalDragUpdate,
-                    onLongPress: live ? _openLiveChannelStrip : null,
-                    child: player,
+                    ),
                   );
                 });
 
                 return Stack(
                   children: [
-                    ExcludeFocus(
-                      excluding: _channelStripOpen,
-                      child: isPortrait
-                          ? Obx(() {
-                              if (controller.isBusy.value) return playerWidget;
-                              return Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  AspectRatio(
-                                    aspectRatio: 16 / 9,
-                                    child: playerWidget,
-                                  ),
-                                  const SizedBox(height: 24),
-                                  _PortraitOsdPanel(controller: controller),
-                                ],
-                              );
-                            })
-                          : playerWidget,
+                    Obx(
+                      () => ExcludeFocus(
+                        excluding:
+                            controller.liveChannelStripOverlayOpen.value ||
+                                controller.liveSingleChannelEpgOpen.value ||
+                                controller.vodBrowseRailOpen.value,
+                        child: isPortrait
+                            ? _PlayerPortraitSurfaceShell(
+                                controller: controller,
+                                playerWidget: playerWidget,
+                              )
+                            : playerWidget,
+                      ),
                     ),
                     Obx(() => AnimatedOpacity(
                           duration: const Duration(milliseconds: 200),
@@ -593,33 +863,25 @@ class _PlayerViewState extends State<PlayerView> with WidgetsBindingObserver {
                             value01: _overlayValue.value,
                           ),
                         )),
-                    Obx(() => IgnorePointer(
-                          ignoring: !controller.isFading.value,
-                          child: AnimatedOpacity(
-                            duration: const Duration(milliseconds: 400),
-                            opacity: controller.isFading.value ? 1.0 : 0.0,
-                            child: Container(
-                              color: Colors.black,
-                              width: double.infinity,
-                              height: double.infinity,
-                            ),
-                          ),
-                        )),
-                    if (_channelStripOpen && _channelStripSnapshot.isNotEmpty)
-                      LiveChannelStripOverlay(
-                        key: _channelStripKey,
-                        channels: _channelStripSnapshot,
-                        currentChannelId: controller.channel.value.id,
-                        onClose: () {
-                          controller.liveChannelStripOverlayOpen.value = false;
-                          setState(() => _channelStripOpen = false);
-                        },
-                        onPick: (ch) async {
-                          controller.liveChannelStripOverlayOpen.value = false;
-                          setState(() => _channelStripOpen = false);
-                          await controller.zapTo(ch);
-                        },
-                      ),
+                    _PlayerFadeLayer(controller: controller),
+                    _PlayerLiveStripLayer(
+                      controller: controller,
+                      channelStripKey: _channelStripKey,
+                      onClose: (showOsdAfter) =>
+                          _closeLiveChannelStrip(showOsdAfter: showOsdAfter),
+                      onBackToOsd: _onLiveChannelStripOverlayBackToOsd,
+                    ),
+                    _PlayerLiveSingleEpgLayer(
+                      controller: controller,
+                      onHardwareBack: () {
+                        _consumeNextSystemBackPop = true;
+                      },
+                    ),
+                    _PlayerVodBrowseRailLayer(
+                      controller: controller,
+                      onHardwareBack: _onVodBrowseRailHardwareBack,
+                    ),
+                    VodAutoplayOverlay(controller: controller),
                   ],
                 );
               },
@@ -640,183 +902,361 @@ class _PortraitOsdPanel extends StatefulWidget {
   State<_PortraitOsdPanel> createState() => _PortraitOsdPanelState();
 }
 
+class _PlayerPortraitSurfaceShell extends StatelessWidget {
+  const _PlayerPortraitSurfaceShell({
+    required this.controller,
+    required this.playerWidget,
+  });
+
+  final PlayerController controller;
+  final Widget playerWidget;
+
+  @override
+  Widget build(BuildContext context) {
+    return Obx(() {
+      final layout = Get.find<AppSettingsService>().layoutMode.value;
+      return Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          AspectRatio(
+            aspectRatio: 16 / 9,
+            child: playerWidget,
+          ),
+          const SizedBox(height: 24),
+          _PortraitOsdPanel(controller: controller),
+          if (layout != AppLayoutMode.tv) ...[
+            const SizedBox(height: 12),
+            _PortraitCategoryChannelBar(controller: controller),
+          ],
+        ],
+      );
+    });
+  }
+}
+
+class _PlayerFadeLayer extends StatelessWidget {
+  const _PlayerFadeLayer({required this.controller});
+
+  final PlayerController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    return Obx(() => IgnorePointer(
+          ignoring: !controller.isFading.value,
+          child: AnimatedOpacity(
+            duration: const Duration(milliseconds: 400),
+            opacity: controller.isFading.value ? 1.0 : 0.0,
+            child: Container(
+              color: Colors.black,
+              width: double.infinity,
+              height: double.infinity,
+            ),
+          ),
+        ));
+  }
+}
+
+class _PlayerLiveStripLayer extends StatelessWidget {
+  const _PlayerLiveStripLayer({
+    required this.controller,
+    required this.channelStripKey,
+    required this.onClose,
+    required this.onBackToOsd,
+  });
+
+  final PlayerController controller;
+  final GlobalKey<LiveChannelStripOverlayState> channelStripKey;
+  final void Function(bool showOsdAfter) onClose;
+  final VoidCallback onBackToOsd;
+
+  @override
+  Widget build(BuildContext context) {
+    return Obx(() {
+      if (!controller.liveChannelStripOverlayOpen.value) {
+        return const SizedBox.shrink();
+      }
+      controller.liveStripCategoryIndex.value;
+      final chipNames = controller.liveStripCategoryTabNames();
+      final channels = controller.liveChannelStripChannelsForOverlay();
+      if (channels.isEmpty) return const SizedBox.shrink();
+      final catTabs = controller.liveChannelStripShowsCategoryTabs;
+      final chipIdx = chipNames.isEmpty
+          ? 0
+          : controller.liveStripCategoryIndex.value.clamp(0, chipNames.length - 1);
+      return LiveChannelStripOverlay(
+        key: channelStripKey,
+        channels: List<Channel>.from(channels),
+        currentChannelId: controller.channel.value.id,
+        onClose: () => onClose(true),
+        onBackToOsd: onBackToOsd,
+        categoryShortcutEnabled: catTabs,
+        onCategoryPrevious: catTabs ? () => controller.shiftLiveStripCategory(-1) : null,
+        onCategoryNext: catTabs ? () => controller.shiftLiveStripCategory(1) : null,
+        categoryChipLabels: chipNames.isNotEmpty ? chipNames : null,
+        selectedCategoryChipIndex: chipIdx,
+        onPick: (ch) async {
+          onClose(false);
+          await controller.zapTo(ch);
+        },
+      );
+    });
+  }
+}
+
+class _PlayerLiveSingleEpgLayer extends StatelessWidget {
+  const _PlayerLiveSingleEpgLayer({
+    required this.controller,
+    required this.onHardwareBack,
+  });
+
+  final PlayerController controller;
+  final VoidCallback onHardwareBack;
+
+  @override
+  Widget build(BuildContext context) {
+    return Obx(() {
+      if (!controller.liveSingleChannelEpgOpen.value) {
+        return const SizedBox.shrink();
+      }
+      return PlayerLiveEpgOverlayShell(
+        channel: controller.channel.value,
+        onClose: () => controller.closeLiveSingleChannelEpgOverlay(
+          showOsdAfter: true,
+        ),
+        onHardwareBack: () {
+          onHardwareBack();
+          controller.closeLiveSingleChannelEpgOverlay(showOsdAfter: true);
+        },
+      );
+    });
+  }
+}
+
+class _PlayerVodBrowseRailLayer extends StatelessWidget {
+  const _PlayerVodBrowseRailLayer({
+    required this.controller,
+    required this.onHardwareBack,
+  });
+
+  final PlayerController controller;
+  final VoidCallback onHardwareBack;
+
+  @override
+  Widget build(BuildContext context) {
+    return Obx(() {
+      if (!controller.vodBrowseRailOpen.value) {
+        return const SizedBox.shrink();
+      }
+      controller.vodBrowseRailCategoryIndex.value;
+      final chipNames = controller.vodBrowseRailCategoryTabNames;
+      final chipIdx = chipNames.isEmpty
+          ? 0
+          : controller.vodBrowseRailCategoryIndex.value.clamp(0, chipNames.length - 1);
+      final movies = controller.vodBrowseRailMovies;
+      final catTabs = controller.vodBrowseRailShowsCategoryTabs;
+      if (movies != null && movies.isNotEmpty) {
+        return VodBrowseRailOverlay(
+          isMovieMode: true,
+          movies: List<Channel>.from(movies),
+          series: const <SeriesItem>[],
+          currentMovieId: controller.channel.value.id,
+          currentSeriesId: null,
+          onPickMovie: (c) async {
+            await controller.pickVodBrowseRailMovie(c);
+            controller.closeVodBrowseRail(showOsdAfter: true);
+          },
+          onPickSeries: (_) async {},
+          onClose: () => controller.closeVodBrowseRail(showOsdAfter: true),
+          onHardwareBack: onHardwareBack,
+          categoryShortcutEnabled: catTabs,
+          onCategoryPrevious: catTabs ? () => controller.shiftVodBrowseRailCategory(-1) : null,
+          onCategoryNext: catTabs ? () => controller.shiftVodBrowseRailCategory(1) : null,
+          categoryChipLabels: chipNames.isNotEmpty ? chipNames : null,
+          selectedCategoryChipIndex: chipIdx,
+        );
+      }
+      final series = controller.vodBrowseRailSeriesItems;
+      if (series != null && series.isNotEmpty) {
+        return VodBrowseRailOverlay(
+          isMovieMode: false,
+          movies: const <Channel>[],
+          series: List<SeriesItem>.from(series),
+          currentMovieId: controller.channel.value.id,
+          currentSeriesId: controller.playingSeries?.id,
+          onPickMovie: (_) async {},
+          onPickSeries: (s) async {
+            await controller.pickVodBrowseRailSeries(s);
+            controller.closeVodBrowseRail(showOsdAfter: true);
+          },
+          onClose: () => controller.closeVodBrowseRail(showOsdAfter: true),
+          onHardwareBack: onHardwareBack,
+          categoryShortcutEnabled: catTabs,
+          onCategoryPrevious: catTabs ? () => controller.shiftVodBrowseRailCategory(-1) : null,
+          onCategoryNext: catTabs ? () => controller.shiftVodBrowseRailCategory(1) : null,
+          categoryChipLabels: chipNames.isNotEmpty ? chipNames : null,
+          selectedCategoryChipIndex: chipIdx,
+        );
+      }
+      return const SizedBox.shrink();
+    });
+  }
+}
+
 class _PortraitOsdPanelState extends State<_PortraitOsdPanel> {
   final _fav = Get.find<FavoritesService>();
 
   @override
   Widget build(BuildContext context) {
-    return Obx(() {
-      final ch = widget.controller.channel.value;
-      final isLive = !ch.streamUrl.toLowerCase().contains('/movie/') &&
-          !ch.streamUrl.toLowerCase().contains('/series/');
+    return OrientationBuilder(
+      builder: (context, orientation) {
+        final landscape = orientation == Orientation.landscape;
+        return Obx(() {
+          final ch = widget.controller.channel.value;
+          widget.controller.osdQualityStamp.value;
+          widget.controller.betterSurfaceEpoch.value;
+          final resolutionTier = widget.controller.osdStreamResolutionTierLabel;
+          final hzLabel = widget.controller.osdStreamFrameRateHzLabel;
+          final isLive = !widget.controller.isMovie &&
+              !widget.controller.isSeries &&
+              IptvPlaybackDefaults.isLikelyLiveStream(
+                IptvPlaybackDefaults.normalizeStreamUrl(ch.streamUrl),
+              );
+          final quickMenuBadge = widget.controller.osdQuickMenuHoldBadgeVisible;
 
-      final layoutTv =
-          Get.find<AppSettingsService>().layoutMode.value == AppLayoutMode.tv;
-      final landscape =
-          MediaQuery.orientationOf(context) == Orientation.landscape;
-      // TV düzeni veya yatay ekranda kumanda dostu OSD (TvBetterPlayer ile aynı düğüm stili).
-      final useTvOsdStyle = layoutTv || landscape;
-      final favOn = isLive
-          ? _fav.channelIds.contains(ch.id)
-          : _fav.vodIds.contains(ch.id);
+          final layoutTv = Get.find<AppSettingsService>().layoutMode.value ==
+              AppLayoutMode.tv;
+          // TV düzeni veya yatay ekranda kumanda dostu OSD (TvBetterPlayer ile aynı düğüm stili).
+          final useTvOsdStyle = layoutTv || landscape;
+          final favOn = isLive
+              ? _fav.channelIds.contains(ch.id)
+              : _fav.vodIds.contains(ch.id);
 
-      final bp = widget.controller.better;
-      final settings = Get.find<AppSettingsService>();
-      settings.useMediaKit.value;
-      widget.controller.mediaKitFallbackSession.value;
-      widget.controller.betterOsdOverride.value;
-      final useMediaKitPlayer = widget.controller.effectiveUseMediaKit;
-      if (useMediaKitPlayer) {
-        widget.controller.mediaKitAttachEpoch.value;
-      }
+          final bp = widget.controller.better;
+          final settings = Get.find<AppSettingsService>();
+          settings.useMediaKit.value;
+          widget.controller.mediaKitFallbackSession.value;
+          widget.controller.betterOsdOverride.value;
+          final useMediaKitPlayer = widget.controller.effectiveUseMediaKit;
+          if (useMediaKitPlayer) {
+            widget.controller.mediaKitAttachEpoch.value;
+          }
 
-      if (bp == null && !useMediaKitPlayer) return const SizedBox.shrink();
-      // Dikey mod: OSD cam şeridine maksimum genişlik (yatay tam ekran OSD’ye dokunulmaz).
-      return Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(16),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-            child: Container(
-              padding: const EdgeInsets.fromLTRB(12, 16, 12, 16),
-              decoration: BoxDecoration(
-                color: Colors.white.withValues(alpha: 0.1),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
-              ),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  if (!isLive && bp != null)
-                    _BetterPlayerValueBuilder(
-                      bp: bp,
-                      builder: (value) {
-                        if (value != null &&
-                            (value.duration?.inMilliseconds ?? 0) > 0) {
-                          return _VideoProgressBar(bp: bp, value: value);
-                        }
-                        return const SizedBox.shrink();
-                      },
+          if (bp == null && !useMediaKitPlayer) return const SizedBox.shrink();
+          // Dikey mod: OSD cam şeridine maksimum genişlik (yatay tam ekran OSD’ye dokunulmaz).
+          return Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(16),
+              child: Obx(() {
+                final settings = Get.find<AppSettingsService>();
+                final ga = GlassAppearance.fromLabel(settings.themeLabel.value);
+                final remoteStyle =
+                    settings.layoutMode.value.usesRemoteNavigationStyle;
+                final sigma = AppPerformance.glassSigmaRemoteStyle(
+                  settings,
+                  remoteStyle: remoteStyle,
+                  fullSigma: 20,
+                  reducedSigma: 10,
+                );
+                final decorated = Container(
+                  padding: const EdgeInsets.fromLTRB(12, 16, 12, 16),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(16),
+                    border: Border.all(color: ga.playerBarBorder),
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: ga.playerBarGradientColors,
                     ),
-                  if (bp != null)
-                    _BetterPlayerValueBuilder(
-                      bp: bp,
-                      builder: (value) {
-                        final playing = value?.isPlaying ?? false;
-                        return _osdControlRow(
-                          tv: useTvOsdStyle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: ga.playerBarShadowColor,
+                        blurRadius: 24,
+                        offset: const Offset(0, 10),
+                      ),
+                    ],
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 10),
+                        child: Row(
                           children: [
-                            _osdAction(
-                              icon: Icons.fast_rewind_rounded,
-                              onTap: () => isLive ? _zap(-1) : _skip(-15),
-                              tv: useTvOsdStyle,
-                              autofocus: useTvOsdStyle,
+                            Expanded(
+                              child: Text(
+                                ch.name,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.96),
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w800,
+                                  height: 1.15,
+                                  shadows: [
+                                    Shadow(
+                                      color:
+                                          Colors.black.withValues(alpha: 0.45),
+                                      blurRadius: 8,
+                                    ),
+                                  ],
+                                ),
+                              ),
                             ),
-                            _osdAction(
-                              icon: playing
-                                  ? Icons.pause_rounded
-                                  : Icons.play_arrow_rounded,
-                              onTap: () => playing
-                                  ? widget.controller.pause()
-                                  : widget.controller.play(),
-                              primary: true,
-                              tv: useTvOsdStyle,
-                            ),
-                            _osdAction(
-                              icon: Icons.fast_forward_rounded,
-                              onTap: () => isLive ? _zap(1) : _skip(15),
-                              tv: useTvOsdStyle,
-                            ),
-                            _osdAction(
-                              icon: favOn
-                                  ? Icons.favorite_rounded
-                                  : Icons.favorite_border_rounded,
-                              onTap: () => isLive
-                                  ? _fav.toggleChannel(ch.id)
-                                  : _fav.toggleVod(ch.id),
-                              tv: useTvOsdStyle,
-                            ),
-                            Obx(() {
-                              widget.controller.betterOsdOverride.value;
-                              Get.find<AppSettingsService>().useMediaKit.value;
-                              widget.controller.mediaKitFallbackSession.value;
-                              if (widget.controller.effectiveUseMediaKit) {
+                            ...() {
+                              final badges = osdStreamQualityBadgeWidgets(
+                                resolutionTier: resolutionTier,
+                                hzLabel: hzLabel,
+                                fontSize: 12,
+                                borderRadius: 8,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 4,
+                                ),
+                              );
+                              if (badges.isEmpty) return <Widget>[];
+                              return <Widget>[
+                                const SizedBox(width: 8),
+                                Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: badges,
+                                ),
+                              ];
+                            }(),
+                          ],
+                        ),
+                      ),
+                      if (bp != null)
+                        _BetterPlayerValueBuilder(
+                          bp: bp,
+                          builder: (value) {
+                            if (value != null &&
+                                (value.duration?.inMilliseconds ?? 0) > 0) {
+                              if (isLive &&
+                                  !widget
+                                      .controller.liveTimeshiftSeekAvailable) {
                                 return const SizedBox.shrink();
                               }
-                              return _osdAction(
-                                letter: 'M',
-                                onTap: () => unawaited(
-                                  widget.controller.switchToBackupPlayer(),
-                                ),
-                                tv: useTvOsdStyle,
-                              );
-                            }),
-                            _osdAction(
-                              icon: Icons.high_quality_rounded,
-                              onTap: () => _showQualityMenu(context),
-                              tv: useTvOsdStyle,
-                            ),
-                            if (!isLive) ...[
-                              _osdAction(
-                                icon: Icons.audiotrack_rounded,
-                                onTap: () =>
-                                    unawaited(_showAudioMenu(context)),
-                                tv: useTvOsdStyle,
-                              ),
-                              _osdAction(
-                                icon: Icons.closed_caption_rounded,
-                                onTap: () =>
-                                    unawaited(_showSubtitleMenu(context)),
-                                tv: useTvOsdStyle,
-                              ),
-                            ],
-                            if (Platform.isAndroid || Platform.isIOS)
-                              Obx(() {
-                                Get.find<AppSettingsService>().layoutMode.value;
-                                widget.controller.mediaKitFallbackSession.value;
-                                Get.find<AppSettingsService>().useMediaKit.value;
-                                if (widget.controller.effectiveUseMediaKit ||
-                                    Get.find<AppSettingsService>()
-                                            .layoutMode
-                                            .value ==
-                                        AppLayoutMode.tv) {
-                                  return const SizedBox.shrink();
-                                }
-                                return _osdAction(
-                                  icon: Icons.picture_in_picture_alt_rounded,
-                                  onTap: () => unawaited(widget.controller
-                                      .enterPictureInPictureIfSupported()),
-                                  tv: useTvOsdStyle,
-                                );
-                              }),
-                          ],
-                        );
-                      },
-                    )
-                  else if (useMediaKitPlayer)
-                    _MediaKitPortraitStreamBuilder(
-                      controller: widget.controller,
-                      builder: (v) {
-                        final playing = v?.playing ?? false;
-                        return Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            if (!isLive &&
-                                v != null &&
-                                v.duration.inMilliseconds > 0)
-                              _MkPortraitProgressBar(
-                                position: v.position,
-                                duration: v.duration,
-                                onSeek: widget.controller.seekTo,
-                              ),
-                            _osdControlRow(
+                              return _VideoProgressBar(bp: bp, value: value);
+                            }
+                            return const SizedBox.shrink();
+                          },
+                        ),
+                      if (bp != null)
+                        _BetterPlayerValueBuilder(
+                          bp: bp,
+                          builder: (value) {
+                            final playing = value?.isPlaying ?? false;
+                            return _osdControlRow(
                               tv: useTvOsdStyle,
                               children: [
                                 _osdAction(
                                   icon: Icons.fast_rewind_rounded,
-                                  onTap: () =>
-                                      isLive ? _zap(-1) : _skip(-15),
+                                  onTap: () => isLive &&
+                                          !widget.controller
+                                              .liveTimeshiftSeekAvailable
+                                      ? _zap(-1)
+                                      : _skip(-15),
                                   tv: useTvOsdStyle,
                                   autofocus: useTvOsdStyle,
                                 ),
@@ -832,8 +1272,11 @@ class _PortraitOsdPanelState extends State<_PortraitOsdPanel> {
                                 ),
                                 _osdAction(
                                   icon: Icons.fast_forward_rounded,
-                                  onTap: () =>
-                                      isLive ? _zap(1) : _skip(15),
+                                  onTap: () => isLive &&
+                                          !widget.controller
+                                              .liveTimeshiftSeekAvailable
+                                      ? _zap(1)
+                                      : _skip(15),
                                   tv: useTvOsdStyle,
                                 ),
                                 _osdAction(
@@ -845,41 +1288,232 @@ class _PortraitOsdPanelState extends State<_PortraitOsdPanel> {
                                       : _fav.toggleVod(ch.id),
                                   tv: useTvOsdStyle,
                                 ),
+                                if (quickMenuBadge)
+                                  Tooltip(
+                                    message: 'player.tooltip.quickMenuOpen'.tr,
+                                    child: _osdAction(
+                                      icon: Icons.view_sidebar_rounded,
+                                      onTap: _openQuickMenuFromPortraitOsd,
+                                      tv: useTvOsdStyle,
+                                    ),
+                                  ),
+                                Obx(() {
+                                  widget.controller.betterOsdOverride.value;
+                                  Get.find<AppSettingsService>()
+                                      .useMediaKit
+                                      .value;
+                                  widget
+                                      .controller.mediaKitFallbackSession.value;
+                                  if (widget.controller.effectiveUseMediaKit) {
+                                    return const SizedBox.shrink();
+                                  }
+                                  return _osdAction(
+                                    letter: 'M',
+                                    onTap: () => unawaited(
+                                      widget.controller.switchToBackupPlayer(),
+                                    ),
+                                    tv: useTvOsdStyle,
+                                  );
+                                }),
                                 _osdAction(
                                   icon: Icons.high_quality_rounded,
-                                  onTap: () => _showMkQualityMenu(context),
+                                  onTap: () => _showQualityMenu(context),
                                   tv: useTvOsdStyle,
                                 ),
-                                _osdAction(
-                                  icon: Icons.audiotrack_rounded,
-                                  onTap: () => _showMkAudioMenu(context),
-                                  tv: useTvOsdStyle,
-                                ),
-                                _osdAction(
-                                  icon: Icons.closed_caption_rounded,
-                                  onTap: () => _showMkSubtitleMenu(context),
-                                  tv: useTvOsdStyle,
-                                ),
-                                _osdAction(
-                                  letter: 'B',
-                                  onTap: () => unawaited(
-                                    widget.controller.switchToBetterPlayer(),
+                                if (!isLive) ...[
+                                  _osdAction(
+                                    icon: Icons.audiotrack_rounded,
+                                    onTap: () =>
+                                        unawaited(_showAudioMenu(context)),
+                                    tv: useTvOsdStyle,
                                   ),
+                                  _osdAction(
+                                    icon: Icons.closed_caption_rounded,
+                                    onTap: () =>
+                                        unawaited(_showSubtitleMenu(context)),
+                                    tv: useTvOsdStyle,
+                                  ),
+                                ],
+                                if (Platform.isAndroid || Platform.isIOS)
+                                  Obx(() {
+                                    Get.find<AppSettingsService>()
+                                        .layoutMode
+                                        .value;
+                                    widget.controller.mediaKitFallbackSession
+                                        .value;
+                                    Get.find<AppSettingsService>()
+                                        .useMediaKit
+                                        .value;
+                                    if (widget
+                                            .controller.effectiveUseMediaKit ||
+                                        Get.find<AppSettingsService>()
+                                                .layoutMode
+                                                .value ==
+                                            AppLayoutMode.tv) {
+                                      return const SizedBox.shrink();
+                                    }
+                                    return _osdAction(
+                                      icon:
+                                          Icons.picture_in_picture_alt_rounded,
+                                      onTap: () => unawaited(widget.controller
+                                          .enterPictureInPictureIfSupported()),
+                                      tv: useTvOsdStyle,
+                                    );
+                                  }),
+                                Obx(() {
+                                  final s = Get.find<AppSettingsService>();
+                                  if (s.layoutMode.value !=
+                                      AppLayoutMode.mobile) {
+                                    return const SizedBox.shrink();
+                                  }
+                                  final toPortrait = landscape;
+                                  return Tooltip(
+                                    message: toPortrait
+                                        ? 'player.tooltip.toPortrait'.tr
+                                        : 'player.tooltip.toLandscape'.tr,
+                                    child: _osdAction(
+                                      icon: toPortrait
+                                          ? Icons.stay_current_portrait_rounded
+                                          : Icons.screen_rotation_rounded,
+                                      onTap: () => unawaited(
+                                        PlaybackOrientationManager
+                                            .toggleMobileForcedOrientation(),
+                                      ),
+                                      tv: useTvOsdStyle,
+                                    ),
+                                  );
+                                }),
+                              ],
+                            );
+                          },
+                        )
+                      else if (useMediaKitPlayer)
+                        _MediaKitPortraitStreamBuilder(
+                          controller: widget.controller,
+                          builder: (v) {
+                            final playing = v?.playing ?? false;
+                            return Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                if (!isLive &&
+                                    v != null &&
+                                    v.duration.inMilliseconds > 0)
+                                  _MkPortraitProgressBar(
+                                    position: v.position,
+                                    duration: v.duration,
+                                    onSeek: widget.controller.seekTo,
+                                  ),
+                                _osdControlRow(
                                   tv: useTvOsdStyle,
+                                  children: [
+                                    _osdAction(
+                                      icon: Icons.fast_rewind_rounded,
+                                      onTap: () =>
+                                          isLive ? _zap(-1) : _skip(-15),
+                                      tv: useTvOsdStyle,
+                                      autofocus: useTvOsdStyle,
+                                    ),
+                                    _osdAction(
+                                      icon: playing
+                                          ? Icons.pause_rounded
+                                          : Icons.play_arrow_rounded,
+                                      onTap: () => playing
+                                          ? widget.controller.pause()
+                                          : widget.controller.play(),
+                                      primary: true,
+                                      tv: useTvOsdStyle,
+                                    ),
+                                    _osdAction(
+                                      icon: Icons.fast_forward_rounded,
+                                      onTap: () => isLive ? _zap(1) : _skip(15),
+                                      tv: useTvOsdStyle,
+                                    ),
+                                    _osdAction(
+                                      icon: favOn
+                                          ? Icons.favorite_rounded
+                                          : Icons.favorite_border_rounded,
+                                      onTap: () => isLive
+                                          ? _fav.toggleChannel(ch.id)
+                                          : _fav.toggleVod(ch.id),
+                                      tv: useTvOsdStyle,
+                                    ),
+                                    if (quickMenuBadge)
+                                      Tooltip(
+                                        message:
+                                            'player.tooltip.quickMenuOpen'.tr,
+                                        child: _osdAction(
+                                          icon: Icons.view_sidebar_rounded,
+                                          onTap: _openQuickMenuFromPortraitOsd,
+                                          tv: useTvOsdStyle,
+                                        ),
+                                      ),
+                                    _osdAction(
+                                      icon: Icons.high_quality_rounded,
+                                      onTap: () => _showMkQualityMenu(context),
+                                      tv: useTvOsdStyle,
+                                    ),
+                                    _osdAction(
+                                      icon: Icons.audiotrack_rounded,
+                                      onTap: () => _showMkAudioMenu(context),
+                                      tv: useTvOsdStyle,
+                                    ),
+                                    _osdAction(
+                                      icon: Icons.closed_caption_rounded,
+                                      onTap: () => _showMkSubtitleMenu(context),
+                                      tv: useTvOsdStyle,
+                                    ),
+                                    _osdAction(
+                                      letter: 'B',
+                                      onTap: () => unawaited(
+                                        widget.controller
+                                            .promptSwitchToBetterFromMediaKit(),
+                                      ),
+                                      tv: useTvOsdStyle,
+                                    ),
+                                    Obx(() {
+                                      final s = Get.find<AppSettingsService>();
+                                      if (s.layoutMode.value !=
+                                          AppLayoutMode.mobile) {
+                                        return const SizedBox.shrink();
+                                      }
+                                      final toPortrait = landscape;
+                                      return Tooltip(
+                                        message: toPortrait
+                                            ? 'player.tooltip.toPortrait'.tr
+                                            : 'player.tooltip.toLandscape'.tr,
+                                        child: _osdAction(
+                                          icon: toPortrait
+                                              ? Icons
+                                                  .stay_current_portrait_rounded
+                                              : Icons.screen_rotation_rounded,
+                                          onTap: () => unawaited(
+                                            PlaybackOrientationManager
+                                                .toggleMobileForcedOrientation(),
+                                          ),
+                                          tv: useTvOsdStyle,
+                                        ),
+                                      );
+                                    }),
+                                  ],
                                 ),
                               ],
-                            ),
-                          ],
-                        );
-                      },
-                    ),
-                ],
-              ),
+                            );
+                          },
+                        ),
+                    ],
+                  ),
+                );
+                if (sigma <= 0) return decorated;
+                return BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
+                  child: decorated,
+                );
+              }),
             ),
-          ),
-        ),
-      );
-    });
+          );
+        });
+      },
+    );
   }
 
   Future<void> _showMkAudioMenu(BuildContext context) async {
@@ -1023,8 +1657,8 @@ class _PortraitOsdPanelState extends State<_PortraitOsdPanel> {
         if (b.key == 'no') return 1;
         return a.key.compareTo(b.key);
       });
-    final active = widget.controller.mediaKitPlayer?.state.track.subtitle.id ??
-        'no';
+    final active =
+        widget.controller.mediaKitPlayer?.state.track.subtitle.id ?? 'no';
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
@@ -1069,17 +1703,17 @@ class _PortraitOsdPanelState extends State<_PortraitOsdPanel> {
   }
 
   void _zap(int d) {
-    final cache = Get.find<PlaylistCacheService>();
-    final data = cache.result.value;
-    if (data == null) return;
-    final list = List<Channel>.from(data.channels)
-      ..sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
-    final idx =
-        list.indexWhere((c) => c.id == widget.controller.channel.value.id);
-    if (idx < 0) return;
-    final ni = (idx + d) % list.length;
-    final target = list[ni < 0 ? ni + list.length : ni];
-    widget.controller.zapTo(target);
+    // Yatay OSD ile aynı: yalnızca mevcut kategorideki canlı sırası ([PlayerController.zapRelative]).
+    unawaited(widget.controller.zapRelative(d));
+  }
+
+  void _openQuickMenuFromPortraitOsd() {
+    final c = widget.controller;
+    if (c.vodBrowseRailAvailable) {
+      c.requestOpenVodBrowseRailFromTvOsd();
+    } else {
+      c.requestOpenLiveChannelStripFromTvOsd();
+    }
   }
 
   Widget _osdControlRow({
@@ -1142,35 +1776,217 @@ class _PortraitOsdPanelState extends State<_PortraitOsdPanel> {
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(30),
-        child: Container(
-          padding: EdgeInsets.all(primary ? 12 : 8),
-          decoration: primary
-              ? BoxDecoration(
-                  color: Theme.of(context)
-                      .colorScheme
-                      .primary
-                      .withValues(alpha: 0.2),
-                  shape: BoxShape.circle,
-                )
-              : null,
-          child: letter != null
-              ? Text(
-                  letter,
-                  style: TextStyle(
+        child: Obx(() {
+          final isFb = Get.find<AppSettingsService>().themeLabel.value ==
+              GlassThemeLabels.flatBlack;
+          return Container(
+            padding: EdgeInsets.all(primary ? 12 : 8),
+            decoration: primary
+                ? BoxDecoration(
+                    color: isFb
+                        ? const Color(0xFF0C0C0C)
+                        : Theme.of(context)
+                            .colorScheme
+                            .primary
+                            .withValues(alpha: 0.2),
+                    shape: BoxShape.circle,
+                  )
+                : null,
+            child: letter != null
+                ? Text(
+                    letter,
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: primary ? 22 : 18,
+                      fontWeight: FontWeight.w800,
+                      height: 1,
+                    ),
+                  )
+                : Icon(
+                    icon!,
                     color: Colors.white,
-                    fontSize: primary ? 22 : 18,
-                    fontWeight: FontWeight.w800,
-                    height: 1,
+                    size: primary ? 32 : 24,
                   ),
-                )
-              : Icon(
-                  icon!,
-                  color: Colors.white,
-                  size: primary ? 32 : 24,
-                ),
-        ),
+          );
+        }),
       ),
     );
+  }
+}
+
+/// Dikey mod (telefon/tablet): OSD ile aynı cam panel — aynı kategorideki canlı kanallar.
+class _PortraitCategoryChannelBar extends StatefulWidget {
+  const _PortraitCategoryChannelBar({required this.controller});
+
+  final PlayerController controller;
+
+  @override
+  State<_PortraitCategoryChannelBar> createState() =>
+      _PortraitCategoryChannelBarState();
+}
+
+class _PortraitCategoryChannelBarState
+    extends State<_PortraitCategoryChannelBar> {
+  final ScrollController _scrollController = ScrollController();
+  final GlobalKey _selectedChannelKey = GlobalKey();
+  Worker? _channelWorker;
+
+  @override
+  void initState() {
+    super.initState();
+    _channelWorker =
+        ever(widget.controller.channel, (_) => _scrollSelectedToStart());
+    WidgetsBinding.instance
+        .addPostFrameCallback((_) => _scrollSelectedToStart());
+  }
+
+  @override
+  void dispose() {
+    _channelWorker?.dispose();
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _scrollSelectedToStart() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final ctx = _selectedChannelKey.currentContext;
+      if (ctx == null) return;
+      Scrollable.ensureVisible(
+        ctx,
+        alignment: 0.0,
+        duration: AppPerformance.uiDuration(
+          const Duration(milliseconds: 260),
+        ),
+        curve: Curves.easeOutCubic,
+      );
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Obx(() {
+      widget.controller.channel.value;
+      final list = widget.controller.liveChannelsInCurrentCategory();
+      if (list.length <= 1) return const SizedBox.shrink();
+
+      final stripInner = Container(
+        height: 100,
+        padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.1),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.2),
+          ),
+        ),
+        child: ListView.separated(
+          controller: _scrollController,
+          scrollDirection: Axis.horizontal,
+          physics: const BouncingScrollPhysics(),
+          itemCount: list.length,
+          separatorBuilder: (_, __) => const SizedBox(width: 8),
+          itemBuilder: (context, i) {
+            final ch = list[i];
+            final sel = ch.id == widget.controller.channel.value.id;
+            final primary = Theme.of(context).colorScheme.primary;
+            final dpr = MediaQuery.devicePixelRatioOf(context);
+            final logoPx = (34 * dpr).round();
+            final logoUrl = ch.logoUrl?.trim();
+            final tile = Material(
+              color: Colors.transparent,
+              child: InkWell(
+                onTap: () => unawaited(widget.controller.zapTo(ch)),
+                borderRadius: BorderRadius.circular(12),
+                child: Container(
+                  constraints: const BoxConstraints(
+                    minWidth: 96,
+                    maxWidth: 172,
+                  ),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color:
+                          sel ? primary : Colors.white.withValues(alpha: 0.25),
+                      width: sel ? 2 : 1,
+                    ),
+                    color: sel
+                        ? primary.withValues(alpha: 0.22)
+                        : Colors.white.withValues(alpha: 0.06),
+                  ),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        ch.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontWeight: sel ? FontWeight.w700 : FontWeight.w500,
+                          fontSize: 12,
+                          height: 1.05,
+                        ),
+                      ),
+                      const SizedBox(height: 5),
+                      SizedBox(
+                        width: 34,
+                        height: 34,
+                        child: logoUrl != null && logoUrl.isNotEmpty
+                            ? ClipRRect(
+                                borderRadius: BorderRadius.circular(6),
+                                child: IptvChannelLogo(
+                                  imageUrl: logoUrl,
+                                  width: 34,
+                                  height: 34,
+                                  fit: BoxFit.contain,
+                                  memCacheWidth: logoPx,
+                                  memCacheHeight: logoPx,
+                                  showProgressIndicator: true,
+                                  progressIndicatorColor: Colors.white24,
+                                  errorWidget: Icon(
+                                    Icons.live_tv_rounded,
+                                    color: Colors.white.withValues(alpha: 0.75),
+                                    size: 26,
+                                  ),
+                                ),
+                              )
+                            : Icon(
+                                Icons.live_tv_rounded,
+                                color: Colors.white.withValues(alpha: 0.75),
+                                size: 26,
+                              ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            );
+            return Align(
+              key: sel ? _selectedChannelKey : ValueKey<int>(ch.id),
+              child: tile,
+            );
+          },
+        ),
+      );
+
+      return Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(16),
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+            child: stripInner,
+          ),
+        ),
+      );
+    });
   }
 }
 
@@ -1200,59 +2016,69 @@ class _TvFocusableOsdButtonState extends State<_TvFocusableOsdButton> {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final borderColor = _focused
-        ? scheme.primary.withValues(alpha: 0.95)
-        : Colors.white.withValues(alpha: 0.2);
+    return Obx(() {
+      final isFb = Get.find<AppSettingsService>().themeLabel.value ==
+          GlassThemeLabels.flatBlack;
+      final borderColor = _focused
+          ? (isFb
+              ? const Color(0xFF1A1A1A)
+              : scheme.primary.withValues(alpha: 0.95))
+          : Colors.white.withValues(alpha: 0.2);
 
-    return Focus(
-      autofocus: widget.autofocus,
-      onFocusChange: (v) => setState(() => _focused = v),
-      onKeyEvent: (node, event) {
-        if (event is! KeyDownEvent) return KeyEventResult.ignored;
-        final k = event.logicalKey;
-        if (k == LogicalKeyboardKey.select ||
-            k == LogicalKeyboardKey.enter ||
-            k == LogicalKeyboardKey.space) {
-          widget.onTap();
-          return KeyEventResult.handled;
-        }
-        return KeyEventResult.ignored;
-      },
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: widget.onTap,
-          borderRadius: BorderRadius.circular(30),
-          child: Container(
-            padding: EdgeInsets.all(widget.primary ? 12 : 8),
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(color: borderColor, width: _focused ? 2 : 1),
-              color: widget.primary
-                  ? scheme.primary.withValues(alpha: _focused ? 0.35 : 0.2)
-                  : (_focused
-                      ? Colors.white.withValues(alpha: 0.14)
-                      : Colors.transparent),
-            ),
-            child: widget.letter != null
-                ? Text(
-                    widget.letter!,
-                    style: TextStyle(
+      return Focus(
+        autofocus: widget.autofocus,
+        onFocusChange: (v) => setState(() => _focused = v),
+        onKeyEvent: (node, event) {
+          if (event is! KeyDownEvent) return KeyEventResult.ignored;
+          final k = event.logicalKey;
+          if (k == LogicalKeyboardKey.select ||
+              k == LogicalKeyboardKey.enter ||
+              k == LogicalKeyboardKey.space) {
+            widget.onTap();
+            return KeyEventResult.handled;
+          }
+          return KeyEventResult.ignored;
+        },
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: widget.onTap,
+            borderRadius: BorderRadius.circular(30),
+            child: Container(
+              padding: EdgeInsets.all(widget.primary ? 12 : 8),
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(color: borderColor, width: _focused ? 2 : 1),
+                color: widget.primary
+                    ? (isFb
+                        ? const Color(0xFF0C0C0C)
+                            .withValues(alpha: _focused ? 0.95 : 0.88)
+                        : scheme.primary
+                            .withValues(alpha: _focused ? 0.35 : 0.2))
+                    : (_focused
+                        ? Colors.white.withValues(alpha: 0.14)
+                        : Colors.transparent),
+              ),
+              child: widget.letter != null
+                  ? Text(
+                      widget.letter!,
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: widget.primary ? 22 : 18,
+                        fontWeight: FontWeight.w800,
+                        height: 1,
+                      ),
+                    )
+                  : Icon(
+                      widget.icon!,
                       color: Colors.white,
-                      fontSize: widget.primary ? 22 : 18,
-                      fontWeight: FontWeight.w800,
-                      height: 1,
+                      size: widget.primary ? 32 : 24,
                     ),
-                  )
-                : Icon(
-                    widget.icon!,
-                    color: Colors.white,
-                    size: widget.primary ? 32 : 24,
-                  ),
+            ),
           ),
         ),
-      ),
-    );
+      );
+    });
   }
 }
 
@@ -1300,58 +2126,59 @@ class _AudioSelectionSheet extends StatelessWidget {
                   ),
                 ],
               ),
-            const SizedBox(height: 16),
-            Flexible(
-              child: ListView.separated(
-                shrinkWrap: true,
-                itemCount: tracks.length,
-                separatorBuilder: (_, __) => const Divider(
-                  color: Colors.white10,
-                  height: 1,
-                ),
-                itemBuilder: (context, index) {
-                  final t = tracks[index];
-                  final isSelected = active?.id == t.id ||
-                      (active == null && index == 0); // Default first
+              const SizedBox(height: 16),
+              Flexible(
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: tracks.length,
+                  separatorBuilder: (_, __) => const Divider(
+                    color: Colors.white10,
+                    height: 1,
+                  ),
+                  itemBuilder: (context, index) {
+                    final t = tracks[index];
+                    final isSelected = active?.id == t.id ||
+                        (active == null && index == 0); // Default first
 
-                  return ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    onTap: () {
-                      controller.better?.setAudioTrack(t);
-                      Get.back();
-                      GlassSnackbar.show(
-                        'player.snackbar.audioChanged'.tr,
+                    return ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      onTap: () {
+                        controller.better?.setAudioTrack(t);
+                        Get.back();
+                        GlassSnackbar.show(
+                          'player.snackbar.audioChanged'.tr,
+                          t.label ??
+                              'player.track.audio'
+                                  .trParams({'n': '${index + 1}'}),
+                          snackPosition: SnackPosition.BOTTOM,
+                          duration: const Duration(seconds: 2),
+                        );
+                      },
+                      leading: Icon(
+                        isSelected
+                            ? Icons.radio_button_checked_rounded
+                            : Icons.radio_button_off_rounded,
+                        color: isSelected
+                            ? Theme.of(context).colorScheme.primary
+                            : Colors.white30,
+                      ),
+                      title: Text(
                         t.label ??
                             'player.track.audio'
                                 .trParams({'n': '${index + 1}'}),
-                        snackPosition: SnackPosition.BOTTOM,
-                        duration: const Duration(seconds: 2),
-                      );
-                    },
-                    leading: Icon(
-                      isSelected
-                          ? Icons.radio_button_checked_rounded
-                          : Icons.radio_button_off_rounded,
-                      color: isSelected
-                          ? Theme.of(context).colorScheme.primary
-                          : Colors.white30,
-                    ),
-                    title: Text(
-                      t.label ??
-                          'player.track.audio'.trParams({'n': '${index + 1}'}),
-                      style: TextStyle(
-                        color: isSelected ? Colors.white : Colors.white70,
-                        fontWeight:
-                            isSelected ? FontWeight.bold : FontWeight.normal,
+                        style: TextStyle(
+                          color: isSelected ? Colors.white : Colors.white70,
+                          fontWeight:
+                              isSelected ? FontWeight.bold : FontWeight.normal,
+                        ),
                       ),
-                    ),
-                    trailing: isSelected
-                        ? const Icon(Icons.check_rounded, color: Colors.green)
-                        : null,
-                  );
-                },
+                      trailing: isSelected
+                          ? const Icon(Icons.check_rounded, color: Colors.green)
+                          : null,
+                    );
+                  },
+                ),
               ),
-            ),
             ],
           ),
         ),
@@ -1662,24 +2489,11 @@ class _QualitySelectionSheet extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Quality track label logic
-    String getTrackLabel(BetterPlayerAsmsTrack track) {
-      if (track.width == 0 || track.height == 0) {
-        return 'player.quality.auto'.tr;
-      }
-      if (track.height != null) {
-        return '${track.height}p';
-      }
-      return 'player.quality.unknown'.tr;
-    }
+    String getTrackLabel(BetterPlayerAsmsTrack track) =>
+        betterPlayerVideoQualityTrackLabel(track);
 
-    // Sort tracks by height descending, Auto at top
     final sorted = List<BetterPlayerAsmsTrack>.from(tracks);
-    sorted.sort((a, b) {
-      if (a.width == 0 && a.height == 0) return -1;
-      if (b.width == 0 && b.height == 0) return 1;
-      return (b.height ?? 0).compareTo(a.height ?? 0);
-    });
+    sorted.sort(compareBetterPlayerVideoQualityTracks);
 
     return ClipRRect(
       borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
@@ -1698,54 +2512,56 @@ class _QualitySelectionSheet extends StatelessWidget {
                 borderRadius: BorderRadius.circular(2),
               ),
             ),
-          const SizedBox(height: 20),
-          Text(
-            'player.sheet.qualityTitle'.tr,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
+            const SizedBox(height: 20),
+            Text(
+              'player.sheet.qualityTitle'.tr,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+              ),
             ),
-          ),
-          const SizedBox(height: 16),
-          Flexible(
-            child: ListView.separated(
-              shrinkWrap: true,
-              itemCount: sorted.length,
-              separatorBuilder: (_, __) => const Divider(color: Colors.white10),
-              itemBuilder: (context, index) {
-                final track = sorted[index];
-                final isAuto = track.width == 0 && track.height == 0;
-                final isCurrent = controller.currentTrack == track;
+            const SizedBox(height: 16),
+            Flexible(
+              child: ListView.separated(
+                shrinkWrap: true,
+                itemCount: sorted.length,
+                separatorBuilder: (_, __) =>
+                    const Divider(color: Colors.white10),
+                itemBuilder: (context, index) {
+                  final track = sorted[index];
+                  final isAuto = track.width == 0 && track.height == 0;
+                  final isCurrent = controller.currentTrack == track;
 
-                return ListTile(
-                  leading: Icon(
-                    isAuto ? Icons.auto_awesome : Icons.high_quality,
-                    color: isCurrent
-                        ? Theme.of(context).colorScheme.primary
-                        : Colors.white60,
-                  ),
-                  title: Text(
-                    getTrackLabel(track),
-                    style: TextStyle(
-                      color: isCurrent ? Colors.white : Colors.white70,
-                      fontWeight: isCurrent ? FontWeight.w700 : FontWeight.w500,
+                  return ListTile(
+                    leading: Icon(
+                      isAuto ? Icons.auto_awesome : Icons.high_quality,
+                      color: isCurrent
+                          ? Theme.of(context).colorScheme.primary
+                          : Colors.white60,
                     ),
-                  ),
-                  trailing: isCurrent
-                      ? Icon(Icons.check_circle_rounded,
-                          color: Theme.of(context).colorScheme.primary)
-                      : null,
-                  onTap: () {
-                    controller.setQuality(track);
-                    Navigator.pop(context);
-                  },
-                );
-              },
+                    title: Text(
+                      getTrackLabel(track),
+                      style: TextStyle(
+                        color: isCurrent ? Colors.white : Colors.white70,
+                        fontWeight:
+                            isCurrent ? FontWeight.w700 : FontWeight.w500,
+                      ),
+                    ),
+                    trailing: isCurrent
+                        ? Icon(Icons.check_circle_rounded,
+                            color: Theme.of(context).colorScheme.primary)
+                        : null,
+                    onTap: () {
+                      controller.setQuality(track);
+                      Navigator.pop(context);
+                    },
+                  );
+                },
+              ),
             ),
-          ),
-          const SizedBox(height: 12),
-        ],
+            const SizedBox(height: 12),
+          ],
         ),
       ),
     );
@@ -2116,39 +2932,182 @@ class _MkTrackSelectionSheet extends StatelessWidget {
                   ),
                 ],
               ),
-            const SizedBox(height: 8),
-            Flexible(
-              child: ListView.separated(
-                shrinkWrap: true,
-                itemCount: entries.length,
-                separatorBuilder: (_, __) => const Divider(
-                  color: Colors.white10,
-                  height: 1,
-                ),
-                itemBuilder: (context, index) {
-                  final e = entries[index];
-                  final cur =
-                      selectedId != null && e.key == selectedId;
-                  return ListTile(
-                    contentPadding: EdgeInsets.zero,
-                    onTap: () => onPick(e.key),
-                    title: Text(
-                      e.value.isNotEmpty ? e.value : '${e.key}',
-                      style: TextStyle(
-                        color: cur ? Colors.white : Colors.white70,
-                        fontWeight:
-                            cur ? FontWeight.bold : FontWeight.normal,
+              const SizedBox(height: 8),
+              Flexible(
+                child: ListView.separated(
+                  shrinkWrap: true,
+                  itemCount: entries.length,
+                  separatorBuilder: (_, __) => const Divider(
+                    color: Colors.white10,
+                    height: 1,
+                  ),
+                  itemBuilder: (context, index) {
+                    final e = entries[index];
+                    final cur = selectedId != null && e.key == selectedId;
+                    return ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      onTap: () => onPick(e.key),
+                      title: Text(
+                        e.value.isNotEmpty ? e.value : e.key,
+                        style: TextStyle(
+                          color: cur ? Colors.white : Colors.white70,
+                          fontWeight: cur ? FontWeight.bold : FontWeight.normal,
+                        ),
                       ),
+                      trailing: cur
+                          ? Icon(Icons.check_rounded,
+                              color: Theme.of(context).colorScheme.primary)
+                          : null,
+                    );
+                  },
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Yayın henüz çizilmeden önce siyah ekran yerine logo + yükleme göstergesi.
+class _PlayerLoadingOverlay extends StatelessWidget {
+  const _PlayerLoadingOverlay({
+    required this.channel,
+    required this.subtitle,
+  });
+
+  final Channel channel;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          const ColoredBox(color: Color(0xFF0D0D0F)),
+          Center(
+            child: _PlayerLoadingCenter(
+              channel: channel,
+              subtitle: subtitle,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PlayerLoadingCenter extends StatelessWidget {
+  const _PlayerLoadingCenter({
+    required this.channel,
+    required this.subtitle,
+  });
+
+  final Channel channel;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    final logo = channel.logoUrl?.trim();
+    final hasLogo = logo != null &&
+        logo.isNotEmpty &&
+        (logo.startsWith('http://') || logo.startsWith('https://'));
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (hasLogo)
+          ClipRRect(
+            borderRadius: BorderRadius.circular(14),
+            child: IptvChannelLogo(
+              imageUrl: logo,
+              width: 112,
+              height: 112,
+              fit: BoxFit.contain,
+              showProgressIndicator: true,
+              progressIndicatorColor: Color(0xFF6ECFE0),
+              placeholder: const SizedBox(
+                width: 112,
+                height: 112,
+                child: Center(
+                  child: SizedBox(
+                    width: 40,
+                    height: 40,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 3,
+                      color: Color(0xFF6ECFE0),
                     ),
-                    trailing: cur
-                        ? Icon(Icons.check_rounded,
-                            color: Theme.of(context).colorScheme.primary)
-                        : null,
-                  );
-                },
+                  ),
+                ),
+              ),
+              errorWidget: const SizedBox(
+                width: 56,
+                height: 56,
+                child: CircularProgressIndicator(
+                  strokeWidth: 3,
+                  color: Color(0xFF6ECFE0),
+                ),
               ),
             ),
-            ],
+          )
+        else
+          const SizedBox(
+            width: 48,
+            height: 48,
+            child: CircularProgressIndicator(
+              strokeWidth: 3,
+              color: Color(0xFF6ECFE0),
+            ),
+          ),
+        if (hasLogo) const SizedBox(height: 10),
+        SizedBox(
+          width: hasLogo ? 112 : 48,
+          height: 3,
+          child: const LinearProgressIndicator(
+            backgroundColor: Colors.white12,
+            color: Color(0xFF6ECFE0),
+          ),
+        ),
+        const SizedBox(height: 14),
+        Text(
+          subtitle,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            color: Colors.white70,
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Dikey mod kanal geçişlerinde tam ekran splash yerine yalnız merkezde spinner.
+class _PlayerCenterLoadingSpinner extends StatelessWidget {
+  const _PlayerCenterLoadingSpinner();
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: Center(
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: 0.28),
+            shape: BoxShape.circle,
+          ),
+          child: const Padding(
+            padding: EdgeInsets.all(14),
+            child: SizedBox(
+              width: 34,
+              height: 34,
+              child: CircularProgressIndicator(
+                strokeWidth: 3,
+                color: Color(0xFF6ECFE0),
+              ),
+            ),
           ),
         ),
       ),

@@ -70,6 +70,36 @@ class _BetterPlayerSubtitlesDrawerState extends State<BetterPlayerSubtitlesDrawe
   }
 
   @override
+  void didUpdateWidget(BetterPlayerSubtitlesDrawer oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    final newC = widget.betterPlayerSubtitlesConfiguration;
+    final oldC = oldWidget.betterPlayerSubtitlesConfiguration;
+    if (newC == null) return;
+    if (oldC != null &&
+        newC.fontSize == oldC.fontSize &&
+        newC.fontColor == oldC.fontColor &&
+        newC.outlineSize == oldC.outlineSize &&
+        newC.bottomPadding == oldC.bottomPadding) {
+      return;
+    }
+    _configuration = newC;
+    _outerTextStyle = TextStyle(
+      fontSize: _configuration!.fontSize,
+      fontFamily: _configuration!.fontFamily,
+      foreground: Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = _configuration!.outlineSize
+        ..color = _configuration!.outlineColor,
+    );
+    _innerTextStyle = TextStyle(
+      fontFamily: _configuration!.fontFamily,
+      color: _configuration!.fontColor,
+      fontSize: _configuration!.fontSize,
+    );
+    setState(() {});
+  }
+
+  @override
   void dispose() {
     widget.betterPlayerController.videoPlayerController!.removeListener(_updateState);
     _visibilityStreamSubscription.cancel();

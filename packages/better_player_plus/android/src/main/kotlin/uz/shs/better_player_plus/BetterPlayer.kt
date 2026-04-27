@@ -36,12 +36,14 @@ import io.flutter.plugin.common.EventChannel.EventSink
 import androidx.work.Data
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
+import androidx.media3.common.Format
 import androidx.media3.common.MimeTypes
 import androidx.media3.common.ForwardingPlayer
 import androidx.media3.common.MediaItem
 import androidx.media3.common.PlaybackException
 import androidx.media3.common.PlaybackParameters
 import androidx.media3.common.Player
+import androidx.media3.common.VideoSize
 import androidx.media3.common.Timeline
 import androidx.media3.common.TrackSelectionOverride
 import androidx.media3.common.TrackSelectionParameters
@@ -58,6 +60,7 @@ import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.LoadControl
 import androidx.media3.exoplayer.RendererCapabilities
+import androidx.media3.exoplayer.mediacodec.MediaCodecAdapter
 import androidx.media3.exoplayer.mediacodec.MediaCodecSelector
 import androidx.media3.exoplayer.dash.DashMediaSource
 import androidx.media3.exoplayer.dash.DefaultDashChunkSource
@@ -76,7 +79,9 @@ import androidx.media3.exoplayer.source.ClippingMediaSource
 import androidx.media3.exoplayer.source.MediaSource
 import androidx.media3.exoplayer.source.ProgressiveMediaSource
 import androidx.media3.exoplayer.trackselection.DefaultTrackSelector
+import androidx.media3.exoplayer.trackselection.MappingTrackSelector.MappedTrackInfo
 import java.io.File
+import java.util.Objects
 import java.lang.Exception
 import java.lang.IllegalStateException
 import java.util.*
@@ -98,13 +103,37 @@ internal class BetterPlayer(
     private val surfaceProducer: SurfaceProducer,
     customDefaultLoadControl: CustomDefaultLoadControl?,
     preferSoftwareVideoDecoder: Boolean,
+    /** Tablet/TV düzeninde OSD [BoxFit] döngüsü için Exo FIT ölçeklemesi. */
+    private val androidScaleVideoToFit: Boolean,
     result: MethodChannel.Result
 ) : SurfaceProducer.Callback {
+    private val isAndroidTv: Boolean =
+        (context.resources.configuration.uiMode and Configuration.UI_MODE_TYPE_MASK) ==
+            Configuration.UI_MODE_TYPE_TELEVISION
+
+    /** Xiaomi / Redmi / POCO: MIUI’de tünel senkronu ve zamanlama ile kare kare takılma raporları. */
+    private val isXiaomiFamilyDevice: Boolean = run {
+        val m = Build.MANUFACTURER.lowercase(Locale.US)
+        val b = Build.BRAND.lowercase(Locale.US)
+        listOf("xiaomi", "redmi", "poco", "black shark").any { x ->
+            m.contains(x) || b.contains(x)
+        }
+    }
+
+    /**
+     * Telefon / tablet: aynı kapsayıcıda stereo + surround varsa stereo öncelikli (ExoPlayer yazılım downmix yapmaz).
+     * TV: çok kanallı çıkış genelde mevcut; varsayılan kalite sıralamasına bırakılır.
+     */
+    private val preferStereoEmbeddedWhenMultipleTracks: Boolean = !isAndroidTv
+
     private val exoPlayer: ExoPlayer?
     private val eventSink = QueuingEventSink()
     private val trackSelector: DefaultTrackSelector = DefaultTrackSelector(context)
     private val loadControl: LoadControl
     private var isInitialized = false
+
+    /** [emitVideoFormatUpdateIfChanged] için; yeni kaynak / parça değişince sıfırlanır. */
+    private var lastEmittedVideoFormatSig: Int = 0
     /** ExoPlayer henüz yüzey almadıysa (SurfaceProducer gecikmeli sağlayabilir). */
     private var needsSurface = true
     private var key: String? = null
@@ -131,35 +160,66 @@ internal class BetterPlayer(
             this.customDefaultLoadControl.bufferForPlaybackMs,
             this.customDefaultLoadControl.bufferForPlaybackAfterRebufferMs
         )
+        loadBuilder.setPrioritizeTimeOverSizeThresholds(
+            this.customDefaultLoadControl.prioritizeTimeOverSizeThresholds,
+        )
         loadControl = loadBuilder.build()
         val mediaCodecSelector =
             if (preferSoftwareVideoDecoder) {
                 MediaCodecSelector.PREFER_SOFTWARE
             } else {
-                // Prefer hardware (MediaCodec) decoders; DEFAULT ranks device decoders appropriately.
+                // Donanım (MediaCodec) öncelikli; DEFAULT cihaz codec sıralamasını uygular.
                 MediaCodecSelector.DEFAULT
             }
-        val isAndroidTv =
-            (context.resources.configuration.uiMode and Configuration.UI_MODE_TYPE_MASK) ==
-                Configuration.UI_MODE_TYPE_TELEVISION
-        // TV kutularında (ör. Amlogic/Mecool) VP9/AV1/FFmpeg uzantı render'ları ve tünelleme sık takılmaya yol açar.
-        val extensionMode =
+        // Resmi media3 `decoder_ffmpeg` modülü (AAR) classpath’teyse FfmpegAudioRenderer devreye girer.
+        // Google Maven’da yayınlanmaz; Jellyfin Maven’ı kullanmadan androidx/media deposundan derlenmiş AAR
+        // better_player_plus/android/third_party/decoder_ffmpeg/ altına konabilir (README.txt).
+        //
+        // TV kutusu: FFmpeg JNI sık sorun çıkarır → OFF.
+        // Telefon / tablet: [EXTENSION_RENDERER_MODE_PREFER] — ses için yazılım (FFmpeg) çözücüyü
+        // donanım (MediaCodec) önüne alır; Xiaomi MIUI/HyperOS AC3/EAC3/DTS sessizliklerinde hedeflenen davranış.
+        val extensionRendererMode: Int =
             if (isAndroidTv) {
                 DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF
             } else {
-                DefaultRenderersFactory.EXTENSION_RENDERER_MODE_ON
+                DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER
             }
-        val renderersFactory = DefaultRenderersFactory(context)
-            .setExtensionRendererMode(extensionMode)
-            .setMediaCodecSelector(mediaCodecSelector)
-            .setEnableDecoderFallback(true)
+        // TV kutusu: KEY_LOW_LATENCY + senkron MediaCodec kuyruğu bazı 1080p donanım
+        // kod çözücülerinde kare atlama / takılma raporu veriyor; telefon/tablette tutulur.
+        val enableLowLatencyPath =
+            !isAndroidTv &&
+                !preferSoftwareVideoDecoder &&
+                MinaLowLatencyMediaCodecAdapterFactory.shouldEnableLowLatencyHeuristics()
+        // [DefaultRenderersFactory] + uzantı modu: ses için FFmpeg (varsa) tercih sırası.
+        val renderersFactory =
+            object : DefaultRenderersFactory(context) {
+                override fun getCodecAdapterFactory(): MediaCodecAdapter.Factory {
+                    return if (enableLowLatencyPath) {
+                        MinaLowLatencyMediaCodecAdapterFactory(context, true)
+                    } else {
+                        super.getCodecAdapterFactory()
+                    }
+                }
+            }.setExtensionRendererMode(extensionRendererMode)
+                .setMediaCodecSelector(mediaCodecSelector)
+                .setEnableDecoderFallback(true)
+                // AudioTrack#setPlaybackParams (Media3 1.8: setEnableAudioTrackPlaybackParams) —
+                // A/V zamanlaması için; Xiaomi’de kare kare senkron sorunlarına karşı açık tutulur.
+                .setEnableAudioTrackPlaybackParams(true)
+                .apply {
+                    if (enableLowLatencyPath) {
+                        // Düşük gecikme: senkron MediaCodec kuyruğu (desteklenen cihazlarda).
+                        forceDisableMediaCodecAsynchronousQueueing()
+                    }
+                }
         // Prefer device-friendly codecs first so phones (e.g. Xiaomi) pick AAC/MP3 when
         // muxed MP4/MKV exposes AC3/EAC3 alongside AAC; TV boxes often work either way.
+        // Donanım tüneli (video+audio): Xiaomi ailesinde özellikle kapatılır; TV/STB’de de varsayılan kapalı.
+        val allowExoTunnelingExperiment = false
+        val tunnelingEnabled = allowExoTunnelingExperiment && !isXiaomiFamilyDevice
         trackSelector.setParameters(
             trackSelector.buildUponParameters()
-                // Birçok Android TV / STB (Mecool vb.) tünellemeyi hatalı uygular → görüntü takılması.
-                // Sertifikalı Google TV'de teorik kazanç olsa da varsayılan olarak kapalı bırakıyoruz.
-                .setTunnelingEnabled(false)
+                .setTunnelingEnabled(tunnelingEnabled)
                 .setPreferredAudioMimeTypes(
                     MimeTypes.AUDIO_AAC,
                     MimeTypes.AUDIO_MPEG,
@@ -174,7 +234,14 @@ internal class BetterPlayer(
                     MimeTypes.AUDIO_DTS_HD,
                     MimeTypes.AUDIO_DTS_EXPRESS,
                 )
-                .setMaxAudioChannelCount(2)
+                // Cihaz çıkışı / Spatializer: surround uygun değilse seçici çok kanallıyı "kısıt dışı" sayar;
+                // stereo parça varsa veya exceedAudioConstraints ile uygun düşük kanallı alternatif tercih edilir.
+                .setConstrainAudioChannelCountToDeviceCapabilities(true)
+                // HLS/DASH vb. adaptif sette farklı kanal sayılı ses varyantları arasında geçişe izin verir.
+                .setAllowAudioMixedChannelCountAdaptiveness(true)
+                // 2 = yalnızca stereo seçilebilir → tek 5.1 parçası tamamen elenir (sessizlik riski).
+                // 8 = çok kanallı aday kalır; [tryAutoSelectSupportedAudioTrack] çoklu parçada stereo öne alır.
+                .setMaxAudioChannelCount(8)
                 .setAudioOffloadPreferences(
                     TrackSelectionParameters.AudioOffloadPreferences.Builder()
                         .setAudioOffloadMode(
@@ -186,7 +253,7 @@ internal class BetterPlayer(
         )
         // setPriority(1) KULLANILMAMALI: Media3'te varsayılan -1000 (C.PRIORITY_PLAYBACK). 1 = oynatma önceliğini düşürür.
         val scalingMode =
-            if (isAndroidTv) {
+            if (isAndroidTv || androidScaleVideoToFit) {
                 C.VIDEO_SCALING_MODE_SCALE_TO_FIT
             } else {
                 C.VIDEO_SCALING_MODE_SCALE_TO_FIT_WITH_CROPPING
@@ -197,9 +264,35 @@ internal class BetterPlayer(
             .setLoadControl(loadControl)
             .setVideoScalingMode(scalingMode)
             .build()
+        maybeLogFfmpegMinaHint()
         workManager = WorkManager.getInstance(context)
         workerObserverMap = HashMap()
         setupVideoPlayer(eventChannel, result)
+    }
+
+    /**
+     * Media3 [DefaultRenderersFactory] zaten [EXTENSION_RENDERER_MODE_PREFER] ile FFmpeg ses (+ classpath’te
+     * [ExperimentalFfmpegVideoRenderer]) yüklemeyi dener; AAR/jni eksikse Xiaomi’de teşhis için uyarı.
+     */
+    private fun maybeLogFfmpegMinaHint() {
+        if (isAndroidTv || !isXiaomiFamilyDevice) return
+        try {
+            val clazz = Class.forName("androidx.media3.decoder.ffmpeg.FfmpegLibrary")
+            val ok = clazz.getMethod("isAvailable").invoke(null) as Boolean
+            if (!ok) {
+                Log.w(
+                    TAG,
+                    "FFmpeg native kütüphane yok (isAvailable=false); decoder_ffmpeg AAR ve jni ABI kontrol edin.",
+                )
+            }
+        } catch (_: ClassNotFoundException) {
+            Log.w(
+                TAG,
+                "FFmpeg AAR classpath’te yok — third_party/decoder_ffmpeg/README.txt (ses; video için h264/hevc decoder derlemesi).",
+            )
+        } catch (e: Exception) {
+            Log.w(TAG, "FFmpeg kullanılabilirlik: $e")
+        }
     }
 
     override fun onSurfaceAvailable() {
@@ -242,6 +335,7 @@ internal class BetterPlayer(
         this.key = key
         audioAutoSelectPassesLeft = 5
         isInitialized = false
+        lastEmittedVideoFormatSig = 0
         Log.d(
             SURFACE_LOG_TAG,
             "setDataSource textureId=${surfaceProducer.id()}: stop+clearMediaItems+new MediaSource (SurfaceProducer unchanged)",
@@ -575,6 +669,15 @@ internal class BetterPlayer(
         exoPlayer?.addListener(object : Player.Listener {
             override fun onTracksChanged(tracks: Tracks) {
                 tryAutoSelectSupportedAudioTrack()
+                emitVideoFormatUpdateIfChanged()
+            }
+
+            override fun onVideoSizeChanged(videoSize: VideoSize) {
+                emitVideoFormatUpdateIfChanged()
+            }
+
+            override fun onRenderedFirstFrame() {
+                emitVideoFormatUpdateIfChanged()
             }
 
             override fun onCues(cueGroup: CueGroup) {
@@ -592,6 +695,7 @@ internal class BetterPlayer(
 
                     Player.STATE_READY -> {
                         tryAutoSelectSupportedAudioTrack()
+                        emitVideoFormatUpdateIfChanged()
                         if (!isInitialized) {
                             isInitialized = true
                             sendInitialized()
@@ -762,10 +866,46 @@ internal class BetterPlayer(
                     }
                     event["width"] = width
                     event["height"] = height
+                    val fr = videoFormat.frameRate
+                    if (!fr.isNaN() && fr > 0f) {
+                        event["frameRate"] = fr.toDouble()
+                    }
                 }
             }
             eventSink.success(event)
         }
+    }
+
+    /** İlk kare / parça değişimi sonrası FPS güncellemesi (manifestte yoksa bile decoder Format dolabilir). */
+    private fun emitVideoFormatUpdateIfChanged() {
+        val player = exoPlayer ?: return
+        val videoFormat = player.videoFormat ?: return
+        var width = videoFormat.width
+        var height = videoFormat.height
+        val rotationDegrees = videoFormat.rotationDegrees
+        if (rotationDegrees == 90 || rotationDegrees == 270) {
+            width = videoFormat.height
+            height = videoFormat.width
+        }
+        if (width <= 0 || height <= 0) {
+            return
+        }
+        val fr = videoFormat.frameRate
+        val frKey = if (fr.isNaN() || fr <= 0f) 0 else (fr * 1000f).toInt()
+        val sig = Objects.hash(width, height, frKey)
+        if (sig == lastEmittedVideoFormatSig) {
+            return
+        }
+        lastEmittedVideoFormatSig = sig
+        val event: MutableMap<String, Any?> = HashMap()
+        event["event"] = "videoFormat"
+        event["key"] = key
+        event["width"] = width
+        event["height"] = height
+        if (frKey > 0) {
+            event["frameRate"] = fr.toDouble()
+        }
+        eventSink.success(event)
     }
 
     private fun getDuration(): Long = exoPlayer?.duration ?: 0L
@@ -799,9 +939,37 @@ internal class BetterPlayer(
         return null
     }
 
+    /** 0 = mono/stereo, 1 = bilinmeyen, 2 = çok kanallı. Küçük = telefonda öncelikli. */
+    private fun embeddedAudioChannelTier(channelCount: Int): Int =
+        when {
+            channelCount == Format.NO_VALUE || channelCount <= 0 -> 1
+            channelCount <= 2 -> 0
+            else -> 2
+        }
+
+    private fun isMappedAudioTrackCurrentlySelected(
+        player: ExoPlayer,
+        mapped: MappedTrackInfo,
+        audioRendererIndex: Int,
+        targetGroupIndex: Int,
+        targetTrackIndex: Int,
+    ): Boolean {
+        val tg = mapped.getTrackGroups(audioRendererIndex)
+        if (targetGroupIndex < 0 || targetGroupIndex >= tg.length) return false
+        val mediaGroup = tg[targetGroupIndex]
+        for (g in player.currentTracks.groups) {
+            if (g.type != C.TRACK_TYPE_AUDIO) continue
+            if (g.mediaTrackGroup == mediaGroup && g.isTrackSelected(targetTrackIndex)) {
+                return true
+            }
+        }
+        return false
+    }
+
     /**
-     * Progressive / MKV çoklu ses: seçici bazen AC3'ü seçer; telefon decode edemeyebilir veya offload bozar.
-     * MappedTrackInfo ile FORMAT_HANDLED (+ codec önceliği) ile uyumlu parçayı zorunlu seç.
+     * Progressive / MKV çoklu ses: seçici bazen AC3/surround seçer; bazı telefonlarda sessiz / uyumsuz olabiliyor.
+     * FORMAT_HANDLED + mime önceliği; TV dışı cihazlarda **≤2 kanal** gömülü parça varsa öne alınır.
+     * (ExoPlayer’da yazılım downmix yok; stereo parça seçimi pratik çözüm.)
      */
     private fun tryAutoSelectSupportedAudioTrack() {
         if (audioAutoSelectPassesLeft <= 0) return
@@ -833,6 +1001,7 @@ internal class BetterPlayer(
             val formatSupport: Int,
             val mimeScore: Int,
             val mime: String?,
+            val channelTier: Int,
         )
 
         if (total <= 1) {
@@ -849,6 +1018,7 @@ internal class BetterPlayer(
                 if (fs != C.FORMAT_HANDLED && fs != C.FORMAT_EXCEEDS_CAPABILITIES) continue
                 val format = group.getFormat(trackIndex)
                 val mime = format.sampleMimeType
+                val chTier = embeddedAudioChannelTier(format.channelCount)
                 picks.add(
                     Pick(
                         rendererIndex,
@@ -857,6 +1027,7 @@ internal class BetterPlayer(
                         fs,
                         mimePreferenceScore(mime),
                         mime,
+                        chTier,
                     ),
                 )
             }
@@ -867,11 +1038,18 @@ internal class BetterPlayer(
         }
         picks.sortWith(
             compareByDescending<Pick> { it.formatSupport == C.FORMAT_HANDLED }
+                .thenBy { if (preferStereoEmbeddedWhenMultipleTracks) it.channelTier else 0 }
                 .thenByDescending { it.mimeScore },
         )
         val best = picks.first()
-        val currentMime = selectedAudioMime(player)
-        if (currentMime != null && currentMime == best.mime) {
+        if (isMappedAudioTrackCurrentlySelected(
+                player,
+                mapped,
+                rendererIndex,
+                best.groupIndex,
+                best.trackIndex,
+            )
+        ) {
             audioAutoSelectPassesLeft = 0
             return
         }

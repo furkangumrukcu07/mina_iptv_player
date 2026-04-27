@@ -4,20 +4,24 @@ import 'dart:ui';
 
 import 'package:better_player_plus/better_player_plus.dart';
 import 'package:flutter/material.dart';
-import 'package:get/get.dart';
 import 'package:flutter/services.dart';
+import 'package:get/get.dart';
+
+import '../../../core/player/better_player_video_track_label.dart';
 import '../../../core/player/exo_native_track_option.dart';
 import '../../../core/layout/app_layout_mode.dart';
 import '../../../core/services/app_settings_service.dart';
+import '../../../core/theme/app_performance.dart';
 import '../../../core/theme/glass_appearance.dart';
 import '../../../core/services/epg_service.dart';
 import '../../../core/services/favorites_service.dart';
+import '../../../core/services/system_volume_service.dart';
 import '../../../domain/entities/channel.dart';
 import '../player_controller.dart';
 import '../../../ui/glass_overlays.dart';
+import '../../../ui/iptv_channel_logo.dart';
+import 'osd_stream_quality_badges.dart';
 import 'player_glass_level_overlay.dart';
-
-import 'package:screen_brightness/screen_brightness.dart';
 
 /// Android TV / dokunmatik: cam (glass) OSD — sol logo, sağ kontroller.
 class TvBetterPlayerControls extends StatefulWidget {
@@ -40,6 +44,8 @@ class _TvBetterPlayerControlsState extends State<TvBetterPlayerControls> {
 
   Worker? _tvOsdVisibleWorker;
   Worker? _stripOverlayWorker;
+  Worker? _vodBrowseRailWorker;
+  Worker? _tvOsdKeyBumpWorker;
   static const _skipMs = 15_000;
 
   Timer? _hideTimer;
@@ -54,30 +60,45 @@ class _TvBetterPlayerControlsState extends State<TvBetterPlayerControls> {
   int _videoListenerPostFrameRetries = 0;
   static const _maxVideoListenerPostFrameRetries = 120;
 
-  double? _dragStartValue;
+  double? _verticalGestureOriginY;
+  double _verticalGestureStartLevel = 1.0;
   bool _isDraggingLeft = false;
   final RxDouble _overlayValue = 0.0.obs;
   final Rxn<IconData> _overlayIcon = Rxn<IconData>();
   final RxBool _showOverlay = false.obs;
   Timer? _overlayTimer;
 
-  BetterPlayerControlsConfiguration get _cfg =>
-      widget.controller.betterPlayerControlsConfiguration;
+  Timer? _liveOsdPlayPauseCenterHoldTimer;
+  bool _liveOsdPlayPauseCenterHoldPending = false;
+  Timer? _vodOsdBrowseRailHoldTimer;
+  bool _vodOsdBrowseRailHoldPending = false;
+  bool _subDialogOpen = false;
+
+  BetterPlayerControlsConfiguration get _cfg {
+    // Use existing configuration but disable loading widget
+    return widget.controller.betterPlayerControlsConfiguration;
+  }
 
   FavoritesService get _fav => Get.find<FavoritesService>();
 
   Channel get _channel => Get.find<PlayerController>().channel.value;
 
+  bool _isFirstVolumeTrigger = true;
+
   @override
   void initState() {
     super.initState();
     final pc = Get.find<PlayerController>();
-    if (Get.find<AppSettingsService>().layoutMode.value == AppLayoutMode.tv) {
+    final settings = Get.find<AppSettingsService>();
+    final remoteLayout = settings.layoutMode.value.usesRemoteNavigationStyle;
+    if (remoteLayout) {
       _visible = pc.tvOsdVisible.value;
       _tvOsdVisibleWorker = ever(pc.tvOsdVisible, (bool visible) {
         if (!mounted) return;
-        if (Get.find<AppSettingsService>().layoutMode.value !=
-            AppLayoutMode.tv) {
+        if (!Get.find<AppSettingsService>()
+            .layoutMode
+            .value
+            .usesRemoteNavigationStyle) {
           return;
         }
         if (_visible == visible) return;
@@ -87,7 +108,12 @@ class _TvBetterPlayerControlsState extends State<TvBetterPlayerControls> {
           widget.onPlayerVisibilityChanged(true);
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (!mounted) return;
-            if (pc.liveChannelStripOverlayOpen.value) return;
+            if (pc.liveChannelStripOverlayOpen.value ||
+                pc.liveSingleChannelEpgOpen.value ||
+                pc.vodBrowseRailOpen.value ||
+                _subDialogOpen) {
+              return;
+            }
             _firstOsdButtonFocus.requestFocus();
           });
         } else {
@@ -95,32 +121,73 @@ class _TvBetterPlayerControlsState extends State<TvBetterPlayerControls> {
           widget.onPlayerVisibilityChanged(false);
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (!mounted) return;
-            if (pc.liveChannelStripOverlayOpen.value) return;
+            if (pc.liveChannelStripOverlayOpen.value ||
+                pc.liveSingleChannelEpgOpen.value ||
+                pc.vodBrowseRailOpen.value) {
+              return;
+            }
+            if (pc.vodResumeDialogOpen.value || _subDialogOpen) return;
             _mainFocusNode.requestFocus();
           });
         }
       });
       _stripOverlayWorker = ever(pc.liveChannelStripOverlayOpen, (bool open) {
         if (!mounted) return;
-        if (Get.find<AppSettingsService>().layoutMode.value !=
-            AppLayoutMode.tv) {
+        if (!Get.find<AppSettingsService>()
+            .layoutMode
+            .value
+            .usesRemoteNavigationStyle) {
           return;
         }
         if (open) return;
         WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) _mainFocusNode.requestFocus();
+          if (!mounted) return;
+          if (pc.vodResumeDialogOpen.value || _subDialogOpen) return;
+          _mainFocusNode.requestFocus();
+        });
+      });
+      _vodBrowseRailWorker = ever(pc.vodBrowseRailOpen, (bool open) {
+        if (!mounted) return;
+        if (!Get.find<AppSettingsService>()
+            .layoutMode
+            .value
+            .usesRemoteNavigationStyle) {
+          return;
+        }
+        if (open) return;
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          if (pc.vodResumeDialogOpen.value || _subDialogOpen) return;
+          _mainFocusNode.requestFocus();
+        });
+      });
+      _tvOsdKeyBumpWorker = ever(pc.tvOsdKeyFocusBump, (_) {
+        if (!mounted) return;
+        if (!Get.find<AppSettingsService>()
+            .layoutMode
+            .value
+            .usesRemoteNavigationStyle) {
+          return;
+        }
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          if (Get.find<PlayerController>().vodResumeDialogOpen.value ||
+              _subDialogOpen) {
+            return;
+          }
+          _requestTvPlayerFocus();
         });
       });
     }
+
     _attachVideoListenerOrRetry();
-    if (Get.find<AppSettingsService>().layoutMode.value != AppLayoutMode.tv) {
+    if (!remoteLayout) {
       _restartHideTimer();
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       widget.onPlayerVisibilityChanged(_visible);
       _requestTvPlayerFocus();
-      Get.find<PlayerController>().setVolume(1.0);
-      if (Get.find<AppSettingsService>().layoutMode.value == AppLayoutMode.tv) {
+      if (remoteLayout) {
         Future<void>.delayed(const Duration(milliseconds: 320), () {
           if (mounted) _requestTvPlayerFocus();
         });
@@ -138,7 +205,10 @@ class _TvBetterPlayerControlsState extends State<TvBetterPlayerControls> {
         )) {
       _videoListenerPostFrameRetries = 0;
       _attachVideoListenerOrRetry();
-      if (Get.find<AppSettingsService>().layoutMode.value == AppLayoutMode.tv) {
+      if (Get.find<AppSettingsService>()
+          .layoutMode
+          .value
+          .usesRemoteNavigationStyle) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted) _requestTvPlayerFocus();
         });
@@ -173,7 +243,12 @@ class _TvBetterPlayerControlsState extends State<TvBetterPlayerControls> {
 
   void _requestTvPlayerFocus() {
     final pc = Get.find<PlayerController>();
-    if (pc.liveChannelStripOverlayOpen.value) return;
+    if (pc.liveChannelStripOverlayOpen.value ||
+        pc.liveSingleChannelEpgOpen.value ||
+        pc.vodBrowseRailOpen.value ||
+        _subDialogOpen) {
+      return;
+    }
     if (_visible) {
       _firstOsdButtonFocus.requestFocus();
     } else {
@@ -181,10 +256,51 @@ class _TvBetterPlayerControlsState extends State<TvBetterPlayerControls> {
     }
   }
 
+  /// Üstte modal açıkken ana OSD’nin yön tuşlarını yutmasını engellemek için.
+  void _suspendOsdFocusForDialog() {
+    _mainFocusNode.unfocus();
+    _firstOsdButtonFocus.unfocus();
+    _subDialogOpen = true;
+  }
+
+  /// Ses/altyazı/kalite sheet’i açıkken otomatik gizlemeyi durdur (OSD ekranda kalsın).
+  void _pauseOsdHideForModal() {
+    Get.find<PlayerController>().cancelTvOsdAutoHide();
+    _hideTimer?.cancel();
+  }
+
+  /// Alt diyalog kapandıktan sonra OSD’yi açık tut, odağı şeride ver, sonra yeniden zamanla.
+  void _resumeOsdAfterSubDialog() {
+    if (!mounted) return;
+    final pc = Get.find<PlayerController>();
+    final remote = Get.find<AppSettingsService>()
+        .layoutMode
+        .value
+        .usesRemoteNavigationStyle;
+    _subDialogOpen = false;
+    if (remote) {
+      pc.tvOsdVisible.value = true;
+    }
+    setState(() => _visible = true);
+    widget.onPlayerVisibilityChanged(true);
+    _restartHideTimer();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      if (pc.liveChannelStripOverlayOpen.value ||
+          pc.liveSingleChannelEpgOpen.value ||
+          pc.vodBrowseRailOpen.value) {
+        return;
+      }
+      _firstOsdButtonFocus.requestFocus();
+    });
+  }
+
   @override
   void dispose() {
-    _stripOverlayWorker?.dispose();
     _tvOsdVisibleWorker?.dispose();
+    _stripOverlayWorker?.dispose();
+    _vodBrowseRailWorker?.dispose();
+    _tvOsdKeyBumpWorker?.dispose();
     _hideTimer?.cancel();
     _overlayTimer?.cancel();
     _detachVideoListener();
@@ -194,58 +310,59 @@ class _TvBetterPlayerControlsState extends State<TvBetterPlayerControls> {
   }
 
   void _handleVerticalDragStart(DragStartDetails details) async {
-    final width = MediaQuery.of(context).size.width;
+    final width = MediaQuery.sizeOf(context).width;
     _isDraggingLeft = details.globalPosition.dx < width / 2;
+    _verticalGestureOriginY = details.globalPosition.dy;
+
     if (_isDraggingLeft) {
-      try {
-        _dragStartValue = await ScreenBrightness().application;
-      } catch (_) {
-        _dragStartValue = null;
-      }
+      final pc = Get.find<PlayerController>();
+      _verticalGestureStartLevel = pc.inAppPlaybackBrightness.value;
     } else {
-      _dragStartValue = Get.find<PlayerController>().currentVolume;
+      // Use system volume for gesture start level
+      _verticalGestureStartLevel = SystemVolumeService.to.currentVolume;
     }
   }
 
-  void _handleVerticalDragUpdate(DragUpdateDetails details) {
-    if (_dragStartValue == null) return;
+  void _handleVerticalDragUpdate(DragUpdateDetails details) async {
+    final originY = _verticalGestureOriginY;
+    if (originY == null) return;
 
-    final height = MediaQuery.of(context).size.height;
-    final dy = details.primaryDelta ?? details.delta.dy;
-    final delta = -dy / height;
-    final newValue = (_dragStartValue! + delta).clamp(0.0, 1.0);
-    _dragStartValue = newValue;
+    final height = MediaQuery.sizeOf(context).height;
+    if (height <= 1) return;
 
-    final pc = Get.find<PlayerController>();
+    final dy = details.globalPosition.dy - originY;
+    final gain = PlayerController.verticalPlaybackGestureGain;
+    final delta = -(dy / height) * gain;
+    final newValue = (_verticalGestureStartLevel + delta).clamp(0.0, 1.0);
+
     if (_isDraggingLeft) {
-      try {
-        ScreenBrightness().setApplicationScreenBrightness(newValue);
-      } catch (_) {}
+      final pc = Get.find<PlayerController>();
+      pc.setInAppPlaybackBrightness(newValue);
       _overlayIcon.value = Icons.brightness_6_rounded;
     } else {
-      pc.setVolume(newValue);
+      SystemVolumeService.to.setVolume(newValue);
       _overlayIcon.value = playerVolumeIconFor(newValue);
     }
     _overlayValue.value = newValue;
-
     _showOverlay.value = true;
     _overlayTimer?.cancel();
-    _overlayTimer = Timer(const Duration(milliseconds: 800), () {
-      _showOverlay.value = false;
+    _overlayTimer = Timer(const Duration(seconds: 2), () {
+      if (mounted) _showOverlay.value = false;
     });
   }
 
-  void _nudgeVolumeFromKey(double delta) {
+  void _nudgeVolumeFromKey(double delta) async {
     _restartHideTimer();
-    final pc = Get.find<PlayerController>();
-    final v = (pc.currentVolume + delta).clamp(0.0, 1.0);
-    pc.setVolume(v);
-    _overlayIcon.value = playerVolumeIconFor(v);
-    _overlayValue.value = v;
+    SystemVolumeService.to.increaseVolume(delta);
+
+    // Show local overlay for feedback
+    final newVol = SystemVolumeService.to.currentVolume;
+    _overlayValue.value = newVol;
+    _overlayIcon.value = playerVolumeIconFor(newVol);
     _showOverlay.value = true;
     _overlayTimer?.cancel();
-    _overlayTimer = Timer(const Duration(milliseconds: 1200), () {
-      _showOverlay.value = false;
+    _overlayTimer = Timer(const Duration(seconds: 2), () {
+      if (mounted) _showOverlay.value = false;
     });
   }
 
@@ -275,9 +392,13 @@ class _TvBetterPlayerControlsState extends State<TvBetterPlayerControls> {
       return false;
     }
     final streamUrl = _channel.streamUrl.toLowerCase();
-    final isVod =
-        streamUrl.contains('/movie/') || streamUrl.contains('/series/');
-    if (isVod &&
+    final pc = Get.find<PlayerController>();
+    final isVod = pc.isMovie ||
+        pc.isSeries ||
+        streamUrl.contains('/movie/') ||
+        streamUrl.contains('/series/');
+    final scrubLive = !isVod && pc.liveTimeshiftSeekAvailable;
+    if ((isVod || scrubLive) &&
         _cfg.enableProgressBar &&
         (v.duration?.inMilliseconds ?? 0) > 0) {
       final d = (v.position.inMilliseconds - old.position.inMilliseconds).abs();
@@ -287,13 +408,18 @@ class _TvBetterPlayerControlsState extends State<TvBetterPlayerControls> {
   }
 
   Duration get _hideAfter {
-    final tv =
-        Get.find<AppSettingsService>().layoutMode.value == AppLayoutMode.tv;
-    return tv ? _hideAfterTv : _hideAfterMobile;
+    final remote = Get.find<AppSettingsService>()
+        .layoutMode
+        .value
+        .usesRemoteNavigationStyle;
+    return remote ? _hideAfterTv : _hideAfterMobile;
   }
 
   void _restartHideTimer() {
-    if (Get.find<AppSettingsService>().layoutMode.value == AppLayoutMode.tv) {
+    if (Get.find<AppSettingsService>()
+        .layoutMode
+        .value
+        .usesRemoteNavigationStyle) {
       Get.find<PlayerController>().scheduleTvOsdAutoHide();
       return;
     }
@@ -306,7 +432,10 @@ class _TvBetterPlayerControlsState extends State<TvBetterPlayerControls> {
       widget.onPlayerVisibilityChanged(false);
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        if (Get.find<PlayerController>().liveChannelStripOverlayOpen.value) {
+        final pc = Get.find<PlayerController>();
+        if (pc.liveChannelStripOverlayOpen.value ||
+            pc.liveSingleChannelEpgOpen.value ||
+            pc.vodBrowseRailOpen.value) {
           return;
         }
         _mainFocusNode.requestFocus();
@@ -322,7 +451,10 @@ class _TvBetterPlayerControlsState extends State<TvBetterPlayerControls> {
     _restartHideTimer();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      if (Get.find<PlayerController>().liveChannelStripOverlayOpen.value) {
+      final pc = Get.find<PlayerController>();
+      if (pc.liveChannelStripOverlayOpen.value ||
+          pc.liveSingleChannelEpgOpen.value ||
+          pc.vodBrowseRailOpen.value) {
         return;
       }
       _firstOsdButtonFocus.requestFocus();
@@ -368,7 +500,7 @@ class _TvBetterPlayerControlsState extends State<TvBetterPlayerControls> {
   String _liveEpgSubtitle(bool live) {
     if (!live) return '';
     final epg = Get.find<EpgService>();
-    final prog = epg.getCurrentProgramme(_channel.epgChannelId);
+    final prog = epg.getCurrentProgrammeForLiveChannel(_channel);
     String fmt(DateTime d) =>
         '${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
     if (prog != null) {
@@ -440,9 +572,13 @@ class _TvBetterPlayerControlsState extends State<TvBetterPlayerControls> {
       borderRadius: BorderRadius.circular(radius),
       child: Obx(() {
         final ga = GlassAppearance.fromLabel(settings.themeLabel.value);
-        final reduce = settings.reduceBlur.value;
-        final tv = settings.layoutMode.value == AppLayoutMode.tv;
-        final sigma = tv ? 0.0 : (reduce ? 10.0 : 20.0);
+        final remoteStyle = settings.layoutMode.value.usesRemoteNavigationStyle;
+        final sigma = AppPerformance.glassSigmaRemoteStyle(
+          settings,
+          remoteStyle: remoteStyle,
+          fullSigma: 20,
+          reducedSigma: 10,
+        );
         final decorated = Container(
           padding: padding,
           decoration: BoxDecoration(
@@ -455,7 +591,7 @@ class _TvBetterPlayerControlsState extends State<TvBetterPlayerControls> {
             ),
             boxShadow: [
               BoxShadow(
-                color: ga.popupShadowColor,
+                color: ga.playerBarShadowColor,
                 blurRadius: 24,
                 offset: const Offset(0, 10),
               ),
@@ -472,6 +608,88 @@ class _TvBetterPlayerControlsState extends State<TvBetterPlayerControls> {
     );
   }
 
+  static const _liveStripHoldFromOsd = Duration(milliseconds: 520);
+
+  bool _deferLiveStripHoldForOsdPlayPause(PlayerController pc) {
+    final url = pc.channel.value.streamUrl.toLowerCase();
+    final vod = pc.isMovie ||
+        pc.isSeries ||
+        url.contains('/movie/') ||
+        url.contains('/series/');
+    final liveCh = !vod;
+    return liveCh && !pc.liveTimeshiftSeekAvailable;
+  }
+
+  void _cancelLiveOsdPlayPauseCenterHold() {
+    _liveOsdPlayPauseCenterHoldTimer?.cancel();
+    _liveOsdPlayPauseCenterHoldTimer = null;
+    _liveOsdPlayPauseCenterHoldPending = false;
+    _vodOsdBrowseRailHoldTimer?.cancel();
+    _vodOsdBrowseRailHoldTimer = null;
+    _vodOsdBrowseRailHoldPending = false;
+  }
+
+  void _liveOsdPlayPauseCenterKeyDown() {
+    final pc = Get.find<PlayerController>();
+    _restartHideTimer();
+    if (_deferLiveStripHoldForOsdPlayPause(pc)) {
+      _cancelLiveOsdPlayPauseCenterHold();
+      _liveOsdPlayPauseCenterHoldPending = true;
+      _liveOsdPlayPauseCenterHoldTimer = Timer(_liveStripHoldFromOsd, () {
+        _liveOsdPlayPauseCenterHoldTimer = null;
+        if (!mounted) return;
+        if (!_liveOsdPlayPauseCenterHoldPending) return;
+        _liveOsdPlayPauseCenterHoldPending = false;
+        pc.requestOpenLiveChannelStripFromTvOsd();
+      });
+      return;
+    }
+    if (pc.vodBrowseRailAvailable) {
+      _cancelLiveOsdPlayPauseCenterHold();
+      _vodOsdBrowseRailHoldPending = true;
+      _vodOsdBrowseRailHoldTimer = Timer(_liveStripHoldFromOsd, () {
+        _vodOsdBrowseRailHoldTimer = null;
+        if (!mounted) return;
+        if (!_vodOsdBrowseRailHoldPending) return;
+        _vodOsdBrowseRailHoldPending = false;
+        pc.requestOpenVodBrowseRailFromTvOsd();
+      });
+      return;
+    }
+    _togglePlay();
+  }
+
+  void _liveOsdPlayPauseCenterKeyUp() {
+    final pc = Get.find<PlayerController>();
+    _liveOsdPlayPauseCenterHoldTimer?.cancel();
+    _liveOsdPlayPauseCenterHoldTimer = null;
+    final liveWasPending = _liveOsdPlayPauseCenterHoldPending;
+    _liveOsdPlayPauseCenterHoldPending = false;
+
+    _vodOsdBrowseRailHoldTimer?.cancel();
+    _vodOsdBrowseRailHoldTimer = null;
+    final vodWasPending = _vodOsdBrowseRailHoldPending;
+    _vodOsdBrowseRailHoldPending = false;
+
+    if (vodWasPending && pc.vodBrowseRailAvailable) {
+      _togglePlay();
+      return;
+    }
+    if (liveWasPending && _deferLiveStripHoldForOsdPlayPause(pc)) {
+      _togglePlay();
+    }
+  }
+
+  void _openQuickMenuFromOsd() {
+    _restartHideTimer();
+    final pc = Get.find<PlayerController>();
+    if (pc.vodBrowseRailAvailable) {
+      pc.requestOpenVodBrowseRailFromTvOsd();
+    } else {
+      pc.requestOpenLiveChannelStripFromTvOsd();
+    }
+  }
+
   Widget _osdButton({
     required String tooltip,
     IconData? icon,
@@ -482,7 +700,7 @@ class _TvBetterPlayerControlsState extends State<TvBetterPlayerControls> {
     Color? iconColor,
     FocusNode? focusNode,
     KeyEventResult Function(FocusNode, KeyEvent)? onKeyEvent,
-
+    bool deferLiveOsdCenterForStrip = false,
   }) {
     assert(icon != null || (letter != null && letter.isNotEmpty));
     final primaryColor = Theme.of(Get.context!).colorScheme.primary;
@@ -494,6 +712,9 @@ class _TvBetterPlayerControlsState extends State<TvBetterPlayerControls> {
           // InkWell vb. alt widget'lar ayrı odak hedefi olmasın; sağ/sol tek basışta bir kontrole geçsin.
           descendantsAreFocusable: false,
           onFocusChange: (hasFocus) {
+            if (!hasFocus && deferLiveOsdCenterForStrip) {
+              _cancelLiveOsdPlayPauseCenterHold();
+            }
             if (hasFocus) {
               _restartHideTimer();
             }
@@ -505,39 +726,100 @@ class _TvBetterPlayerControlsState extends State<TvBetterPlayerControls> {
               if (res != KeyEventResult.ignored) return res;
             }
 
+            final key = event.logicalKey;
+            final centerKey = key == LogicalKeyboardKey.select ||
+                key == LogicalKeyboardKey.enter ||
+                key == LogicalKeyboardKey.numpadEnter ||
+                key == LogicalKeyboardKey.space ||
+                key == LogicalKeyboardKey.gameButtonSelect;
+
+            if (deferLiveOsdCenterForStrip && centerKey) {
+              if (event is KeyUpEvent) {
+                _liveOsdPlayPauseCenterKeyUp();
+                return KeyEventResult.handled;
+              }
+            }
+
             if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
               return KeyEventResult.ignored;
             }
-            final key = event.logicalKey;
-            final url = Get.find<PlayerController>()
-                .channel
-                .value
-                .streamUrl
-                .toLowerCase();
-            final vod = url.contains('/movie/') || url.contains('/series/');
+            final pc = Get.find<PlayerController>();
+            final url = pc.channel.value.streamUrl.toLowerCase();
+            final vod = pc.isMovie ||
+                pc.isSeries ||
+                url.contains('/movie/') ||
+                url.contains('/series/');
             final liveCh = !vod;
+            final liveTs = liveCh && pc.liveTimeshiftSeekAvailable;
+
+            if (deferLiveOsdCenterForStrip && centerKey) {
+              if (event is KeyDownEvent) {
+                _liveOsdPlayPauseCenterKeyDown();
+                return KeyEventResult.handled;
+              }
+              if (event is KeyRepeatEvent) {
+                _restartHideTimer();
+                return KeyEventResult.handled;
+              }
+            }
 
             if (key == LogicalKeyboardKey.select ||
                 key == LogicalKeyboardKey.enter ||
+                key == LogicalKeyboardKey.numpadEnter ||
                 key == LogicalKeyboardKey.space ||
                 key == LogicalKeyboardKey.gameButtonSelect) {
               if (event is KeyRepeatEvent) {
                 _restartHideTimer();
-                if (liveCh) {
-                  _zap(1);
-                } else {
-                  _skipForward15();
+                // Canlı: uzun basışta kanal şeridi PlayerView zamanlayıcısı ile açılır;
+                // tekrarlayan OK ile zıplatma yapma (hemen kanal değişmesin).
+                if (liveCh && !liveTs) {
+                  return KeyEventResult.handled;
                 }
+                _skipForward15();
                 return KeyEventResult.handled;
               }
               onPressed();
               return KeyEventResult.handled;
             }
             // Tuşu basılı tutunca tekrar: OSD'de sağ/sol ile buton gezme yerine kanal / sarma.
+            if (key == LogicalKeyboardKey.arrowUp) {
+              // Yukari tuþu: OSD'yi hemen göster ve önceki kanala geç
+              if (!_visible) {
+                setState(() => _visible = true);
+                widget.onPlayerVisibilityChanged(true);
+              }
+              _restartHideTimer();
+              if (event is KeyRepeatEvent) {
+                return KeyEventResult.handled;
+              }
+              if (liveCh && !liveTs) {
+                _zap(-1);
+              } else {
+                _skipBack15();
+              }
+              return KeyEventResult.handled;
+            }
+            if (key == LogicalKeyboardKey.arrowDown) {
+              // Aþaðý tuþu: OSD'yi hemen göster ve sonraki kanala geç
+              if (!_visible) {
+                setState(() => _visible = true);
+                widget.onPlayerVisibilityChanged(true);
+              }
+              _restartHideTimer();
+              if (event is KeyRepeatEvent) {
+                return KeyEventResult.handled;
+              }
+              if (liveCh && !liveTs) {
+                _zap(1);
+              } else {
+                _skipForward15();
+              }
+              return KeyEventResult.handled;
+            }
             if (key == LogicalKeyboardKey.arrowLeft) {
               if (event is KeyRepeatEvent) {
                 _restartHideTimer();
-                if (liveCh) {
+                if (liveCh && !liveTs) {
                   _zap(-1);
                 } else {
                   _skipBack15();
@@ -550,7 +832,7 @@ class _TvBetterPlayerControlsState extends State<TvBetterPlayerControls> {
             if (key == LogicalKeyboardKey.arrowRight) {
               if (event is KeyRepeatEvent) {
                 _restartHideTimer();
-                if (liveCh) {
+                if (liveCh && !liveTs) {
                   _zap(1);
                 } else {
                   _skipForward15();
@@ -565,12 +847,22 @@ class _TvBetterPlayerControlsState extends State<TvBetterPlayerControls> {
           child: Builder(builder: (context) {
             final focused = Focus.of(context).hasFocus;
             return Obx(() {
-              final ga = GlassAppearance.fromLabel(
-                Get.find<AppSettingsService>().themeLabel.value,
-              );
+              final tl = Get.find<AppSettingsService>().themeLabel.value;
+              final ga = GlassAppearance.fromLabel(tl);
+              final isFb = tl == GlassThemeLabels.flatBlack;
               final unfocusedBg = primary
-                  ? const Color(0xFF4EC4D4).withValues(alpha: 0.45)
+                  ? (isFb
+                      ? const Color(0xFF0C0C0C)
+                      : const Color(0xFF4EC4D4).withValues(alpha: 0.45))
                   : ga.playerBarDimColor;
+              final focusedFill = focused
+                  ? (primary && isFb
+                      ? const Color(0xFF141414)
+                      : primaryColor.withValues(alpha: 0.6))
+                  : unfocusedBg;
+              final borderClr = focused
+                  ? (isFb ? const Color(0xFF1A1A1A) : Colors.white)
+                  : Colors.transparent;
               return Tooltip(
                 message: tooltip,
                 child: AnimatedContainer(
@@ -578,46 +870,44 @@ class _TvBetterPlayerControlsState extends State<TvBetterPlayerControls> {
                   width: size,
                   height: size,
                   decoration: BoxDecoration(
-                    color: focused
-                        ? primaryColor.withValues(alpha: 0.6)
-                        : unfocusedBg,
+                    color: focusedFill,
                     borderRadius: BorderRadius.circular(12),
                     border: Border.all(
-                      color: focused ? Colors.white : Colors.transparent,
+                      color: borderClr,
                       width: 2,
                     ),
                   ),
-                child: Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    canRequestFocus: false,
-                    borderRadius: BorderRadius.circular(12),
-                    onTap: onPressed,
-                    child: letter != null
-                        ? Center(
-                            child: Text(
-                              letter,
-                              style: TextStyle(
-                                color: iconColor ?? Colors.white,
-                                fontSize: primary
-                                    ? (size * 0.48).clamp(16.0, 22.0)
-                                    : (size * 0.44).clamp(15.0, 20.0),
-                                fontWeight: FontWeight.w800,
-                                height: 1,
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      canRequestFocus: false,
+                      borderRadius: BorderRadius.circular(12),
+                      onTap: onPressed,
+                      child: letter != null
+                          ? Center(
+                              child: Text(
+                                letter,
+                                style: TextStyle(
+                                  color: iconColor ?? Colors.white,
+                                  fontSize: primary
+                                      ? (size * 0.48).clamp(16.0, 22.0)
+                                      : (size * 0.44).clamp(15.0, 20.0),
+                                  fontWeight: FontWeight.w800,
+                                  height: 1,
+                                ),
                               ),
+                            )
+                          : Icon(
+                              icon!,
+                              color: iconColor ?? Colors.white,
+                              size: primary
+                                  ? (size * 0.59).roundToDouble()
+                                  : (size * 0.5).roundToDouble(),
                             ),
-                          )
-                        : Icon(
-                            icon!,
-                            color: iconColor ?? Colors.white,
-                            size: primary
-                                ? (size * 0.59).roundToDouble()
-                                : (size * 0.5).roundToDouble(),
-                          ),
+                    ),
                   ),
                 ),
-              ),
-            );
+              );
             });
           }),
         );
@@ -641,13 +931,18 @@ class _TvBetterPlayerControlsState extends State<TvBetterPlayerControls> {
     return Obx(() {
       final ch = controller.channel.value;
       final streamUrl = ch.streamUrl.toLowerCase();
-      final isVod =
-          streamUrl.contains('/movie/') || streamUrl.contains('/series/');
+      final isVod = controller.isMovie ||
+          controller.isSeries ||
+          streamUrl.contains('/movie/') ||
+          streamUrl.contains('/series/');
       final live = !isVod;
+      final liveTimeshift = live && controller.liveTimeshiftSeekAvailable;
       final fit = controller.videoFit.value;
       final _ = controller.osdQualityStamp.value;
-      final qualityLabel = controller.osdStreamQualityLabel;
+      final resolutionTier = controller.osdStreamResolutionTierLabel;
+      final hzLabel = controller.osdStreamFrameRateHzLabel;
       final epgLine = _liveEpgSubtitle(live);
+      final quickMenuBadge = controller.osdQuickMenuHoldBadgeVisible;
       return GestureDetector(
         behavior: HitTestBehavior.opaque,
         onTap: _showControls,
@@ -658,6 +953,21 @@ class _TvBetterPlayerControlsState extends State<TvBetterPlayerControls> {
           autofocus: true,
           onKeyEvent: (node, event) {
             if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+              return KeyEventResult.ignored;
+            }
+            if (_subDialogOpen) return KeyEventResult.ignored;
+            final pcDialog =
+                Get.find<PlayerController>().vodResumeDialogOpen.value;
+            if (pcDialog) {
+              return KeyEventResult.ignored;
+            }
+            if (Get.find<PlayerController>().vodAutoplayCountdown.value !=
+                null) {
+              return KeyEventResult.ignored;
+            }
+
+            final route = ModalRoute.of(context);
+            if (route != null && !route.isCurrent) {
               return KeyEventResult.ignored;
             }
 
@@ -672,15 +982,21 @@ class _TvBetterPlayerControlsState extends State<TvBetterPlayerControls> {
               return KeyEventResult.handled;
             }
 
-            // Yukarı/aşağı: canlıda kanal; film/dizide sıradaki içerik (OSD açık olsa da).
+            // Yukarı/aşağı: OSD kapalıyken tek basış yalnız OSD aç; açıkken canlıda zap vb.
             if (key == LogicalKeyboardKey.arrowUp) {
+              if (!_visible) {
+                _showControls();
+                return KeyEventResult.handled;
+              }
               _zap(-1);
-              if (!_visible) _showControls();
               return KeyEventResult.handled;
             }
             if (key == LogicalKeyboardKey.arrowDown) {
+              if (!_visible) {
+                _showControls();
+                return KeyEventResult.handled;
+              }
               _zap(1);
-              if (!_visible) _showControls();
               return KeyEventResult.handled;
             }
 
@@ -705,8 +1021,15 @@ class _TvBetterPlayerControlsState extends State<TvBetterPlayerControls> {
               }
             }
 
-            // Film / dizi: OSD kapalıyken sol/sağ ile sarma
-            if (!_visible && isVod) {
+            // Film/dizi veya canlı catch-up: OSD kapalıyken sol/sağ önce OSD aç.
+            if (!_visible && (isVod || liveTimeshift)) {
+              if (key == LogicalKeyboardKey.arrowLeft ||
+                  key == LogicalKeyboardKey.arrowRight) {
+                _showControls();
+                return KeyEventResult.handled;
+              }
+            }
+            if (_visible && (isVod || liveTimeshift)) {
               if (key == LogicalKeyboardKey.arrowLeft) {
                 _skipBack15();
                 return KeyEventResult.handled;
@@ -752,7 +1075,7 @@ class _TvBetterPlayerControlsState extends State<TvBetterPlayerControls> {
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        if (!live &&
+                        if ((!live || liveTimeshift) &&
                             _cfg.enableProgressBar &&
                             _value?.duration != null &&
                             (_value!.duration!.inMilliseconds > 0))
@@ -822,47 +1145,36 @@ class _TvBetterPlayerControlsState extends State<TvBetterPlayerControls> {
                                                     ),
                                                   ),
                                                 ),
-                                                if (qualityLabel != null &&
-                                                    qualityLabel
-                                                        .isNotEmpty) ...[
-                                                  SizedBox(
-                                                      width:
-                                                          isPortrait ? 4 : 6),
-                                                  Container(
+                                                ...() {
+                                                  final badges =
+                                                      osdStreamQualityBadgeWidgets(
+                                                    resolutionTier:
+                                                        resolutionTier,
+                                                    hzLabel: hzLabel,
+                                                    fontSize:
+                                                        isPortrait ? 8 : 9,
+                                                    borderRadius: 6,
                                                     padding:
                                                         EdgeInsets.symmetric(
                                                       horizontal:
                                                           isPortrait ? 4 : 5,
-                                                      vertical:
-                                                          isPortrait ? 2 : 2,
+                                                      vertical: 2,
                                                     ),
-                                                    decoration: BoxDecoration(
-                                                      color: Colors.white
-                                                          .withValues(
-                                                              alpha: 0.14),
-                                                      borderRadius:
-                                                          BorderRadius.circular(
-                                                              6),
-                                                      border: Border.all(
-                                                        color: Colors.white
-                                                            .withValues(
-                                                                alpha: 0.28),
-                                                      ),
+                                                  );
+                                                  if (badges.isEmpty) {
+                                                    return <Widget>[];
+                                                  }
+                                                  return <Widget>[
+                                                    SizedBox(
+                                                      width: isPortrait ? 4 : 6,
                                                     ),
-                                                    child: Text(
-                                                      qualityLabel,
-                                                      style: TextStyle(
-                                                        color: Colors.white,
-                                                        fontSize:
-                                                            isPortrait ? 8 : 9,
-                                                        fontWeight:
-                                                            FontWeight.w800,
-                                                        letterSpacing: 0.3,
-                                                        height: 1,
-                                                      ),
+                                                    Row(
+                                                      mainAxisSize:
+                                                          MainAxisSize.min,
+                                                      children: badges,
                                                     ),
-                                                  ),
-                                                ],
+                                                  ];
+                                                }(),
                                               ],
                                             ),
                                             const SizedBox(height: 2),
@@ -928,15 +1240,19 @@ class _TvBetterPlayerControlsState extends State<TvBetterPlayerControls> {
                                         mainAxisSize: MainAxisSize.min,
                                         children: [
                                           _osdButton(
-                                            tooltip: live
-                                                ? 'player.tooltip.prevCh'.tr
-                                                : 'player.tooltip.rewind'.tr,
+                                            tooltip: liveTimeshift
+                                                ? 'player.tooltip.rewind'.tr
+                                                : live
+                                                    ? 'player.tooltip.prevCh'.tr
+                                                    : 'player.tooltip.rewind'
+                                                        .tr,
                                             icon: Icons.fast_rewind_rounded,
-                                            onPressed: live
-                                                ? () => _zap(-1)
-                                                : _skipBack15,
+                                            onPressed: liveTimeshift
+                                                ? _skipBack15
+                                                : live
+                                                    ? () => _zap(-1)
+                                                    : _skipBack15,
                                             size: isPortrait ? 34 : 44,
-                                            focusNode: _firstOsdButtonFocus,
                                           ),
                                           SizedBox(width: isPortrait ? 4 : 6),
                                           _osdButton(
@@ -949,16 +1265,23 @@ class _TvBetterPlayerControlsState extends State<TvBetterPlayerControls> {
                                             onPressed: _togglePlay,
                                             primary: true,
                                             size: isPortrait ? 34 : 44,
+                                            focusNode: _firstOsdButtonFocus,
+                                            deferLiveOsdCenterForStrip: true,
                                           ),
                                           SizedBox(width: isPortrait ? 4 : 6),
                                           _osdButton(
-                                            tooltip: live
-                                                ? 'player.tooltip.nextCh'.tr
-                                                : 'player.tooltip.forward'.tr,
+                                            tooltip: liveTimeshift
+                                                ? 'player.tooltip.forward'.tr
+                                                : live
+                                                    ? 'player.tooltip.nextCh'.tr
+                                                    : 'player.tooltip.forward'
+                                                        .tr,
                                             icon: Icons.fast_forward_rounded,
-                                            onPressed: live
-                                                ? () => _zap(1)
-                                                : _skipForward15,
+                                            onPressed: liveTimeshift
+                                                ? _skipForward15
+                                                : live
+                                                    ? () => _zap(1)
+                                                    : _skipForward15,
                                             size: isPortrait ? 34 : 44,
                                           ),
                                           SizedBox(width: isPortrait ? 6 : 8),
@@ -998,6 +1321,17 @@ class _TvBetterPlayerControlsState extends State<TvBetterPlayerControls> {
                                               );
                                             },
                                           ),
+                                          if (quickMenuBadge) ...[
+                                            SizedBox(width: isPortrait ? 4 : 6),
+                                            _osdButton(
+                                              tooltip:
+                                                  'player.tooltip.quickMenuOpen'
+                                                      .tr,
+                                              icon: Icons.view_sidebar_rounded,
+                                              onPressed: _openQuickMenuFromOsd,
+                                              size: isPortrait ? 34 : 44,
+                                            ),
+                                          ],
                                           SizedBox(width: isPortrait ? 4 : 6),
                                           _osdButton(
                                             tooltip: 'player.tooltip.fit'
@@ -1007,6 +1341,80 @@ class _TvBetterPlayerControlsState extends State<TvBetterPlayerControls> {
                                             onPressed: _cycleFit,
                                             size: isPortrait ? 34 : 44,
                                           ),
+                                          Obx(() {
+                                            final s =
+                                                Get.find<AppSettingsService>();
+                                            if (s.layoutMode.value !=
+                                                AppLayoutMode.mobile) {
+                                              return const SizedBox.shrink();
+                                            }
+                                            return Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                SizedBox(
+                                                  width: isPortrait ? 4 : 6,
+                                                ),
+                                                _osdButton(
+                                                  tooltip:
+                                                      'player.tooltip.toPortrait'
+                                                          .tr,
+                                                  icon: Icons
+                                                      .stay_current_portrait_rounded,
+                                                  onPressed: () {
+                                                    _restartHideTimer();
+                                                    unawaited(
+                                                      s.requestMobileHandheldPortraitPlayback(),
+                                                    );
+                                                  },
+                                                  size: isPortrait ? 34 : 44,
+                                                ),
+                                              ],
+                                            );
+                                          }),
+                                          if (live) ...[
+                                            SizedBox(width: isPortrait ? 4 : 6),
+                                            _osdButton(
+                                              tooltip:
+                                                  'player.tooltip.liveEpg'.tr,
+                                              icon: Icons.view_timeline_rounded,
+                                              onPressed: () {
+                                                _restartHideTimer();
+                                                controller
+                                                    .openLiveSingleChannelEpgOverlay();
+                                              },
+                                              size: isPortrait ? 34 : 44,
+                                            ),
+                                          ],
+                                          SizedBox(width: isPortrait ? 4 : 6),
+                                          SizedBox(width: isPortrait ? 4 : 6),
+                                          _osdButton(
+                                            tooltip:
+                                                'player.tooltip.quality'.tr,
+                                            icon: Icons.high_quality_rounded,
+                                            onPressed: _showQualityDialog,
+                                            size: isPortrait ? 34 : 44,
+                                          ),
+                                          if (isVod) ...[
+                                            SizedBox(width: isPortrait ? 4 : 6),
+                                            _osdButton(
+                                              tooltip:
+                                                  'player.tooltip.audio'.tr,
+                                              icon: Icons.audiotrack_rounded,
+                                              onPressed: () =>
+                                                  unawaited(_showAudioDialog()),
+                                              size: isPortrait ? 34 : 44,
+                                            ),
+                                            SizedBox(width: isPortrait ? 4 : 6),
+                                            _osdButton(
+                                              tooltip:
+                                                  'player.tooltip.subtitle'.tr,
+                                              icon:
+                                                  Icons.closed_caption_rounded,
+                                              onPressed: () => unawaited(
+                                                  _showSubtitleDialog()),
+                                              size: isPortrait ? 34 : 44,
+                                            ),
+                                          ],
                                           SizedBox(width: isPortrait ? 4 : 6),
                                           Obx(() {
                                             final pc =
@@ -1028,34 +1436,6 @@ class _TvBetterPlayerControlsState extends State<TvBetterPlayerControls> {
                                               size: isPortrait ? 34 : 44,
                                             );
                                           }),
-                                          SizedBox(width: isPortrait ? 4 : 6),
-                                          _osdButton(
-                                            tooltip:
-                                                'player.tooltip.quality'.tr,
-                                            icon: Icons.high_quality_rounded,
-                                            onPressed: _showQualityDialog,
-                                            size: isPortrait ? 34 : 44,
-                                          ),
-                                          if (isVod) ...[
-                                            SizedBox(width: isPortrait ? 4 : 6),
-                                            _osdButton(
-                                              tooltip:
-                                                  'player.tooltip.audio'.tr,
-                                              icon: Icons.audiotrack_rounded,
-                                              onPressed: () => unawaited(
-                                                  _showAudioDialog()),
-                                              size: isPortrait ? 34 : 44,
-                                            ),
-                                            SizedBox(width: isPortrait ? 4 : 6),
-                                            _osdButton(
-                                              tooltip: 'player.tooltip.subtitle'
-                                                  .tr,
-                                              icon: Icons.closed_caption_rounded,
-                                              onPressed: () => unawaited(
-                                                  _showSubtitleDialog()),
-                                              size: isPortrait ? 34 : 44,
-                                            ),
-                                          ],
                                           SizedBox(width: isPortrait ? 4 : 6),
                                           Obx(
                                             () {
@@ -1156,20 +1536,27 @@ class _TvBetterPlayerControlsState extends State<TvBetterPlayerControls> {
     });
   }
 
-  void _osdInfoDialog(String title, String body) {
-    Get.dialog<void>(
-      GlassAlertDialog(
-        tvOsdStyle: true,
-        title: Text(title),
-        content: Text(body),
-        actions: [
-          TextButton(
-            onPressed: () => Get.back<void>(),
-            child: Text('common.ok'.tr),
-          ),
-        ],
-      ),
-    );
+  Future<void> _osdInfoDialog(String title, String body) async {
+    _pauseOsdHideForModal();
+    _suspendOsdFocusForDialog();
+    try {
+      await Get.dialog<void>(
+        GlassAlertDialog(
+          tvOsdStyle: true,
+          title: Text(title),
+          content: Text(body),
+          actions: [
+            TextButton(
+              onPressed: () => Get.back<void>(),
+              child: Text('common.ok'.tr),
+            ),
+          ],
+        ),
+        barrierDismissible: false,
+      );
+    } finally {
+      _resumeOsdAfterSubDialog();
+    }
   }
 
   void _switchToBackupPlayer() {
@@ -1177,60 +1564,75 @@ class _TvBetterPlayerControlsState extends State<TvBetterPlayerControls> {
     unawaited(Get.find<PlayerController>().switchToBackupPlayer());
   }
 
-  void _showQualityDialog() {
-    _restartHideTimer();
+  Future<void> _showQualityDialog() async {
     final ctrl = Get.find<PlayerController>();
-
     final tracks = ctrl.availableTracks;
     if (tracks.isEmpty) {
-      _osdInfoDialog(
+      await _osdInfoDialog(
         'player.quality.title'.tr,
         'player.quality.noneLong'.tr,
       );
       return;
     }
-
-    Get.dialog<void>(
-      _TvQualityDialog(
-        controller: ctrl,
-        tracks: tracks,
-      ),
-    );
+    _pauseOsdHideForModal();
+    _suspendOsdFocusForDialog();
+    try {
+      await Get.dialog<void>(
+        _TvQualityDialog(
+          controller: ctrl,
+          tracks: tracks,
+        ),
+        barrierDismissible: false,
+      );
+    } finally {
+      _resumeOsdAfterSubDialog();
+    }
   }
 
   Future<void> _showAudioDialog() async {
-    _restartHideTimer();
     final ctrl = Get.find<PlayerController>();
-
     final asms = ctrl.availableAudioTracks;
     if (asms.isNotEmpty) {
-      Get.dialog<void>(
-        _TvAudioDialog(
-          controller: ctrl,
-          tracks: asms,
-        ),
-      );
+      _pauseOsdHideForModal();
+      _suspendOsdFocusForDialog();
+      try {
+        await Get.dialog<void>(
+          _TvAudioDialog(
+            controller: ctrl,
+            tracks: asms,
+          ),
+          barrierDismissible: false,
+        );
+      } finally {
+        _resumeOsdAfterSubDialog();
+      }
       return;
     }
     final exo = await ctrl.loadExoNativeTracks();
     if (!mounted) return;
     if (exo.audio.isEmpty) {
-      _osdInfoDialog(
+      await _osdInfoDialog(
         'player.audio.title'.tr,
         'player.audio.noneLong'.tr,
       );
       return;
     }
-    Get.dialog<void>(
-      _TvExoNativeAudioDialog(
-        controller: ctrl,
-        tracks: exo.audio,
-      ),
-    );
+    _pauseOsdHideForModal();
+    _suspendOsdFocusForDialog();
+    try {
+      await Get.dialog<void>(
+        _TvExoNativeAudioDialog(
+          controller: ctrl,
+          tracks: exo.audio,
+        ),
+        barrierDismissible: false,
+      );
+    } finally {
+      _resumeOsdAfterSubDialog();
+    }
   }
 
   Future<void> _showSubtitleDialog() async {
-    _restartHideTimer();
     final ctrl = Get.find<PlayerController>();
     final exo = await ctrl.loadExoNativeTracks();
     if (!mounted) return;
@@ -1238,19 +1640,26 @@ class _TvBetterPlayerControlsState extends State<TvBetterPlayerControls> {
       (s) => s.type != BetterPlayerSubtitlesSourceType.none,
     );
     if (!hasExternal && exo.text.isEmpty) {
-      _osdInfoDialog(
+      await _osdInfoDialog(
         'player.sheet.subtitleTitle'.tr,
         'player.subtitle.noneLong'.tr,
       );
       return;
     }
-    Get.dialog<void>(
-      _TvUnifiedSubtitleDialog(
-        controller: ctrl,
-        sources: ctrl.availableSubtitleSources,
-        exoTextTracks: exo.text,
-      ),
-    );
+    _pauseOsdHideForModal();
+    _suspendOsdFocusForDialog();
+    try {
+      await Get.dialog<void>(
+        _TvUnifiedSubtitleDialog(
+          controller: ctrl,
+          sources: ctrl.availableSubtitleSources,
+          exoTextTracks: exo.text,
+        ),
+        barrierDismissible: false,
+      );
+    } finally {
+      _resumeOsdAfterSubDialog();
+    }
   }
 }
 
@@ -1267,12 +1676,21 @@ class _TvAudioDialog extends StatelessWidget {
   Widget build(BuildContext context) {
     final active = controller.currentAudioTrack;
 
-    return Center(
-      child: Material(
-        color: Colors.transparent,
-        child: SizedBox(
-          width: 320,
-          child: GlassPopupPanel(
+    return CallbackShortcuts(
+      bindings: <ShortcutActivator, VoidCallback>{
+        const SingleActivator(LogicalKeyboardKey.goBack): () =>
+            Navigator.pop(context),
+        const SingleActivator(LogicalKeyboardKey.escape): () =>
+            Navigator.pop(context),
+        const SingleActivator(LogicalKeyboardKey.backspace): () =>
+            Navigator.pop(context),
+      },
+      child: Center(
+        child: Material(
+          color: Colors.transparent,
+          child: SizedBox(
+            width: 320,
+            child: GlassPopupPanel(
             padding: const EdgeInsets.all(24),
             borderRadius: 24,
             child: Column(
@@ -1293,44 +1711,42 @@ class _TvAudioDialog extends StatelessWidget {
                     ),
                   ],
                 ),
-              const SizedBox(height: 20),
-              Flexible(
-                child: SingleChildScrollView(
-                  child: Column(
-                    children: [
-                      for (final t in tracks)
-                        Padding(
-                          padding: const EdgeInsets.only(bottom: 8),
-                          child: _TvQualityOption(
-                            label: t.label ??
-                                'player.track.audio'.trParams({
-                                  'n': '${tracks.indexOf(t) + 1}',
-                                }),
-                            isAuto: false,
-                            isCurrent: active?.id == t.id ||
-                                (active == null && tracks.indexOf(t) == 0),
-                            onTap: () {
-                              controller.better?.setAudioTrack(t);
-                              Navigator.pop(context);
-                            },
+                const SizedBox(height: 20),
+                Flexible(
+                  child: SingleChildScrollView(
+                    child: Column(
+                      children: [
+                        for (final t in tracks)
+                          Padding(
+                            padding: const EdgeInsets.only(bottom: 8),
+                            child: _TvQualityOption(
+                              label: t.label ??
+                                  'player.track.audio'.trParams({
+                                    'n': '${tracks.indexOf(t) + 1}',
+                                  }),
+                              isAuto: false,
+                              isCurrent: active?.id == t.id ||
+                                  (active == null && tracks.indexOf(t) == 0),
+                              autofocus: tracks.indexOf(t) == 0,
+                              onTap: () {
+                                controller.better?.setAudioTrack(t);
+                                Navigator.pop(context);
+                              },
+                            ),
                           ),
-                        ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 10),
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: Text(
-                  'common.close'.tr,
-                  style: const TextStyle(color: Colors.white54),
+                const SizedBox(height: 10),
+                _TvDialogCloseButton(
+                  onClose: () => Navigator.pop(context),
                 ),
-              ),
-            ],
+              ],
             ),
           ),
         ),
+      ),
       ),
     );
   }
@@ -1347,12 +1763,21 @@ class _TvExoNativeAudioDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Material(
-        color: Colors.transparent,
-        child: SizedBox(
-          width: 320,
-          child: GlassPopupPanel(
+    return CallbackShortcuts(
+      bindings: <ShortcutActivator, VoidCallback>{
+        const SingleActivator(LogicalKeyboardKey.goBack): () =>
+            Navigator.pop(context),
+        const SingleActivator(LogicalKeyboardKey.escape): () =>
+            Navigator.pop(context),
+        const SingleActivator(LogicalKeyboardKey.backspace): () =>
+            Navigator.pop(context),
+      },
+      child: Center(
+        child: Material(
+          color: Colors.transparent,
+          child: SizedBox(
+            width: 320,
+            child: GlassPopupPanel(
             padding: const EdgeInsets.all(24),
             borderRadius: 24,
             child: Column(
@@ -1385,6 +1810,7 @@ class _TvExoNativeAudioDialog extends StatelessWidget {
                               label: t.displayLabel,
                               isAuto: false,
                               isCurrent: t.selected,
+                              autofocus: tracks.indexOf(t) == 0,
                               onTap: () {
                                 unawaited(
                                   controller.selectExoNativeAudioTrack(t),
@@ -1398,17 +1824,14 @@ class _TvExoNativeAudioDialog extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 10),
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: Text(
-                    'common.close'.tr,
-                    style: const TextStyle(color: Colors.white54),
-                  ),
+                _TvDialogCloseButton(
+                  onClose: () => Navigator.pop(context),
                 ),
               ],
             ),
           ),
         ),
+      ),
       ),
     );
   }
@@ -1467,6 +1890,7 @@ class _TvUnifiedSubtitleDialog extends StatelessWidget {
             label: _label(s),
             isAuto: false,
             isCurrent: _sameSubtitle(active, s),
+            autofocus: sorted.indexOf(s) == 0,
             onTap: () async {
               await controller.setBetterSubtitleSource(s);
               if (s.type == BetterPlayerSubtitlesSourceType.none) {
@@ -1500,6 +1924,7 @@ class _TvUnifiedSubtitleDialog extends StatelessWidget {
               label: opt.displayLabel,
               isAuto: false,
               isCurrent: opt.selected,
+              autofocus: sorted.isEmpty && exoTextTracks.indexOf(opt) == 0,
               onTap: () {
                 unawaited(controller.selectExoNativeTextTrack(opt));
                 Navigator.pop(context);
@@ -1510,12 +1935,21 @@ class _TvUnifiedSubtitleDialog extends StatelessWidget {
       }
     }
 
-    return Center(
-      child: Material(
-        color: Colors.transparent,
-        child: SizedBox(
-          width: 320,
-          child: GlassPopupPanel(
+    return CallbackShortcuts(
+      bindings: <ShortcutActivator, VoidCallback>{
+        const SingleActivator(LogicalKeyboardKey.goBack): () =>
+            Navigator.pop(context),
+        const SingleActivator(LogicalKeyboardKey.escape): () =>
+            Navigator.pop(context),
+        const SingleActivator(LogicalKeyboardKey.backspace): () =>
+            Navigator.pop(context),
+      },
+      child: Center(
+        child: Material(
+          color: Colors.transparent,
+          child: SizedBox(
+            width: 320,
+            child: GlassPopupPanel(
             padding: const EdgeInsets.all(24),
             borderRadius: 24,
             child: Column(
@@ -1544,17 +1978,14 @@ class _TvUnifiedSubtitleDialog extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 10),
-                TextButton(
-                  onPressed: () => Navigator.pop(context),
-                  child: Text(
-                    'common.close'.tr,
-                    style: const TextStyle(color: Colors.white54),
-                  ),
+                _TvDialogCloseButton(
+                  onClose: () => Navigator.pop(context),
                 ),
               ],
             ),
           ),
         ),
+      ),
       ),
     );
   }
@@ -1571,29 +2002,27 @@ class _TvQualityDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    String getTrackLabel(BetterPlayerAsmsTrack track) {
-      if (track.width == 0 || track.height == 0) {
-        return 'player.quality.auto'.tr;
-      }
-      if (track.height != null) {
-        return '${track.height}p';
-      }
-      return 'player.quality.unknown'.tr;
-    }
+    String getTrackLabel(BetterPlayerAsmsTrack track) =>
+        betterPlayerVideoQualityTrackLabel(track);
 
     final sorted = List<BetterPlayerAsmsTrack>.from(tracks);
-    sorted.sort((a, b) {
-      if (a.width == 0 && a.height == 0) return -1;
-      if (b.width == 0 && b.height == 0) return 1;
-      return (b.height ?? 0).compareTo(a.height ?? 0);
-    });
+    sorted.sort(compareBetterPlayerVideoQualityTracks);
 
-    return Center(
-      child: Material(
-        color: Colors.transparent,
-        child: SizedBox(
-          width: 320,
-          child: GlassPopupPanel(
+    return CallbackShortcuts(
+      bindings: <ShortcutActivator, VoidCallback>{
+        const SingleActivator(LogicalKeyboardKey.goBack): () =>
+            Navigator.pop(context),
+        const SingleActivator(LogicalKeyboardKey.escape): () =>
+            Navigator.pop(context),
+        const SingleActivator(LogicalKeyboardKey.backspace): () =>
+            Navigator.pop(context),
+      },
+      child: Center(
+        child: Material(
+          color: Colors.transparent,
+          child: SizedBox(
+            width: 320,
+            child: GlassPopupPanel(
             padding: const EdgeInsets.all(20),
             borderRadius: 24,
             child: Column(
@@ -1607,39 +2036,104 @@ class _TvQualityDialog extends StatelessWidget {
                     fontWeight: FontWeight.w800,
                   ),
                 ),
-              const SizedBox(height: 20),
-              Flexible(
-                child: SingleChildScrollView(
-                  child: Column(
-                    children: sorted.map((track) {
-                      final isAuto = track.width == 0 && track.height == 0;
-                      final isCurrent = controller.currentTrack == track;
+                const SizedBox(height: 20),
+                Flexible(
+                  child: SingleChildScrollView(
+                    child: Column(
+                      children: sorted.map((track) {
+                        final isAuto = track.width == 0 && track.height == 0;
+                        final isCurrent = controller.currentTrack == track;
 
-                      return Padding(
-                        padding: const EdgeInsets.only(bottom: 8),
-                        child: _TvQualityOption(
-                          label: getTrackLabel(track),
-                          isAuto: isAuto,
-                          isCurrent: isCurrent,
-                          onTap: () {
-                            controller.setQuality(track);
-                            Navigator.pop(context);
-                          },
-                        ),
-                      );
-                    }).toList(),
+                        return Padding(
+                          padding: const EdgeInsets.only(bottom: 8),
+                          child: _TvQualityOption(
+                            label: getTrackLabel(track),
+                            isAuto: isAuto,
+                            isCurrent: isCurrent,
+                            autofocus: sorted.indexOf(track) == 0,
+                            onTap: () {
+                              controller.setQuality(track);
+                              Navigator.pop(context);
+                            },
+                          ),
+                        );
+                      }).toList(),
+                    ),
                   ),
                 ),
-              ),
-              const SizedBox(height: 10),
-              TextButton(
-                onPressed: () => Navigator.pop(context),
-                child: Text(
-                  'common.close'.tr,
-                  style: const TextStyle(color: Colors.white54),
+                const SizedBox(height: 10),
+                _TvDialogCloseButton(
+                  onClose: () => Navigator.pop(context),
                 ),
-              ),
-            ],
+              ],
+            ),
+          ),
+        ),
+      ),
+      ),
+    );
+  }
+}
+
+class _TvDialogCloseButton extends StatefulWidget {
+  const _TvDialogCloseButton({required this.onClose});
+
+  final VoidCallback onClose;
+
+  @override
+  State<_TvDialogCloseButton> createState() => _TvDialogCloseButtonState();
+}
+
+class _TvDialogCloseButtonState extends State<_TvDialogCloseButton> {
+  bool _focused = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final primary = Theme.of(context).colorScheme.primary;
+    return Focus(
+      onFocusChange: (v) => setState(() => _focused = v),
+      onKeyEvent: (node, event) {
+        if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+          return KeyEventResult.ignored;
+        }
+        final key = event.logicalKey;
+        if (key == LogicalKeyboardKey.select ||
+            key == LogicalKeyboardKey.enter ||
+            key == LogicalKeyboardKey.numpadEnter ||
+            key == LogicalKeyboardKey.space ||
+            key == LogicalKeyboardKey.gameButtonSelect) {
+          widget.onClose();
+          return KeyEventResult.handled;
+        }
+        if (key == LogicalKeyboardKey.goBack ||
+            key == LogicalKeyboardKey.escape ||
+            key == LogicalKeyboardKey.backspace) {
+          widget.onClose();
+          return KeyEventResult.handled;
+        }
+        return KeyEventResult.ignored;
+      },
+      child: GestureDetector(
+        onTap: widget.onClose,
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(10),
+            color: _focused
+                ? Colors.white.withValues(alpha: 0.16)
+                : Colors.white.withValues(alpha: 0.06),
+            border: Border.all(
+              color: _focused
+                  ? primary.withValues(alpha: 0.7)
+                  : Colors.white.withValues(alpha: 0.28),
+            ),
+          ),
+          child: Text(
+            'common.close'.tr,
+            style: TextStyle(
+              color: _focused ? Colors.white : Colors.white70,
+              fontWeight: FontWeight.w700,
             ),
           ),
         ),
@@ -1654,12 +2148,14 @@ class _TvQualityOption extends StatefulWidget {
     required this.isAuto,
     required this.isCurrent,
     required this.onTap,
+    this.autofocus = false,
   });
 
   final String label;
   final bool isAuto;
   final bool isCurrent;
   final VoidCallback onTap;
+  final bool autofocus;
 
   @override
   State<_TvQualityOption> createState() => _TvQualityOptionState();
@@ -1673,6 +2169,7 @@ class _TvQualityOptionState extends State<_TvQualityOption> {
     final primary = Theme.of(context).colorScheme.primary;
 
     return Focus(
+      autofocus: widget.autofocus,
       onFocusChange: (v) => setState(() => _focused = v),
       onKeyEvent: (node, event) {
         if (event is! KeyDownEvent) return KeyEventResult.ignored;
@@ -1749,21 +2246,20 @@ class _ChannelLogoBadge extends StatelessWidget {
         height: size,
         color: Colors.white.withValues(alpha: 0.08),
         child: url != null && url.isNotEmpty
-            ? Image.network(
-                url,
-                fit: BoxFit.cover,
-                errorBuilder: (_, __, ___) => const _LogoFallback(),
-                loadingBuilder: (context, child, progress) {
-                  if (progress == null) return child;
-                  return const Center(
-                    child: SizedBox(
-                      width: 22,
-                      height: 22,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white54,
-                      ),
-                    ),
+            ? Builder(
+                builder: (context) {
+                  final px =
+                      (size * MediaQuery.devicePixelRatioOf(context)).round();
+                  return IptvChannelLogo(
+                    imageUrl: url,
+                    width: size,
+                    height: size,
+                    fit: BoxFit.cover,
+                    memCacheWidth: px,
+                    memCacheHeight: px,
+                    showProgressIndicator: true,
+                    progressIndicatorColor: Colors.white54,
+                    errorWidget: const _LogoFallback(),
                   );
                 },
               )

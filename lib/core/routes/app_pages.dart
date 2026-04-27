@@ -10,8 +10,13 @@ import '../../modules/player/player_binding.dart';
 import '../../modules/player/player_view.dart';
 import '../../modules/playlist/playlist_binding.dart';
 import '../../modules/playlist/playlist_view.dart';
+import '../../modules/setup/setup_wizard_binding.dart';
+import '../../modules/setup/setup_wizard_view.dart';
+import '../../modules/setup/setup_wizard_tv_view.dart';
 import '../../modules/settings/settings_binding.dart';
 import '../../modules/settings/settings_view.dart';
+import '../../modules/settings/parental_control_view.dart';
+import '../../modules/settings/xtream_category_hide_view.dart';
 import '../../modules/splash/splash_binding.dart';
 import '../../modules/splash/splash_view.dart';
 import 'app_routes.dart';
@@ -22,6 +27,16 @@ abstract final class AppPages {
       name: AppRoutes.splash,
       page: SplashView.new,
       binding: SplashBinding(),
+    ),
+    GetPage(
+      name: AppRoutes.setupWizard,
+      page: SetupWizardView.new,
+      binding: SetupWizardBinding(),
+    ),
+    GetPage(
+      name: AppRoutes.setupWizardTv,
+      page: SetupWizardTvView.new,
+      binding: PlaylistBinding(),
     ),
     GetPage(
       name: AppRoutes.playlist,
@@ -47,6 +62,14 @@ abstract final class AppPages {
       name: AppRoutes.settings,
       page: SettingsView.new,
       binding: SettingsBinding(),
+    ),
+    GetPage(
+      name: AppRoutes.xtreamCategoryHide,
+      page: XtreamCategoryHideView.new,
+    ),
+    GetPage(
+      name: AppRoutes.parentalControl,
+      page: ParentalControlView.new,
     ),
     GetPage(
       name: AppRoutes.player,

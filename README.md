@@ -24,6 +24,14 @@ flutter build apk --release
 
 Ayrıntılar için depo kökündeki [GIZLILIK_POLITIKASI.md](GIZLILIK_POLITIKASI.md) dosyasına bakın.
 
+## Son sürüm notları (1.2.18)
+
+Tam liste: [CHANGELOG.md](CHANGELOG.md).
+
+- **TV oynatıcı:** Hızlı kanal şeridi + OSD OK; şerit / tek kanal EPG Geri ile oyuncudan çıkmama; Better tampon ve Exo gecikme eşiği.
+- **TV gözat / kanallar:** Liste ve kategoride tek basışta çift adım düzeltmesi.
+- **TV ana ekran:** Arama ikonunda OK ile arama açılması.
+
 ## Yerel paket
 
 `better_player_plus` bu repoda `packages/better_player_plus` altında yol bağımlılığı olarak kullanılır.

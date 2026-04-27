@@ -10,6 +10,8 @@ class M3uResult {
     required this.vodCategories,
     required this.series,
     required this.seriesCategories,
+    this.recentVodIds = const <int>[],
+    this.recentSeriesIds = const <int>[],
     this.userInfo,
   });
 
@@ -19,6 +21,8 @@ class M3uResult {
   final List<VodCategory> vodCategories;
   final List<SeriesItem> series;
   final List<SeriesCategory> seriesCategories;
+  final List<int> recentVodIds;
+  final List<int> recentSeriesIds;
   final UserInfo? userInfo;
 }
 

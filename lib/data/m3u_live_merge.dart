@@ -64,6 +64,8 @@ M3uResult mergeLiveChannelLayer(
     vodCategories: primary.vodCategories,
     series: primary.series,
     seriesCategories: primary.seriesCategories,
+    recentVodIds: primary.recentVodIds,
+    recentSeriesIds: primary.recentSeriesIds,
     userInfo: primary.userInfo,
   );
 }

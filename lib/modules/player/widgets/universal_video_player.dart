@@ -8,8 +8,30 @@ import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
 import '../../../core/player/iptv_playback_defaults.dart';
+import '../../../core/player/media_kit_subtitle_font.dart';
 import '../../../core/platform/android_playback_soc_hints.dart';
+import '../../../core/player/playback_orientation_manager.dart';
 import '../../../core/services/app_settings_service.dart';
+import '../player_controller.dart';
+
+String _normalizePlaybackUrlForWidget(String raw) {
+  final series = Get.isRegistered<PlayerController>() &&
+      Get.find<PlayerController>().isSeries;
+  return IptvPlaybackDefaults.normalizeStreamUrl(
+    raw,
+    xtreamSeriesEpisode: series,
+  );
+}
+
+bool _isLiveForMpvTuning(String rawUrl) {
+  if (Get.isRegistered<PlayerController>() &&
+      Get.find<PlayerController>().isSeries) {
+    return false;
+  }
+  return IptvPlaybackDefaults.isLikelyLiveStream(
+    _normalizePlaybackUrlForWidget(rawUrl),
+  );
+}
 
 /// Android’de [vo] burada **ayarlanmaz**: [VideoController] yüzeyi hazır olmadan
 /// `vo=gpu` SIGSEGV üretebilir; media_kit [AndroidVideoController] `vo`/`wid` sırasını yönetir.
@@ -20,6 +42,14 @@ PlayerConfiguration minaMediaKitPlayerConfiguration() {
 VideoControllerConfiguration _minaVideoControllerConfiguration() {
   if (Platform.isAndroid && Get.isRegistered<AppSettingsService>()) {
     final s = Get.find<AppSettingsService>();
+    final swPurpleFix = s.mediaKitLowPowerHwdec.value ||
+        AndroidPlaybackSocHints.isSamsungSmT530;
+    if (swPurpleFix) {
+      return const VideoControllerConfiguration(
+        hwdec: 'no',
+        vo: 'gpu',
+      );
+    }
     return VideoControllerConfiguration(
       hwdec: s.resolveMediaKitHwdecMpvValue(
         amlogicLike: AndroidPlaybackSocHints.amlogicLike,
@@ -33,13 +63,10 @@ VideoControllerConfiguration _minaVideoControllerConfiguration() {
 Future<void> _applyMpvIptvTuning(Player player, String rawUrl) async {
   final plat = player.platform;
   if (plat is! NativePlayer) return;
-  final normalized = IptvPlaybackDefaults.normalizeStreamUrl(rawUrl);
-  final live = IptvPlaybackDefaults.isLikelyLiveStream(normalized);
+  final live = _isLiveForMpvTuning(rawUrl);
   try {
     if (live) {
-      // Varsayılan hr-seek=yes canlı akışta seek denemesi tetikleyip hata üretebiliyor.
-      await plat.setProperty('hr-seek', 'no');
-      // Sınırsız HLS / MPEG-TS canlıda konum/seek uyumu (mpv “force-seekable” uyarıları).
+      // HLS/MPEG-TS: manifest tampon/seek uyarıları (hr-seek [PlayerController]’da).
       await plat.setProperty('force-seekable', 'yes');
     }
   } catch (e) {
@@ -47,60 +74,8 @@ Future<void> _applyMpvIptvTuning(Player player, String rawUrl) async {
   }
 }
 
-/// Video yetişemiyorsa sesi bekletmeyip sese kilitle: görüntü gerekirse kare atarak yakalar.
-/// Tüm native (libmpv) hedeflerde uygulanır.
-Future<void> _applyMpvVideoSyncTuning(Player player) async {
-  final plat = player.platform;
-  if (plat is! NativePlayer) return;
-  try {
-    await plat.setProperty('video-sync', 'audio');
-  } catch (e) {
-    debugPrint('mina_iptv: mpv video-sync skipped: $e');
-  }
-}
-
-/// Android TV / zayıf GPU — [VideoController] hazır olduktan sonra; `vo`/`hwdec` burada dokunulmaz
-/// (hwdec: [_minaVideoControllerConfiguration], vo: media_kit Android çıktı yöneticisi).
-Future<void> _applyMpvAndroidPerformanceTuning(Player player) async {
-  final plat = player.platform;
-  if (plat is! NativePlayer) return;
-  if (!Platform.isAndroid) return;
-  try {
-    await plat.setProperty('profile', 'fast');
-    // Eski TV kutuları: varsayılan ~32M yerine daha düşük demuxer RAM (media_kit init sonrası override).
-    await plat.setProperty('demuxer-max-bytes', '20M');
-    await plat.setProperty('demuxer-max-back-bytes', '10M');
-    await plat.setProperty('vd-lavc-fast', 'yes');
-    // VO takılırsa kare at; ses senkronu için framedrop=vo tercih edilir.
-    await plat.setProperty('framedrop', 'vo');
-    await plat.setProperty('vd-lavc-skiploopfilter', 'nonref');
-    await plat.setProperty('vd-lavc-threads', '0');
-    await plat.setProperty('interpolation', 'no');
-  } catch (e) {
-    debugPrint('mina_iptv: mpv Android perf tuning skipped: $e');
-  }
-}
-
-/// Eski Amlogic / Meson: kopya tampon yolu ve demuxer baskısı azaltılır.
-Future<void> _applyMpvAmlogicMediaKitTuning(
-  Player player, {
-  required bool live,
-}) async {
-  final plat = player.platform;
-  if (plat is! NativePlayer) return;
-  try {
-    await plat.setProperty('demuxer-max-bytes', '12M');
-    await plat.setProperty('demuxer-max-back-bytes', '6M');
-    await plat.setProperty('sws-fast', 'yes');
-    if (live) {
-      await plat.setProperty('video-latency-hacks', 'yes');
-    }
-  } catch (e) {
-    debugPrint('mina_iptv: mpv Amlogic tuning skipped: $e');
-  }
-}
-
-/// Tam ekran oynatıcı: varsayılan [BetterPlayer]; [useMediaKit] true iken ikinci motor (media_kit / mpv).
+/// Tam ekran oynatıcı: [BetterPlayer]; canlıda [useMediaKit] yalnızca kullanıcı OSD’den yedek seçerse.
+/// VOD’da [useMediaKit] true ise media_kit / mpv.
 class UniversalVideoPlayer extends StatefulWidget {
   final String url;
   final bool useMediaKit;
@@ -108,7 +83,8 @@ class UniversalVideoPlayer extends StatefulWidget {
   final BoxFit fit;
 
   /// [Player] oluşturulduğunda veya URL değişiminde dispose öncesi `null` ile bildirilir.
-  final ValueChanged<Player?>? onMediaKitPlayerChanged;
+  /// [open] öncesi libmpv ayarları için [Future] tamamlanır.
+  final Future<void> Function(Player?)? onMediaKitPlayerChanged;
 
   const UniversalVideoPlayer({
     super.key,
@@ -127,6 +103,8 @@ class _UniversalVideoPlayerState extends State<UniversalVideoPlayer> {
   Player? _player;
   VideoController? _videoController;
   int _initId = 0;
+  /// Son MediaKit kurulumunda mor/pembe yazılım çözücü yolu (düşük güç veya SM-T530).
+  bool _mediaKitPurpleFixAtLastInit = false;
   final GlobalKey _betterPlayerKey = GlobalKey();
 
   void _attachBetterPlayerGlobalKey() {
@@ -162,6 +140,16 @@ class _UniversalVideoPlayerState extends State<UniversalVideoPlayer> {
       } else {
         unawaited(_disposeMediaKit());
       }
+    } else if (widget.useMediaKit &&
+        Platform.isAndroid &&
+        Get.isRegistered<AppSettingsService>()) {
+      final nowPurpleFix = Get.find<AppSettingsService>().mediaKitLowPowerHwdec
+              .value ||
+          AndroidPlaybackSocHints.isSamsungSmT530;
+      if (nowPurpleFix != _mediaKitPurpleFixAtLastInit &&
+          _videoController != null) {
+        unawaited(_initMediaKit());
+      }
     }
   }
 
@@ -173,7 +161,7 @@ class _UniversalVideoPlayerState extends State<UniversalVideoPlayer> {
 
     if (AndroidPlaybackSocHints.amlogicLike) {
       debugPrint(
-        'mina_iptv: MediaKit SoC: Amlogic/Meson — hwdec=mediacodec, demuxer tuned',
+        'mina_iptv: MediaKit SoC: Amlogic/Meson — ek demuxer / latency ayarı uygulanır',
       );
     }
 
@@ -202,18 +190,17 @@ class _UniversalVideoPlayerState extends State<UniversalVideoPlayer> {
 
     _player = player;
     _videoController = videoController;
-    widget.onMediaKitPlayerChanged?.call(player);
+    if (Get.isRegistered<AppSettingsService>()) {
+      _mediaKitPurpleFixAtLastInit =
+          Get.find<AppSettingsService>().mediaKitLowPowerHwdec.value ||
+              AndroidPlaybackSocHints.isSamsungSmT530;
+    }
+    await (widget.onMediaKitPlayerChanged?.call(player) ?? Future.value());
     if (mounted) setState(() {});
 
+    unawaited(PlaybackOrientationManager.onMediaKitVideoSurfaceReady());
+
     final headers = IptvPlaybackDefaults.headersForStreamUrl(widget.url);
-    await _applyMpvAndroidPerformanceTuning(player);
-    if (Platform.isAndroid && AndroidPlaybackSocHints.amlogicLike) {
-      final live = IptvPlaybackDefaults.isLikelyLiveStream(
-        IptvPlaybackDefaults.normalizeStreamUrl(widget.url),
-      );
-      await _applyMpvAmlogicMediaKitTuning(player, live: live);
-    }
-    await _applyMpvVideoSyncTuning(player);
     await _applyMpvIptvTuning(player, widget.url);
 
     final uri = widget.url.trim();
@@ -232,6 +219,12 @@ class _UniversalVideoPlayerState extends State<UniversalVideoPlayer> {
         ),
         play: true,
       );
+      if (Get.isRegistered<AppSettingsService>()) {
+        await applyMediaKitSubtitleFontPt(
+          player,
+          Get.find<AppSettingsService>().subtitleFontPt.value,
+        );
+      }
     } catch (e, st) {
       debugPrint('mina_iptv: media_kit open error: $e\n$st');
     }
@@ -241,10 +234,13 @@ class _UniversalVideoPlayerState extends State<UniversalVideoPlayer> {
     final p = _player;
     _player = null;
     _videoController = null;
-    if (mounted) setState(() {});
+    // setState burada kullanılmamalı: üst [onMediaKitPlayerChanged] veya route
+    // aynı karede bu State'i unmount edebilir; defunct üzerinde setState tetiklenir.
 
     if (p != null) {
-      widget.onMediaKitPlayerChanged?.call(null);
+      // Önce controller’dan [Player] referansını düşür; native dispose aşağıda.
+      // Rx güncellemesi [PlayerController.attachMediaKitPlayer] içinde microtask’ta.
+      await (widget.onMediaKitPlayerChanged?.call(null) ?? Future.value());
       try {
         // Native tarafta sesin hemen kesilmesi için önce pause ve stop, beklemeden
         p.pause();
@@ -270,6 +266,8 @@ class _UniversalVideoPlayerState extends State<UniversalVideoPlayer> {
       if (vc == null) {
         return const Center(child: CircularProgressIndicator());
       }
+      // Fit OSD ([PlayerController.videoFit]) — üst [Obx] `videoFit` ile yenilenir.
+      final fit = widget.fit;
       return LayoutBuilder(
         builder: (context, constraints) {
           if (constraints.maxWidth < 2 || constraints.maxHeight < 2) {
@@ -277,15 +275,15 @@ class _UniversalVideoPlayerState extends State<UniversalVideoPlayer> {
           }
           final video = Video(
             controller: vc,
-            fit: widget.fit,
+            fit: fit,
             controls: null,
           );
-          if (widget.fit == BoxFit.contain) {
+          if (fit == BoxFit.contain) {
             return video;
           }
           return ClipRect(
             child: FittedBox(
-              fit: widget.fit,
+              fit: fit,
               clipBehavior: Clip.hardEdge,
               alignment: Alignment.center,
               child: SizedBox(

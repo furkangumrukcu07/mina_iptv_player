@@ -5,6 +5,8 @@ class SeriesItem {
     required this.categoryId,
     this.streamUrl,
     this.posterUrl,
+    this.plot,
+    this.addedUnix,
   });
 
   final int id;
@@ -12,6 +14,12 @@ class SeriesItem {
   final int categoryId;
   final String? streamUrl;
   final String? posterUrl;
+
+  /// Xtream `plot` / `description` (liste yanıtı).
+  final String? plot;
+
+  /// Xtream `get_series` — `added` / `last_modified` (unix, saniye).
+  final int? addedUnix;
 }
 
 class SeriesCategory {

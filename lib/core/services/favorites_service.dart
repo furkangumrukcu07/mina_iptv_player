@@ -70,6 +70,27 @@ class FavoritesService extends GetxService {
     _save();
   }
 
+  /// Gruplu dizi satırı: tamamı favoride değilse hepsini ekle, hepsi favorideyse kaldır.
+  void toggleSeriesGroup(Iterable<int> ids) {
+    final list = ids.toSet().toList();
+    if (list.isEmpty) return;
+    final allIn = list.every(seriesIds.contains);
+    if (allIn) {
+      for (final id in list) {
+        seriesIds.remove(id);
+      }
+    } else {
+      for (final id in list) {
+        if (!seriesIds.contains(id)) {
+          seriesIds.add(id);
+        }
+      }
+    }
+    _save();
+  }
+
+  bool hasAnySeries(Iterable<int> ids) => ids.any(seriesIds.contains);
+
   int get totalCount =>
       channelIds.length + vodIds.length + seriesIds.length;
 

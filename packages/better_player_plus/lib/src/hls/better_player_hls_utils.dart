@@ -41,8 +41,19 @@ sealed class BetterPlayerHlsUtils {
       final parsedPlaylist = await HlsPlaylistParser.create().parseString(Uri.parse(masterPlaylistUrl), data);
       if (parsedPlaylist is HlsMasterPlaylist) {
         for (final variant in parsedPlaylist.variants) {
+          final fr = variant.format.frameRate;
+          final frInt =
+              (fr != null && fr > 0) ? fr.round().clamp(1, 240) : 0;
           tracks.add(
-            BetterPlayerAsmsTrack('', variant.format.width, variant.format.height, variant.format.bitrate, 0, '', ''),
+            BetterPlayerAsmsTrack(
+              '',
+              variant.format.width,
+              variant.format.height,
+              variant.format.bitrate,
+              frInt,
+              variant.format.codecs ?? '',
+              variant.format.sampleMimeType ?? '',
+            ),
           );
         }
       }

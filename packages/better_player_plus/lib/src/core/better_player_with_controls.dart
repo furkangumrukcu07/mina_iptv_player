@@ -21,7 +21,7 @@ class BetterPlayerWithControls extends StatefulWidget {
 
 class _BetterPlayerWithControlsState extends State<BetterPlayerWithControls> {
   BetterPlayerSubtitlesConfiguration get subtitlesConfiguration =>
-      widget.controller!.betterPlayerConfiguration.subtitlesConfiguration;
+      widget.controller!.effectiveSubtitlesConfiguration;
 
   BetterPlayerControlsConfiguration get controlsConfiguration => widget.controller!.betterPlayerControlsConfiguration;
 
@@ -152,10 +152,15 @@ class _BetterPlayerWithControlsState extends State<BetterPlayerWithControls> {
       }
 
       if (controlsConfiguration.customControlsBuilder != null && playerTheme == BetterPlayerTheme.custom) {
-        return controlsConfiguration.customControlsBuilder!(
+        final custom = controlsConfiguration.customControlsBuilder!(
           betterPlayerController,
           onControlsVisibilityChanged,
           controlsConfiguration,
+        );
+        return _wrapCustomControlsPlaybackError(
+          context,
+          betterPlayerController,
+          custom,
         );
       } else if (playerTheme == BetterPlayerTheme.material) {
         return _buildMaterialControl();
@@ -165,6 +170,70 @@ class _BetterPlayerWithControlsState extends State<BetterPlayerWithControls> {
     }
 
     return const SizedBox();
+  }
+
+  /// [BetterPlayerTheme.custom] iken Material/Cupertino’daki [hasError] tam ekranı
+  /// oluşmaz; oynatıcı hata durumunda teknik metin yerine yapılandırma
+  /// [BetterPlayerConfiguration.errorBuilder] (veya varsayılan) ile örtü gösterilir.
+  Widget _wrapCustomControlsPlaybackError(
+    BuildContext context,
+    BetterPlayerController betterPlayerController,
+    Widget customControls,
+  ) {
+    final v = betterPlayerController.videoPlayerController?.value;
+    if (v == null || !v.hasError) {
+      return customControls;
+    }
+
+    final config = betterPlayerController.betterPlayerConfiguration;
+    final cfg = betterPlayerController.betterPlayerControlsConfiguration;
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        customControls,
+        Positioned.fill(
+          child: ColoredBox(
+            color: Colors.black.withValues(alpha: 0.88),
+            child: config.errorBuilder != null
+                ? config.errorBuilder!(context, v.errorDescription)
+                : _defaultCustomThemeErrorBody(betterPlayerController, cfg),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _defaultCustomThemeErrorBody(
+    BetterPlayerController betterPlayerController,
+    BetterPlayerControlsConfiguration cfg,
+  ) {
+    final textStyle = TextStyle(color: cfg.textColor);
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.warning_amber_rounded,
+              color: cfg.iconsColor.withValues(alpha: 0.9), size: 42),
+          const SizedBox(height: 16),
+          Text(
+            betterPlayerController.translations.generalDefaultError,
+            textAlign: TextAlign.center,
+            style: textStyle.copyWith(fontSize: 16, height: 1.35),
+          ),
+          if (cfg.enableRetry) ...[
+            const SizedBox(height: 18),
+            TextButton(
+              onPressed: () => betterPlayerController.retryDataSource(),
+              child: Text(
+                betterPlayerController.translations.generalRetry,
+                style: textStyle.copyWith(fontWeight: FontWeight.w700),
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
   }
 
   Widget _buildMaterialControl() => BetterPlayerMaterialControls(

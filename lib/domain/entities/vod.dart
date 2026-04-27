@@ -7,6 +7,10 @@ class VodItem {
     this.posterUrl,
     this.containerExtension,
     this.durationSecs,
+    this.addedUnix,
+    this.plot,
+    this.rating,
+    this.trailerUrl,
   });
 
   final int id;
@@ -16,6 +20,16 @@ class VodItem {
   final String? posterUrl;
   final String? containerExtension;
   final int? durationSecs;
+  final int? addedUnix;
+
+  /// Xtream `plot` / `description` (VOD özet).
+  final String? plot;
+
+  /// Kaynak `rating` / `rating_imdb` vb. (varsa).
+  final String? rating;
+
+  /// `youtube_trailer` veya tam URL (varsa).
+  final String? trailerUrl;
 }
 
 class VodCategory {
