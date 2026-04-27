@@ -303,6 +303,7 @@ class _TvBetterPlayerControlsState extends State<TvBetterPlayerControls> {
     _tvOsdKeyBumpWorker?.dispose();
     _hideTimer?.cancel();
     _overlayTimer?.cancel();
+    _volumeListener?.cancel();
     _detachVideoListener();
     _mainFocusNode.dispose();
     _firstOsdButtonFocus.dispose();

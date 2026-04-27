@@ -3115,6 +3115,121 @@ class _PlayerCenterLoadingSpinner extends StatelessWidget {
   }
 }
 
+/// Yayın henüz çizilmeden önce siyah ekran yerine logo + yükleme göstergesi.
+class _PlayerLoadingOverlay extends StatelessWidget {
+  const _PlayerLoadingOverlay({
+    required this.channel,
+    required this.subtitle,
+  });
+
+  final Channel channel;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    return IgnorePointer(
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          const ColoredBox(color: Color(0xFF0D0D0F)),
+          Center(
+            child: _PlayerLoadingCenter(
+              channel: channel,
+              subtitle: subtitle,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PlayerLoadingCenter extends StatelessWidget {
+  const _PlayerLoadingCenter({
+    required this.channel,
+    required this.subtitle,
+  });
+
+  final Channel channel;
+  final String subtitle;
+
+  @override
+  Widget build(BuildContext context) {
+    final logo = channel.logoUrl?.trim();
+    final hasLogo = logo != null &&
+        logo.isNotEmpty &&
+        (logo.startsWith('http://') || logo.startsWith('https://'));
+
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (hasLogo)
+          ClipRRect(
+            borderRadius: BorderRadius.circular(14),
+            child: IptvChannelLogo(
+              imageUrl: logo,
+              width: 112,
+              height: 112,
+              fit: BoxFit.contain,
+              showProgressIndicator: true,
+              progressIndicatorColor: Color(0xFF6ECFE0),
+              placeholder: const SizedBox(
+                width: 112,
+                height: 112,
+                child: Center(
+                  child: SizedBox(
+                    width: 40,
+                    height: 40,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 3,
+                      color: Color(0xFF6ECFE0),
+                    ),
+                  ),
+                ),
+              ),
+              errorWidget: const SizedBox(
+                width: 56,
+                height: 56,
+                child: CircularProgressIndicator(
+                  strokeWidth: 3,
+                  color: Color(0xFF6ECFE0),
+                ),
+              ),
+            ),
+          )
+        else
+          const SizedBox(
+            width: 48,
+            height: 48,
+            child: CircularProgressIndicator(
+              strokeWidth: 3,
+              color: Color(0xFF6ECFE0),
+            ),
+          ),
+        if (hasLogo) const SizedBox(height: 10),
+        SizedBox(
+          width: hasLogo ? 112 : 48,
+          height: 3,
+          child: const LinearProgressIndicator(
+            backgroundColor: Colors.white12,
+            color: Color(0xFF6ECFE0),
+          ),
+        ),
+        const SizedBox(height: 14),
+        Text(
+          subtitle,
+          textAlign: TextAlign.center,
+          style: const TextStyle(
+            color: Colors.white70,
+            fontSize: 14,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
 class _PlayerMessage extends StatelessWidget {
   const _PlayerMessage({required this.child});
 

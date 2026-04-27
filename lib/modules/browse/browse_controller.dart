@@ -356,6 +356,7 @@ class BrowseController extends GetxController {
   final _fav = Get.find<FavoritesService>();
   final _app = Get.find<AppSettingsService>();
   final _playlist = Get.find<PlaylistRepository>();
+  final _omdb = Get.find<OmdbService>();
 
   final selectedCategoryKey = kAllCategories.obs;
   final searchQuery = ''.obs;
@@ -660,9 +661,75 @@ class BrowseController extends GetxController {
         BrowseMode.favorites => 'search.favorite'.tr,
       };
 
+  void _updateVodInSnapshot(VodItem updated) {
+    final d = _data;
+    if (d == null) return;
+    final idx = d.vod.indexWhere((e) => e.id == updated.id);
+    if (idx != -1) {
+      d.vod[idx] = updated;
+      // UI'ı tetiklemek için selectedRow'u güncelleyelim (eğer hala aynı öğeyse)
+      if (selectedRow.value?.vod?.id == updated.id) {
+        final cur = selectedRow.value!;
+        selectedRow.value = BrowseRow(
+          listIndex: cur.listIndex,
+          title: cur.title,
+          channel: cur.channel,
+          vod: updated,
+          series: cur.series,
+          seriesCluster: cur.seriesCluster,
+        );
+      }
+    }
+  }
+
+  void _updateSeriesInSnapshot(SeriesItem updated) {
+    final d = _data;
+    if (d == null) return;
+    final idx = d.series.indexWhere((e) => e.id == updated.id);
+    if (idx != -1) {
+      d.series[idx] = updated;
+      if (selectedRow.value?.series?.id == updated.id) {
+        final cur = selectedRow.value!;
+        selectedRow.value = BrowseRow(
+          listIndex: cur.listIndex,
+          title: cur.title,
+          channel: cur.channel,
+          vod: cur.vod,
+          series: updated,
+          seriesCluster: cur.seriesCluster,
+        );
+      }
+    }
+  }
+
   @override
   void onInit() {
     super.onInit();
+
+    // OMDB Fallback worker
+    ever(selectedRow, (row) async {
+      if (row == null) return;
+
+      final v = row.vod;
+      if (v != null && (v.posterUrl == null || v.posterUrl!.isEmpty)) {
+        final updated = await v.withOmdbPosterOnly(_omdb);
+        if (updated.fallbackPosterUrl != null) {
+          // Veriyi güncellemek için snapshot içindeki listeyi bulup güncellememiz gerekir
+          // Ancak BrowseRow içindeki referansı güncellemek de yeterli olabilir
+          // Daha kalıcı olması için _data içindeki listeyi güncelleyelim
+          _updateVodInSnapshot(updated);
+        }
+      }
+
+      final s = row.series;
+      if (s != null && (s.posterUrl == null || s.posterUrl!.isEmpty)) {
+        final updated = await s.withOmdbPosterOnly(_omdb);
+        if (updated.fallbackPosterUrl != null) {
+          _updateSeriesInSnapshot(updated);
+        }
+      }
+    });
+
     final arg = Get.arguments;
     if (arg is BrowseMode) {
       mode = arg;
@@ -946,6 +1013,8 @@ class BrowseController extends GetxController {
 
   List<({int key, String name, int count, IconData? icon})> get leftCategories {
     final d = _data!;
+    _updateCategoryCountsIfNeeded();
+
     return switch (mode) {
       BrowseMode.films => [
           if (d.recentVodIds.isNotEmpty)
@@ -1200,6 +1269,41 @@ class BrowseController extends GetxController {
     _tvBrowseListVerticalHoldPeriodic = null;
   }
 
+  static const _tvBrowseVerticalHoldPauseBeforeRepeat =
+      Duration(milliseconds: 420);
+
+  Timer? _tvBrowseListVerticalHoldInitial;
+  Timer? _tvBrowseListVerticalHoldPeriodic;
+
+  /// TV: basılı tutma — ilk [tvNudgeBrowseListRow] zaten tuş inişinde; tekrarlar
+  /// yalnızca kısa gecikmeden sonra başlar (tek tıkta iki satır önlenir).
+  void beginBrowseListVerticalHold(int delta, Duration interval) {
+    if (!_effectiveRemoteNav()) return;
+    if (delta == 0) return;
+    stopBrowseListVerticalHold();
+    _tvBrowseListVerticalHoldInitial =
+        Timer(_tvBrowseVerticalHoldPauseBeforeRepeat, () {
+      _tvBrowseListVerticalHoldInitial = null;
+      if (isClosed) return;
+      _tvBrowseListVerticalHoldPeriodic = Timer.periodic(interval, (_) {
+        if (isClosed) {
+          stopBrowseListVerticalHold();
+          return;
+        }
+        // Remove boundary stopping - allow continuous scroll even at list edges
+        // User should be able to hold arrow key and stay at top/bottom
+        tvNudgeBrowseListRow(delta);
+      });
+    });
+  }
+
+  void stopBrowseListVerticalHold() {
+    _tvBrowseListVerticalHoldInitial?.cancel();
+    _tvBrowseListVerticalHoldPeriodic?.cancel();
+    _tvBrowseListVerticalHoldInitial = null;
+    _tvBrowseListVerticalHoldPeriodic = null;
+  }
+
   void lockBrowseDetailColumn() {
     tvBrowseDetailUnlocked.value = false;
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1261,6 +1365,35 @@ class BrowseController extends GetxController {
     _filteredRowsCallCount++;
     final d = _data!;
     final q = effectiveSearchQuery.value;
+
+    // DEBUG: Çağrı sayısını ve modu izle (sadece debug modda)
+    if (kDebugMode) {
+      debugPrint(
+          'BrowseController.filteredRows: call #$_filteredRowsCallCount (mode: $mode, search: "$q", page: ${seriesCurrentPage.value})');
+    }
+
+    // Cache key: tüm girdileri birleştir (data, search, page, category)
+    final cacheHash = Object.hash(
+      d.hashCode,
+      q.hashCode,
+      selectedCategoryKey.value.hashCode,
+      seriesCurrentPage.value,
+      mode.hashCode,
+    );
+
+    // Cache hit kontrolü
+    if (_filteredRowsCacheHash == cacheHash && _filteredRowsCache != null) {
+      if (kDebugMode) {
+        debugPrint(
+            'BrowseController.filteredRows: CACHE HIT (hash: $cacheHash)');
+      }
+      return _filteredRowsCache!;
+    }
+
+    if (kDebugMode) {
+      debugPrint(
+          'BrowseController.filteredRows: CACHE MISS - Computing... (hash: $cacheHash)');
+    }
 
     // DEBUG: Çağrı sayısını ve modu izle (sadece debug modda)
     if (kDebugMode) {

@@ -732,6 +732,12 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
   static const Duration _liveAutoNextPollInterval = Duration(seconds: 3);
   static const Duration _liveTvStallPollInterval = Duration(seconds: 2);
 
+  /// Canlı: uzun süre gerçek oynatma yoksa (açılmama / kesilme / duraklama) aynı yayını yeniden açmayı dene.
+  Timer? _liveAutoNextPollTimer;
+  DateTime? _liveUnhealthySince;
+  static const Duration _liveAutoNextAfterUnhealthy = Duration(seconds: 38);
+  static const Duration _liveAutoNextPollInterval = Duration(seconds: 2);
+
   final isFading = false.obs;
   final decoderFallbackStep = 0.obs;
   final videoFit = BoxFit.fill.obs;
@@ -1400,6 +1406,10 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
     _mediaKitPlayer = p;
     if (p == null) {
       _mediaKitZapAbrTargetGen = null;
+    }
+
+    if (isClosed) {
+      return;
     }
 
     if (isClosed) {
@@ -2269,6 +2279,45 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
         _uiTimer = null;
       }
     });
+  }
+  
+  void _cancelUnifiedUiTimer() {
+    _uiTimer?.cancel();
+    _uiTimer = null;
+    _tvOsdAutoHideAt = null;
+    _vodAutoplayCountdownStartedAt = null;
+  }
+  
+    
+  void _cancelUnifiedNetworkTimer() {
+    _networkTimer?.cancel();
+    _networkTimer = null;
+  }
+  
+    
+  void _cancelUnifiedProgressTimer() {
+    _progressTimer?.cancel();
+    _progressTimer = null;
+  }
+  
+  /// --- UNIFIED TIMER HELPERS ---
+  
+  void _triggerVodAutoplay() {
+    // VOD autoplay logic buraya gelecek
+    if (vodAutoplayNextTitle.isNotEmpty) {
+      // Sonraki içeriði oynat
+    }
+  }
+  
+  
+  /// OSD’den: yalnızca şu anki canlı kanalın EPG penceresi (yayın sürer).
+  void openLiveSingleChannelEpgOverlay() {
+    if (!_currentStreamIsLive) return;
+    final u = channel.value.streamUrl.toLowerCase();
+    if (u.contains('/movie/') || u.contains('/series/')) return;
+    liveChannelStripOverlayOpen.value = false;
+    hideTvOsdNow();
+    liveSingleChannelEpgOpen.value = true;
   }
 
   void _cancelUnifiedUiTimer() {
@@ -3190,6 +3239,14 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
     } else {
       isFading.value = true;
       await Future.delayed(const Duration(milliseconds: 500));
+    }
+    
+    // TV'de kanal değişiminde sıkışmayı önlemek için fade state'ini hemen sıfırla
+    if (_settings.layoutMode.value.usesRemoteNavigationStyle) {
+      isFading.value = false;
+    }
+    if (!_isPlaybackGenerationCurrent(bootGen)) {
+      return;
     }
 
     // TV'de kanal değişiminde sıkışmayı önlemek için fade state'ini hemen sıfırla

@@ -11,6 +11,7 @@ import '../../core/services/app_settings_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/glass_appearance.dart';
 import 'home_controller.dart';
+import '../../ui/glass_tv_shell.dart';
 import 'widgets/glass_category_card.dart';
 import 'widgets/continue_watching_strip.dart';
 import 'widgets/weekly_marquee.dart';
@@ -968,7 +969,9 @@ class _TvGlassCard extends StatelessWidget {
               curve: Curves.easeOutCubic,
               width: width,
               height: height,
-              child: buildCard(focused),
+              child: GlassTvSheet(
+                child: buildCard(focused),
+              ),
             ),
           );
         },

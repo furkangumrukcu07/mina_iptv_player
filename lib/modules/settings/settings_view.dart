@@ -9,6 +9,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/i18n/theme_label_localized.dart';
 import '../../core/layout/app_layout_mode.dart';
 import '../../core/services/app_settings_service.dart';
+import '../../core/services/speed_test_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/glass_appearance.dart';
 import '../../ui/glass_overlays.dart';

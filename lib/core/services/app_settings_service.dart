@@ -146,6 +146,9 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
 
   /// Canlı / film / dizi listelerinde küçük yayın önizlemesi; varsayılan açık ([ensureLoaded] `?? true`).
   final streamPreviewEnabled = true.obs;
+  
+  /// OSD paneli otomatik gizlenme süresi (TV modu için)
+  final tvOsdAutoHideDuration = 5.obs; // 5 saniye
 
   /// OSD paneli otomatik gizlenme süresi (TV modu için)
   final tvOsdAutoHideDuration = 5.obs; // 5 saniye
@@ -326,6 +329,9 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
       }
     }
     useMediaKit.value = mk;
+    
+    // OSD otomatik gizlenme süresini yükle
+    tvOsdAutoHideDuration.value = p.getInt('mina_settings_tv_osd_auto_hide_duration') ?? 5;
 
     isSetupCompleted.value = p.getBool(_kSetupCompleted) ?? false;
 

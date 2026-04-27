@@ -40,6 +40,9 @@ class PlaylistController extends GetxController {
   final isLoading = false.obs;
   final m3uLocalFileName = RxnString();
   final m3uSecondaryLocalFileName = RxnString();
+  
+  // M3U listesi yüklü mi kontrolü
+  final isM3uLoaded = false.obs;
 
   final canSubmit = false.obs;
 
