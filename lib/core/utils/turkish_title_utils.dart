@@ -1,5 +1,3 @@
-import 'package:intl/intl.dart';
-
 /// Türkçe karakter tespiti ve İngilizce isim dönüşümü için yardımcı fonksiyonlar
 class TurkishTitleUtils {
   TurkishTitleUtils._();

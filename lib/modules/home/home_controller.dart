@@ -7,7 +7,6 @@ import '../../core/services/app_settings_service.dart';
 import '../../core/services/favorites_service.dart';
 import '../../core/services/playlist_cache_service.dart';
 import '../../core/services/playlist_category_hide.dart';
-import '../../core/services/toast_service.dart';
 import '../../domain/entities/channel.dart';
 import '../../domain/entities/m3u_result.dart';
 import '../../domain/entities/series.dart';

@@ -36,20 +36,11 @@ abstract final class AppTheme {
   static const _darkFlatBackgroundBase = 'dark_flat_background';
 
   /// [GlassThemeLabels.darkFlat]: dikey tam ekran görsel.
-  static const _darkFlatBackgroundPortraitBase = 'dark_flat_background_portrait';
-
-  /// [GlassThemeLabels.glassGri]: yatay / dikey gri cam arka plan.
   static const _glassGriBackgroundBase = 'glass_gri_background';
-  static const _glassGriBackgroundPortraitBase = 'glass_gri_background_portrait';
 
-  /// [GlassThemeLabels.flatBlack]: yatay / dikey siyah düz arka plan görselleri.
   static const _flatBlackBackgroundBase = 'flat_black_background';
-  static const _flatBlackBackgroundPortraitBase = 'flat_black_background_portrait';
 
-  /// [GlassThemeLabels.glassmorphism]: yatay / dikey cam arka plan.
   static const _glassmorphismBackgroundBase = 'glassmorphism_background';
-  static const _glassmorphismBackgroundPortraitBase =
-      'glassmorphism_background_portrait';
 
   /// [themeLabel]: [AppSettingsService.themeLabel] (örn. `GlassThemeLabels.koyuCam`).
   static String homeBackgroundAsset(

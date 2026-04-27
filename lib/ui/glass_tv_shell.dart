@@ -1448,7 +1448,6 @@ class _GlassListNumberTileState extends State<GlassListNumberTile> {
                 RepaintBoundary(
                   child: Obx(() {
                     final tl = Get.find<AppSettingsService>().themeLabel.value;
-                    final ga = GlassAppearance.fromLabel(tl);
                     final isFb = tl == GlassThemeLabels.flatBlack;
                     final listTv = widget.tvStrictVerticalList;
                     final dur = listTv

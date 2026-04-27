@@ -94,8 +94,6 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
 
   Player? get _player => _pc.mediaKitPlayer;
 
-  bool _isFirstVolumeTrigger = true;
-
   @override
   void initState() {
     super.initState();
@@ -186,7 +184,6 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
         });
       });
     }
-    _initializeVolumeListener();
     _attachMediaKitListener();
     if (!remoteLayout) {
       _restartHideTimer();
@@ -343,7 +340,6 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
     _safeDisposeWorker(_tvOsdKeyBumpWorker);
     _hideTimer?.cancel();
     _overlayTimer?.cancel();
-    _volumeListener?.cancel();
     _cancelMkSubs();
     _mkListenerTarget = null;
     _mainFocusNode.dispose();
@@ -1615,7 +1611,6 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
                       ),
                     ),
                   ),
-                ),
                 ),
               ),
               Obx(() => AnimatedOpacity(

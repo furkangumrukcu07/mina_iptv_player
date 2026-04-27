@@ -83,8 +83,6 @@ class _TvBetterPlayerControlsState extends State<TvBetterPlayerControls> {
 
   Channel get _channel => Get.find<PlayerController>().channel.value;
 
-  bool _isFirstVolumeTrigger = true;
-
   @override
   void initState() {
     super.initState();
@@ -303,7 +301,6 @@ class _TvBetterPlayerControlsState extends State<TvBetterPlayerControls> {
     _tvOsdKeyBumpWorker?.dispose();
     _hideTimer?.cancel();
     _overlayTimer?.cancel();
-    _volumeListener?.cancel();
     _detachVideoListener();
     _mainFocusNode.dispose();
     _firstOsdButtonFocus.dispose();

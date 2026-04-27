@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
+import '../../core/layout/app_layout_mode.dart';
 import '../../core/services/speed_test_service.dart';
 import '../../core/services/app_settings_service.dart';
 import '../../ui/widgets/speed_test_gauge.dart';
@@ -26,7 +27,10 @@ class _SpeedTestScreenState extends State<SpeedTestScreen> {
     _speedTestService = Get.find<SpeedTestService>();
     _startTestFocusNode = FocusNode();
     _retryFocusNode = FocusNode();
-    _isTvMode = Get.find<AppSettingsService>().layoutMode.value.usesRemoteNavigationStyle;
+    _isTvMode = Get.find<AppSettingsService>()
+        .layoutMode
+        .value
+        .usesRemoteNavigationStyle;
     
     // TV modunda otomatik olarak test butonuna odaklan
     if (_isTvMode) {

@@ -173,14 +173,6 @@ class EpgService extends GetxService {
     return getCurrentProgramme(ch.id.toString());
   }
 
-  /// XMLTV `epg_channel_id` yoksa veya eşleşmezse Xtream `get_all_live_epg` ile gelen
-  /// **[stream_id]** anahtarına düşer.
-  EpgProgramme? getCurrentProgrammeForLiveChannel(Channel ch) {
-    final byXml = getCurrentProgramme(ch.epgChannelId);
-    if (byXml != null) return byXml;
-    return getCurrentProgramme(ch.id.toString());
-  }
-
   List<EpgProgramme> getFullDayProgrammes(String? epgId) {
     final key = epgId?.trim();
     if (key == null || key.isEmpty) return [];

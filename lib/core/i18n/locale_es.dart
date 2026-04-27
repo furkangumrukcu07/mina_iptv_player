@@ -382,7 +382,7 @@ const Map<String, String> kLocalePartialEs = {
   'settings.dialog.bufferSlider': '@n s',
   'settings.dialog.changelogTitle': 'Novedades',
   'settings.dialog.changelogBody':
-      'v1.2.7\n• Reproducción: en vivo con Better; VOD con Exo, MediaKit opcional\n• MediaKit: orden de init y rendimiento; hw mediacodec, búfer\n• Ajustes: MediaKit y previsión activados; persisten al borrar ajustes\n\nY más, consulta notas en inglés en repositorio si hace falta.\n',
+      'v1.9.15\n• Reproducción: en vivo con Better; VOD con Exo, MediaKit opcional\n• MediaKit: orden de init y rendimiento; hw mediacodec, búfer\n• Ajustes: MediaKit y previsión activados; persisten al borrar ajustes\n\nY más, consulta notas en inglés en repositorio si hace falta.\n',
   'settings.dialog.developerTitle': 'Desarrollador',
   'settings.dialog.developerBody': 'Desarrollador: furkangumrukcu',
   'settings.snackbar.content': 'Contenido',

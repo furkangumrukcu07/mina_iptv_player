@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:dio/dio.dart';
@@ -11,7 +10,6 @@ import '../constants/api_constants.dart';
 class MovieService extends GetxService {
   final Dio _dio = Dio();
   final GoogleTranslator _translator = GoogleTranslator();
-  static const String _imdbCachePrefix = 'imdb_id_cache_';
   static const String _transCachePrefix = 'trans_cache_';
 
   /// Cihazın mevcut dil kodunu döner (örn: 'tr', 'de', 'en')
@@ -150,75 +148,6 @@ class MovieService extends GetxService {
       return null;
     } catch (e) {
       print('OMDb API Error (IMDb ID): $e');
-      return null;
-    }
-  }
-
-  /// TMDB API üzerinden yerel dildeki film adıyla IMDb ID bulmaya çalışır.
-  /// Sonuçları yerel hafızaya kaydeder.
-  Future<String?> _findImdbIdFromTmdb(String title, {String? year}) async {
-    if (ApiConstants.tmdbApiKey == 'YOUR_TMDB_API_KEY') return null;
-
-    // Önce ismi temizle ve yılı ayıkla
-    final cleanedData = _cleanNameAndExtractYear(title);
-    final searchName = cleanedData['name'] ?? title;
-    final searchYear = year ?? cleanedData['year'];
-
-    final cacheKey =
-        '$_imdbCachePrefix${searchName.toLowerCase().replaceAll(' ', '_')}';
-
-    try {
-      final prefs = await SharedPreferences.getInstance();
-
-      // 1. Önce yerel cache kontrolü
-      final cachedId = prefs.getString(cacheKey);
-      if (cachedId != null && cachedId.isNotEmpty) {
-        print(
-            '[MovieService] IMDb ID yerel hafızadan (Cache) alındı: $cachedId');
-        return cachedId;
-      }
-
-      print(
-          '[MovieService] TMDB araması başlatıldı: "$searchName" (Yıl: $searchYear)');
-      // 2. Cache'de yoksa TMDB'de ara
-      final searchResponse = await _dio.get(
-        '${ApiConstants.tmdbBaseUrl}/search/movie',
-        queryParameters: {
-          'api_key': ApiConstants.tmdbApiKey,
-          'query': searchName,
-          if (searchYear != null) 'year': searchYear,
-          'language': 'tr-TR', // Yerel dil desteği
-        },
-      );
-
-      if (searchResponse.statusCode == 200 &&
-          searchResponse.data['results'] != null &&
-          (searchResponse.data['results'] as List).isNotEmpty) {
-        final firstResult = searchResponse.data['results'][0];
-        final int tmdbId = firstResult['id'];
-
-        // 3. Bulunan filmin external_ids (IMDb ID) bilgisini al
-        final externalIdsResponse = await _dio.get(
-          '${ApiConstants.tmdbBaseUrl}/movie/$tmdbId/external_ids',
-          queryParameters: {'api_key': ApiConstants.tmdbApiKey},
-        );
-
-        if (externalIdsResponse.statusCode == 200) {
-          final String? imdbId = externalIdsResponse.data['imdb_id'];
-          if (imdbId != null && imdbId.isNotEmpty) {
-            print('[MovieService] TMDB üzerinden IMDb ID bulundu: $imdbId');
-            // 4. Bulunan ID'yi yerel hafızaya kaydet
-            await prefs.setString(cacheKey, imdbId);
-            return imdbId;
-          }
-        }
-        print('[MovieService] TMDB sonucu var ama IMDb ID bulunamadı.');
-      } else {
-        print('[MovieService] TMDB araması sonuç vermedi: "$searchName"');
-      }
-      return null;
-    } catch (e) {
-      print('[MovieService] TMDB Search/Cache Error: $e');
       return null;
     }
   }

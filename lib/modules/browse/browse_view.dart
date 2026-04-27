@@ -3136,7 +3136,6 @@ class _BrowseSeriesEpisodePanelState extends State<_BrowseSeriesEpisodePanel> {
   Widget build(BuildContext context) {
     final controller = widget.controller;
     final primary = Theme.of(context).colorScheme.primary;
-    final fav = Get.find<FavoritesService>();
 
     return GlassTvSheet(
       child: Obx(() {

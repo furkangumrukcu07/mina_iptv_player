@@ -68,7 +68,6 @@ class _GlobalSearchDialogState extends State<GlobalSearchDialog> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     final mq = MediaQuery.of(context);
     final isPortrait = mq.orientation == Orientation.portrait;
 

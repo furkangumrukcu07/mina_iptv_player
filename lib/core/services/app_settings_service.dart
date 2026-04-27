@@ -150,9 +150,6 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
   /// OSD paneli otomatik gizlenme süresi (TV modu için)
   final tvOsdAutoHideDuration = 5.obs; // 5 saniye
 
-  /// OSD paneli otomatik gizlenme süresi (TV modu için)
-  final tvOsdAutoHideDuration = 5.obs; // 5 saniye
-
   /// Android: yayın sırasında ana ekrana geçince PiP (Better/Exo). MediaKit’te kullanılmaz.
   final miniPlayerOnHome = false.obs;
 

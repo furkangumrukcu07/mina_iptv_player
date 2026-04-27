@@ -354,7 +354,7 @@ const Map<String, String> kLocalePartialJa = {
   'settings.dialog.bufferTitle': 'ライブのバッファ',
   'settings.dialog.bufferSlider': '@n 秒',
   'settings.dialog.changelogTitle': 'リリースノート',
-  'settings.dialog.changelogBody': 'v1.2.7\n'
+  'settings.dialog.changelogBody': 'v1.9.15\n'
       '• 再生: ライブは Better。映画/シリーズは既定 Exo、設定で MediaKit 任意\n'
       '• Android MediaKit: 初期化順序の整理（VOD クラッシュ低減）\n'
       '• MediaKit: ハードウェア解読モード、バッファ/パフォーマンス調整\n'

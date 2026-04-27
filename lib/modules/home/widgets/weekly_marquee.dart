@@ -1,11 +1,9 @@
-import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../../../core/layout/app_layout_mode.dart';
 import '../../../core/services/app_settings_service.dart';
-import '../../../core/theme/glass_appearance.dart';
 
 /// Haftalık Sabit Yazı
 /// - Haftanın her günü değişen mesaj gösterir
@@ -42,7 +40,6 @@ class WeeklyMarquee extends StatelessWidget {
 
     return Obx(() {
       final tv = settings.layoutMode.value == AppLayoutMode.tv;
-      final ga = GlassAppearance.fromLabel(settings.themeLabel.value);
 
       return ClipRRect(
         borderRadius: BorderRadius.circular(12),
