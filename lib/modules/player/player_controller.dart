@@ -15,6 +15,7 @@ import 'package:wakelock_plus/wakelock_plus.dart';
 import '../../core/player/better_player_iptv_config.dart';
 import '../../core/player/media_kit_mpv_low_power_display.dart';
 import '../../core/player/media_kit_subtitle_font.dart';
+import '../../core/player/subtitle_font_family.dart';
 import '../../core/player/exo_native_track_option.dart';
 import '../../core/player/iptv_playback_defaults.dart';
 import '../../core/layout/app_layout_mode.dart';
@@ -838,6 +839,70 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
   BetterPlayerSubtitlesSource? get currentSubtitleSource =>
       better?.betterPlayerSubtitlesSource;
 
+  String _normalizeSubtitleToken(String? raw) {
+    return (raw ?? '').trim().toLowerCase();
+  }
+
+  String _subtitleTokenFromBetterSource(BetterPlayerSubtitlesSource src) {
+    return _normalizeSubtitleToken(src.name);
+  }
+
+  bool _subtitleLabelMatchesToken(String label, String token) {
+    if (token.isEmpty) return false;
+    final n = _normalizeSubtitleToken(label);
+    if (n.isEmpty) return false;
+    return n == token || n.contains(token) || token.contains(n);
+  }
+
+  Future<void> _applyVodSubtitleDefaultOrPreferenceForBetter(
+    BetterPlayerController ctrl,
+    int expectedGen,
+  ) async {
+    if (_currentStreamIsLive) return;
+    if (!_settings.vodSubtitleAutoEnabled.value) return;
+    final preferred = _normalizeSubtitleToken(
+      _settings.vodPreferredSubtitleToken.value,
+    );
+    for (var i = 0; i < 6; i++) {
+      if (!_isPlaybackGenerationCurrent(expectedGen)) return;
+      if (!identical(better, ctrl)) return;
+      final sources = ctrl.betterPlayerSubtitlesSourceList;
+      final candidates = sources
+          .where((s) => s.type != BetterPlayerSubtitlesSourceType.none)
+          .toList(growable: false);
+      if (candidates.isNotEmpty) {
+        BetterPlayerSubtitlesSource chosen = candidates.first;
+        if (preferred.isNotEmpty) {
+          final matched = candidates.firstWhereOrNull(
+            (s) => _subtitleLabelMatchesToken(s.name ?? '', preferred),
+          );
+          if (matched != null) chosen = matched;
+        }
+        await setBetterSubtitleSource(chosen);
+        return;
+      }
+      if (canQueryExoNativeTracks) {
+        final exo = await loadExoNativeTracks();
+        if (!_isPlaybackGenerationCurrent(expectedGen)) return;
+        if (!identical(better, ctrl)) return;
+        if (exo.text.isNotEmpty) {
+          var chosen = exo.text.first;
+          if (preferred.isNotEmpty) {
+            final matched = exo.text.firstWhereOrNull(
+              (t) =>
+                  _subtitleLabelMatchesToken(t.language, preferred) ||
+                  _subtitleLabelMatchesToken(t.label, preferred),
+            );
+            if (matched != null) chosen = matched;
+          }
+          await selectExoNativeTextTrack(chosen);
+          return;
+        }
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 350));
+    }
+  }
+
   Future<void> setBetterSubtitleSource(
     BetterPlayerSubtitlesSource src, {
     bool disableEmbeddedExoSubtitles = true,
@@ -851,6 +916,12 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
     if (!canQueryExoNativeTracks) return;
     final t = src.type;
     if (t != null && t != BetterPlayerSubtitlesSourceType.none) {
+      if (!_currentStreamIsLive) {
+        final token = _subtitleTokenFromBetterSource(src);
+        if (token.isNotEmpty) {
+          unawaited(_settings.setVodPreferredSubtitleToken(token));
+        }
+      }
       await disableExoNativeTextTracks();
     }
   }
@@ -927,6 +998,14 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
       );
       better!.setExoEmbeddedSubtitlesActive(true);
       await better!.selectExoPlayerTrack(opt.tracksGroupIndex, opt.trackIndex);
+      if (!_currentStreamIsLive) {
+        final token = _normalizeSubtitleToken(
+          opt.language.isNotEmpty ? opt.language : opt.label,
+        );
+        if (token.isNotEmpty) {
+          unawaited(_settings.setVodPreferredSubtitleToken(token));
+        }
+      }
     } catch (_) {}
   }
 
@@ -974,6 +1053,14 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
       final t = picked;
       if (t == null) return;
       await player.setSubtitleTrack(t);
+      if (!_currentStreamIsLive) {
+        final token = _normalizeSubtitleToken(
+          (t.language?.trim().isNotEmpty == true) ? t.language : t.title,
+        );
+        if (token.isNotEmpty) {
+          unawaited(_settings.setVodPreferredSubtitleToken(token));
+        }
+      }
     } catch (_) {}
   }
 
@@ -1458,7 +1545,11 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
       }
 
       unawaited(
-        applyMediaKitSubtitleFontPt(p, _settings.subtitleFontPt.value),
+        applyMediaKitSubtitleFontPt(
+          p,
+          _settings.subtitleFontPt.value,
+          fontFamilyKey: _settings.subtitleFontFamilyKey.value,
+        ),
       );
       if (_currentStreamIsLive) {
         unawaited(_tryLiveZapAbrRampsMediaKit(p));
@@ -3046,7 +3137,11 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
     final mk = _mediaKitPlayer;
     if (mk != null) {
       unawaited(
-        applyMediaKitSubtitleFontPt(mk, _settings.subtitleFontPt.value),
+        applyMediaKitSubtitleFontPt(
+          mk,
+          _settings.subtitleFontPt.value,
+          fontFamilyKey: _settings.subtitleFontFamilyKey.value,
+        ),
       );
     }
     final b = better;
@@ -3058,6 +3153,8 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
   BetterPlayerSubtitlesConfiguration _betterSubtitleConfiguration() {
     return BetterPlayerSubtitlesConfiguration(
       fontSize: _settings.subtitleFontPt.value,
+      fontFamily:
+          betterPlayerSubtitleFontFamilyFor(_settings.subtitleFontFamilyKey.value),
     );
   }
 
@@ -3533,6 +3630,7 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
         if (Platform.isAndroid && !live) {
           _scheduleAndroidVodAudioFix(ctrl, expectedGen);
         }
+        unawaited(_applyVodSubtitleDefaultOrPreferenceForBetter(ctrl, expectedGen));
         _startBetterBusyHoldFirstFrame(ctrl, expectedGen, vodSession);
         return;
       }
@@ -3647,6 +3745,7 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
       if (Platform.isAndroid && !live) {
         _scheduleAndroidVodAudioFix(ctrl, expectedGen);
       }
+      unawaited(_applyVodSubtitleDefaultOrPreferenceForBetter(ctrl, expectedGen));
       _startBetterBusyHoldFirstFrame(ctrl, expectedGen, vodSession);
     } catch (e) {
       if (!_isPlaybackGenerationCurrent(expectedGen)) {

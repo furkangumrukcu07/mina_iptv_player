@@ -13,6 +13,49 @@
 
 ---
 
+## 1.9.20 (build 3119)
+
+- **Gözlemlenebilirlik (production):** İsteğe bağlı **Sentry** entegrasyonu (`--dart-define=SENTRY_DSN=...`). DSN verilmezse SDK başlatılmaz.
+- **Sorun bildir:** E-posta gövdesine otomatik tanı özeti eklendi (uygulama sürümü, paket adı, cihaz/OS, düzen ve dil). `device_info_plus` kullanıldı.
+- **Ayarlar:** “Yardım & Destek” yerine **Telegram Adresimiz**; altına **Sorun Bildir** kartı (`mailto:furkangumrukcu07@gmail.com`). Sentry aktifken kullanıcı bildirimi breadcrumb olarak işlenir.
+- **Android derleme:** Flutter eklentilerinde eski Kotlin dil hedefinden kaynaklanan derleme uyarısı için kök `build.gradle.kts` ile Kotlin dil/API hedefi hizalandı (`sentry_flutter` dahil).
+
+## 1.9.19 (build 3118)
+
+- **Dikey OSD (Better):** VOD/dizi modunda `HQ`, dil ve altyazı aksiyonlarının popup akışı güçlendirildi.
+- **Dikey/Yatay OSD (MediaKit):** canlı yayında `CC` altyazı ikonu gizlendi.
+- **Dikey OSD buton sırası:** oynatıcı geçiş butonu (`M`/`B`) en sağa taşındı.
+- **VOD altyazı tercihi:** seçilen altyazı dili kalıcı hale getirildi; sonraki film/dizilerde otomatik uygulanır.
+- **Kararlılık:** quality/audio/subtitle menülerinde seçenek yok durumları popup bilgi ekranı ile tutarlılaştırıldı.
+
+## 1.9.18 (build 3117)
+
+- **Mobil kurulum sihirbazı:** Son adımda “Kurulumu bitir” artık M3U dosya/URL veya Xtream bilgileri girildiyse otomatik liste yüklemeyi tetikler.
+- **Kurulum tamamlama akışı:** Liste başarıyla yüklendiğinde doğrudan ana ekrana geçiş sağlandı.
+- **Tema güncellemesi:** Mor tema/vurgu renkleri global olarak `#21E6EB` rengine taşındı.
+- **Ana ekran görsel iyileştirme:** Kartlarda ince beyaz kenarlık + iç gölge ile cam hissi güçlendirildi (dinamik arka plan efekti kaldırıldı).
+- **OSD düzenlemeleri:** Dikey/yatay OSD’de canlı yayın için `CC` ikonları gizlendi; motor geçiş (`M`/`B`) butonları sıranın sonuna alındı.
+- **Kalite/Ses/Altyazı menüleri:** Dikey Better OSD’de `HQ`, dil ve altyazı aksiyonlarının popup akışı düzeltildi.
+- **VOD altyazı tercihi:** Varsayılan altyazı seçimi etkinleştirildi; kullanıcı seçtiği altyazı dili sonraki film/dizilerde otomatik uygulanır.
+
+## 1.9.17 (build 3116)
+
+- **Dil desteği genişletildi:** Portekizce (`pt`) ve Endonezce (`id`) eklendi.
+- **İlk kurulum sihirbazı:** Mobil setup dil adımına Portekizce ve Endonezce seçenekleri dahil edildi.
+- **Ayarlar dil menüsü:** Uygulama dili listesindeki yeni diller seçilebilir hale getirildi.
+- **Locale eşleme:** Cihaz dili algılama (`languageCodeFromDeviceLocale`) ve `supportedLocales` yeni dilleri kapsayacak şekilde güncellendi.
+- **i18n sözlükleri:** Yeni diller için çeviri partial map’leri eklendi; eksik anahtarlar İngilizce fallback ile güvenli çalışır.
+
+## 1.9.16 (build 3115)
+
+- **Ayarlar — oynatıcı motoru kartı:** “MediaKit kullan” satırı daha anlaşılır hale getirildi; açıklama metni Better Player / MediaKit seçim durumunu net gösterir.
+- **Ayarlar — uygulama fontu seçimi:** Yeni “Uygulama Fontu” kartı eklendi. Seçim tüm uygulama metinlerine uygulanır ve kalıcı olarak saklanır.
+- **Font seçenekleri:** Sony (TV tarzı), Roboto, Noto Sans ve Monospace seçenekleri eklendi (telif riski olmayan / açık lisanslı aileler).
+- **TV D-pad odak:** Font seçim menüsünde satırlar ile İptal/Kaydet aksiyonları kumandayla tam odaklanabilir hale getirildi.
+- **Dikey detay önizleme görseli:** Köşe yumuşatma ile çakışan üst keskin gölge/gradient katmanı düzeltildi; önizleme paneli ile uyumlu clipping sağlandı.
+- **Dikey oynatıcı OSD:** Yayın yüzeyi açılmasa bile mevcut OSD paneli ve butonları görünür kalacak şekilde koşullar düzeltildi.
+- **Ayarlar görsel tutarlılık:** 16 ve 17. kartların sağ üst göstergeleri, uygulamadaki diğer ayar kartlarıyla aynı ikon diline geri alındı.
+
 ## 1.9.13 (build 3112)
 
 - **Kurulum sihirbazı (TV):** Yeni TV kurulumu ekranı (blur + cam tema) ve 3 yöntem (M3U URL, M3U dosya, Xtream) akışı tamamlandı; ilk açılışta yöntemler daraltılmış gelir, seçimde genişler. Demo modu eklendi.

@@ -276,10 +276,10 @@ class _ContinueWatchingCardState extends State<_ContinueWatchingCard> {
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(cardR),
         border: Border.all(
-          width: 1,
+          width: 0.5,
           color: _isFocused
               ? Colors.white.withValues(alpha: 0.8)
-              : ga.homeCategoryCardNeutralBorder(isPortrait),
+              : Colors.white.withValues(alpha: 0.26),
         ),
         boxShadow: [
           BoxShadow(
@@ -339,18 +339,49 @@ class _ContinueWatchingCardState extends State<_ContinueWatchingCard> {
                     ),
                   ),
 
+            Positioned.fill(
+              child: IgnorePointer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(clipInner),
+                    border: Border.all(
+                      width: 0.5,
+                      color: Colors.white.withValues(alpha: 0.2),
+                    ),
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      stops: const [0.0, 0.22, 0.8, 1.0],
+                      colors: [
+                        Colors.white.withValues(alpha: 0.08),
+                        Colors.transparent,
+                        Colors.transparent,
+                        Colors.black.withValues(alpha: 0.10),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
+
             // İlerleme çubuğu
             Positioned(
-              bottom: 0,
-              left: 0,
-              right: 0,
-              child: LinearProgressIndicator(
-                value: widget.item.progressPercent / 100,
-                backgroundColor: Colors.white.withValues(alpha: 0.2),
-                valueColor: AlwaysStoppedAnimation<Color>(
-                  Colors.red.withValues(alpha: 0.8),
+              bottom: 4,
+              left: 10,
+              right: 10,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(999),
+                child: LinearProgressIndicator(
+                  value: (widget.item.progressPercent / 100).clamp(0.0, 1.0),
+                  backgroundColor: Colors.white.withValues(alpha: 0.18),
+                  valueColor: AlwaysStoppedAnimation<Color>(
+                    Theme.of(context)
+                        .colorScheme
+                        .primary
+                        .withValues(alpha: 0.92),
+                  ),
+                  minHeight: 2,
                 ),
-                minHeight: 3,
               ),
             ),
 
@@ -369,27 +400,6 @@ class _ContinueWatchingCardState extends State<_ContinueWatchingCard> {
                   fontWeight: FontWeight.w800,
                   height: 1.12,
                   letterSpacing: 0.1,
-                ),
-              ),
-            ),
-
-            // İlerleme yüzdesi
-            Positioned(
-              top: 10,
-              right: 10,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.4),
-                  borderRadius: BorderRadius.circular(4),
-                ),
-                child: Text(
-                  '${widget.item.progressPercent.toInt()}%',
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.9),
-                    fontSize: 9,
-                    fontWeight: FontWeight.w600,
-                  ),
                 ),
               ),
             ),
@@ -517,10 +527,10 @@ class _SuggestedLiveCardState extends State<_SuggestedLiveCard> {
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(cardR),
         border: Border.all(
-          width: 1,
+          width: 0.5,
           color: _isFocused
               ? Colors.white.withValues(alpha: 0.8)
-              : ga.homeCategoryCardNeutralBorder(isPortrait),
+              : Colors.white.withValues(alpha: 0.26),
         ),
         boxShadow: [
           BoxShadow(
@@ -579,6 +589,31 @@ class _SuggestedLiveCardState extends State<_SuggestedLiveCard> {
                       child: _buildPlaceholder(Icons.tv_rounded),
                     ),
                   ),
+
+            Positioned.fill(
+              child: IgnorePointer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(clipInner),
+                    border: Border.all(
+                      width: 0.5,
+                      color: Colors.white.withValues(alpha: 0.2),
+                    ),
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      stops: const [0.0, 0.22, 0.8, 1.0],
+                      colors: [
+                        Colors.white.withValues(alpha: 0.08),
+                        Colors.transparent,
+                        Colors.transparent,
+                        Colors.black.withValues(alpha: 0.10),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            ),
 
             // LIVE badge
             Positioned(

@@ -1141,7 +1141,8 @@ class _PortraitOsdPanelState extends State<_PortraitOsdPanel> {
             widget.controller.mediaKitAttachEpoch.value;
           }
 
-          if (bp == null && !useMediaKitPlayer) return const SizedBox.shrink();
+          // Dikey modda yayın açılmasa bile OSD paneli görünür kalsın.
+          // Böylece kullanıcı "akış açılıyor" durumunda paneli kaybetmez.
           // Dikey mod: OSD cam şeridine maksimum genişlik (yatay tam ekran OSD’ye dokunulmaz).
           return Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -1297,27 +1298,10 @@ class _PortraitOsdPanelState extends State<_PortraitOsdPanel> {
                                       tv: useTvOsdStyle,
                                     ),
                                   ),
-                                Obx(() {
-                                  widget.controller.betterOsdOverride.value;
-                                  Get.find<AppSettingsService>()
-                                      .useMediaKit
-                                      .value;
-                                  widget
-                                      .controller.mediaKitFallbackSession.value;
-                                  if (widget.controller.effectiveUseMediaKit) {
-                                    return const SizedBox.shrink();
-                                  }
-                                  return _osdAction(
-                                    letter: 'M',
-                                    onTap: () => unawaited(
-                                      widget.controller.switchToBackupPlayer(),
-                                    ),
-                                    tv: useTvOsdStyle,
-                                  );
-                                }),
                                 _osdAction(
                                   icon: Icons.high_quality_rounded,
-                                  onTap: () => _showQualityMenu(context),
+                                  onTap: () =>
+                                      unawaited(_showQualityMenu(context)),
                                   tv: useTvOsdStyle,
                                 ),
                                 if (!isLive) ...[
@@ -1383,9 +1367,146 @@ class _PortraitOsdPanelState extends State<_PortraitOsdPanel> {
                                     ),
                                   );
                                 }),
+                                Obx(() {
+                                  widget.controller.betterOsdOverride.value;
+                                  Get.find<AppSettingsService>()
+                                      .useMediaKit
+                                      .value;
+                                  widget
+                                      .controller.mediaKitFallbackSession.value;
+                                  if (widget.controller.effectiveUseMediaKit) {
+                                    return const SizedBox.shrink();
+                                  }
+                                  return _osdAction(
+                                    letter: 'M',
+                                    onTap: () => unawaited(
+                                      widget.controller.switchToBackupPlayer(),
+                                    ),
+                                    tv: useTvOsdStyle,
+                                  );
+                                }),
                               ],
                             );
                           },
+                        )
+                      else if (!useMediaKitPlayer)
+                        _osdControlRow(
+                          tv: useTvOsdStyle,
+                          children: [
+                            _osdAction(
+                              icon: Icons.fast_rewind_rounded,
+                              onTap: () => isLive &&
+                                      !widget.controller.liveTimeshiftSeekAvailable
+                                  ? _zap(-1)
+                                  : _skip(-15),
+                              tv: useTvOsdStyle,
+                              autofocus: useTvOsdStyle,
+                            ),
+                            _osdAction(
+                              icon: Icons.play_arrow_rounded,
+                              onTap: () => widget.controller.play(),
+                              primary: true,
+                              tv: useTvOsdStyle,
+                            ),
+                            _osdAction(
+                              icon: Icons.fast_forward_rounded,
+                              onTap: () => isLive &&
+                                      !widget.controller.liveTimeshiftSeekAvailable
+                                  ? _zap(1)
+                                  : _skip(15),
+                              tv: useTvOsdStyle,
+                            ),
+                            _osdAction(
+                              icon: favOn
+                                  ? Icons.favorite_rounded
+                                  : Icons.favorite_border_rounded,
+                              onTap: () =>
+                                  isLive ? _fav.toggleChannel(ch.id) : _fav.toggleVod(ch.id),
+                              tv: useTvOsdStyle,
+                            ),
+                            if (quickMenuBadge)
+                              Tooltip(
+                                message: 'player.tooltip.quickMenuOpen'.tr,
+                                child: _osdAction(
+                                  icon: Icons.view_sidebar_rounded,
+                                  onTap: _openQuickMenuFromPortraitOsd,
+                                  tv: useTvOsdStyle,
+                                ),
+                              ),
+                            _osdAction(
+                              icon: Icons.high_quality_rounded,
+                              onTap: () =>
+                                  unawaited(_showQualityMenu(context)),
+                              tv: useTvOsdStyle,
+                            ),
+                            if (!isLive) ...[
+                              _osdAction(
+                                icon: Icons.audiotrack_rounded,
+                                onTap: () => unawaited(_showAudioMenu(context)),
+                                tv: useTvOsdStyle,
+                              ),
+                              _osdAction(
+                                icon: Icons.closed_caption_rounded,
+                                onTap: () => unawaited(_showSubtitleMenu(context)),
+                                tv: useTvOsdStyle,
+                              ),
+                            ],
+                            if (Platform.isAndroid || Platform.isIOS)
+                              Obx(() {
+                                Get.find<AppSettingsService>().layoutMode.value;
+                                widget.controller.mediaKitFallbackSession.value;
+                                Get.find<AppSettingsService>().useMediaKit.value;
+                                if (widget.controller.effectiveUseMediaKit ||
+                                    Get.find<AppSettingsService>().layoutMode.value ==
+                                        AppLayoutMode.tv) {
+                                  return const SizedBox.shrink();
+                                }
+                                return _osdAction(
+                                  icon: Icons.picture_in_picture_alt_rounded,
+                                  onTap: () => unawaited(
+                                    widget.controller.enterPictureInPictureIfSupported(),
+                                  ),
+                                  tv: useTvOsdStyle,
+                                );
+                              }),
+                            Obx(() {
+                              final s = Get.find<AppSettingsService>();
+                              if (s.layoutMode.value != AppLayoutMode.mobile) {
+                                return const SizedBox.shrink();
+                              }
+                              final toPortrait = landscape;
+                              return Tooltip(
+                                message: toPortrait
+                                    ? 'player.tooltip.toPortrait'.tr
+                                    : 'player.tooltip.toLandscape'.tr,
+                                child: _osdAction(
+                                  icon: toPortrait
+                                      ? Icons.stay_current_portrait_rounded
+                                      : Icons.screen_rotation_rounded,
+                                  onTap: () => unawaited(
+                                    PlaybackOrientationManager
+                                        .toggleMobileForcedOrientation(),
+                                  ),
+                                  tv: useTvOsdStyle,
+                                ),
+                              );
+                            }),
+                            Obx(() {
+                              widget.controller.betterOsdOverride.value;
+                              Get.find<AppSettingsService>().useMediaKit.value;
+                              widget.controller.mediaKitFallbackSession.value;
+                              if (widget.controller.effectiveUseMediaKit) {
+                                return const SizedBox.shrink();
+                              }
+                              return _osdAction(
+                                letter: 'M',
+                                onTap: () => unawaited(
+                                  widget.controller.switchToBackupPlayer(),
+                                ),
+                                tv: useTvOsdStyle,
+                              );
+                            }),
+                          ],
                         )
                       else if (useMediaKitPlayer)
                         _MediaKitPortraitStreamBuilder(
@@ -1457,19 +1578,13 @@ class _PortraitOsdPanelState extends State<_PortraitOsdPanel> {
                                       onTap: () => _showMkAudioMenu(context),
                                       tv: useTvOsdStyle,
                                     ),
-                                    _osdAction(
-                                      icon: Icons.closed_caption_rounded,
-                                      onTap: () => _showMkSubtitleMenu(context),
-                                      tv: useTvOsdStyle,
-                                    ),
-                                    _osdAction(
-                                      letter: 'B',
-                                      onTap: () => unawaited(
-                                        widget.controller
-                                            .promptSwitchToBetterFromMediaKit(),
+                                    if (!isLive)
+                                      _osdAction(
+                                        icon: Icons.closed_caption_rounded,
+                                        onTap: () =>
+                                            _showMkSubtitleMenu(context),
+                                        tv: useTvOsdStyle,
                                       ),
-                                      tv: useTvOsdStyle,
-                                    ),
                                     Obx(() {
                                       final s = Get.find<AppSettingsService>();
                                       if (s.layoutMode.value !=
@@ -1494,6 +1609,14 @@ class _PortraitOsdPanelState extends State<_PortraitOsdPanel> {
                                         ),
                                       );
                                     }),
+                                    _osdAction(
+                                      letter: 'B',
+                                      onTap: () => unawaited(
+                                        widget.controller
+                                            .promptSwitchToBetterFromMediaKit(),
+                                      ),
+                                      tv: useTvOsdStyle,
+                                    ),
                                   ],
                                 ),
                               ],
@@ -1550,11 +1673,7 @@ class _PortraitOsdPanelState extends State<_PortraitOsdPanel> {
     final tracks = widget.controller.mediaKitVideoTrackLabels();
     if (!context.mounted) return;
     if (tracks.length <= 1) {
-      GlassSnackbar.show(
-        'player.warn.title'.tr,
-        'player.warn.qualityShort'.tr,
-        snackPosition: SnackPosition.BOTTOM,
-      );
+      await _showQualityUnavailableSheet(context);
       return;
     }
     final list = tracks.entries.toList()
@@ -1594,10 +1713,10 @@ class _PortraitOsdPanelState extends State<_PortraitOsdPanel> {
     final exo = await widget.controller.loadExoNativeTracks();
     if (!context.mounted) return;
     if (exo.audio.isEmpty) {
-      GlassSnackbar.show(
-        'player.warn.title'.tr,
-        'player.audio.noneShort'.tr,
-        snackPosition: SnackPosition.BOTTOM,
+      await _showInfoSheet(
+        context,
+        title: 'player.sheet.audioTitle'.tr,
+        body: 'player.audio.noneLong'.tr,
       );
       return;
     }
@@ -1620,10 +1739,10 @@ class _PortraitOsdPanelState extends State<_PortraitOsdPanel> {
       (s) => s.type != BetterPlayerSubtitlesSourceType.none,
     );
     if (!hasExternal && exo.text.isEmpty) {
-      GlassSnackbar.show(
-        'player.warn.title'.tr,
-        'player.subtitle.noneShort'.tr,
-        snackPosition: SnackPosition.BOTTOM,
+      await _showInfoSheet(
+        context,
+        title: 'player.sheet.subtitleTitle'.tr,
+        body: 'player.subtitle.noneLong'.tr,
       );
       return;
     }
@@ -1675,24 +1794,69 @@ class _PortraitOsdPanelState extends State<_PortraitOsdPanel> {
     );
   }
 
-  void _showQualityMenu(BuildContext context) {
+  Future<void> _showQualityMenu(BuildContext context) async {
     final tracks = widget.controller.availableTracks;
     if (tracks.isEmpty) {
-      GlassSnackbar.show(
-        'player.warn.title'.tr,
-        'player.warn.qualityShort'.tr,
-        snackPosition: SnackPosition.BOTTOM,
-      );
+      await _showQualityUnavailableSheet(context);
       return;
     }
 
-    showModalBottomSheet(
+    if (!context.mounted) return;
+    await showModalBottomSheet(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (context) => _QualitySelectionSheet(
         controller: widget.controller,
         tracks: tracks,
+      ),
+    );
+  }
+
+  Future<void> _showQualityUnavailableSheet(BuildContext context) async {
+    await _showInfoSheet(
+      context,
+      title: 'player.sheet.qualityTitle'.tr,
+      body: 'player.quality.noneLong'.tr,
+    );
+  }
+
+  Future<void> _showInfoSheet(
+    BuildContext context, {
+    required String title,
+    required String body,
+  }) async {
+    if (!context.mounted) return;
+    await showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) => GlassPopupPanel(
+        borderRadius: 20,
+        padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              title,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              body,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.9),
+                fontSize: 13,
+                height: 1.35,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

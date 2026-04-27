@@ -415,7 +415,7 @@ final class GlassAppearance {
       return const Color(0xFF2E2E38);
     }
     if (isDarkFlat) {
-      return const Color(0xFF3D2D52).withValues(alpha: 0.55);
+      return const Color(0xFF21E6EB).withValues(alpha: 0.32);
     }
     return Colors.white.withValues(alpha: isDarkGlass ? 0.07 : 0.1);
   }
@@ -447,7 +447,7 @@ final class GlassAppearance {
     }
     if (isDarkFlat) {
       return softSelected
-          ? const Color(0xFF9333EA).withValues(alpha: 0.75)
+          ? const Color(0xFF21E6EB).withValues(alpha: 0.75)
           : const Color(0xFF353543);
     }
     return Colors.white.withValues(

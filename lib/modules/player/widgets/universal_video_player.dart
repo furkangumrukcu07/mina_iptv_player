@@ -223,6 +223,8 @@ class _UniversalVideoPlayerState extends State<UniversalVideoPlayer> {
         await applyMediaKitSubtitleFontPt(
           player,
           Get.find<AppSettingsService>().subtitleFontPt.value,
+          fontFamilyKey:
+              Get.find<AppSettingsService>().subtitleFontFamilyKey.value,
         );
       }
     } catch (e, st) {

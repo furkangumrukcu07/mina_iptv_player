@@ -1006,6 +1006,7 @@ class _DetailGlassPanel extends StatelessWidget {
               listenable: controller.detailPreviewFocusNode,
               builder: (context, _) {
                 final pv = controller.detailPreviewFocusNode.hasFocus;
+                final previewRadius = portrait ? 18.0 : 10.0;
                 return Stack(
                   clipBehavior: Clip.none,
                   alignment: Alignment.center,
@@ -1027,7 +1028,7 @@ class _DetailGlassPanel extends StatelessWidget {
                         child: IgnorePointer(
                           child: DecoratedBox(
                             decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(10),
+                              borderRadius: BorderRadius.circular(previewRadius),
                               border: Border.all(
                                 color: Colors.white.withValues(alpha: 0.88),
                                 width: 2,
@@ -1078,21 +1079,30 @@ class _DetailGlassPanel extends StatelessWidget {
                               top: 0,
                               left: 0,
                               right: 0,
-                              child: DecoratedBox(
-                                decoration: BoxDecoration(
-                                  gradient: LinearGradient(
-                                    begin: Alignment.topCenter,
-                                    end: Alignment.bottomCenter,
-                                    colors: [
-                                      Colors.black.withValues(alpha: 0.55),
-                                      Colors.black.withValues(alpha: 0.0),
-                                    ],
+                              child: Align(
+                                alignment: Alignment.topCenter,
+                                child: SizedBox(
+                                  width: innerW,
+                                  child: ClipRRect(
+                                    borderRadius: BorderRadius.circular(18),
+                                    child: DecoratedBox(
+                                      decoration: BoxDecoration(
+                                        gradient: LinearGradient(
+                                          begin: Alignment.topCenter,
+                                          end: Alignment.bottomCenter,
+                                          colors: [
+                                            Colors.black.withValues(alpha: 0.55),
+                                            Colors.black.withValues(alpha: 0.0),
+                                          ],
+                                        ),
+                                      ),
+                                      child: Padding(
+                                        padding:
+                                            const EdgeInsets.fromLTRB(6, 6, 6, 20),
+                                        child: headerRow(),
+                                      ),
+                                    ),
                                   ),
-                                ),
-                                child: Padding(
-                                  padding:
-                                      const EdgeInsets.fromLTRB(6, 6, 6, 20),
-                                  child: headerRow(),
                                 ),
                               ),
                             ),

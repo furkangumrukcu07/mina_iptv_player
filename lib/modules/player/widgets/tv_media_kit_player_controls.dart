@@ -1507,18 +1507,21 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
                                               },
                                             ),
                                             const SizedBox(width: 6),
-                                            _osdButton(
-                                              context,
-                                              tooltip:
-                                                  'player.tooltip.subtitle'.tr,
-                                              icon:
-                                                  Icons.closed_caption_rounded,
-                                              onPressed: () {
-                                                unawaited(
-                                                    _showSubtitleDialog());
-                                              },
-                                            ),
-                                            const SizedBox(width: 6),
+                                            if (!live) ...[
+                                              _osdButton(
+                                                context,
+                                                tooltip:
+                                                    'player.tooltip.subtitle'
+                                                        .tr,
+                                                icon: Icons
+                                                    .closed_caption_rounded,
+                                                onPressed: () {
+                                                  unawaited(
+                                                      _showSubtitleDialog());
+                                                },
+                                              ),
+                                              const SizedBox(width: 6),
+                                            ],
                                             _osdButton(
                                               context,
                                               tooltip:

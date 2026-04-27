@@ -3,6 +3,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../../core/constants/playlist_storage.dart';
@@ -11,6 +12,8 @@ import '../../core/i18n/app_locale.dart';
 import '../../core/i18n/theme_label_localized.dart';
 import '../../core/routes/app_routes.dart';
 import '../../core/services/app_settings_service.dart';
+import '../../core/services/crash_reporting.dart';
+import '../../core/services/support_diagnostics.dart';
 import '../../core/player/adaptive_stream_quality_ceiling.dart';
 import '../../core/epg/catch_up_url_template.dart';
 import '../../core/services/epg_service.dart';
@@ -27,6 +30,7 @@ import '../browse/browse_controller.dart';
 import '../channels/channels_controller.dart';
 import '../../ui/glass_overlays.dart';
 import 'subtitle_font_picker_dialog.dart';
+import 'subtitle_font_family_picker_dialog.dart';
 
 class SettingsController extends GetxController {
   final _repo = Get.find<PlaylistRepository>();
@@ -612,6 +616,123 @@ class SettingsController extends GetxController {
                 },
               ),
             ),
+            Obx(
+              () => GlassListTile(
+                title: Text('common.lang.ko'.tr),
+                trailing: _app.languageCode.value == 'ko'
+                    ? const Icon(Icons.check_rounded, color: Colors.white)
+                    : null,
+                selected: _app.languageCode.value == 'ko',
+                onTap: () async {
+                  await _app.setLanguageCode('ko');
+                  if (c.mounted) Navigator.pop(c);
+                },
+              ),
+            ),
+            Obx(
+              () => GlassListTile(
+                title: Text('common.lang.he'.tr),
+                trailing: _app.languageCode.value == 'he'
+                    ? const Icon(Icons.check_rounded, color: Colors.white)
+                    : null,
+                selected: _app.languageCode.value == 'he',
+                onTap: () async {
+                  await _app.setLanguageCode('he');
+                  if (c.mounted) Navigator.pop(c);
+                },
+              ),
+            ),
+            Obx(
+              () => GlassListTile(
+                title: Text('common.lang.da'.tr),
+                trailing: _app.languageCode.value == 'da'
+                    ? const Icon(Icons.check_rounded, color: Colors.white)
+                    : null,
+                selected: _app.languageCode.value == 'da',
+                onTap: () async {
+                  await _app.setLanguageCode('da');
+                  if (c.mounted) Navigator.pop(c);
+                },
+              ),
+            ),
+            Obx(
+              () => GlassListTile(
+                title: Text('common.lang.sv'.tr),
+                trailing: _app.languageCode.value == 'sv'
+                    ? const Icon(Icons.check_rounded, color: Colors.white)
+                    : null,
+                selected: _app.languageCode.value == 'sv',
+                onTap: () async {
+                  await _app.setLanguageCode('sv');
+                  if (c.mounted) Navigator.pop(c);
+                },
+              ),
+            ),
+            Obx(
+              () => GlassListTile(
+                title: Text('common.lang.hi'.tr),
+                trailing: _app.languageCode.value == 'hi'
+                    ? const Icon(Icons.check_rounded, color: Colors.white)
+                    : null,
+                selected: _app.languageCode.value == 'hi',
+                onTap: () async {
+                  await _app.setLanguageCode('hi');
+                  if (c.mounted) Navigator.pop(c);
+                },
+              ),
+            ),
+            Obx(
+              () => GlassListTile(
+                title: Text('common.lang.th'.tr),
+                trailing: _app.languageCode.value == 'th'
+                    ? const Icon(Icons.check_rounded, color: Colors.white)
+                    : null,
+                selected: _app.languageCode.value == 'th',
+                onTap: () async {
+                  await _app.setLanguageCode('th');
+                  if (c.mounted) Navigator.pop(c);
+                },
+              ),
+            ),
+            Obx(
+              () => GlassListTile(
+                title: Text('common.lang.it'.tr),
+                trailing: _app.languageCode.value == 'it'
+                    ? const Icon(Icons.check_rounded, color: Colors.white)
+                    : null,
+                selected: _app.languageCode.value == 'it',
+                onTap: () async {
+                  await _app.setLanguageCode('it');
+                  if (c.mounted) Navigator.pop(c);
+                },
+              ),
+            ),
+            Obx(
+              () => GlassListTile(
+                title: Text('common.lang.pt'.tr),
+                trailing: _app.languageCode.value == 'pt'
+                    ? const Icon(Icons.check_rounded, color: Colors.white)
+                    : null,
+                selected: _app.languageCode.value == 'pt',
+                onTap: () async {
+                  await _app.setLanguageCode('pt');
+                  if (c.mounted) Navigator.pop(c);
+                },
+              ),
+            ),
+            Obx(
+              () => GlassListTile(
+                title: Text('common.lang.id'.tr),
+                trailing: _app.languageCode.value == 'id'
+                    ? const Icon(Icons.check_rounded, color: Colors.white)
+                    : null,
+                selected: _app.languageCode.value == 'id',
+                onTap: () async {
+                  await _app.setLanguageCode('id');
+                  if (c.mounted) Navigator.pop(c);
+                },
+              ),
+            ),
           ],
         ),
       ),
@@ -1110,6 +1231,28 @@ class SettingsController extends GetxController {
     );
   }
 
+  Future<void> showAppFontFamilyDialog() async {
+    final ctx = Get.context;
+    if (ctx == null) return;
+    await showDialog<void>(
+      context: ctx,
+      builder: (dialogContext) => SubtitleFontFamilyPickerDialog(
+        initialKey: _app.appFontFamilyKey.value,
+        tvRemote: _app.layoutMode.value.usesRemoteNavigationStyle,
+        tvOsdStyle: _app.layoutMode.value == AppLayoutMode.tv,
+        title: 'Uygulama Fontu',
+        hint: 'Tum uygulama arayuzu icin font secimi.',
+        onCancel: () => Navigator.of(dialogContext).pop(),
+        onSave: (key) async {
+          await _app.setAppFontFamilyKey(key);
+          if (dialogContext.mounted) {
+            Navigator.of(dialogContext).pop();
+          }
+        },
+      ),
+    );
+  }
+
   void showAboutApp() {
     final ctx = Get.context;
     if (ctx == null) return;
@@ -1198,12 +1341,27 @@ class SettingsController extends GetxController {
   }
 
   Future<void> reportIssue() async {
+    final diag = await SupportDiagnostics.buildSupportAppendix();
+    final body = 'settings.mail.body'.trParams({'diag': diag});
+
+    if (isSentryConfigured) {
+      try {
+        await Sentry.addBreadcrumb(
+          Breadcrumb(
+            category: 'support',
+            message: 'User opened issue email composer',
+            level: SentryLevel.info,
+          ),
+        );
+      } catch (_) {}
+    }
+
     final uri = Uri(
       scheme: 'mailto',
-      path: 'furkangumrukcu@gmail.com',
+      path: 'furkangumrukcu07@gmail.com',
       queryParameters: {
         'subject': 'settings.mail.subject'.tr,
-        'body': 'settings.mail.body'.tr,
+        'body': body,
       },
     );
 

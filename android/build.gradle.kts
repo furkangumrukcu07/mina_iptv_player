@@ -1,3 +1,6 @@
+import org.jetbrains.kotlin.gradle.dsl.KotlinVersion
+import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+
 allprojects {
     repositories {
         google()
@@ -17,6 +20,17 @@ subprojects {
 }
 subprojects {
     project.evaluationDependsOn(":app")
+}
+
+/// Flutter plugin modülleri (ör. sentry_flutter) Kotlin 1.6 dil hedefi ile gelirse derleme düşer.
+/// JVM hedefini burada zorlamıyoruz; java 8 kullanan eklentilerle uyumsuzluk oluşmasın.
+subprojects {
+    tasks.withType<KotlinCompile>().configureEach {
+        compilerOptions {
+            languageVersion.set(KotlinVersion.KOTLIN_2_0)
+            apiVersion.set(KotlinVersion.KOTLIN_2_0)
+        }
+    }
 }
 
 tasks.register<Delete>("clean") {

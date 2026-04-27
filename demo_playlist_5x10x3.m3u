@@ -1,0 +1,452 @@
+#EXTM3U x-tvg-url="https://iptv-org.github.io/epg/guides/tr.xml"
+
+#EXTINF:-1 tvg-id="live.live.news.01" tvg-name="Mina Live News Channel 1" tvg-logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Live+News+Channel+1" group-title="Live News",Mina Live News Channel 1
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4
+
+#EXTINF:-1 tvg-id="live.live.news.02" tvg-name="Mina Live News Channel 2" tvg-logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Live+News+Channel+2" group-title="Live News",Mina Live News Channel 2
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4
+
+#EXTINF:-1 tvg-id="live.live.news.03" tvg-name="Mina Live News Channel 3" tvg-logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Live+News+Channel+3" group-title="Live News",Mina Live News Channel 3
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4
+
+#EXTINF:-1 tvg-id="live.live.news.04" tvg-name="Mina Live News Channel 4" tvg-logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Live+News+Channel+4" group-title="Live News",Mina Live News Channel 4
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4
+
+#EXTINF:-1 tvg-id="live.live.news.05" tvg-name="Mina Live News Channel 5" tvg-logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Live+News+Channel+5" group-title="Live News",Mina Live News Channel 5
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4
+
+#EXTINF:-1 tvg-id="live.live.news.06" tvg-name="Mina Live News Channel 6" tvg-logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Live+News+Channel+6" group-title="Live News",Mina Live News Channel 6
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4
+
+#EXTINF:-1 tvg-id="live.live.news.07" tvg-name="Mina Live News Channel 7" tvg-logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Live+News+Channel+7" group-title="Live News",Mina Live News Channel 7
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerMeltdowns.mp4
+
+#EXTINF:-1 tvg-id="live.live.news.08" tvg-name="Mina Live News Channel 8" tvg-logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Live+News+Channel+8" group-title="Live News",Mina Live News Channel 8
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4
+
+#EXTINF:-1 tvg-id="live.live.news.09" tvg-name="Mina Live News Channel 9" tvg-logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Live+News+Channel+9" group-title="Live News",Mina Live News Channel 9
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/SubaruOutbackOnStreetAndDirt.mp4
+
+#EXTINF:-1 tvg-id="live.live.news.10" tvg-name="Mina Live News Channel 10" tvg-logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Live+News+Channel+10" group-title="Live News",Mina Live News Channel 10
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4
+
+#EXTINF:-1 tvg-id="live.live.sports.01" tvg-name="Mina Live Sports Channel 1" tvg-logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Live+Sports+Channel+1" group-title="Live Sports",Mina Live Sports Channel 1
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4
+
+#EXTINF:-1 tvg-id="live.live.sports.02" tvg-name="Mina Live Sports Channel 2" tvg-logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Live+Sports+Channel+2" group-title="Live Sports",Mina Live Sports Channel 2
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4
+
+#EXTINF:-1 tvg-id="live.live.sports.03" tvg-name="Mina Live Sports Channel 3" tvg-logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Live+Sports+Channel+3" group-title="Live Sports",Mina Live Sports Channel 3
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4
+
+#EXTINF:-1 tvg-id="live.live.sports.04" tvg-name="Mina Live Sports Channel 4" tvg-logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Live+Sports+Channel+4" group-title="Live Sports",Mina Live Sports Channel 4
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4
+
+#EXTINF:-1 tvg-id="live.live.sports.05" tvg-name="Mina Live Sports Channel 5" tvg-logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Live+Sports+Channel+5" group-title="Live Sports",Mina Live Sports Channel 5
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4
+
+#EXTINF:-1 tvg-id="live.live.sports.06" tvg-name="Mina Live Sports Channel 6" tvg-logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Live+Sports+Channel+6" group-title="Live Sports",Mina Live Sports Channel 6
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4
+
+#EXTINF:-1 tvg-id="live.live.sports.07" tvg-name="Mina Live Sports Channel 7" tvg-logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Live+Sports+Channel+7" group-title="Live Sports",Mina Live Sports Channel 7
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerMeltdowns.mp4
+
+#EXTINF:-1 tvg-id="live.live.sports.08" tvg-name="Mina Live Sports Channel 8" tvg-logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Live+Sports+Channel+8" group-title="Live Sports",Mina Live Sports Channel 8
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4
+
+#EXTINF:-1 tvg-id="live.live.sports.09" tvg-name="Mina Live Sports Channel 9" tvg-logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Live+Sports+Channel+9" group-title="Live Sports",Mina Live Sports Channel 9
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/SubaruOutbackOnStreetAndDirt.mp4
+
+#EXTINF:-1 tvg-id="live.live.sports.10" tvg-name="Mina Live Sports Channel 10" tvg-logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Live+Sports+Channel+10" group-title="Live Sports",Mina Live Sports Channel 10
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4
+
+#EXTINF:-1 tvg-id="live.live.music.01" tvg-name="Mina Live Music Channel 1" tvg-logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Live+Music+Channel+1" group-title="Live Music",Mina Live Music Channel 1
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4
+
+#EXTINF:-1 tvg-id="live.live.music.02" tvg-name="Mina Live Music Channel 2" tvg-logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Live+Music+Channel+2" group-title="Live Music",Mina Live Music Channel 2
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4
+
+#EXTINF:-1 tvg-id="live.live.music.03" tvg-name="Mina Live Music Channel 3" tvg-logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Live+Music+Channel+3" group-title="Live Music",Mina Live Music Channel 3
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4
+
+#EXTINF:-1 tvg-id="live.live.music.04" tvg-name="Mina Live Music Channel 4" tvg-logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Live+Music+Channel+4" group-title="Live Music",Mina Live Music Channel 4
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4
+
+#EXTINF:-1 tvg-id="live.live.music.05" tvg-name="Mina Live Music Channel 5" tvg-logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Live+Music+Channel+5" group-title="Live Music",Mina Live Music Channel 5
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4
+
+#EXTINF:-1 tvg-id="live.live.music.06" tvg-name="Mina Live Music Channel 6" tvg-logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Live+Music+Channel+6" group-title="Live Music",Mina Live Music Channel 6
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4
+
+#EXTINF:-1 tvg-id="live.live.music.07" tvg-name="Mina Live Music Channel 7" tvg-logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Live+Music+Channel+7" group-title="Live Music",Mina Live Music Channel 7
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerMeltdowns.mp4
+
+#EXTINF:-1 tvg-id="live.live.music.08" tvg-name="Mina Live Music Channel 8" tvg-logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Live+Music+Channel+8" group-title="Live Music",Mina Live Music Channel 8
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4
+
+#EXTINF:-1 tvg-id="live.live.music.09" tvg-name="Mina Live Music Channel 9" tvg-logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Live+Music+Channel+9" group-title="Live Music",Mina Live Music Channel 9
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/SubaruOutbackOnStreetAndDirt.mp4
+
+#EXTINF:-1 tvg-id="live.live.music.10" tvg-name="Mina Live Music Channel 10" tvg-logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Live+Music+Channel+10" group-title="Live Music",Mina Live Music Channel 10
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4
+
+#EXTINF:-1 tvg-id="live.live.documentary.01" tvg-name="Mina Live Documentary Channel 1" tvg-logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Live+Documentary+Channel+1" group-title="Live Documentary",Mina Live Documentary Channel 1
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4
+
+#EXTINF:-1 tvg-id="live.live.documentary.02" tvg-name="Mina Live Documentary Channel 2" tvg-logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Live+Documentary+Channel+2" group-title="Live Documentary",Mina Live Documentary Channel 2
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4
+
+#EXTINF:-1 tvg-id="live.live.documentary.03" tvg-name="Mina Live Documentary Channel 3" tvg-logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Live+Documentary+Channel+3" group-title="Live Documentary",Mina Live Documentary Channel 3
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4
+
+#EXTINF:-1 tvg-id="live.live.documentary.04" tvg-name="Mina Live Documentary Channel 4" tvg-logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Live+Documentary+Channel+4" group-title="Live Documentary",Mina Live Documentary Channel 4
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4
+
+#EXTINF:-1 tvg-id="live.live.documentary.05" tvg-name="Mina Live Documentary Channel 5" tvg-logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Live+Documentary+Channel+5" group-title="Live Documentary",Mina Live Documentary Channel 5
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4
+
+#EXTINF:-1 tvg-id="live.live.documentary.06" tvg-name="Mina Live Documentary Channel 6" tvg-logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Live+Documentary+Channel+6" group-title="Live Documentary",Mina Live Documentary Channel 6
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4
+
+#EXTINF:-1 tvg-id="live.live.documentary.07" tvg-name="Mina Live Documentary Channel 7" tvg-logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Live+Documentary+Channel+7" group-title="Live Documentary",Mina Live Documentary Channel 7
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerMeltdowns.mp4
+
+#EXTINF:-1 tvg-id="live.live.documentary.08" tvg-name="Mina Live Documentary Channel 8" tvg-logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Live+Documentary+Channel+8" group-title="Live Documentary",Mina Live Documentary Channel 8
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4
+
+#EXTINF:-1 tvg-id="live.live.documentary.09" tvg-name="Mina Live Documentary Channel 9" tvg-logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Live+Documentary+Channel+9" group-title="Live Documentary",Mina Live Documentary Channel 9
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/SubaruOutbackOnStreetAndDirt.mp4
+
+#EXTINF:-1 tvg-id="live.live.documentary.10" tvg-name="Mina Live Documentary Channel 10" tvg-logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Live+Documentary+Channel+10" group-title="Live Documentary",Mina Live Documentary Channel 10
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4
+
+#EXTINF:-1 tvg-id="live.live.kids.01" tvg-name="Mina Live Kids Channel 1" tvg-logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Live+Kids+Channel+1" group-title="Live Kids",Mina Live Kids Channel 1
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4
+
+#EXTINF:-1 tvg-id="live.live.kids.02" tvg-name="Mina Live Kids Channel 2" tvg-logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Live+Kids+Channel+2" group-title="Live Kids",Mina Live Kids Channel 2
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4
+
+#EXTINF:-1 tvg-id="live.live.kids.03" tvg-name="Mina Live Kids Channel 3" tvg-logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Live+Kids+Channel+3" group-title="Live Kids",Mina Live Kids Channel 3
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4
+
+#EXTINF:-1 tvg-id="live.live.kids.04" tvg-name="Mina Live Kids Channel 4" tvg-logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Live+Kids+Channel+4" group-title="Live Kids",Mina Live Kids Channel 4
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4
+
+#EXTINF:-1 tvg-id="live.live.kids.05" tvg-name="Mina Live Kids Channel 5" tvg-logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Live+Kids+Channel+5" group-title="Live Kids",Mina Live Kids Channel 5
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4
+
+#EXTINF:-1 tvg-id="live.live.kids.06" tvg-name="Mina Live Kids Channel 6" tvg-logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Live+Kids+Channel+6" group-title="Live Kids",Mina Live Kids Channel 6
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4
+
+#EXTINF:-1 tvg-id="live.live.kids.07" tvg-name="Mina Live Kids Channel 7" tvg-logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Live+Kids+Channel+7" group-title="Live Kids",Mina Live Kids Channel 7
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerMeltdowns.mp4
+
+#EXTINF:-1 tvg-id="live.live.kids.08" tvg-name="Mina Live Kids Channel 8" tvg-logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Live+Kids+Channel+8" group-title="Live Kids",Mina Live Kids Channel 8
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4
+
+#EXTINF:-1 tvg-id="live.live.kids.09" tvg-name="Mina Live Kids Channel 9" tvg-logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Live+Kids+Channel+9" group-title="Live Kids",Mina Live Kids Channel 9
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/SubaruOutbackOnStreetAndDirt.mp4
+
+#EXTINF:-1 tvg-id="live.live.kids.10" tvg-name="Mina Live Kids Channel 10" tvg-logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Live+Kids+Channel+10" group-title="Live Kids",Mina Live Kids Channel 10
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4
+
+#EXTINF:-1 tvg-id="movie.movie.action.01" tvg-name="Mina Movie Action Film 1" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Action+1" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Movie+Action+Film+1" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Action+1" group-title="Movie Action" type="movie",Mina Movie Action Film 1
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4
+
+#EXTINF:-1 tvg-id="movie.movie.action.02" tvg-name="Mina Movie Action Film 2" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Action+2" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Movie+Action+Film+2" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Action+2" group-title="Movie Action" type="movie",Mina Movie Action Film 2
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4
+
+#EXTINF:-1 tvg-id="movie.movie.action.03" tvg-name="Mina Movie Action Film 3" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Action+3" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Movie+Action+Film+3" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Action+3" group-title="Movie Action" type="movie",Mina Movie Action Film 3
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4
+
+#EXTINF:-1 tvg-id="movie.movie.action.04" tvg-name="Mina Movie Action Film 4" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Action+4" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Movie+Action+Film+4" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Action+4" group-title="Movie Action" type="movie",Mina Movie Action Film 4
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4
+
+#EXTINF:-1 tvg-id="movie.movie.action.05" tvg-name="Mina Movie Action Film 5" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Action+5" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Movie+Action+Film+5" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Action+5" group-title="Movie Action" type="movie",Mina Movie Action Film 5
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4
+
+#EXTINF:-1 tvg-id="movie.movie.action.06" tvg-name="Mina Movie Action Film 6" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Action+6" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Movie+Action+Film+6" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Action+6" group-title="Movie Action" type="movie",Mina Movie Action Film 6
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4
+
+#EXTINF:-1 tvg-id="movie.movie.action.07" tvg-name="Mina Movie Action Film 7" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Action+7" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Movie+Action+Film+7" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Action+7" group-title="Movie Action" type="movie",Mina Movie Action Film 7
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerMeltdowns.mp4
+
+#EXTINF:-1 tvg-id="movie.movie.action.08" tvg-name="Mina Movie Action Film 8" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Action+8" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Movie+Action+Film+8" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Action+8" group-title="Movie Action" type="movie",Mina Movie Action Film 8
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4
+
+#EXTINF:-1 tvg-id="movie.movie.action.09" tvg-name="Mina Movie Action Film 9" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Action+9" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Movie+Action+Film+9" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Action+9" group-title="Movie Action" type="movie",Mina Movie Action Film 9
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/SubaruOutbackOnStreetAndDirt.mp4
+
+#EXTINF:-1 tvg-id="movie.movie.action.10" tvg-name="Mina Movie Action Film 10" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Action+10" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Movie+Action+Film+10" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Action+10" group-title="Movie Action" type="movie",Mina Movie Action Film 10
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4
+
+#EXTINF:-1 tvg-id="movie.movie.comedy.01" tvg-name="Mina Movie Comedy Film 1" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Comedy+1" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Movie+Comedy+Film+1" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Comedy+1" group-title="Movie Comedy" type="movie",Mina Movie Comedy Film 1
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4
+
+#EXTINF:-1 tvg-id="movie.movie.comedy.02" tvg-name="Mina Movie Comedy Film 2" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Comedy+2" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Movie+Comedy+Film+2" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Comedy+2" group-title="Movie Comedy" type="movie",Mina Movie Comedy Film 2
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4
+
+#EXTINF:-1 tvg-id="movie.movie.comedy.03" tvg-name="Mina Movie Comedy Film 3" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Comedy+3" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Movie+Comedy+Film+3" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Comedy+3" group-title="Movie Comedy" type="movie",Mina Movie Comedy Film 3
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4
+
+#EXTINF:-1 tvg-id="movie.movie.comedy.04" tvg-name="Mina Movie Comedy Film 4" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Comedy+4" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Movie+Comedy+Film+4" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Comedy+4" group-title="Movie Comedy" type="movie",Mina Movie Comedy Film 4
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4
+
+#EXTINF:-1 tvg-id="movie.movie.comedy.05" tvg-name="Mina Movie Comedy Film 5" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Comedy+5" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Movie+Comedy+Film+5" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Comedy+5" group-title="Movie Comedy" type="movie",Mina Movie Comedy Film 5
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4
+
+#EXTINF:-1 tvg-id="movie.movie.comedy.06" tvg-name="Mina Movie Comedy Film 6" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Comedy+6" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Movie+Comedy+Film+6" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Comedy+6" group-title="Movie Comedy" type="movie",Mina Movie Comedy Film 6
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4
+
+#EXTINF:-1 tvg-id="movie.movie.comedy.07" tvg-name="Mina Movie Comedy Film 7" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Comedy+7" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Movie+Comedy+Film+7" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Comedy+7" group-title="Movie Comedy" type="movie",Mina Movie Comedy Film 7
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerMeltdowns.mp4
+
+#EXTINF:-1 tvg-id="movie.movie.comedy.08" tvg-name="Mina Movie Comedy Film 8" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Comedy+8" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Movie+Comedy+Film+8" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Comedy+8" group-title="Movie Comedy" type="movie",Mina Movie Comedy Film 8
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4
+
+#EXTINF:-1 tvg-id="movie.movie.comedy.09" tvg-name="Mina Movie Comedy Film 9" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Comedy+9" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Movie+Comedy+Film+9" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Comedy+9" group-title="Movie Comedy" type="movie",Mina Movie Comedy Film 9
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/SubaruOutbackOnStreetAndDirt.mp4
+
+#EXTINF:-1 tvg-id="movie.movie.comedy.10" tvg-name="Mina Movie Comedy Film 10" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Comedy+10" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Movie+Comedy+Film+10" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Comedy+10" group-title="Movie Comedy" type="movie",Mina Movie Comedy Film 10
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4
+
+#EXTINF:-1 tvg-id="movie.movie.sci-fi.01" tvg-name="Mina Movie Sci-Fi Film 1" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Sci-Fi+1" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Movie+Sci-Fi+Film+1" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Sci-Fi+1" group-title="Movie Sci-Fi" type="movie",Mina Movie Sci-Fi Film 1
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4
+
+#EXTINF:-1 tvg-id="movie.movie.sci-fi.02" tvg-name="Mina Movie Sci-Fi Film 2" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Sci-Fi+2" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Movie+Sci-Fi+Film+2" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Sci-Fi+2" group-title="Movie Sci-Fi" type="movie",Mina Movie Sci-Fi Film 2
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4
+
+#EXTINF:-1 tvg-id="movie.movie.sci-fi.03" tvg-name="Mina Movie Sci-Fi Film 3" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Sci-Fi+3" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Movie+Sci-Fi+Film+3" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Sci-Fi+3" group-title="Movie Sci-Fi" type="movie",Mina Movie Sci-Fi Film 3
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4
+
+#EXTINF:-1 tvg-id="movie.movie.sci-fi.04" tvg-name="Mina Movie Sci-Fi Film 4" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Sci-Fi+4" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Movie+Sci-Fi+Film+4" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Sci-Fi+4" group-title="Movie Sci-Fi" type="movie",Mina Movie Sci-Fi Film 4
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4
+
+#EXTINF:-1 tvg-id="movie.movie.sci-fi.05" tvg-name="Mina Movie Sci-Fi Film 5" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Sci-Fi+5" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Movie+Sci-Fi+Film+5" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Sci-Fi+5" group-title="Movie Sci-Fi" type="movie",Mina Movie Sci-Fi Film 5
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4
+
+#EXTINF:-1 tvg-id="movie.movie.sci-fi.06" tvg-name="Mina Movie Sci-Fi Film 6" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Sci-Fi+6" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Movie+Sci-Fi+Film+6" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Sci-Fi+6" group-title="Movie Sci-Fi" type="movie",Mina Movie Sci-Fi Film 6
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4
+
+#EXTINF:-1 tvg-id="movie.movie.sci-fi.07" tvg-name="Mina Movie Sci-Fi Film 7" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Sci-Fi+7" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Movie+Sci-Fi+Film+7" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Sci-Fi+7" group-title="Movie Sci-Fi" type="movie",Mina Movie Sci-Fi Film 7
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerMeltdowns.mp4
+
+#EXTINF:-1 tvg-id="movie.movie.sci-fi.08" tvg-name="Mina Movie Sci-Fi Film 8" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Sci-Fi+8" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Movie+Sci-Fi+Film+8" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Sci-Fi+8" group-title="Movie Sci-Fi" type="movie",Mina Movie Sci-Fi Film 8
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4
+
+#EXTINF:-1 tvg-id="movie.movie.sci-fi.09" tvg-name="Mina Movie Sci-Fi Film 9" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Sci-Fi+9" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Movie+Sci-Fi+Film+9" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Sci-Fi+9" group-title="Movie Sci-Fi" type="movie",Mina Movie Sci-Fi Film 9
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/SubaruOutbackOnStreetAndDirt.mp4
+
+#EXTINF:-1 tvg-id="movie.movie.sci-fi.10" tvg-name="Mina Movie Sci-Fi Film 10" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Sci-Fi+10" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Movie+Sci-Fi+Film+10" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Sci-Fi+10" group-title="Movie Sci-Fi" type="movie",Mina Movie Sci-Fi Film 10
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4
+
+#EXTINF:-1 tvg-id="movie.movie.drama.01" tvg-name="Mina Movie Drama Film 1" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Drama+1" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Movie+Drama+Film+1" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Drama+1" group-title="Movie Drama" type="movie",Mina Movie Drama Film 1
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4
+
+#EXTINF:-1 tvg-id="movie.movie.drama.02" tvg-name="Mina Movie Drama Film 2" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Drama+2" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Movie+Drama+Film+2" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Drama+2" group-title="Movie Drama" type="movie",Mina Movie Drama Film 2
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4
+
+#EXTINF:-1 tvg-id="movie.movie.drama.03" tvg-name="Mina Movie Drama Film 3" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Drama+3" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Movie+Drama+Film+3" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Drama+3" group-title="Movie Drama" type="movie",Mina Movie Drama Film 3
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4
+
+#EXTINF:-1 tvg-id="movie.movie.drama.04" tvg-name="Mina Movie Drama Film 4" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Drama+4" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Movie+Drama+Film+4" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Drama+4" group-title="Movie Drama" type="movie",Mina Movie Drama Film 4
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4
+
+#EXTINF:-1 tvg-id="movie.movie.drama.05" tvg-name="Mina Movie Drama Film 5" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Drama+5" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Movie+Drama+Film+5" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Drama+5" group-title="Movie Drama" type="movie",Mina Movie Drama Film 5
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4
+
+#EXTINF:-1 tvg-id="movie.movie.drama.06" tvg-name="Mina Movie Drama Film 6" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Drama+6" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Movie+Drama+Film+6" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Drama+6" group-title="Movie Drama" type="movie",Mina Movie Drama Film 6
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4
+
+#EXTINF:-1 tvg-id="movie.movie.drama.07" tvg-name="Mina Movie Drama Film 7" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Drama+7" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Movie+Drama+Film+7" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Drama+7" group-title="Movie Drama" type="movie",Mina Movie Drama Film 7
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerMeltdowns.mp4
+
+#EXTINF:-1 tvg-id="movie.movie.drama.08" tvg-name="Mina Movie Drama Film 8" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Drama+8" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Movie+Drama+Film+8" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Drama+8" group-title="Movie Drama" type="movie",Mina Movie Drama Film 8
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4
+
+#EXTINF:-1 tvg-id="movie.movie.drama.09" tvg-name="Mina Movie Drama Film 9" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Drama+9" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Movie+Drama+Film+9" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Drama+9" group-title="Movie Drama" type="movie",Mina Movie Drama Film 9
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/SubaruOutbackOnStreetAndDirt.mp4
+
+#EXTINF:-1 tvg-id="movie.movie.drama.10" tvg-name="Mina Movie Drama Film 10" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Drama+10" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Movie+Drama+Film+10" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Drama+10" group-title="Movie Drama" type="movie",Mina Movie Drama Film 10
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4
+
+#EXTINF:-1 tvg-id="movie.movie.family.01" tvg-name="Mina Movie Family Film 1" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Family+1" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Movie+Family+Film+1" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Family+1" group-title="Movie Family" type="movie",Mina Movie Family Film 1
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4
+
+#EXTINF:-1 tvg-id="movie.movie.family.02" tvg-name="Mina Movie Family Film 2" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Family+2" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Movie+Family+Film+2" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Family+2" group-title="Movie Family" type="movie",Mina Movie Family Film 2
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4
+
+#EXTINF:-1 tvg-id="movie.movie.family.03" tvg-name="Mina Movie Family Film 3" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Family+3" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Movie+Family+Film+3" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Family+3" group-title="Movie Family" type="movie",Mina Movie Family Film 3
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4
+
+#EXTINF:-1 tvg-id="movie.movie.family.04" tvg-name="Mina Movie Family Film 4" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Family+4" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Movie+Family+Film+4" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Family+4" group-title="Movie Family" type="movie",Mina Movie Family Film 4
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4
+
+#EXTINF:-1 tvg-id="movie.movie.family.05" tvg-name="Mina Movie Family Film 5" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Family+5" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Movie+Family+Film+5" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Family+5" group-title="Movie Family" type="movie",Mina Movie Family Film 5
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4
+
+#EXTINF:-1 tvg-id="movie.movie.family.06" tvg-name="Mina Movie Family Film 6" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Family+6" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Movie+Family+Film+6" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Family+6" group-title="Movie Family" type="movie",Mina Movie Family Film 6
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4
+
+#EXTINF:-1 tvg-id="movie.movie.family.07" tvg-name="Mina Movie Family Film 7" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Family+7" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Movie+Family+Film+7" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Family+7" group-title="Movie Family" type="movie",Mina Movie Family Film 7
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerMeltdowns.mp4
+
+#EXTINF:-1 tvg-id="movie.movie.family.08" tvg-name="Mina Movie Family Film 8" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Family+8" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Movie+Family+Film+8" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Family+8" group-title="Movie Family" type="movie",Mina Movie Family Film 8
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4
+
+#EXTINF:-1 tvg-id="movie.movie.family.09" tvg-name="Mina Movie Family Film 9" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Family+9" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Movie+Family+Film+9" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Family+9" group-title="Movie Family" type="movie",Mina Movie Family Film 9
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/SubaruOutbackOnStreetAndDirt.mp4
+
+#EXTINF:-1 tvg-id="movie.movie.family.10" tvg-name="Mina Movie Family Film 10" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Family+10" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Movie+Family+Film+10" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Movie+Family+10" group-title="Movie Family" type="movie",Mina Movie Family Film 10
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4
+
+#EXTINF:-1 tvg-id="series.series.crime.01" tvg-name="Mina Series Crime S01E01" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Crime+S01E01" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Series+Crime+S01E01" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Crime+S01E01" group-title="Series Crime" type="series" season="1" episode="1",Mina Series Crime S01E01
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4
+
+#EXTINF:-1 tvg-id="series.series.crime.02" tvg-name="Mina Series Crime S01E02" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Crime+S01E02" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Series+Crime+S01E02" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Crime+S01E02" group-title="Series Crime" type="series" season="1" episode="2",Mina Series Crime S01E02
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4
+
+#EXTINF:-1 tvg-id="series.series.crime.03" tvg-name="Mina Series Crime S01E03" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Crime+S01E03" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Series+Crime+S01E03" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Crime+S01E03" group-title="Series Crime" type="series" season="1" episode="3",Mina Series Crime S01E03
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4
+
+#EXTINF:-1 tvg-id="series.series.crime.04" tvg-name="Mina Series Crime S01E04" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Crime+S01E04" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Series+Crime+S01E04" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Crime+S01E04" group-title="Series Crime" type="series" season="1" episode="4",Mina Series Crime S01E04
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4
+
+#EXTINF:-1 tvg-id="series.series.crime.05" tvg-name="Mina Series Crime S01E05" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Crime+S01E05" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Series+Crime+S01E05" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Crime+S01E05" group-title="Series Crime" type="series" season="1" episode="5",Mina Series Crime S01E05
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4
+
+#EXTINF:-1 tvg-id="series.series.crime.06" tvg-name="Mina Series Crime S01E06" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Crime+S01E06" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Series+Crime+S01E06" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Crime+S01E06" group-title="Series Crime" type="series" season="1" episode="6",Mina Series Crime S01E06
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4
+
+#EXTINF:-1 tvg-id="series.series.crime.07" tvg-name="Mina Series Crime S01E07" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Crime+S01E07" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Series+Crime+S01E07" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Crime+S01E07" group-title="Series Crime" type="series" season="1" episode="7",Mina Series Crime S01E07
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerMeltdowns.mp4
+
+#EXTINF:-1 tvg-id="series.series.crime.08" tvg-name="Mina Series Crime S01E08" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Crime+S01E08" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Series+Crime+S01E08" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Crime+S01E08" group-title="Series Crime" type="series" season="1" episode="8",Mina Series Crime S01E08
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4
+
+#EXTINF:-1 tvg-id="series.series.crime.09" tvg-name="Mina Series Crime S01E09" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Crime+S01E09" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Series+Crime+S01E09" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Crime+S01E09" group-title="Series Crime" type="series" season="1" episode="9",Mina Series Crime S01E09
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/SubaruOutbackOnStreetAndDirt.mp4
+
+#EXTINF:-1 tvg-id="series.series.crime.10" tvg-name="Mina Series Crime S01E10" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Crime+S01E10" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Series+Crime+S01E10" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Crime+S01E10" group-title="Series Crime" type="series" season="1" episode="10",Mina Series Crime S01E10
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4
+
+#EXTINF:-1 tvg-id="series.series.comedy.01" tvg-name="Mina Series Comedy S01E01" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Comedy+S01E01" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Series+Comedy+S01E01" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Comedy+S01E01" group-title="Series Comedy" type="series" season="1" episode="1",Mina Series Comedy S01E01
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4
+
+#EXTINF:-1 tvg-id="series.series.comedy.02" tvg-name="Mina Series Comedy S01E02" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Comedy+S01E02" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Series+Comedy+S01E02" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Comedy+S01E02" group-title="Series Comedy" type="series" season="1" episode="2",Mina Series Comedy S01E02
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4
+
+#EXTINF:-1 tvg-id="series.series.comedy.03" tvg-name="Mina Series Comedy S01E03" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Comedy+S01E03" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Series+Comedy+S01E03" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Comedy+S01E03" group-title="Series Comedy" type="series" season="1" episode="3",Mina Series Comedy S01E03
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4
+
+#EXTINF:-1 tvg-id="series.series.comedy.04" tvg-name="Mina Series Comedy S01E04" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Comedy+S01E04" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Series+Comedy+S01E04" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Comedy+S01E04" group-title="Series Comedy" type="series" season="1" episode="4",Mina Series Comedy S01E04
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4
+
+#EXTINF:-1 tvg-id="series.series.comedy.05" tvg-name="Mina Series Comedy S01E05" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Comedy+S01E05" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Series+Comedy+S01E05" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Comedy+S01E05" group-title="Series Comedy" type="series" season="1" episode="5",Mina Series Comedy S01E05
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4
+
+#EXTINF:-1 tvg-id="series.series.comedy.06" tvg-name="Mina Series Comedy S01E06" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Comedy+S01E06" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Series+Comedy+S01E06" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Comedy+S01E06" group-title="Series Comedy" type="series" season="1" episode="6",Mina Series Comedy S01E06
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4
+
+#EXTINF:-1 tvg-id="series.series.comedy.07" tvg-name="Mina Series Comedy S01E07" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Comedy+S01E07" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Series+Comedy+S01E07" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Comedy+S01E07" group-title="Series Comedy" type="series" season="1" episode="7",Mina Series Comedy S01E07
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerMeltdowns.mp4
+
+#EXTINF:-1 tvg-id="series.series.comedy.08" tvg-name="Mina Series Comedy S01E08" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Comedy+S01E08" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Series+Comedy+S01E08" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Comedy+S01E08" group-title="Series Comedy" type="series" season="1" episode="8",Mina Series Comedy S01E08
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4
+
+#EXTINF:-1 tvg-id="series.series.comedy.09" tvg-name="Mina Series Comedy S01E09" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Comedy+S01E09" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Series+Comedy+S01E09" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Comedy+S01E09" group-title="Series Comedy" type="series" season="1" episode="9",Mina Series Comedy S01E09
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/SubaruOutbackOnStreetAndDirt.mp4
+
+#EXTINF:-1 tvg-id="series.series.comedy.10" tvg-name="Mina Series Comedy S01E10" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Comedy+S01E10" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Series+Comedy+S01E10" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Comedy+S01E10" group-title="Series Comedy" type="series" season="1" episode="10",Mina Series Comedy S01E10
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4
+
+#EXTINF:-1 tvg-id="series.series.sci-fi.01" tvg-name="Mina Series Sci-Fi S01E01" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Sci-Fi+S01E01" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Series+Sci-Fi+S01E01" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Sci-Fi+S01E01" group-title="Series Sci-Fi" type="series" season="1" episode="1",Mina Series Sci-Fi S01E01
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4
+
+#EXTINF:-1 tvg-id="series.series.sci-fi.02" tvg-name="Mina Series Sci-Fi S01E02" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Sci-Fi+S01E02" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Series+Sci-Fi+S01E02" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Sci-Fi+S01E02" group-title="Series Sci-Fi" type="series" season="1" episode="2",Mina Series Sci-Fi S01E02
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4
+
+#EXTINF:-1 tvg-id="series.series.sci-fi.03" tvg-name="Mina Series Sci-Fi S01E03" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Sci-Fi+S01E03" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Series+Sci-Fi+S01E03" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Sci-Fi+S01E03" group-title="Series Sci-Fi" type="series" season="1" episode="3",Mina Series Sci-Fi S01E03
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4
+
+#EXTINF:-1 tvg-id="series.series.sci-fi.04" tvg-name="Mina Series Sci-Fi S01E04" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Sci-Fi+S01E04" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Series+Sci-Fi+S01E04" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Sci-Fi+S01E04" group-title="Series Sci-Fi" type="series" season="1" episode="4",Mina Series Sci-Fi S01E04
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4
+
+#EXTINF:-1 tvg-id="series.series.sci-fi.05" tvg-name="Mina Series Sci-Fi S01E05" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Sci-Fi+S01E05" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Series+Sci-Fi+S01E05" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Sci-Fi+S01E05" group-title="Series Sci-Fi" type="series" season="1" episode="5",Mina Series Sci-Fi S01E05
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4
+
+#EXTINF:-1 tvg-id="series.series.sci-fi.06" tvg-name="Mina Series Sci-Fi S01E06" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Sci-Fi+S01E06" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Series+Sci-Fi+S01E06" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Sci-Fi+S01E06" group-title="Series Sci-Fi" type="series" season="1" episode="6",Mina Series Sci-Fi S01E06
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4
+
+#EXTINF:-1 tvg-id="series.series.sci-fi.07" tvg-name="Mina Series Sci-Fi S01E07" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Sci-Fi+S01E07" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Series+Sci-Fi+S01E07" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Sci-Fi+S01E07" group-title="Series Sci-Fi" type="series" season="1" episode="7",Mina Series Sci-Fi S01E07
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerMeltdowns.mp4
+
+#EXTINF:-1 tvg-id="series.series.sci-fi.08" tvg-name="Mina Series Sci-Fi S01E08" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Sci-Fi+S01E08" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Series+Sci-Fi+S01E08" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Sci-Fi+S01E08" group-title="Series Sci-Fi" type="series" season="1" episode="8",Mina Series Sci-Fi S01E08
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4
+
+#EXTINF:-1 tvg-id="series.series.sci-fi.09" tvg-name="Mina Series Sci-Fi S01E09" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Sci-Fi+S01E09" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Series+Sci-Fi+S01E09" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Sci-Fi+S01E09" group-title="Series Sci-Fi" type="series" season="1" episode="9",Mina Series Sci-Fi S01E09
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/SubaruOutbackOnStreetAndDirt.mp4
+
+#EXTINF:-1 tvg-id="series.series.sci-fi.10" tvg-name="Mina Series Sci-Fi S01E10" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Sci-Fi+S01E10" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Series+Sci-Fi+S01E10" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Sci-Fi+S01E10" group-title="Series Sci-Fi" type="series" season="1" episode="10",Mina Series Sci-Fi S01E10
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4
+
+#EXTINF:-1 tvg-id="series.series.drama.01" tvg-name="Mina Series Drama S01E01" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Drama+S01E01" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Series+Drama+S01E01" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Drama+S01E01" group-title="Series Drama" type="series" season="1" episode="1",Mina Series Drama S01E01
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4
+
+#EXTINF:-1 tvg-id="series.series.drama.02" tvg-name="Mina Series Drama S01E02" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Drama+S01E02" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Series+Drama+S01E02" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Drama+S01E02" group-title="Series Drama" type="series" season="1" episode="2",Mina Series Drama S01E02
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4
+
+#EXTINF:-1 tvg-id="series.series.drama.03" tvg-name="Mina Series Drama S01E03" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Drama+S01E03" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Series+Drama+S01E03" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Drama+S01E03" group-title="Series Drama" type="series" season="1" episode="3",Mina Series Drama S01E03
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4
+
+#EXTINF:-1 tvg-id="series.series.drama.04" tvg-name="Mina Series Drama S01E04" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Drama+S01E04" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Series+Drama+S01E04" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Drama+S01E04" group-title="Series Drama" type="series" season="1" episode="4",Mina Series Drama S01E04
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4
+
+#EXTINF:-1 tvg-id="series.series.drama.05" tvg-name="Mina Series Drama S01E05" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Drama+S01E05" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Series+Drama+S01E05" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Drama+S01E05" group-title="Series Drama" type="series" season="1" episode="5",Mina Series Drama S01E05
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4
+
+#EXTINF:-1 tvg-id="series.series.drama.06" tvg-name="Mina Series Drama S01E06" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Drama+S01E06" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Series+Drama+S01E06" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Drama+S01E06" group-title="Series Drama" type="series" season="1" episode="6",Mina Series Drama S01E06
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4
+
+#EXTINF:-1 tvg-id="series.series.drama.07" tvg-name="Mina Series Drama S01E07" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Drama+S01E07" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Series+Drama+S01E07" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Drama+S01E07" group-title="Series Drama" type="series" season="1" episode="7",Mina Series Drama S01E07
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerMeltdowns.mp4
+
+#EXTINF:-1 tvg-id="series.series.drama.08" tvg-name="Mina Series Drama S01E08" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Drama+S01E08" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Series+Drama+S01E08" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Drama+S01E08" group-title="Series Drama" type="series" season="1" episode="8",Mina Series Drama S01E08
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4
+
+#EXTINF:-1 tvg-id="series.series.drama.09" tvg-name="Mina Series Drama S01E09" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Drama+S01E09" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Series+Drama+S01E09" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Drama+S01E09" group-title="Series Drama" type="series" season="1" episode="9",Mina Series Drama S01E09
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/SubaruOutbackOnStreetAndDirt.mp4
+
+#EXTINF:-1 tvg-id="series.series.drama.10" tvg-name="Mina Series Drama S01E10" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Drama+S01E10" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Series+Drama+S01E10" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Drama+S01E10" group-title="Series Drama" type="series" season="1" episode="10",Mina Series Drama S01E10
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4
+
+#EXTINF:-1 tvg-id="series.series.adventure.01" tvg-name="Mina Series Adventure S01E01" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Adventure+S01E01" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Series+Adventure+S01E01" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Adventure+S01E01" group-title="Series Adventure" type="series" season="1" episode="1",Mina Series Adventure S01E01
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4
+
+#EXTINF:-1 tvg-id="series.series.adventure.02" tvg-name="Mina Series Adventure S01E02" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Adventure+S01E02" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Series+Adventure+S01E02" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Adventure+S01E02" group-title="Series Adventure" type="series" season="1" episode="2",Mina Series Adventure S01E02
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4
+
+#EXTINF:-1 tvg-id="series.series.adventure.03" tvg-name="Mina Series Adventure S01E03" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Adventure+S01E03" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Series+Adventure+S01E03" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Adventure+S01E03" group-title="Series Adventure" type="series" season="1" episode="3",Mina Series Adventure S01E03
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4
+
+#EXTINF:-1 tvg-id="series.series.adventure.04" tvg-name="Mina Series Adventure S01E04" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Adventure+S01E04" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Series+Adventure+S01E04" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Adventure+S01E04" group-title="Series Adventure" type="series" season="1" episode="4",Mina Series Adventure S01E04
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4
+
+#EXTINF:-1 tvg-id="series.series.adventure.05" tvg-name="Mina Series Adventure S01E05" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Adventure+S01E05" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Series+Adventure+S01E05" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Adventure+S01E05" group-title="Series Adventure" type="series" season="1" episode="5",Mina Series Adventure S01E05
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4
+
+#EXTINF:-1 tvg-id="series.series.adventure.06" tvg-name="Mina Series Adventure S01E06" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Adventure+S01E06" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Series+Adventure+S01E06" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Adventure+S01E06" group-title="Series Adventure" type="series" season="1" episode="6",Mina Series Adventure S01E06
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4
+
+#EXTINF:-1 tvg-id="series.series.adventure.07" tvg-name="Mina Series Adventure S01E07" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Adventure+S01E07" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Series+Adventure+S01E07" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Adventure+S01E07" group-title="Series Adventure" type="series" season="1" episode="7",Mina Series Adventure S01E07
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerMeltdowns.mp4
+
+#EXTINF:-1 tvg-id="series.series.adventure.08" tvg-name="Mina Series Adventure S01E08" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Adventure+S01E08" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Series+Adventure+S01E08" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Adventure+S01E08" group-title="Series Adventure" type="series" season="1" episode="8",Mina Series Adventure S01E08
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4
+
+#EXTINF:-1 tvg-id="series.series.adventure.09" tvg-name="Mina Series Adventure S01E09" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Adventure+S01E09" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Series+Adventure+S01E09" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Adventure+S01E09" group-title="Series Adventure" type="series" season="1" episode="9",Mina Series Adventure S01E09
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/SubaruOutbackOnStreetAndDirt.mp4
+
+#EXTINF:-1 tvg-id="series.series.adventure.10" tvg-name="Mina Series Adventure S01E10" tvg-logo="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Adventure+S01E10" logo="https://dummyimage.com/512x512/0f172a/ffffff.png&text=Mina+Series+Adventure+S01E10" poster="https://dummyimage.com/600x900/111827/ffffff.png&text=Series+Adventure+S01E10" group-title="Series Adventure" type="series" season="1" episode="10",Mina Series Adventure S01E10
+https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4
+

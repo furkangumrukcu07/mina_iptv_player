@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 
+import '../player/subtitle_font_family.dart';
 import 'glass_appearance.dart';
 
 abstract final class AppTheme {
-  static const _purpleSeed = Color(0xFF7B6CF6);
+  static const _purpleSeed = Color(0xFF21E6EB);
   static const _blueSeed = Color(0xFF2563EB);
 
   static const _bgDir = 'assets/images';
@@ -158,10 +160,10 @@ abstract final class AppTheme {
       surface: const Color(0xFF12141A),
     );
     return base.copyWith(
-      primary: const Color(0xFF9D8FFF),
+      primary: const Color(0xFF21E6EB),
       onPrimary: const Color(0xFF1A1240),
-      primaryContainer: const Color(0xFF3D3480),
-      onPrimaryContainer: const Color(0xFFE8DEFF),
+      primaryContainer: const Color(0xFF0B5E61),
+      onPrimaryContainer: const Color(0xFFD5FCFD),
       surface: const Color(0xFF12141A),
       surfaceContainerLow: const Color(0xFF1A1D24),
       surfaceContainer: const Color(0xFF22252E),
@@ -173,16 +175,16 @@ abstract final class AppTheme {
   /// [GlassThemeLabels.darkFlat]: kömür yüzey, mor–fuşya vurgu.
   static ColorScheme _colorSchemeDarkFlat() {
     final base = ColorScheme.fromSeed(
-      seedColor: const Color(0xFF9333EA),
+      seedColor: const Color(0xFF21E6EB),
       brightness: Brightness.dark,
       surface: const Color(0xFF121212),
     );
     return base.copyWith(
-      primary: const Color(0xFFC084FC),
+      primary: const Color(0xFF21E6EB),
       onPrimary: const Color(0xFF16051F),
-      primaryContainer: const Color(0xFF581C87),
-      onPrimaryContainer: const Color(0xFFF3E8FF),
-      secondary: const Color(0xFFE879F9),
+      primaryContainer: const Color(0xFF0B5E61),
+      onPrimaryContainer: const Color(0xFFD5FCFD),
+      secondary: const Color(0xFF21E6EB),
       onSecondary: const Color(0xFF200018),
       surface: const Color(0xFF121212),
       surfaceContainerLow: const Color(0xFF16161A),
@@ -418,7 +420,7 @@ abstract final class AppTheme {
 
   static ThemeData get dark => _darkTheme(
         _colorSchemePurple(),
-        const Color(0xFFB388FF).withValues(alpha: 0.35),
+        const Color(0xFF21E6EB).withValues(alpha: 0.35),
       );
 
   static ThemeData get darkGlassmorphism => _darkTheme(
@@ -430,7 +432,7 @@ abstract final class AppTheme {
     final cs = _colorSchemeDarkFlat();
     final base = _darkTheme(
       cs,
-      const Color(0xFFC084FC).withValues(alpha: 0.45),
+      const Color(0xFF21E6EB).withValues(alpha: 0.45),
     );
     return base.copyWith(
       iconTheme: IconThemeData(
@@ -540,19 +542,41 @@ abstract final class AppTheme {
       );
 
   /// [GetMaterialApp.theme].
-  static ThemeData materialThemeForLabel(String? themeLabel) {
+  static ThemeData materialThemeForLabel(
+    String? themeLabel, {
+    String appFontFamilyKey = kDefaultAppFontFamilyKey,
+  }) {
+    ThemeData base;
     if (themeLabel == GlassThemeLabels.glassmorphism) {
-      return darkGlassmorphism;
+      base = darkGlassmorphism;
+    } else if (themeLabel == GlassThemeLabels.darkFlat) {
+      base = darkFlat;
+    } else if (themeLabel == GlassThemeLabels.flatBlack) {
+      base = flatBlack;
+    } else if (themeLabel == GlassThemeLabels.glassGri) {
+      base = glassGri;
+    } else {
+      base = dark;
     }
-    if (themeLabel == GlassThemeLabels.darkFlat) {
-      return darkFlat;
+    final appTextTheme = _appFontTextTheme(appFontFamilyKey, base.textTheme);
+    return base.copyWith(
+      textTheme: appTextTheme,
+      primaryTextTheme: appTextTheme,
+      iconTheme: base.iconTheme.copyWith(),
+    );
+  }
+
+  static TextTheme _appFontTextTheme(String key, TextTheme base) {
+    switch (key) {
+      case 'roboto':
+        return GoogleFonts.robotoTextTheme(base);
+      case 'noto':
+        return GoogleFonts.notoSansTextTheme(base);
+      case 'mono':
+        return GoogleFonts.ibmPlexMonoTextTheme(base);
+      case 'sony':
+      default:
+        return base;
     }
-    if (themeLabel == GlassThemeLabels.flatBlack) {
-      return flatBlack;
-    }
-    if (themeLabel == GlassThemeLabels.glassGri) {
-      return glassGri;
-    }
-    return dark;
   }
 }

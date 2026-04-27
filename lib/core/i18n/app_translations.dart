@@ -6,7 +6,7 @@ import 'translation_merge.dart';
 import 'locale_es.dart';
 import 'locale_ja.dart';
 
-/// Locales: `tr_TR`, `en_US`, plus partials merged over English (incl. `es_ES`, `ja_JP`).
+/// Locales: `tr_TR`, `en_US`, plus partials merged over English.
 class AppTranslations extends Translations {
   @override
   Map<String, Map<String, String>> get keys => {
@@ -18,6 +18,15 @@ class AppTranslations extends Translations {
         'ru_RU': mergeTranslations(_en, kLocalePartialRu),
         'ja_JP': mergeTranslations(_en, kLocalePartialJa),
         'es_ES': mergeTranslations(_en, kLocalePartialEs),
+        'ko_KR': mergeTranslations(_en, kLocalePartialKo),
+        'he_IL': mergeTranslations(_en, kLocalePartialHe),
+        'da_DK': mergeTranslations(_en, kLocalePartialDa),
+        'sv_SE': mergeTranslations(_en, kLocalePartialSv),
+        'hi_IN': mergeTranslations(_en, kLocalePartialHi),
+        'th_TH': mergeTranslations(_en, kLocalePartialTh),
+        'it_IT': mergeTranslations(_en, kLocalePartialIt),
+        'pt_PT': mergeTranslations(_en, kLocalePartialPt),
+        'id_ID': mergeTranslations(_en, kLocalePartialId),
       };
 }
 
@@ -216,6 +225,15 @@ const Map<String, String> _tr = {
   'common.lang.ru': 'Rusça',
   'common.lang.ja': 'Japonca',
   'common.lang.es': 'İspanyolca',
+  'common.lang.ko': 'Korece',
+  'common.lang.he': 'İbranice',
+  'common.lang.da': 'Danca',
+  'common.lang.sv': 'İsveççe',
+  'common.lang.hi': 'Hintçe',
+  'common.lang.th': 'Tayca',
+  'common.lang.it': 'İtalyanca',
+  'common.lang.pt': 'Portekizce',
+  'common.lang.id': 'Endonezce',
 
   // Search hints
   'search.channel': 'Kanal ara…',
@@ -378,8 +396,11 @@ const Map<String, String> _tr = {
   'settings.tile.about': 'Hakkında',
   'settings.tile.about.loading': 'Sürüm yükleniyor…',
   'settings.tile.about.sub': 'Mina IPTV Player @v',
-  'settings.tile.help': 'Yardım & Destek',
-  'settings.tile.help.sub': 'Sorun bildirin veya yardım alın',
+  'settings.tile.help': 'Telegram Adresimiz',
+  'settings.tile.help.sub': 'Resmi Telegram kanalımız',
+  'settings.tile.reportIssue': 'Sorun Bildir',
+  'settings.tile.reportIssue.sub':
+      'E-posta ile sorununuzu bize iletin',
   'settings.tile.privacy': 'Gizlilik politikası',
   'settings.tile.privacy.sub': 'GitHub: furkangumrukcu07/mina_iptv_player',
   'settings.snackbar.privacy': 'Gizlilik politikası',
@@ -437,29 +458,15 @@ const Map<String, String> _tr = {
   'settings.dialog.bufferTitle': 'Canlı yayın tamponu',
   'settings.dialog.bufferSlider': '@n saniye',
   'settings.dialog.changelogTitle': 'Sürüm notları',
-  'settings.dialog.changelogBody': 'v1.9.15\n'
-      '• Oynatıcı: canlı yayınlar Better Player; film/dizi varsayılan olarak MediaKit (mpv) — ayarla kapatılabilir\n'
-      '• MediaKit (Android): VideoController kurulum sırası düzeltildi (VOD çökme riski azaltıldı)\n'
-      '• MediaKit: donanım çözücü modu (Dengeli / Düşük güç), libmpv performans ve tampon ayarları\n'
-      '• Ayarlar: MediaKit ve yayın önizlemesi varsayılan açık; “tüm ayarları sil” sonrası da açık kalır\n'
-      '• Canlı + Better OSD: ses ve altyazı düğmeleri yalnızca VOD’da\n\n'
-      'Uygulama özellikleri (güncel)\n'
-      '• Canlı TV, film ve dizi; M3U (URL/dosya) ve Xtream (player_api) playlist\n'
-      '• Android TV, telefon ve tablet yerleşimleri; çoklu dil (TR/EN ve ek yerelleştirmeler)\n'
-      '• Kanal ve VOD listelerinde arama, kategori, favoriler\n'
-      '• Liste detayında sessiz yayın önizlemesi; tam ekran oynatıcı (Better + isteğe bağlı MediaKit)\n'
-      '• Canlıda Better; VOD’da MediaKit (ayar açıkken), OSD’den yedek motora geçiş, TV canlıda takılma yedeği\n'
-      '• XMLTV (EPG), canlı tampon, Android yazılım/donanım kod çözücü tercihleri\n'
-      '• Cam temalar, bulanık cam; otomatik içerik yenileme, arka planda oynatma\n'
-      '• Uyku zamanlayıcısı; PiP (Better, telefon)\n'
-      '• Kayıt (desteklenen ortamlarda); VOD’da Better ile ses/altyazı izi seçimi\n'
-      '• Play: READ_MEDIA galeri izinleri yok; özel galeri arka planı kaldırıldı; varsayılan tema Varsayılan\n\n'
-      'Önceki sürümler\n'
-      'v1.2.6 — READ_MEDIA manifest kaldırma, özel arka plan kaldırıldı, varsayılan tema Varsayılan\n'
-      'v1.1.0 — package_info sürümü; canlı kesilince Oynat ile aynı kanal; ses/parlaklık jesti ve OSD\n'
-      'v1.0.7 — Glass diyaloglar; TV canlı tampon ve MediaKit yedek\n'
-      'v1.0.5 — TV odak ve kaydırma; üst çubuk geri kaldırıldı\n'
-      'v1.0.0 — İlk sürüm, cam arayüz\n',
+  'settings.dialog.changelogBody': 'v1.9.16\n'
+      '• Ayarlar: 16. kartta Better Player / MediaKit seçimi metni sadeleştirildi\n'
+      '• Ayarlar: yeni “Uygulama Fontu” menüsü eklendi (tüm uygulama geneline uygulanır)\n'
+      '• Fontlar: Sony, Roboto, Noto Sans ve Monospace seçenekleri eklendi\n'
+      '• TV: font seçim menüsünde D-pad odak/ok/OK akışı iyileştirildi\n'
+      '• Dikey detay: önizleme üst köşe gölge katmanı düzeltildi\n'
+      '• Dikey oynatıcı: yayın açılmasa bile mevcut OSD paneli + butonları görünür kalır\n'
+      '• Ayarlar: 16/17 kart ikonları uygulama geneliyle tutarlı hale getirildi\n\n'
+      'Detaylar için CHANGELOG.md dosyasına bakın.\n',
   'settings.dialog.developerTitle': 'Geliştirici',
   'settings.dialog.developerBody': 'Geliştirici: furkangumrukcu',
   'settings.snackbar.content': 'İçerik',
@@ -487,11 +494,12 @@ const Map<String, String> _tr = {
       'Altyazı görünümü özelleştirmesi yakında eklenecek.',
   'settings.snackbar.report': 'Sorun bildir',
   'settings.snackbar.reportFail':
-      'E-posta uygulaması açılamadı. Adres: furkangumrukcu@gmail.com',
+      'E-posta uygulaması açılamadı. Adres: furkangumrukcu07@gmail.com',
   'settings.snackbar.reportManual':
-      'furkangumrukcu@gmail.com adresine yazabilirsiniz.',
+      'furkangumrukcu07@gmail.com adresine yazabilirsiniz.',
   'settings.mail.subject': 'Mina IPTV — Sorun bildirimi',
-  'settings.mail.body': 'Cihaz / sürüm:\n\nSorun açıklaması:\n',
+  'settings.mail.body':
+      '--- Otomatik tanı (mümkünse silmeyin) ---\n@diag\n---\n\nSorun açıklaması / adımlar:\n\n',
 
   // Playlist setup
   'playlist.title': 'Playlist kurulumu',
@@ -776,6 +784,15 @@ const Map<String, String> _en = {
   'common.lang.ru': 'Russian',
   'common.lang.ja': 'Japanese',
   'common.lang.es': 'Spanish',
+  'common.lang.ko': 'Korean',
+  'common.lang.he': 'Hebrew',
+  'common.lang.da': 'Danish',
+  'common.lang.sv': 'Swedish',
+  'common.lang.hi': 'Hindi',
+  'common.lang.th': 'Thai',
+  'common.lang.it': 'Italian',
+  'common.lang.pt': 'Portuguese',
+  'common.lang.id': 'Indonesian',
 
   // Speed Test
   'settings.speed_test.title': 'Speed Test',
@@ -957,8 +974,10 @@ const Map<String, String> _en = {
   'settings.tile.about': 'About',
   'settings.tile.about.loading': 'Loading version…',
   'settings.tile.about.sub': 'Mina IPTV Player @v',
-  'settings.tile.help': 'Help & support',
-  'settings.tile.help.sub': 'Report issues or get help',
+  'settings.tile.help': 'Our Telegram',
+  'settings.tile.help.sub': 'Official Telegram channel',
+  'settings.tile.reportIssue': 'Report an issue',
+  'settings.tile.reportIssue.sub': 'Send us an email',
   'settings.tile.privacy': 'Privacy policy',
   'settings.tile.privacy.sub': 'GitHub: furkangumrukcu07/mina_iptv_player',
   'settings.snackbar.privacy': 'Privacy policy',
@@ -1014,29 +1033,15 @@ const Map<String, String> _en = {
   'settings.dialog.bufferTitle': 'Live stream buffer',
   'settings.dialog.bufferSlider': '@n seconds',
   'settings.dialog.changelogTitle': 'Release notes',
-  'settings.dialog.changelogBody': 'v1.9.15\n'
-      '• Playback: live TV uses Better Player; movies/series default to Exo (Better), optional MediaKit in Settings\n'
-      '• MediaKit (Android): fixed VideoController init order (reduced VOD crash risk)\n'
-      '• MediaKit: hardware decoder mode (Balanced / Low power), libmpv performance and buffer tuning\n'
-      '• Settings: MediaKit and stream preview default ON; stay ON after “erase all settings”\n'
-      '• Live + Better OSD: audio and subtitle buttons only for VOD\n\n'
-      'App features (current)\n'
-      '• Live TV, movies, and series; M3U (URL/file) and Xtream (player_api) playlists\n'
-      '• Android TV, phone, and tablet layouts; multi-language (EN/TR and partial locales)\n'
-      '• Channel and VOD lists: search, categories, favorites\n'
-      '• Silent stream preview in details; fullscreen player (Better + optional MediaKit)\n'
-      '• Live: Better; VOD: MediaKit when enabled, OSD backup engine switch, TV live stall fallback\n'
-      '• XMLTV (EPG), live buffer, Android software/hardware decoder options\n'
-      '• Glass themes and blur; automatic content refresh, background playback\n'
-      '• Sleep timer; PiP (Better, phone)\n'
-      '• Recording where supported; VOD audio/subtitle tracks with Better\n'
-      '• Play: no READ_MEDIA gallery permissions; custom gallery background removed; default theme Default\n\n'
-      'Earlier releases\n'
-      'v1.2.6 — READ_MEDIA manifest removal, custom background removed, default theme Default\n'
-      'v1.1.0 — package_info version; Play reloads same live channel; volume/brightness gestures\n'
-      'v1.0.7 — Glass dialogs; TV live buffering and MediaKit fallback\n'
-      'v1.0.5 — TV focus/scrolling; top-bar back removed\n'
-      'v1.0.0 — Initial glass UI release\n',
+  'settings.dialog.changelogBody': 'v1.9.16\n'
+      '• Settings: Better Player / MediaKit selection text is clearer\n'
+      '• Settings: new “App Font” menu added (applies to the whole app)\n'
+      '• Fonts: Sony, Roboto, Noto Sans, and Monospace options added\n'
+      '• TV: D-pad focus and OK flow improved in font picker dialog\n'
+      '• Portrait detail: sharp top-corner preview shadow layer fixed\n'
+      '• Portrait player: default OSD panel/buttons stay visible even when stream fails\n'
+      '• Settings: icons for tiles 16/17 aligned with the app-wide icon style\n\n'
+      'See CHANGELOG.md for full details.\n',
   'settings.dialog.developerTitle': 'Developer',
   'settings.dialog.developerBody': 'Developer: furkangumrukcu',
   'settings.snackbar.content': 'Content',
@@ -1065,10 +1070,11 @@ const Map<String, String> _en = {
       'Subtitle appearance options are coming soon.',
   'settings.snackbar.report': 'Report issue',
   'settings.snackbar.reportFail':
-      'Could not open email. Address: furkangumrukcu@gmail.com',
-  'settings.snackbar.reportManual': 'You can email furkangumrukcu@gmail.com',
+      'Could not open email. Address: furkangumrukcu07@gmail.com',
+  'settings.snackbar.reportManual': 'You can email furkangumrukcu07@gmail.com',
   'settings.mail.subject': 'Mina IPTV — Issue report',
-  'settings.mail.body': 'Device / version:\n\nDescribe the issue:\n',
+  'settings.mail.body':
+      '--- Auto diagnostics (please keep if possible) ---\n@diag\n---\n\nWhat happened? Steps:\n\n',
   'playlist.title': 'Playlist setup',
   'playlist.sourceTitle': 'Choose source',
   'playlist.sourceSubtitle': 'M3U URL, local file, or Xtream account.',

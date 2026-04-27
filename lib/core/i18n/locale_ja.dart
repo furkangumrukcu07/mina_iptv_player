@@ -302,8 +302,10 @@ const Map<String, String> kLocalePartialJa = {
   'settings.tile.about': 'このアプリについて',
   'settings.tile.about.loading': 'バージョン読み込み中…',
   'settings.tile.about.sub': 'Mina IPTV Player @v',
-  'settings.tile.help': 'ヘルプとサポート',
-  'settings.tile.help.sub': '不具合の報告やお問い合わせ',
+  'settings.tile.help': 'Telegram',
+  'settings.tile.help.sub': '公式Telegramチャンネル',
+  'settings.tile.reportIssue': '問題を報告',
+  'settings.tile.reportIssue.sub': 'メールでお知らせください',
   'settings.tile.privacy': 'プライバシーポリシー',
   'settings.tile.privacy.sub': 'GitHub: furkangumrukcu07/mina_iptv_player',
   'settings.snackbar.privacy': 'プライバシーポリシー',
@@ -354,18 +356,12 @@ const Map<String, String> kLocalePartialJa = {
   'settings.dialog.bufferTitle': 'ライブのバッファ',
   'settings.dialog.bufferSlider': '@n 秒',
   'settings.dialog.changelogTitle': 'リリースノート',
-  'settings.dialog.changelogBody': 'v1.9.15\n'
-      '• 再生: ライブは Better。映画/シリーズは既定 Exo、設定で MediaKit 任意\n'
-      '• Android MediaKit: 初期化順序の整理（VOD クラッシュ低減）\n'
-      '• MediaKit: ハードウェア解読モード、バッファ/パフォーマンス調整\n'
-      '• 設定: MediaKit/プレビュー既定オン。「設定消去」後も同様\n'
-      '• ライブ+Better OSD: 音声/字幕は VOD のみ\n\n'
-      '現在の機能\n'
-      '• ライブTV、映画、シリーズ。M3U / Xtream\n'
-      '• Android TV / スマホ / タブレット。多言語（英語/日本語/トルコ語 等）\n'
-      '• 番組表 (XMLTV)、ライブバッファ、省電力/バランス デコーダ\n\n'
-      'v1.2.6 — ギャラリー権限の整理、カスタム背景の廃止、既定テーマ\n'
-      'v1.1.0 — バージョン表記 等\n',
+  'settings.dialog.changelogBody': 'v1.9.16\n'
+      '• 設定: Better / MediaKit 切替表記を分かりやすく改善\n'
+      '• アプリ全体フォント選択メニューを追加\n'
+      '• フォント: Sony / Roboto / Noto Sans / Monospace\n'
+      '• TV の D-pad フォーカス操作を改善\n\n'
+      '詳細は CHANGELOG.md を参照してください。\n',
   'settings.dialog.developerTitle': '開発者',
   'settings.dialog.developerBody': '開発者: furkangumrukcu',
   'settings.snackbar.content': 'コンテンツ',
@@ -391,10 +387,11 @@ const Map<String, String> kLocalePartialJa = {
   'settings.snackbar.subtitles': '字幕',
   'settings.snackbar.subtitlesSoon': '外観設定は今後の更新で追加予定です。',
   'settings.snackbar.report': '問題を報告',
-  'settings.snackbar.reportFail': 'メールを開けません: furkangumrukcu@gmail.com',
-  'settings.snackbar.reportManual': 'メール: furkangumrukcu@gmail.com',
+  'settings.snackbar.reportFail': 'メールを開けません: furkangumrukcu07@gmail.com',
+  'settings.snackbar.reportManual': 'メール: furkangumrukcu07@gmail.com',
   'settings.mail.subject': 'Mina IPTV — 問題の報告',
-  'settings.mail.body': '端末/バージョン:\n\n内容:\n',
+  'settings.mail.body':
+      '--- 自動診断 ---\n@diag\n---\n\n内容 / 手順:\n\n',
   'playlist.title': 'プレイリスト設定',
   'playlist.sourceTitle': 'ソースを選択',
   'playlist.sourceSubtitle': 'M3U URL、ローカルファイル、またはXtream。',

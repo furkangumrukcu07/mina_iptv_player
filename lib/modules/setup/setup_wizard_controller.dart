@@ -42,6 +42,14 @@ class SetupWizardController extends GetxController {
     super.onInit();
     if (Get.isRegistered<PlaylistController>()) {
       ever(
+        Get.find<PlaylistController>().canSubmit,
+        (_) {
+          if (pageIndex.value == 3) {
+            unawaited(recomputeCanComplete());
+          }
+        },
+      );
+      ever(
         Get.find<PlaylistController>().isM3uLoaded,
         (_) {
           if (pageIndex.value == 3) {
@@ -55,7 +63,7 @@ class SetupWizardController extends GetxController {
   Future<void> _afterPlaylistLoaded() async {
     await Get.find<AppSettingsService>().setSetupCompleted(true);
     _clearHook();
-    Get.offAllNamed(AppRoutes.splash);
+    Get.offAllNamed(AppRoutes.home);
   }
 
   void _clearHook() {
@@ -73,6 +81,10 @@ class SetupWizardController extends GetxController {
       return;
     }
     final pl = Get.find<PlaylistController>();
+    if (pl.canSubmit.value) {
+      canCompleteSetup.value = true;
+      return;
+    }
     if (pl.isM3uLoaded.value) {
       canCompleteSetup.value = true;
       return;
@@ -95,9 +107,15 @@ class SetupWizardController extends GetxController {
       );
       return;
     }
+    final pl = Get.find<PlaylistController>();
+    if (pl.canSubmit.value) {
+      ensurePlaylistHook();
+      await pl.submit();
+      return;
+    }
     _clearHook();
     await Get.find<AppSettingsService>().setSetupCompleted(true);
-    Get.offAllNamed(AppRoutes.splash);
+    Get.offAllNamed(AppRoutes.home);
   }
 
   @override

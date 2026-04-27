@@ -168,8 +168,8 @@ class GlassCategoryCard extends StatelessWidget {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(cardR),
             border: Border.all(
-              width: 1,
-              color: ga.homeCategoryCardNeutralBorder(isPortrait),
+              width: 0.5,
+              color: Colors.white.withValues(alpha: 0.28),
             ),
             boxShadow: [
               BoxShadow(
@@ -226,6 +226,30 @@ class GlassCategoryCard extends StatelessWidget {
                     ),
                   ),
                 glassLayer,
+                Positioned.fill(
+                  child: IgnorePointer(
+                    child: DecoratedBox(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(clipInner),
+                        border: Border.all(
+                          width: 0.5,
+                          color: Colors.white.withValues(alpha: 0.22),
+                        ),
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          stops: const [0.0, 0.2, 0.8, 1.0],
+                          colors: [
+                            Colors.white.withValues(alpha: 0.10),
+                            Colors.transparent,
+                            Colors.transparent,
+                            Colors.black.withValues(alpha: 0.10),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
                 if (focused &&
                     MediaQuery.orientationOf(context) ==
                         Orientation.landscape)

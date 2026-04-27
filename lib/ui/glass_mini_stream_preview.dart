@@ -29,6 +29,8 @@ class GlassMiniStreamPreview extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final portrait = MediaQuery.orientationOf(context) == Orientation.portrait;
+    final cornerRadius = portrait ? 18.0 : 10.0;
     final lw = layoutWidth;
     late final double w;
     late final double h;
@@ -46,7 +48,7 @@ class GlassMiniStreamPreview extends StatelessWidget {
       w = maxHeight * 16 / 9;
     }
     final surface = ClipRRect(
-      borderRadius: BorderRadius.circular(10),
+      borderRadius: BorderRadius.circular(cornerRadius),
       child: ColoredBox(
         color: Colors.black.withValues(alpha: 0.45),
         child: loading
@@ -88,7 +90,7 @@ class GlassMiniStreamPreview extends StatelessWidget {
                   color: Colors.transparent,
                   child: InkWell(
                     onTap: onSurfaceTap,
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(cornerRadius),
                     splashColor: Colors.white24,
                     highlightColor: Colors.white12,
                   ),

@@ -416,10 +416,8 @@ class SettingsView extends GetView<SettingsController> {
                                       subtitle: Obx(
                                         () => Text(
                                           controller.app.useMediaKit.value
-                                              ? 'settings.tile.useMediaKit.subOn'
-                                                  .tr
-                                              : 'settings.tile.useMediaKit.subOff'
-                                                  .tr,
+                                              ? 'Oynatici motoru: MediaKit (M)'
+                                              : 'Oynatici motoru: Better Player (B)',
                                           style: _subtitleStyle,
                                         ),
                                       ),
@@ -428,6 +426,19 @@ class SettingsView extends GetView<SettingsController> {
                                       onTap: () => controller.app
                                           .setUseMediaKit(!controller
                                               .app.useMediaKit.value),
+                                    ),
+                                    _GlassTile(
+                                      index: idx(),
+                                      title: 'Uygulama Fontu',
+                                      subtitle: Obx(
+                                        () => Text(
+                                          controller.app.appFontFamilyLabel,
+                                          style: _subtitleStyle,
+                                        ),
+                                      ),
+                                      icon: Icons.font_download_rounded,
+                                      iconColor: primary,
+                                      onTap: controller.showAppFontFamilyDialog,
                                     ),
                                     _GlassTile(
                                       index: idx(),
@@ -515,10 +526,22 @@ class SettingsView extends GetView<SettingsController> {
                                         'settings.tile.help.sub'.tr,
                                         style: _subtitleStyle,
                                       ),
-                                      icon: Icons.help_outline_rounded,
+                                      icon: Icons.telegram,
                                       iconColor: primary,
                                       onTap: () => launchUrl(Uri.parse(
                                           'https://t.me/minaiptvplayerpro')),
+                                    ),
+                                    _GlassTile(
+                                      index: ai(),
+                                      title: 'settings.tile.reportIssue'.tr,
+                                      subtitle: Text(
+                                        'settings.tile.reportIssue.sub'.tr,
+                                        style: _subtitleStyle,
+                                      ),
+                                      icon: Icons.mail_outline_rounded,
+                                      iconColor: primary,
+                                      onTap: () =>
+                                          unawaited(controller.reportIssue()),
                                     ),
                                   ],
                                 );
@@ -672,6 +695,7 @@ class _GlassTile extends StatefulWidget {
     required this.subtitle,
     this.icon,
     this.iconColor,
+    this.trailing,
     this.onTap,
   });
 
@@ -680,6 +704,7 @@ class _GlassTile extends StatefulWidget {
   final Widget subtitle;
   final IconData? icon;
   final Color? iconColor;
+  final Widget? trailing;
   final VoidCallback? onTap;
 
   @override
@@ -729,7 +754,7 @@ class _GlassTileState extends State<_GlassTile> {
                 : isRed
                     ? const Color(0xFFD44E4E)
                     : isPurple
-                        ? const Color(0xFF9D4ED4)
+                        ? const Color(0xFF21E6EB)
                         : Colors.white;
 
         final isAnyColor = isBlue || isGreen || isRed || isPurple;
@@ -774,7 +799,9 @@ class _GlassTileState extends State<_GlassTile> {
                     ),
                   ),
                   const Spacer(),
-                  if (widget.icon != null)
+                  if (widget.trailing != null)
+                    widget.trailing!
+                  else if (widget.icon != null)
                     Icon(
                       widget.icon,
                       color: widget.iconColor ?? Colors.white70,
@@ -825,3 +852,4 @@ class _GlassTileState extends State<_GlassTile> {
     );
   }
 }
+

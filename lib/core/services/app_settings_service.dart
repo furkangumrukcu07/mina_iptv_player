@@ -14,6 +14,7 @@ import '../theme/glass_appearance.dart';
 import '../platform/device_layout_defaults.dart';
 import '../routes/app_routes.dart';
 import '../player/adaptive_stream_quality_ceiling.dart';
+import '../player/subtitle_font_family.dart';
 import '../player/playback_orientation_manager.dart';
 import '../epg/catch_up_url_template.dart';
 import '../../domain/entities/playlist_source.dart';
@@ -75,6 +76,12 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
 
   /// Gömülü altyazı punto (pt): ExoPlayer/Better Player + isteğe bağlı MediaKit (mpv sub-scale).
   static const _kSubtitleFontPt = 'mina_settings_subtitle_font_pt';
+  static const _kSubtitleFontFamily = 'mina_settings_subtitle_font_family';
+  static const _kAppFontFamily = 'mina_settings_app_font_family';
+  static const _kVodSubtitleAutoEnabled =
+      'mina_settings_vod_subtitle_auto_enabled';
+  static const _kVodPreferredSubtitleToken =
+      'mina_settings_vod_preferred_subtitle_token';
 
   /// HLS/DASH çoklu varyant üst çözünürlük (720 / 1080 / 4K / otomatik).
   static const _kAdaptiveQualityCeiling =
@@ -158,6 +165,10 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
 
   /// Altyazı yazı boyutu (Better Player, pt).
   final subtitleFontPt = 14.0.obs;
+  final subtitleFontFamilyKey = kDefaultSubtitleFontFamilyKey.obs;
+  final appFontFamilyKey = kDefaultAppFontFamilyKey.obs;
+  final vodSubtitleAutoEnabled = true.obs;
+  final vodPreferredSubtitleToken = ''.obs;
 
   /// Canlı / VOD HLS master’da en yüksek hangi varyantın seçileceği üst sınırı.
   final adaptiveStreamQualityCeiling = AdaptiveStreamQualityCeiling.auto.obs;
@@ -355,6 +366,23 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
     if (subPt != null && subPt >= 10 && subPt <= 40) {
       subtitleFontPt.value = subPt;
     }
+    final subFamily = p.getString(_kSubtitleFontFamily)?.trim() ?? '';
+    if (isValidSubtitleFontFamilyKey(subFamily)) {
+      subtitleFontFamilyKey.value = subFamily;
+    } else {
+      subtitleFontFamilyKey.value = kDefaultSubtitleFontFamilyKey;
+      await p.setString(_kSubtitleFontFamily, kDefaultSubtitleFontFamilyKey);
+    }
+    final appFont = p.getString(_kAppFontFamily)?.trim() ?? '';
+    if (isValidAppFontFamilyKey(appFont)) {
+      appFontFamilyKey.value = appFont;
+    } else {
+      appFontFamilyKey.value = kDefaultAppFontFamilyKey;
+      await p.setString(_kAppFontFamily, kDefaultAppFontFamilyKey);
+    }
+    vodSubtitleAutoEnabled.value = p.getBool(_kVodSubtitleAutoEnabled) ?? true;
+    vodPreferredSubtitleToken.value =
+        p.getString(_kVodPreferredSubtitleToken)?.trim() ?? '';
 
     adaptiveStreamQualityCeiling.value =
         AdaptiveStreamQualityCeiling.fromStorage(
@@ -597,12 +625,45 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
         'pt': subtitleFontPt.value.round().toString(),
       });
 
+  String get subtitleFontFamilyLabel =>
+      subtitleFontFamilyOptionForKey(subtitleFontFamilyKey.value).preview;
+
+  String get appFontFamilyLabel => appFontFamilyPreviewFor(appFontFamilyKey.value);
+
   Future<void> setSubtitleFontPt(double pt) async {
     final v = pt.clamp(10.0, 40.0);
     subtitleFontPt.value = v;
     final p = await SharedPreferences.getInstance();
     await p.setDouble(_kSubtitleFontPt, v);
     onSubtitleFontPtApplied?.call();
+  }
+
+  Future<void> setSubtitleFontFamilyKey(String key) async {
+    final next = isValidSubtitleFontFamilyKey(key)
+        ? key
+        : kDefaultSubtitleFontFamilyKey;
+    subtitleFontFamilyKey.value = next;
+    final p = await SharedPreferences.getInstance();
+    await p.setString(_kSubtitleFontFamily, next);
+    onSubtitleFontPtApplied?.call();
+  }
+
+  Future<void> setAppFontFamilyKey(String key) async {
+    final next = isValidAppFontFamilyKey(key) ? key : kDefaultAppFontFamilyKey;
+    appFontFamilyKey.value = next;
+    final p = await SharedPreferences.getInstance();
+    await p.setString(_kAppFontFamily, next);
+  }
+
+  Future<void> setVodPreferredSubtitleToken(String? token) async {
+    final normalized = (token ?? '').trim().toLowerCase();
+    vodPreferredSubtitleToken.value = normalized;
+    final p = await SharedPreferences.getInstance();
+    if (normalized.isEmpty) {
+      await p.remove(_kVodPreferredSubtitleToken);
+    } else {
+      await p.setString(_kVodPreferredSubtitleToken, normalized);
+    }
   }
 
   String get adaptiveStreamQualityCeilingSubtitle {
@@ -876,6 +937,15 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
         'ru' => 'common.lang.ru'.tr,
         'ja' => 'common.lang.ja'.tr,
         'es' => 'common.lang.es'.tr,
+        'ko' => 'common.lang.ko'.tr,
+        'he' => 'common.lang.he'.tr,
+        'da' => 'common.lang.da'.tr,
+        'sv' => 'common.lang.sv'.tr,
+        'hi' => 'common.lang.hi'.tr,
+        'th' => 'common.lang.th'.tr,
+        'it' => 'common.lang.it'.tr,
+        'pt' => 'common.lang.pt'.tr,
+        'id' => 'common.lang.id'.tr,
         _ => 'common.lang.en'.tr,
       };
 
@@ -1130,6 +1200,11 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
     mediaKitLowPowerHwdec.value = false;
     streamPreviewEnabled.value = true;
     miniPlayerOnHome.value = false;
+    subtitleFontPt.value = 14.0;
+    subtitleFontFamilyKey.value = kDefaultSubtitleFontFamilyKey;
+    appFontFamilyKey.value = kDefaultAppFontFamilyKey;
+    vodSubtitleAutoEnabled.value = true;
+    vodPreferredSubtitleToken.value = '';
     adaptiveStreamQualityCeiling.value = AdaptiveStreamQualityCeiling.auto;
     catchUpUrlPreset.value = CatchUpUrlPreset.off;
     catchUpCustomTemplate.value = '';
@@ -1169,6 +1244,11 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
     await p.remove(_kUseVlcLegacy);
     await p.remove(_kMiniPlayerHome);
     await p.remove(_kSleepEnd);
+    await p.remove(_kSubtitleFontPt);
+    await p.remove(_kSubtitleFontFamily);
+    await p.remove(_kAppFontFamily);
+    await p.setBool(_kVodSubtitleAutoEnabled, true);
+    await p.remove(_kVodPreferredSubtitleToken);
     await p.remove(_kAdaptiveQualityCeiling);
     await p.remove(_kCatchUpPreset);
     await p.remove(_kCatchUpCustomTemplate);

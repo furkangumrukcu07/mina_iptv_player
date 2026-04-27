@@ -6,6 +6,7 @@ list(APPEND FLUTTER_PLUGIN_LIST
   flutter_secure_storage_linux
   flutter_volume_controller
   media_kit_video
+  sentry_flutter
   url_launcher_linux
 )
 

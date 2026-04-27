@@ -204,6 +204,15 @@ class _SetupLanguagePage extends StatelessWidget {
                   (code: 'ru', labelTr: 'common.lang.ru'),
                   (code: 'ja', labelTr: 'common.lang.ja'),
                   (code: 'es', labelTr: 'common.lang.es'),
+                  (code: 'ko', labelTr: 'common.lang.ko'),
+                  (code: 'he', labelTr: 'common.lang.he'),
+                  (code: 'da', labelTr: 'common.lang.da'),
+                  (code: 'sv', labelTr: 'common.lang.sv'),
+                  (code: 'hi', labelTr: 'common.lang.hi'),
+                  (code: 'th', labelTr: 'common.lang.th'),
+                  (code: 'it', labelTr: 'common.lang.it'),
+                  (code: 'pt', labelTr: 'common.lang.pt'),
+                  (code: 'id', labelTr: 'common.lang.id'),
                 ])
                   Padding(
                     padding: const EdgeInsets.only(bottom: 6),

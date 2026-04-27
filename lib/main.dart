@@ -14,6 +14,7 @@ import 'core/i18n/app_locale.dart';
 import 'core/i18n/app_translations.dart';
 import 'core/services/app_install_source_service.dart';
 import 'core/services/app_settings_service.dart';
+import 'core/services/crash_reporting.dart';
 import 'core/services/continue_watching_service.dart';
 import 'core/services/integrity_service.dart';
 import 'core/services/parental_control_service.dart';
@@ -26,48 +27,55 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   MediaKit.ensureInitialized();
 
-  await Future.wait<void>([
-    initializeDateFormatting('tr_TR'),
-    initializeDateFormatting('en_US'),
-    initializeDateFormatting('fr_FR'),
-    initializeDateFormatting('ar_SA'),
-    initializeDateFormatting('zh_CN'),
-    initializeDateFormatting('ru_RU'),
-  ]);
+  await maybeInitSentry(() async {
+    await Future.wait<void>([
+      initializeDateFormatting('tr_TR'),
+      initializeDateFormatting('en_US'),
+      initializeDateFormatting('fr_FR'),
+      initializeDateFormatting('ar_SA'),
+      initializeDateFormatting('zh_CN'),
+      initializeDateFormatting('ru_RU'),
+      initializeDateFormatting('ko_KR'),
+      initializeDateFormatting('he_IL'),
+      initializeDateFormatting('da_DK'),
+      initializeDateFormatting('sv_SE'),
+      initializeDateFormatting('hi_IN'),
+      initializeDateFormatting('th_TH'),
+      initializeDateFormatting('it_IT'),
+      initializeDateFormatting('pt_PT'),
+      initializeDateFormatting('id_ID'),
+    ]);
 
-  final installSource = AppInstallSourceService();
-  await installSource.ensureLoaded();
-  Get.put<AppInstallSourceService>(installSource, permanent: true);
-  Get.put<IntegrityService>(IntegrityService(), permanent: true);
-  if (kDebugMode) {
-    debugPrint(
-      'mina_iptv: installer=${installSource.installerPackageName ?? "(null)"} '
-      '→ ${installSource.describeInstaller()}',
+    final installSource = AppInstallSourceService();
+    await installSource.ensureLoaded();
+    Get.put<AppInstallSourceService>(installSource, permanent: true);
+    Get.put<IntegrityService>(IntegrityService(), permanent: true);
+    if (kDebugMode) {
+      debugPrint(
+        'mina_iptv: installer=${installSource.installerPackageName ?? "(null)"} '
+        '→ ${installSource.describeInstaller()}',
+      );
+    }
+
+    final settings = AppSettingsService();
+    await settings.ensureLoaded();
+    Get.put<AppSettingsService>(settings, permanent: true);
+    final parental = ParentalControlService();
+    Get.put<ParentalControlService>(parental, permanent: true);
+    await parental.refreshPinState();
+
+    Get.put<SystemVolumeService>(SystemVolumeService(), permanent: true);
+
+    Get.put<ContinueWatchingService>(ContinueWatchingService(), permanent: true);
+    await AndroidPlaybackSocHints.ensureLoaded();
+    Get.updateLocale(
+      materialLocaleFromLanguageCode(settings.languageCode.value),
     );
-  }
 
-  final settings = AppSettingsService();
-  await settings.ensureLoaded();
-  Get.put<AppSettingsService>(settings, permanent: true);
-  final parental = ParentalControlService();
-  Get.put<ParentalControlService>(parental, permanent: true);
-  await parental.refreshPinState();
-  
-  // Initialize SystemVolumeService
-  Get.put<SystemVolumeService>(SystemVolumeService(), permanent: true);
-  
-  // Initialize ContinueWatchingService
-  Get.put<ContinueWatchingService>(ContinueWatchingService(), permanent: true);
-  await AndroidPlaybackSocHints.ensureLoaded();
-  Get.updateLocale(
-    materialLocaleFromLanguageCode(settings.languageCode.value),
-  );
+    await settings.syncSystemChromeWithLayout();
 
-  await settings.syncSystemChromeWithLayout();
-
-  // Play politikası: kurulum kaynağına göre uygulamayı kilitleyen / “yalnızca Play’den
-  // yükleyin” ekranı göstermek reddedilebilir; her zaman normal giriş.
-  runApp(const MinaIptvApp(initialRoute: AppRoutes.splash));
+    runApp(const MinaIptvApp(initialRoute: AppRoutes.splash));
+  });
 }
 
 class MinaIptvApp extends StatelessWidget {
@@ -81,6 +89,7 @@ class MinaIptvApp extends StatelessWidget {
     return Obx(() {
       settings.languageCode.value;
       settings.themeLabel.value;
+      settings.appFontFamilyKey.value;
       return GetMaterialApp(
       title: 'Mina IPTV Player',
       debugShowCheckedModeBanner: false,
@@ -101,8 +110,20 @@ class MinaIptvApp extends StatelessWidget {
         Locale('ru', 'RU'),
         Locale('ja', 'JP'),
         Locale('es', 'ES'),
+        Locale('ko', 'KR'),
+        Locale('he', 'IL'),
+        Locale('da', 'DK'),
+        Locale('sv', 'SE'),
+        Locale('hi', 'IN'),
+        Locale('th', 'TH'),
+        Locale('it', 'IT'),
+        Locale('pt', 'PT'),
+        Locale('id', 'ID'),
       ],
-      theme: AppTheme.materialThemeForLabel(settings.themeLabel.value),
+      theme: AppTheme.materialThemeForLabel(
+        settings.themeLabel.value,
+        appFontFamilyKey: settings.appFontFamilyKey.value,
+      ),
       initialBinding: InitialBinding(),
       initialRoute: initialRoute,
       getPages: AppPages.routes,
