@@ -10,10 +10,8 @@ abstract final class EpgSnapshotStore {
   static const _filePrefix = 'mina_epg_v1_';
   static const _fileSuffix = '.json';
 
-  /// Bu süre dolmadan aynı kaynak için ağdan tam EPG indirmeyi atlarız.
-  static const Duration cacheTtl = Duration(hours: 6);
-
-  static int get ttlMs => cacheTtl.inMilliseconds;
+  /// Önbellek tazelik süresi [AppSettingsService.epgDiskCacheRefreshDays] ile belirlenir;
+  /// disk okuma/yazma bu sınıfta, yaş kontrolü [EpgService] içindedir.
 
   static File _file(Directory dir, String logicalKey) {
     final h = md5.convert(utf8.encode(logicalKey)).toString();
@@ -33,6 +31,11 @@ abstract final class EpgSnapshotStore {
   }
 
   /// TTL ve [logicalKey] eşleşmesi [validateAndDecode] içinde yapılır.
+  static Future<bool> hasSnapshotFile(String logicalKey) async {
+    final dir = await getApplicationSupportDirectory();
+    return _file(dir, logicalKey).exists();
+  }
+
   static Future<String?> readRaw(String logicalKey) async {
     final dir = await getApplicationSupportDirectory();
     final f = _file(dir, logicalKey);

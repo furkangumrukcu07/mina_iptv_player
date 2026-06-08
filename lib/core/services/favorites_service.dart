@@ -17,6 +17,10 @@ class FavoritesService extends GetxService {
     _load();
   }
 
+  /// Profil değişimi / bulut geri yükleme sonrası favorileri diskten yeniden
+  /// okur.
+  Future<void> reload() => _load();
+
   Future<void> _load() async {
     try {
       final p = await SharedPreferences.getInstance();

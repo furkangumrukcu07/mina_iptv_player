@@ -15,10 +15,12 @@ class _XtreamSeriesPayload {
   const _XtreamSeriesPayload({
     required this.episodeMaps,
     this.seriesPlot,
+    this.infoMap,
   });
 
   final List<Map<String, dynamic>> episodeMaps;
   final String? seriesPlot;
+  final Map<String, dynamic>? infoMap;
 }
 
 String? _coerceNonEmptyText(dynamic v) {
@@ -153,6 +155,112 @@ String? _xtreamEpisodePlot(Map<String, dynamic> ep) {
     return s.isEmpty ? null : s;
   }
   return null;
+}
+
+int? _xtreamDurationToSeconds(int n) {
+  if (n <= 0) return null;
+  // Dakika (çoğu panel): 1–180; saniye: tipik bölüm 300–7200+
+  if (n <= 180) return n * 60;
+  return n;
+}
+
+int? _xtreamEpisodeDurationSecs(Map<String, dynamic> ep) {
+  int? parseValue(dynamic v) {
+    if (v == null) return null;
+    if (v is int) return _xtreamDurationToSeconds(v);
+    if (v is double) return _xtreamDurationToSeconds(v.round());
+    final s = v.toString().trim();
+    if (s.isEmpty || s == '0' || s == 'N/A') return null;
+
+    if (s.contains(':')) {
+      final parts = s.split(':');
+      final nums = <int>[];
+      for (final p in parts) {
+        final n = int.tryParse(p.trim());
+        if (n == null) return null;
+        nums.add(n);
+      }
+      if (nums.length == 3) {
+        return nums[0] * 3600 + nums[1] * 60 + nums[2];
+      }
+      if (nums.length == 2) {
+        return nums[0] * 60 + nums[1];
+      }
+    }
+
+    final minMatch =
+        RegExp(r'^(\d+)\s*(?:min|dk|dak)', caseSensitive: false).firstMatch(s);
+    if (minMatch != null) {
+      return int.parse(minMatch.group(1)!) * 60;
+    }
+
+    final n = int.tryParse(s);
+    if (n != null) return _xtreamDurationToSeconds(n);
+    return null;
+  }
+
+  for (final k in [
+    'duration_secs',
+    'duration_seconds',
+    'duration_in_seconds',
+    'duration',
+    'runtime',
+    'episode_run_time',
+    'length',
+    'time',
+  ]) {
+    final r = parseValue(ep[k]);
+    if (r != null && r > 0) return r;
+  }
+  for (final nested in ['info', 'movie_data', 'episode_info', 'data']) {
+    final o = ep[nested];
+    if (o is Map) {
+      final r = _xtreamEpisodeDurationSecs(Map<String, dynamic>.from(o));
+      if (r != null && r > 0) return r;
+    }
+  }
+  return null;
+}
+
+({String? imdbRating, String? releaseDate, String? genre, String? coverUrl})
+    _xtreamSeriesMetaFromInfo(
+  Map<String, dynamic>? info,
+  String? fallbackPoster,
+) {
+  if (info == null || info.isEmpty) {
+    return (
+      imdbRating: null,
+      releaseDate: null,
+      genre: null,
+      coverUrl: fallbackPoster,
+    );
+  }
+  final m = Map<String, dynamic>.from(info);
+  final rating = _xtreamVodRating(m);
+  final release = XtreamApi._pickXtreamString(m, [
+    'releasedate',
+    'release_date',
+    'releaseDate',
+    'year',
+  ]);
+  final genre = XtreamApi._pickXtreamString(m, [
+    'genre',
+    'genres',
+    'category_name',
+  ]);
+  final cover = XtreamApi._pickXtreamString(m, [
+    'cover',
+    'cover_big',
+    'movie_image',
+    'backdrop_path',
+  ]) ??
+      fallbackPoster;
+  return (
+    imdbRating: rating,
+    releaseDate: release,
+    genre: genre,
+    coverUrl: cover,
+  );
 }
 
 class XtreamApi {
@@ -471,6 +579,39 @@ class XtreamApi {
     return null;
   }
 
+  /// Xtream `duration` alanı saniye, dakika veya `HH:MM:SS` olabilir.
+  static int? _xtreamDurationToMinutes(dynamic raw) {
+    if (raw == null) return null;
+    if (raw is List && raw.isNotEmpty) {
+      return _xtreamDurationToMinutes(raw.first);
+    }
+    final s = raw.toString().trim();
+    if (s.isEmpty || s == '0' || s == 'null') return null;
+
+    if (s.contains(':')) {
+      final parts = s
+          .split(':')
+          .map((e) => int.tryParse(e.trim()))
+          .whereType<int>()
+          .toList();
+      if (parts.isEmpty) return null;
+      if (parts.length >= 3) {
+        return parts[0] * 60 + parts[1] + (parts[2] > 30 ? 1 : 0);
+      }
+      if (parts.length == 2) {
+        return parts[0] + (parts[1] > 30 ? 1 : 0);
+      }
+    }
+
+    final n = int.tryParse(s.replaceAll(RegExp(r'[^\d]'), ''));
+    if (n == null || n <= 0) return null;
+    if (n >= 3600) return n ~/ 60;
+    if (n > 600) return n ~/ 60;
+    if (n >= 20 && n <= 500) return n;
+    if (n >= 60) return n ~/ 60;
+    return n;
+  }
+
   /// `get_vod_info` — özet + tür, yönetmen, oyuncu vb. (panel alan adları değişkendir).
   Future<Map<String, String>?> fetchVodInfoFields(Dio dio, int vodStreamId) async {
     if (vodStreamId <= 0) return null;
@@ -559,6 +700,14 @@ class XtreamApi {
       ]);
       if (release != null) out['release'] = release;
 
+      final country = _pickXtreamString(merged, [
+        'country',
+        'countries',
+        'country_of_origin',
+        'production_countries',
+      ]);
+      if (country != null) out['country'] = country;
+
       final rating = _pickXtreamString(merged, [
         'rating',
         'rating_imdb',
@@ -567,15 +716,73 @@ class XtreamApi {
       ]);
       if (rating != null) out['rating'] = rating;
 
-      final durRaw = merged['duration'] ?? merged['duration_secs'];
-      if (durRaw != null) {
-        final secs = durRaw is int
-            ? durRaw
-            : int.tryParse(durRaw.toString().trim());
-        if (secs != null && secs >= 60) {
-          out['duration_minutes'] = '${secs ~/ 60}';
-        }
+      final durMins = _xtreamDurationToMinutes(
+        merged['duration'] ??
+            merged['duration_secs'] ??
+            merged['runtime'] ??
+            merged['episode_run_time'],
+      );
+      if (durMins != null && durMins > 0) {
+        out['duration_minutes'] = '$durMins';
+        out['duration_secs'] = '${durMins * 60}';
       }
+
+      final videoCodec = _pickXtreamString(merged, [
+        'video_codec',
+        'codec',
+        'codec_name',
+        'video_codec_name',
+        'vcodec',
+      ]);
+      if (videoCodec != null) out['video_codec'] = videoCodec;
+
+      final audioCodec = _pickXtreamString(merged, [
+        'audio_codec',
+        'audio_codec_name',
+        'acodec',
+      ]);
+      if (audioCodec != null) out['audio_codec'] = audioCodec;
+
+      final resolution = _pickXtreamString(merged, [
+        'video_resolution',
+        'resolution',
+        'quality',
+        'stream_quality',
+      ]);
+      if (resolution != null) out['video_resolution'] = resolution;
+
+      final bitrate = _pickXtreamString(merged, [
+        'bitrate',
+        'video_bitrate',
+        'bandwidth',
+      ]);
+      if (bitrate != null) out['bitrate'] = bitrate;
+
+      final streamAudio = _pickXtreamString(merged, [
+        'audio',
+        'audio_lang',
+        'audio_langs',
+        'audiolang',
+        'audio_tracks',
+        'language',
+        'languages',
+        'lang',
+        'langs',
+      ]);
+      if (streamAudio != null) out['stream_audio_langs'] = streamAudio;
+
+      final streamSubs = _pickXtreamString(merged, [
+        'subtitle',
+        'subtitles',
+        'subtitle_lang',
+        'subtitle_langs',
+        'sub_lang',
+        'sub_langs',
+        'subs',
+        'sub_tracks',
+        'captions',
+      ]);
+      if (streamSubs != null) out['stream_subtitle_langs'] = streamSubs;
 
       return out.isEmpty ? null : out;
     } on DioException catch (_) {
@@ -703,12 +910,15 @@ class XtreamApi {
         root = Map<String, dynamic>.from(root['data'] as Map);
       }
       String? seriesPlot;
+      Map<String, dynamic>? infoMap;
       final info = root['info'];
       if (info is Map) {
         final im = Map<String, dynamic>.from(info);
+        infoMap = im;
         seriesPlot = _xtreamPlotLine(im);
       } else if (outerInfoForPlot is Map) {
-        seriesPlot = _xtreamPlotLine(Map<String, dynamic>.from(outerInfoForPlot));
+        infoMap = Map<String, dynamic>.from(outerInfoForPlot);
+        seriesPlot = _xtreamPlotLine(infoMap);
       }
       final episodesRaw = root['episodes'];
       final flat = <Map<String, dynamic>>[];
@@ -752,6 +962,7 @@ class XtreamApi {
       return _XtreamSeriesPayload(
         episodeMaps: flat,
         seriesPlot: seriesPlot,
+        infoMap: infoMap,
       );
     } on DioException catch (e) {
       throw NetworkException(e.message ?? 'get_series_info failed', e);
@@ -812,6 +1023,7 @@ class XtreamApi {
           (ep['movie_image'] as String?) ??
           seriesPosterUrl;
       final epPlot = _xtreamEpisodePlot(ep);
+      final durSecs = _xtreamEpisodeDurationSecs(ep);
       out.add(
         SeriesEpisodeOption(
           channel: Channel(
@@ -828,12 +1040,40 @@ class XtreamApi {
           episodeNumber: epNum,
           displayTitle: label,
           plot: epPlot,
+          durationSecs: durSecs,
         ),
       );
     }
+    final meta = _xtreamSeriesMetaFromInfo(payload.infoMap, seriesPosterUrl);
+    final defaultDur = payload.infoMap != null
+        ? _xtreamEpisodeDurationSecs(payload.infoMap!)
+        : null;
+    if (defaultDur != null) {
+      for (var i = 0; i < out.length; i++) {
+        final e = out[i];
+        if (e.durationSecs == null || e.durationSecs! <= 0) {
+          out[i] = SeriesEpisodeOption(
+            channel: e.channel,
+            season: e.season,
+            episodeNumber: e.episodeNumber,
+            displayTitle: e.displayTitle,
+            plot: e.plot,
+            durationSecs: defaultDur,
+          );
+        }
+      }
+    }
+    final trailerUrl = payload.infoMap != null
+        ? _xtreamVodTrailerUrl(payload.infoMap!)
+        : null;
     return XtreamSeriesBrowseDetail(
       episodes: out,
       seriesPlot: payload.seriesPlot,
+      imdbRating: meta.imdbRating,
+      releaseDate: meta.releaseDate,
+      genre: meta.genre,
+      coverUrl: meta.coverUrl,
+      trailerUrl: trailerUrl,
     );
   }
 
@@ -842,7 +1082,70 @@ class XtreamApi {
       final response = await dio.get<dynamic>(_base);
       final data = response.data;
       if (data is Map && data['user_info'] is Map) {
-        return data['user_info'] as Map<String, dynamic>;
+        return Map<String, dynamic>.from(data['user_info'] as Map);
+      }
+      return {};
+    } catch (_) {
+      return {};
+    }
+  }
+
+  /// Hesap doğrulaması için `auth: 1` bekleyen daha sıkı yükleyici.
+  /// Sunucu erişilemiyorsa veya beklenen JSON yapısı dönmüyorsa hata fırlatır.
+  /// Hatalı kullanıcı adı / şifre durumunda da fırlatır.
+  Future<Map<String, dynamic>> verifyCredentialsOrThrow(Dio dio) async {
+    final Response<dynamic> response;
+    try {
+      response = await dio.get<dynamic>(
+        _base,
+        options: Options(
+          receiveTimeout: const Duration(seconds: 25),
+        ),
+      );
+    } on DioException catch (e) {
+      throw NetworkException(e.message ?? 'Xtream auth network error', e);
+    } catch (e) {
+      throw NetworkException('Xtream auth error', e);
+    }
+    final data = response.data;
+    if (data is! Map) {
+      throw const ParseException('xtream.error.invalidCredentials');
+    }
+    final ui = data['user_info'];
+    if (ui is! Map) {
+      throw const ParseException('xtream.error.invalidCredentials');
+    }
+    final userInfo = Map<String, dynamic>.from(ui);
+    final authRaw = userInfo['auth'];
+    final authOk = authRaw == 1 ||
+        authRaw == '1' ||
+        authRaw == true ||
+        authRaw == 'true';
+    if (!authOk) {
+      final msg = userInfo['message']?.toString().trim();
+      if (msg != null && msg.isNotEmpty) {
+        throw ParseException('xtream.error.invalidCredentialsMsg|$msg');
+      }
+      throw const ParseException('xtream.error.invalidCredentials');
+    }
+    return data.cast<String, dynamic>();
+  }
+
+  /// `user_info` + `server_info` ham haritasını birlikte döndürür.
+  /// Yalnızca **Ayarlar > Xtream Hesabı** ekranı için ekstra alanları okumak
+  /// amacıyla kullanılır; başarısızlık halinde boş map döner (UI bunu hata
+  /// olarak gösterir).
+  Future<Map<String, dynamic>> getFullAccountInfo(Dio dio) async {
+    try {
+      final response = await dio.get<dynamic>(
+        _base,
+        options: Options(
+          receiveTimeout: const Duration(seconds: 25),
+        ),
+      );
+      final data = response.data;
+      if (data is Map) {
+        return Map<String, dynamic>.from(data);
       }
       return {};
     } catch (_) {

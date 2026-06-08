@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:dio/dio.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -6,37 +7,86 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:sentry_flutter/sentry_flutter.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import '../../core/constants/playlist_storage.dart';
 import '../../core/error/app_exception.dart';
 import '../../core/i18n/app_locale.dart';
 import '../../core/i18n/theme_label_localized.dart';
 import '../../core/routes/app_routes.dart';
+import '../../core/services/active_playlist_service.dart';
 import '../../core/services/app_settings_service.dart';
+import '../../core/services/auth_service.dart';
+import '../../core/services/backup_service.dart';
+import '../../core/services/equalizer_service.dart';
 import '../../core/services/crash_reporting.dart';
 import '../../core/services/support_diagnostics.dart';
 import '../../core/player/adaptive_stream_quality_ceiling.dart';
+import '../../core/player/playback_user_agent.dart';
 import '../../core/epg/catch_up_url_template.dart';
 import '../../core/services/epg_service.dart';
+import '../../core/epg/global_epg_service.dart';
 import '../../data/local/epg_snapshot_keys.dart';
 import '../../data/remote/xtream_api.dart';
 import '../../core/services/favorites_service.dart';
 import '../../core/services/iptv_logo_cache_service.dart';
+import '../../core/services/mina_telemetry_service.dart';
 import '../../core/services/playlist_cache_service.dart';
 import '../../core/layout/app_layout_mode.dart';
+import '../../core/player/subtitle_font_family.dart';
 import '../../core/theme/glass_appearance.dart';
 import '../../domain/entities/playlist_source.dart';
 import '../../domain/repositories/playlist_repository.dart';
 import '../browse/browse_controller.dart';
 import '../channels/channels_controller.dart';
 import '../../ui/glass_overlays.dart';
+import 'equalizer_dialog.dart' as eq_dialog;
 import 'subtitle_font_picker_dialog.dart';
 import 'subtitle_font_family_picker_dialog.dart';
+import 'xtream_account_info_body.dart';
 
 class SettingsController extends GetxController {
   final _repo = Get.find<PlaylistRepository>();
   final _cache = Get.find<PlaylistCacheService>();
   final _fav = Get.find<FavoritesService>();
   final _app = Get.find<AppSettingsService>();
+  final _backup = Get.find<BackupService>();
+
+  AuthService? get _auth =>
+      Get.isRegistered<AuthService>() ? Get.find<AuthService>() : null;
+
+  /// Bulut (Google) senkronu kullanılabilir mi? (Firebase yapılandırılmış)
+  bool get isCloudAvailable => _auth?.isAvailable ?? false;
+
+  /// Yedek paylaşımı / geri yüklemesi sırasında butonları kilitle.
+  final isBackupBusy = false.obs;
+
+  /// Google bulut yedekleme / geri yükleme sırasında butonları kilitle.
+  final isCloudBusy = false.obs;
+
+  /// Buluttaki son yedeğin özeti (boyut + içerik). Yüklenene kadar null.
+  final cloudBackupInfo = Rxn<CloudBackupInfo>();
+
+  /// Yedek özeti çekilirken yükleme göstergesi.
+  final isCloudInfoLoading = false.obs;
+
+  /// Buluttaki son yedeğin özetini çeker ve [cloudBackupInfo]'yu günceller.
+  /// Oturum kapalı / bulut yoksa null bırakır. Panel açılışında ve yedek/geri
+  /// yükleme sonrasında çağrılır.
+  Future<void> refreshCloudBackupInfo() async {
+    final auth = _auth;
+    if (auth == null || !auth.isAvailable || !auth.isSignedIn) {
+      cloudBackupInfo.value = null;
+      return;
+    }
+    isCloudInfoLoading.value = true;
+    try {
+      cloudBackupInfo.value = await auth
+          .fetchCloudBackupInfo()
+          .timeout(const Duration(seconds: 15), onTimeout: () => null);
+    } catch (_) {
+      // Sessizce geç — panel "henüz yedek yok" durumunu gösterir.
+    } finally {
+      isCloudInfoLoading.value = false;
+    }
+  }
 
   final now = DateTime.now().obs;
   Timer? _clock;
@@ -44,17 +94,21 @@ class SettingsController extends GetxController {
   final isFetchingInfo = false.obs;
   final isXtream = false.obs;
 
+  /// M3U veya Xtream — herhangi bir kaynak yüklendiğinde true. Parental
+  /// Control gibi yalnızca içerik yüklendikten sonra anlamlı olan ayarları
+  /// koşullu göstermek için kullanılır.
+  final hasAnySource = false.obs;
+
   /// Ayarlar altı: Xtream kullanıcı + sunucu (şifre yok).
   final xtreamFooterLine = ''.obs;
 
   /// Boş: henüz yüklenmedi. Örn. `1.1.0 (2014)`.
   final packageVersionLabel = ''.obs;
 
-  AppSettingsService get app => _app;
+  /// «Hakkında» diyalogu: Play Store güncelleme denetimi sürüyor mu?
+  final isCheckingUpdate = false.obs;
 
-  Future<void> toggleXtreamSkipPanelXmltvEpg() async {
-    await _app.setXtreamSkipPanelXmltvEpg(!_app.xtreamSkipPanelXmltvEpg.value);
-  }
+  AppSettingsService get app => _app;
 
   Future<void> toggleStreamPreviewEnabled() async {
     final next = !_app.streamPreviewEnabled.value;
@@ -91,8 +145,9 @@ class SettingsController extends GetxController {
   Future<void> _checkSource() async {
     final s = await _repo.readSource();
     isXtream.value = s is XtreamSource;
+    hasAnySource.value = s != null;
     if (s is XtreamSource) {
-      final host = _shortUrlHost(s.baseUrl);
+      final host = _shortHost(s.baseUrl);
       xtreamFooterLine.value = 'settings.xtreamFooter.line'.trParams({
         'user': s.username,
         'host': host,
@@ -102,7 +157,7 @@ class SettingsController extends GetxController {
     }
   }
 
-  String _shortUrlHost(String raw) {
+  String _shortHost(String raw) {
     final u = Uri.tryParse(raw.trim());
     if (u != null && u.host.isNotEmpty) {
       return u.hasPort ? '${u.host}:${u.port}' : u.host;
@@ -126,25 +181,53 @@ class SettingsController extends GetxController {
     final epg = Get.find<EpgService>();
     try {
       if (source is XtreamSource) {
-        final u = await _repo.getXtreamEpgUrl();
-        final api = XtreamApi(
-          baseUrl: source.baseUrl,
-          username: source.username,
-          password: source.password,
-        );
-        if (u != null && u.isNotEmpty && !_app.xtreamSkipPanelXmltvEpg.value) {
-          await epg.loadEpg(u);
+        final mode = _app.xtreamEpgSourceMode.value;
+        final allowXtream = mode != XtreamEpgSourceMode.githubOnly;
+        final allowGithub = mode != XtreamEpgSourceMode.xtreamOnly;
+
+        if (allowXtream) {
+          final api = XtreamApi(
+            baseUrl: source.baseUrl,
+            username: source.username,
+            password: source.password,
+          );
+          try {
+            await epg.loadXtreamAllLiveEpg(api);
+          } catch (e) {
+            debugPrint('mina_iptv: Xtream EPG (refresh) fatal: $e');
+          }
         }
-        await epg.loadXtreamAllLiveEpg(api);
+        // Auto'da Xtream başarılı olsa bile GitHub yedek paralel; mode != xtreamOnly.
+        if (allowGithub && Get.isRegistered<GlobalEpgService>()) {
+          final pl = Get.find<PlaylistCacheService>().result.value;
+          if (pl != null) {
+            try {
+              await Get.find<GlobalEpgService>()
+                  .loadGlobalEpgForChannels(pl.channels);
+            } catch (e) {
+              debugPrint('mina_iptv: Global EPG fallback (refresh) failed: $e');
+            }
+          }
+        }
       } else if (source is M3uSource) {
-        final u = _app.xmltvUrl.value.trim();
-        if (u.isNotEmpty) {
-          await epg.loadEpg(u);
+        final urls = _app.m3uEpgFetchUrls;
+        if (urls.isNotEmpty) {
+          await epg.loadEpgFirstSuccessful(urls);
+          if (epg.hasLoadedGuideData()) {
+            await _app.markM3uEpgFetchedOk();
+          }
         }
       }
       final cacheKey = EpgSnapshotKeys.logicalKeyFor(source, _app);
       if (cacheKey != null) {
         await epg.persistSnapshotToDisk(cacheKey);
+      }
+      final pl = Get.find<PlaylistCacheService>().result.value;
+      if (pl != null && source is M3uSource) {
+        await epg.applyM3uXmltvChannelMappings(
+          cacheKey: cacheKey,
+          liveChannels: pl.channels,
+        );
       }
     } catch (e) {
       debugPrint('mina_iptv: EPG reload after refresh: $e');
@@ -172,36 +255,48 @@ class SettingsController extends GetxController {
           children: [
             Text('settings.dialog.refreshBody'.tr),
             const SizedBox(height: 16),
-            GlassListTile(
-              title: Text('settings.dialog.refresh.autoOff'.tr),
-              trailing: _app.autoRefreshDays.value == 0
-                  ? const Icon(Icons.check_rounded, color: Colors.white)
-                  : null,
-              selected: _app.autoRefreshDays.value == 0,
-              onTap: () => Navigator.pop(Get.context!, 0),
-            ),
-            GlassListTile(
-              title: Text('settings.dialog.refresh.every3'.tr),
-              trailing: _app.autoRefreshDays.value == 3
-                  ? const Icon(Icons.check_rounded, color: Colors.white)
-                  : null,
-              selected: _app.autoRefreshDays.value == 3,
-              onTap: () => Navigator.pop(Get.context!, 3),
-            ),
-            GlassListTile(
-              title: Text('settings.dialog.refresh.every7'.tr),
-              trailing: _app.autoRefreshDays.value == 7
-                  ? const Icon(Icons.check_rounded, color: Colors.white)
-                  : null,
-              selected: _app.autoRefreshDays.value == 7,
-              onTap: () => Navigator.pop(Get.context!, 7),
+            GlassDialogListPanel(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  GlassListTile(
+                    title: Text('settings.dialog.refresh.autoOff'.tr),
+                    trailing: _app.autoRefreshDays.value == 0
+                        ? const Icon(Icons.check_rounded, color: Colors.white)
+                        : null,
+                    selected: _app.autoRefreshDays.value == 0,
+                    onTap: () => Navigator.pop(Get.context!, 0),
+                  ),
+                  GlassListTile(
+                    title: Text('settings.dialog.refresh.every3'.tr),
+                    trailing: _app.autoRefreshDays.value == 3
+                        ? const Icon(Icons.check_rounded, color: Colors.white)
+                        : null,
+                    selected: _app.autoRefreshDays.value == 3,
+                    onTap: () => Navigator.pop(Get.context!, 3),
+                  ),
+                  GlassListTile(
+                    title: Text('settings.dialog.refresh.every7'.tr),
+                    trailing: _app.autoRefreshDays.value == 7
+                        ? const Icon(Icons.check_rounded, color: Colors.white)
+                        : null,
+                    selected: _app.autoRefreshDays.value == 7,
+                    onTap: () => Navigator.pop(Get.context!, 7),
+                  ),
+                ],
+              ),
             ),
           ],
         ),
         actions: [
-          TextButton(
+          GlassDialogActionButton(
+            label: 'common.cancel'.tr,
+            onPressed: () => Navigator.pop(Get.context!),
+          ),
+          GlassDialogActionButton(
+            label: 'settings.dialog.refresh.nowOnly'.tr,
+            primary: true,
             onPressed: () => Navigator.pop(Get.context!, -1),
-            child: Text('settings.dialog.refresh.nowOnly'.tr),
           ),
         ],
       ),
@@ -214,28 +309,22 @@ class SettingsController extends GetxController {
 
     isRefreshing.value = true;
     try {
-      final parsed = await _repo.loadMergedPlaylist(
-        secondaryOrphanCategoryName: 'playlist.merge.orphanCategory'.tr,
-      );
-      final sec = await _repo.readSecondarySource();
-      final urlLabel = switch (source) {
-        M3uSource() => isM3uLocalSentinel(source.url)
-            ? 'playlist.label.localM3u'.tr
-            : source.url,
-        XtreamSource() => source.baseUrl,
-      };
-      final label = sec == null ? urlLabel : '$urlLabel (+2)';
-      final xk = switch (source) {
-        XtreamSource x => AppSettingsService.xtreamPreferenceKey(x),
-        _ => null,
-      };
-      _cache.setPlaylist(
-        value: parsed,
-        url: label,
-        xtreamPreferenceKey: xk,
-      );
+      // Birleştirme YOK: yalnızca aktif slot'u ağdan yeniden indir.
+      final active = Get.find<ActivePlaylistService>();
+      active.invalidate(active.activeSlot.value);
+      final parsed = await active.loadActiveIntoCache(preferSnapshot: false);
+      if (parsed == null) {
+        GlassSnackbar.show(
+          'settings.snackbar.content'.tr,
+          'settings.snackbar.noPlaylist'.tr,
+          snackPosition: SnackPosition.BOTTOM,
+        );
+        return;
+      }
+      final activeSource =
+          await _repo.readSourceAt(active.activeSlot.value) ?? source;
       await _app.updateLastRefreshTime();
-      unawaited(_reloadEpgAfterPlaylist(source));
+      unawaited(_reloadEpgAfterPlaylist(activeSource));
       GlassSnackbar.show(
         'settings.snackbar.content'.tr,
         'settings.snackbar.refreshOk'.tr,
@@ -266,6 +355,93 @@ class SettingsController extends GetxController {
     Get.toNamed(AppRoutes.xtreamCategoryHide);
   }
 
+  void openChannelListEditor() {
+    Get.toNamed(AppRoutes.channelListEditor);
+  }
+
+  void openHomeCardOrderEditor() {
+    Get.toNamed(AppRoutes.homeCardOrderEditor);
+  }
+
+  /// Ana Ekran Ayarları — kart sırası + karışık canlı TV + sıradaki maçlar
+  /// + yüksek puanlı filmler tek alt-sayfada.
+  void openHomeSettings() {
+    Get.toNamed(AppRoutes.homeSettings);
+  }
+
+  /// Yedekleme / Geri Yükleme alt-sayfası — `mina_backup.dat` paylaşımı ve
+  /// dosyadan geri yükleme aksiyonları tek ekranda.
+  void openBackupRestore() {
+    Get.toNamed(AppRoutes.backupRestore);
+  }
+
+  /// Daha seyrek kullanılan yardımcı araçlar (uyku zamanlayıcısı, EPG, tema,
+  /// yedekleme/geri yükleme, hız testi, adaptif titreşim, uygulama fontu).
+  void openOtherTools() {
+    Get.toNamed(AppRoutes.otherTools);
+  }
+
+  /// «Bize Ulaşın» alt-sayfası — Telegram kanalı + sorun bildir (mail).
+  void openContactUs() {
+    Get.toNamed(AppRoutes.contactUs);
+  }
+
+  /// Kurulum sihirbazını yeniden başlat. Tek sihirbaz (mobil tasarım) hem
+  /// dokunmatik hem TV/kumanda için kullanılır. Sihirbaz bittiğinde kurulum
+  /// yeniden tamamlandı olarak işaretlenip ana ekrana döner; geri tuşuyla
+  /// ayarlara dönülebilir.
+  void restartSetupWizard() {
+    Get.toNamed(AppRoutes.setupWizard);
+  }
+
+  /// Resmi Telegram kanalı / destek grubu.
+  static const String kTelegramUrl = 'https://t.me/minaiptvplayerpro';
+
+  Future<void> openTelegram() async {
+    try {
+      await launchUrl(
+        Uri.parse(kTelegramUrl),
+        mode: LaunchMode.platformDefault,
+      );
+    } catch (_) {}
+  }
+
+  /// Google bulut senkronu durumu ve hızlı işlemler.
+  void openCloudSync() {
+    Get.toNamed(AppRoutes.cloudSync);
+  }
+
+  /// Netflix tarzı çoklu profil yönetimi.
+  void openProfiles() {
+    Get.toNamed(AppRoutes.profiles);
+  }
+
+  /// Veri Kullanım Detayı sayfası — uygulamanın bu cihazda
+  /// kullandığı toplam mobil + wifi internet trafiği.
+  void openDataUsage() {
+    Get.toNamed(AppRoutes.dataUsage);
+  }
+
+  void openDownloads() {
+    Get.toNamed(AppRoutes.downloads);
+  }
+
+  /// Kanal Kategori Düzeni alt-sayfası — kategori gizleme + canlı kanal
+  /// listesi düzenleyici tek noktada.
+  void openChannelCategoryLayout() {
+    Get.toNamed(AppRoutes.channelCategoryLayout);
+  }
+
+  /// Oynatma Ayarları alt-sayfası — oynatıcı motoru, donanım kod çözücü,
+  /// yazılım fallback ve canlı buffer süresi.
+  void openPlaybackSettings() {
+    Get.toNamed(AppRoutes.playbackSettings);
+  }
+
+  void openSubtitleOptions() {
+    Get.toNamed(AppRoutes.subtitleOptions);
+  }
+
   Future<void> showXtreamInfo() async {
     if (isFetchingInfo.value) return;
 
@@ -280,13 +456,15 @@ class SettingsController extends GetxController {
 
     isFetchingInfo.value = true;
     try {
-      final info = await _repo.getXtreamUserInfo(
+      // Yeni: user_info + server_info birlikte (bağlantı portları, saat dilimi,
+      // sunucu saati, izinli formatlar vs.).
+      final snap = await _repo.getXtreamAccountSnapshot(
         baseUrl: source.baseUrl,
         username: source.username,
         password: source.password,
       );
 
-      if (info == null) {
+      if (snap == null || (snap.user == null && snap.server == null)) {
         GlassSnackbar.show(
           'settings.snackbar.error'.tr,
           'settings.snackbar.xtreamFail'.tr,
@@ -294,34 +472,21 @@ class SettingsController extends GetxController {
         return;
       }
 
-      final expiry = info.expiryDate != null
-          ? "${info.expiryDate!.day}.${info.expiryDate!.month}.${info.expiryDate!.year}"
-          : 'settings.xtream.unlimited'.tr;
-
       await Get.dialog(
         GlassAlertDialog(
           title: Text('settings.dialog.xtreamTitle'.tr),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _infoRow('settings.xtream.user'.tr, info.username),
-              _infoRow('settings.xtream.status'.tr, info.status.toUpperCase()),
-              _infoRow('settings.xtream.expiry'.tr, expiry),
-              _infoRow(
-                'settings.xtream.connections'.tr,
-                '${info.activeConnections} / ${info.maxConnections}',
-              ),
-              _infoRow(
-                'settings.xtream.trial'.tr,
-                info.isTrial ? 'common.yes'.tr : 'common.no'.tr,
-              ),
-            ],
+          // Kaydırma yalnızca GlassAlertDialog içindeki ListView'da;
+          // ek SingleChildScrollView iç içe scroll çakışması yapıp
+          // aşağı çekince yukarı sıçratıyordu.
+          content: XtreamAccountInfoBody(
+            source: source,
+            user: snap.user,
+            server: snap.server,
           ),
           actions: [
-            TextButton(
+            GlassDialogActionButton(
+              label: 'common.close'.tr,
               onPressed: () => Navigator.pop(Get.context!),
-              child: Text('common.close'.tr),
             ),
           ],
         ),
@@ -336,30 +501,17 @@ class SettingsController extends GetxController {
     }
   }
 
-  Widget _infoRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Row(
-        children: [
-          Text(label,
-              style:
-                  const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-          const SizedBox(width: 8),
-          Expanded(child: Text(value, style: const TextStyle(fontSize: 13))),
-        ],
-      ),
-    );
-  }
-
   void setAutoRefreshDays(int days) => _app.setAutoRefreshDays(days);
 
   void goBack() => Get.back();
 
   Future<void> openPlaylistList() async {
-    await Get.toNamed(
-      AppRoutes.playlist,
-      arguments: const {AppRoutes.argPlaylistManage: true},
-    );
+    // Ayarlar > Playlist: slot tabanlı liste yöneticisine git. Eski
+    // birincil/ikincil form, yeni bir M3U girildiğinde her zaman slot 1'i
+    // ezdiği için (mevcut listeyi değiştiriyordu) buradan açılmıyor.
+    // Yönetici, yeni listeyi bir sonraki boş slota ekler ve mevcut
+    // listeleri korur; düzenleme/yenileme/silme de slot bazında yapılır.
+    await Get.toNamed(AppRoutes.playlistsManager);
     await _checkSource();
   }
 
@@ -383,45 +535,44 @@ class SettingsController extends GetxController {
                   ConstrainedBox(
                     constraints: BoxConstraints(maxHeight: maxListH),
                     child: SingleChildScrollView(
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          GlassListTile(
-                            dense: true,
-                            title: Text('settings.sleepTimer.off'.tr),
-                            trailing: _app.sleepTimerEndMs.value == null
-                                ? const Icon(Icons.check_rounded,
-                                    color: Colors.white)
-                                : null,
-                            selected: _app.sleepTimerEndMs.value == null,
-                            onTap: () => Navigator.pop(c, 0),
-                          ),
-                          for (final m in [15, 30, 45, 60, 90, 120])
+                      child: GlassDialogListPanel(
+                        child: Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
                             GlassListTile(
                               dense: true,
-                              title: Text(
-                                'settings.sleepTimer.optionMinutes'
-                                    .trParams({'n': '$m'}),
-                              ),
-                              onTap: () => Navigator.pop(c, m),
+                              title: Text('settings.sleepTimer.off'.tr),
+                              trailing: _app.sleepTimerEndMs.value == null
+                                  ? const Icon(Icons.check_rounded,
+                                      color: Colors.white)
+                                  : null,
+                              selected: _app.sleepTimerEndMs.value == null,
+                              onTap: () => Navigator.pop(c, 0),
                             ),
-                        ],
+                            for (final m in [15, 30, 45, 60, 90, 120])
+                              GlassListTile(
+                                dense: true,
+                                title: Text(
+                                  'settings.sleepTimer.optionMinutes'
+                                      .trParams({'n': '$m'}),
+                                ),
+                                onTap: () => Navigator.pop(c, m),
+                              ),
+                          ],
+                        ),
                       ),
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Align(
-                    alignment: AlignmentDirectional.centerEnd,
-                    child: TextButton(
-                      onPressed: () => Navigator.pop(c),
-                      child: Text('common.cancel'.tr),
                     ),
                   ),
                 ],
               );
             },
           ),
-          actions: null,
+          actions: [
+            GlassDialogActionButton(
+              label: 'common.cancel'.tr,
+              onPressed: () => Navigator.pop(c),
+            ),
+          ],
         ),
       );
     }
@@ -449,6 +600,165 @@ class SettingsController extends GetxController {
     }
   }
 
+  Future<void> showTvOsdAutoHideDurationDialog() async {
+    final ctx = Get.context;
+    if (ctx == null) return;
+
+    final remoteNav = _app.layoutMode.value.usesRemoteNavigationStyle;
+    var pending = _app.tvOsdAutoHideDuration.value;
+
+    await showDialog<void>(
+      context: ctx,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => GlassAlertDialog(
+          scrollable: false,
+          tvOsdStyle: remoteNav,
+          title: Text('settings.dialog.osdHideTitle'.tr),
+          content: FocusTraversalGroup(
+            policy: OrderedTraversalPolicy(),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    'settings.dialog.osdHideBody'.tr,
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.9),
+                      fontSize: 13,
+                      height: 1.35,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  GlassDialogListPanel(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        for (final sec
+                            in AppSettingsService.tvOsdAutoHideSecondsOptions)
+                          GlassListTile(
+                            dense: true,
+                            title: Text(
+                              'settings.dialog.osdHideSeconds'
+                                  .trParams({'n': '$sec'}),
+                            ),
+                            selected: pending == sec,
+                            trailing: pending == sec
+                                ? const Icon(Icons.check_rounded,
+                                    color: Colors.white)
+                                : null,
+                            onTap: () => setDialogState(() => pending = sec),
+                          ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: glassDialogPickerActions(
+            dialogContext,
+            onDarkSurface: remoteNav,
+            onCancel: () => Navigator.of(dialogContext).pop(),
+            onApply: () async {
+              await _app.setTvOsdAutoHideDuration(pending);
+              if (dialogContext.mounted) {
+                Navigator.of(dialogContext).pop();
+              }
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> toggleStripLiveChannelPrefix() async {
+    if (_app.stripLiveChannelCountryPrefix.value) {
+      await _app.setStripLiveChannelCountryPrefix(false);
+      GlassSnackbar.show(
+        'settings.snackbar.info'.tr,
+        'settings.snackbar.channelPrefixOff'.tr,
+        snackPosition: SnackPosition.BOTTOM,
+      );
+      return;
+    }
+
+    final ctx = Get.context;
+    if (ctx == null) return;
+
+    final ok = await showDialog<bool>(
+      context: ctx,
+      builder: (c) => GlassAlertDialog(
+        title: Text('settings.dialog.channelPrefixTitle'.tr),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('settings.dialog.channelPrefixBody'.tr),
+            const SizedBox(height: 14),
+            GlassDialogListPanel(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 10,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'settings.dialog.channelPrefixExample'.tr,
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.88),
+                        fontSize: 13,
+                        height: 1.4,
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'TR: FX  →  FX',
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.55),
+                        fontSize: 12,
+                        fontFamily: 'monospace',
+                      ),
+                    ),
+                    Text(
+                      'BR: Globo  →  Globo',
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.55),
+                        fontSize: 12,
+                        fontFamily: 'monospace',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          GlassDialogActionButton(
+            label: 'common.cancel'.tr,
+            onPressed: () => Navigator.pop(c, false),
+          ),
+          GlassDialogActionButton(
+            label: 'settings.dialog.channelPrefixConfirm'.tr,
+            primary: true,
+            onPressed: () => Navigator.pop(c, true),
+          ),
+        ],
+      ),
+    );
+
+    if (ok != true) return;
+    await _app.setStripLiveChannelCountryPrefix(true);
+    GlassSnackbar.show(
+      'settings.snackbar.info'.tr,
+      'settings.snackbar.channelPrefixOn'.tr,
+      snackPosition: SnackPosition.BOTTOM,
+    );
+  }
+
   Future<void> confirmClearAllSettings() async {
     final ctx = Get.context;
     if (ctx == null) return;
@@ -459,13 +769,14 @@ class SettingsController extends GetxController {
         title: Text('settings.dialog.clearTitle'.tr),
         content: Text('settings.dialog.clearBody'.tr),
         actions: [
-          TextButton(
+          GlassDialogActionButton(
+            label: 'common.cancel'.tr,
             onPressed: () => Navigator.pop(c, false),
-            child: Text('common.cancel'.tr),
           ),
-          FilledButton(
+          GlassDialogActionButton(
+            label: 'common.delete'.tr,
+            primary: true,
             onPressed: () => Navigator.pop(c, true),
-            child: Text('common.delete'.tr),
           ),
         ],
       ),
@@ -501,239 +812,62 @@ class SettingsController extends GetxController {
     }
   }
 
+  static const _languagePickerOptions = <(String code, String labelKey)>[
+    ('tr', 'common.lang.tr'),
+    ('en', 'common.lang.en'),
+    ('fr', 'common.lang.fr'),
+    ('ar', 'common.lang.ar'),
+    ('zh', 'common.lang.zh'),
+    ('ru', 'common.lang.ru'),
+    ('ja', 'common.lang.ja'),
+    ('es', 'common.lang.es'),
+    ('ko', 'common.lang.ko'),
+    ('he', 'common.lang.he'),
+    ('da', 'common.lang.da'),
+    ('sv', 'common.lang.sv'),
+    ('hi', 'common.lang.hi'),
+    ('th', 'common.lang.th'),
+    ('it', 'common.lang.it'),
+    ('pt', 'common.lang.pt'),
+    ('id', 'common.lang.id'),
+  ];
+
   Future<void> showLanguageDialog() async {
     final ctx = Get.context;
     if (ctx == null) return;
 
+    var pending = _app.languageCode.value;
+
     await showDialog<void>(
       context: ctx,
-      builder: (c) => GlassAlertDialog(
-        title: Text('settings.dialog.languageTitle'.tr),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Obx(
-              () => GlassListTile(
-                title: Text('common.lang.tr'.tr),
-                trailing: _app.languageCode.value == 'tr'
-                    ? const Icon(Icons.check_rounded, color: Colors.white)
-                    : null,
-                selected: _app.languageCode.value == 'tr',
-                onTap: () async {
-                  await _app.setLanguageCode('tr');
-                  if (c.mounted) Navigator.pop(c);
-                },
-              ),
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => GlassAlertDialog(
+          scrollable: true,
+          title: Text('settings.dialog.languageTitle'.tr),
+          content: GlassDialogListPanel(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (final (code, labelKey) in _languagePickerOptions)
+                  GlassListTile(
+                    title: Text(labelKey.tr),
+                    trailing: pending == code
+                        ? const Icon(Icons.check_rounded, color: Colors.white)
+                        : null,
+                    selected: pending == code,
+                    onTap: () => setDialogState(() => pending = code),
+                  ),
+              ],
             ),
-            Obx(
-              () => GlassListTile(
-                title: Text('common.lang.en'.tr),
-                trailing: _app.languageCode.value == 'en'
-                    ? const Icon(Icons.check_rounded, color: Colors.white)
-                    : null,
-                selected: _app.languageCode.value == 'en',
-                onTap: () async {
-                  await _app.setLanguageCode('en');
-                  if (c.mounted) Navigator.pop(c);
-                },
-              ),
-            ),
-            Obx(
-              () => GlassListTile(
-                title: Text('common.lang.fr'.tr),
-                trailing: _app.languageCode.value == 'fr'
-                    ? const Icon(Icons.check_rounded, color: Colors.white)
-                    : null,
-                selected: _app.languageCode.value == 'fr',
-                onTap: () async {
-                  await _app.setLanguageCode('fr');
-                  if (c.mounted) Navigator.pop(c);
-                },
-              ),
-            ),
-            Obx(
-              () => GlassListTile(
-                title: Text('common.lang.ar'.tr),
-                trailing: _app.languageCode.value == 'ar'
-                    ? const Icon(Icons.check_rounded, color: Colors.white)
-                    : null,
-                selected: _app.languageCode.value == 'ar',
-                onTap: () async {
-                  await _app.setLanguageCode('ar');
-                  if (c.mounted) Navigator.pop(c);
-                },
-              ),
-            ),
-            Obx(
-              () => GlassListTile(
-                title: Text('common.lang.zh'.tr),
-                trailing: _app.languageCode.value == 'zh'
-                    ? const Icon(Icons.check_rounded, color: Colors.white)
-                    : null,
-                selected: _app.languageCode.value == 'zh',
-                onTap: () async {
-                  await _app.setLanguageCode('zh');
-                  if (c.mounted) Navigator.pop(c);
-                },
-              ),
-            ),
-            Obx(
-              () => GlassListTile(
-                title: Text('common.lang.ru'.tr),
-                trailing: _app.languageCode.value == 'ru'
-                    ? const Icon(Icons.check_rounded, color: Colors.white)
-                    : null,
-                selected: _app.languageCode.value == 'ru',
-                onTap: () async {
-                  await _app.setLanguageCode('ru');
-                  if (c.mounted) Navigator.pop(c);
-                },
-              ),
-            ),
-            Obx(
-              () => GlassListTile(
-                title: Text('common.lang.ja'.tr),
-                trailing: _app.languageCode.value == 'ja'
-                    ? const Icon(Icons.check_rounded, color: Colors.white)
-                    : null,
-                selected: _app.languageCode.value == 'ja',
-                onTap: () async {
-                  await _app.setLanguageCode('ja');
-                  if (c.mounted) Navigator.pop(c);
-                },
-              ),
-            ),
-            Obx(
-              () => GlassListTile(
-                title: Text('common.lang.es'.tr),
-                trailing: _app.languageCode.value == 'es'
-                    ? const Icon(Icons.check_rounded, color: Colors.white)
-                    : null,
-                selected: _app.languageCode.value == 'es',
-                onTap: () async {
-                  await _app.setLanguageCode('es');
-                  if (c.mounted) Navigator.pop(c);
-                },
-              ),
-            ),
-            Obx(
-              () => GlassListTile(
-                title: Text('common.lang.ko'.tr),
-                trailing: _app.languageCode.value == 'ko'
-                    ? const Icon(Icons.check_rounded, color: Colors.white)
-                    : null,
-                selected: _app.languageCode.value == 'ko',
-                onTap: () async {
-                  await _app.setLanguageCode('ko');
-                  if (c.mounted) Navigator.pop(c);
-                },
-              ),
-            ),
-            Obx(
-              () => GlassListTile(
-                title: Text('common.lang.he'.tr),
-                trailing: _app.languageCode.value == 'he'
-                    ? const Icon(Icons.check_rounded, color: Colors.white)
-                    : null,
-                selected: _app.languageCode.value == 'he',
-                onTap: () async {
-                  await _app.setLanguageCode('he');
-                  if (c.mounted) Navigator.pop(c);
-                },
-              ),
-            ),
-            Obx(
-              () => GlassListTile(
-                title: Text('common.lang.da'.tr),
-                trailing: _app.languageCode.value == 'da'
-                    ? const Icon(Icons.check_rounded, color: Colors.white)
-                    : null,
-                selected: _app.languageCode.value == 'da',
-                onTap: () async {
-                  await _app.setLanguageCode('da');
-                  if (c.mounted) Navigator.pop(c);
-                },
-              ),
-            ),
-            Obx(
-              () => GlassListTile(
-                title: Text('common.lang.sv'.tr),
-                trailing: _app.languageCode.value == 'sv'
-                    ? const Icon(Icons.check_rounded, color: Colors.white)
-                    : null,
-                selected: _app.languageCode.value == 'sv',
-                onTap: () async {
-                  await _app.setLanguageCode('sv');
-                  if (c.mounted) Navigator.pop(c);
-                },
-              ),
-            ),
-            Obx(
-              () => GlassListTile(
-                title: Text('common.lang.hi'.tr),
-                trailing: _app.languageCode.value == 'hi'
-                    ? const Icon(Icons.check_rounded, color: Colors.white)
-                    : null,
-                selected: _app.languageCode.value == 'hi',
-                onTap: () async {
-                  await _app.setLanguageCode('hi');
-                  if (c.mounted) Navigator.pop(c);
-                },
-              ),
-            ),
-            Obx(
-              () => GlassListTile(
-                title: Text('common.lang.th'.tr),
-                trailing: _app.languageCode.value == 'th'
-                    ? const Icon(Icons.check_rounded, color: Colors.white)
-                    : null,
-                selected: _app.languageCode.value == 'th',
-                onTap: () async {
-                  await _app.setLanguageCode('th');
-                  if (c.mounted) Navigator.pop(c);
-                },
-              ),
-            ),
-            Obx(
-              () => GlassListTile(
-                title: Text('common.lang.it'.tr),
-                trailing: _app.languageCode.value == 'it'
-                    ? const Icon(Icons.check_rounded, color: Colors.white)
-                    : null,
-                selected: _app.languageCode.value == 'it',
-                onTap: () async {
-                  await _app.setLanguageCode('it');
-                  if (c.mounted) Navigator.pop(c);
-                },
-              ),
-            ),
-            Obx(
-              () => GlassListTile(
-                title: Text('common.lang.pt'.tr),
-                trailing: _app.languageCode.value == 'pt'
-                    ? const Icon(Icons.check_rounded, color: Colors.white)
-                    : null,
-                selected: _app.languageCode.value == 'pt',
-                onTap: () async {
-                  await _app.setLanguageCode('pt');
-                  if (c.mounted) Navigator.pop(c);
-                },
-              ),
-            ),
-            Obx(
-              () => GlassListTile(
-                title: Text('common.lang.id'.tr),
-                trailing: _app.languageCode.value == 'id'
-                    ? const Icon(Icons.check_rounded, color: Colors.white)
-                    : null,
-                selected: _app.languageCode.value == 'id',
-                onTap: () async {
-                  await _app.setLanguageCode('id');
-                  if (c.mounted) Navigator.pop(c);
-                },
-              ),
-            ),
-          ],
+          ),
+          actions: glassDialogPickerActions(
+            dialogContext,
+            onCancel: () => Navigator.pop(dialogContext),
+            onApply: () async {
+              await _app.setLanguageCode(pending);
+              if (dialogContext.mounted) Navigator.pop(dialogContext);
+            },
+          ),
         ),
       ),
     );
@@ -743,42 +877,57 @@ class SettingsController extends GetxController {
     final ctx = Get.context;
     if (ctx == null) return;
 
+    var pending = _app.layoutMode.value;
+
     await showDialog<void>(
       context: ctx,
-      builder: (c) => GlassAlertDialog(
-        title: Text('settings.dialog.layoutTitle'.tr),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Obx(
-              () => GlassListTile(
-                title: Text('settings.phone'.tr),
-                subtitle: Text('layout.dialog.phone.sub'.tr),
-                trailing: _app.layoutMode.value == AppLayoutMode.mobile
-                    ? const Icon(Icons.check_rounded, color: Colors.white)
-                    : null,
-                selected: _app.layoutMode.value == AppLayoutMode.mobile,
-                onTap: () async {
-                  await _app.setLayoutMode(AppLayoutMode.mobile);
-                  if (c.mounted) Navigator.pop(c);
-                },
-              ),
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => GlassAlertDialog(
+          title: Text('settings.dialog.layoutTitle'.tr),
+          content: GlassDialogListPanel(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                GlassListTile(
+                  title: Text('settings.phone'.tr),
+                  subtitle: Text('layout.dialog.phone.sub'.tr),
+                  trailing: pending == AppLayoutMode.mobile
+                      ? const Icon(Icons.check_rounded, color: Colors.white)
+                      : null,
+                  selected: pending == AppLayoutMode.mobile,
+                  onTap: () =>
+                      setDialogState(() => pending = AppLayoutMode.mobile),
+                ),
+                GlassListTile(
+                  title: Text('layout.tablet'.tr),
+                  subtitle: Text('layout.tablet.sub'.tr),
+                  trailing: pending == AppLayoutMode.tablet
+                      ? const Icon(Icons.check_rounded, color: Colors.white)
+                      : null,
+                  selected: pending == AppLayoutMode.tablet,
+                  onTap: () =>
+                      setDialogState(() => pending = AppLayoutMode.tablet),
+                ),
+                GlassListTile(
+                  title: Text('settings.tv'.tr),
+                  subtitle: Text('layout.dialog.tv.sub'.tr),
+                  trailing: pending == AppLayoutMode.tv
+                      ? const Icon(Icons.check_rounded, color: Colors.white)
+                      : null,
+                  selected: pending == AppLayoutMode.tv,
+                  onTap: () => setDialogState(() => pending = AppLayoutMode.tv),
+                ),
+              ],
             ),
-            Obx(
-              () => GlassListTile(
-                title: Text('settings.tv'.tr),
-                subtitle: Text('layout.dialog.tv.sub'.tr),
-                trailing: _app.layoutMode.value == AppLayoutMode.tv
-                    ? const Icon(Icons.check_rounded, color: Colors.white)
-                    : null,
-                selected: _app.layoutMode.value == AppLayoutMode.tv,
-                onTap: () async {
-                  await _app.setLayoutMode(AppLayoutMode.tv);
-                  if (c.mounted) Navigator.pop(c);
-                },
-              ),
-            ),
-          ],
+          ),
+          actions: glassDialogPickerActions(
+            dialogContext,
+            onCancel: () => Navigator.pop(dialogContext),
+            onApply: () async {
+              await _app.setLayoutMode(pending);
+              if (dialogContext.mounted) Navigator.pop(dialogContext);
+            },
+          ),
         ),
       ),
     );
@@ -788,103 +937,91 @@ class SettingsController extends GetxController {
     final ctx = Get.context;
     if (ctx == null) return;
 
+    // Tema seçim diyaloğu canlı önizleme ile çalışır:
+    // - Kullanıcı bir tema seçince anında uygulanır (kullanıcı arkadaki
+    //   ekranda yeni temayı görür).
+    // - "Kaydet" → mevcut seçim onaylanır.
+    // - "İptal" / barrier tap / sistem geri tuşu → orijinal temaya dönülür.
+    final originalTheme = _app.themeLabel.value;
+    var pending = originalTheme;
+    var saved = false;
+
+    Future<void> applyPreview(String t) async {
+      if (_app.themeLabel.value == t) return;
+      await _app.setThemeLabel(t);
+    }
+
+    Future<void> revert() async {
+      if (saved) return;
+      if (_app.themeLabel.value != originalTheme) {
+        await _app.setThemeLabel(originalTheme);
+      }
+    }
+
     await showDialog<void>(
       context: ctx,
-      builder: (c) => GlassAlertDialog(
-        title: Text('settings.dialog.themeTitle'.tr),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Obx(
-              () => GlassListTile(
-                title: Text(
-                    localizedThemeStorageLabel(GlassThemeLabels.varsayilan)),
-                trailing: _app.themeLabel.value == GlassThemeLabels.varsayilan
-                    ? const Icon(Icons.check_rounded, color: Colors.white)
-                    : null,
-                selected: _app.themeLabel.value == GlassThemeLabels.varsayilan,
-                onTap: () async {
-                  await _app.setThemeLabel(GlassThemeLabels.varsayilan);
-                  if (c.mounted) Navigator.pop(c);
-                },
+      barrierDismissible: true,
+      builder: (dialogContext) => PopScope(
+        canPop: true,
+        onPopInvokedWithResult: (didPop, _) {
+          if (didPop) unawaited(revert());
+        },
+        child: StatefulBuilder(
+          builder: (context, setDialogState) => GlassAlertDialog(
+            scrollable: true,
+            title: Text('settings.dialog.themeTitle'.tr),
+            content: GlassDialogListPanel(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  for (final t in GlassThemeLabels.selectableThemeLabels)
+                    GlassListTile(
+                      title: Text(localizedThemeStorageLabel(t)),
+                      subtitle: t == GlassThemeLabels.flyUi
+                          ? Text(
+                              'theme.flyUi.sub'.tr,
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.72),
+                                fontSize: 12,
+                              ),
+                            )
+                          : null,
+                      trailing: pending == t
+                          ? const Icon(Icons.check_rounded, color: Colors.white)
+                          : null,
+                      selected: pending == t,
+                      onTap: () {
+                        setDialogState(() => pending = t);
+                        unawaited(applyPreview(t));
+                      },
+                    ),
+                ],
               ),
             ),
-            Obx(
-              () => GlassListTile(
-                title: Text(localizedThemeStorageLabel('Koyu Cam')),
-                trailing: _app.themeLabel.value == 'Koyu Cam'
-                    ? const Icon(Icons.check_rounded, color: Colors.white)
-                    : null,
-                selected: _app.themeLabel.value == 'Koyu Cam',
-                onTap: () async {
-                  await _app.setThemeLabel('Koyu Cam');
-                  if (c.mounted) Navigator.pop(c);
-                },
-              ),
+            actions: glassDialogPickerActions(
+              dialogContext,
+              onCancel: () async {
+                await revert();
+                if (dialogContext.mounted) Navigator.pop(dialogContext);
+              },
+              onApply: () async {
+                // Kullanıcı kaydı onayladı; mevcut canlı önizleme kalsın.
+                await applyPreview(pending);
+                saved = true;
+                if (dialogContext.mounted) Navigator.pop(dialogContext);
+              },
             ),
-            Obx(
-              () => GlassListTile(
-                title: Text(
-                    localizedThemeStorageLabel(GlassThemeLabels.glassmorphism)),
-                trailing:
-                    _app.themeLabel.value == GlassThemeLabels.glassmorphism
-                        ? const Icon(Icons.check_rounded, color: Colors.white)
-                        : null,
-                selected:
-                    _app.themeLabel.value == GlassThemeLabels.glassmorphism,
-                onTap: () async {
-                  await _app.setThemeLabel(GlassThemeLabels.glassmorphism);
-                  if (c.mounted) Navigator.pop(c);
-                },
-              ),
-            ),
-            Obx(
-              () => GlassListTile(
-                title:
-                    Text(localizedThemeStorageLabel(GlassThemeLabels.darkFlat)),
-                trailing: _app.themeLabel.value == GlassThemeLabels.darkFlat
-                    ? const Icon(Icons.check_rounded, color: Colors.white)
-                    : null,
-                selected: _app.themeLabel.value == GlassThemeLabels.darkFlat,
-                onTap: () async {
-                  await _app.setThemeLabel(GlassThemeLabels.darkFlat);
-                  if (c.mounted) Navigator.pop(c);
-                },
-              ),
-            ),
-            Obx(
-              () => GlassListTile(
-                title: Text(
-                    localizedThemeStorageLabel(GlassThemeLabels.flatBlack)),
-                trailing: _app.themeLabel.value == GlassThemeLabels.flatBlack
-                    ? const Icon(Icons.check_rounded, color: Colors.white)
-                    : null,
-                selected: _app.themeLabel.value == GlassThemeLabels.flatBlack,
-                onTap: () async {
-                  await _app.setThemeLabel(GlassThemeLabels.flatBlack);
-                  if (c.mounted) Navigator.pop(c);
-                },
-              ),
-            ),
-            Obx(
-              () => GlassListTile(
-                title: Text(
-                  localizedThemeStorageLabel(GlassThemeLabels.glassGri),
-                ),
-                trailing: _app.themeLabel.value == GlassThemeLabels.glassGri
-                    ? const Icon(Icons.check_rounded, color: Colors.white)
-                    : null,
-                selected: _app.themeLabel.value == GlassThemeLabels.glassGri,
-                onTap: () async {
-                  await _app.setThemeLabel(GlassThemeLabels.glassGri);
-                  if (c.mounted) Navigator.pop(c);
-                },
-              ),
-            ),
-          ],
+          ),
         ),
       ),
     );
+
+    // Dialog kapatıldıktan sonra kullanıcı kaydetmediyse (örn. barrier tap)
+    // PopScope `revert()`'i çoktan tetiklemiş olur; ancak farklı yolarla
+    // (örn. üst seviye Get.back) kapanma ihtimaline karşı güvenlik ağı.
+    if (!saved) {
+      await revert();
+    }
   }
 
   Future<void> showXmltvDialog() async {
@@ -895,52 +1032,126 @@ class SettingsController extends GetxController {
 
     await showDialog<void>(
       context: ctx,
-      builder: (c) => GlassAlertDialog(
-        title: Text('settings.dialog.xmltvTitle'.tr),
-        content: TextField(
-          controller: ctrl,
-          decoration: InputDecoration(
-            hintText: 'settings.dialog.xmltv.hint'.tr,
-            labelText: 'settings.dialog.xmltv.label'.tr,
-          ),
-          keyboardType: TextInputType.url,
-          maxLines: 2,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(c),
-            child: Text('common.cancel'.tr),
-          ),
-          TextButton(
-            onPressed: () async {
-              await _app.setXmltvUrl('');
-              Get.find<EpgService>().clear();
-              if (c.mounted) Navigator.pop(c);
-            },
-            child: Text('common.clear'.tr),
-          ),
-          FilledButton(
-            onPressed: () async {
-              final u = ctrl.text.trim();
-              await _app.setXmltvUrl(u);
-              final epg = Get.find<EpgService>();
-              if (u.isEmpty) {
-                epg.clear();
-              } else {
-                await epg.loadEpg(u);
-                final src = await _repo.readSource();
-                final cacheKey = src != null
-                    ? EpgSnapshotKeys.logicalKeyFor(src, _app)
-                    : null;
-                if (cacheKey != null) {
-                  await epg.persistSnapshotToDisk(cacheKey);
-                }
-              }
-              if (c.mounted) Navigator.pop(c);
-            },
-            child: Text('common.save'.tr),
-          ),
-        ],
+      builder: (c) => Obx(
+        () {
+          final remoteNav = _app.layoutMode.value.usesRemoteNavigationStyle;
+          final onLabel =
+              remoteNav ? Colors.white.withValues(alpha: 0.82) : null;
+          return GlassAlertDialog(
+            scrollable: false,
+            tvOsdStyle: remoteNav,
+            title: Text('settings.dialog.xmltvTitle'.tr),
+            content: FocusTraversalGroup(
+              policy: OrderedTraversalPolicy(),
+              child: SingleChildScrollView(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'settings.dialog.xmltv.body'.tr,
+                      style: TextStyle(
+                        color: remoteNav
+                            ? Colors.white.withValues(alpha: 0.85)
+                            : null,
+                        fontSize: 13,
+                        height: 1.35,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: ctrl,
+                      keyboardType: TextInputType.url,
+                      maxLines: 3,
+                      style: TextStyle(
+                        color: remoteNav ? Colors.white : null,
+                      ),
+                      decoration: InputDecoration(
+                        hintText: 'settings.dialog.xmltv.hint'.tr,
+                        labelText: 'settings.dialog.xmltv.label'.tr,
+                        hintStyle: remoteNav
+                            ? TextStyle(
+                                color: Colors.white.withValues(alpha: 0.45),
+                              )
+                            : null,
+                        labelStyle: TextStyle(color: onLabel),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              GlassDialogActionButton(
+                label: 'common.cancel'.tr,
+                onDarkSurface: remoteNav,
+                onPressed: () => Navigator.pop(c),
+              ),
+              GlassDialogActionButton(
+                label: 'common.clear'.tr,
+                onDarkSurface: remoteNav,
+                onPressed: () async {
+                  await _app.setXmltvUrl('');
+                  Get.find<EpgService>().clear();
+                  if (c.mounted) Navigator.pop(c);
+                },
+              ),
+              GlassDialogActionButton(
+                label: 'common.refreshNow'.tr,
+                primary: true,
+                onDarkSurface: remoteNav,
+                onPressed: () async {
+                  final epg = Get.find<EpgService>();
+                  if (epg.isLoading.value) return;
+
+                  final u = ctrl.text.trim();
+                  await _app.setXmltvUrl(u);
+
+                  GlassSnackbar.show(
+                    'settings.dialog.xmltvTitle'.tr,
+                    'settings.tile.refresh.loading'.tr,
+                    snackPosition: SnackPosition.BOTTOM,
+                  );
+
+                  await epg.loadEpgFirstSuccessful(_app.m3uEpgFetchUrls);
+
+                  if (epg.hasLoadedGuideData()) {
+                    await _app.markM3uEpgFetchedOk();
+                    final src = await _repo.readSource();
+                    final cacheKey = src != null
+                        ? EpgSnapshotKeys.logicalKeyFor(src, _app)
+                        : null;
+                    if (cacheKey != null) {
+                      await epg.persistSnapshotToDisk(cacheKey);
+                    }
+
+                    final pl = Get.find<PlaylistCacheService>().result.value;
+                    if (pl != null) {
+                      await epg.applyM3uXmltvChannelMappings(
+                        cacheKey: cacheKey,
+                        liveChannels: pl.channels,
+                      );
+                    }
+
+                    GlassSnackbar.show(
+                      'settings.dialog.xmltvTitle'.tr,
+                      'common.success'.tr,
+                      snackPosition: SnackPosition.BOTTOM,
+                    );
+                  } else {
+                    GlassSnackbar.show(
+                      'settings.dialog.xmltvTitle'.tr,
+                      'common.error'.tr,
+                      snackPosition: SnackPosition.BOTTOM,
+                    );
+                  }
+
+                  if (c.mounted) Navigator.pop(c);
+                },
+              ),
+            ],
+          );
+        },
       ),
     );
 
@@ -951,40 +1162,42 @@ class SettingsController extends GetxController {
     final ctx = Get.context;
     if (ctx == null) return;
 
+    var pending = _app.adaptiveStreamQualityCeiling.value;
+
     await showDialog<void>(
       context: ctx,
-      builder: (c) => GlassAlertDialog(
-        title: Text('settings.dialog.adaptiveQualityTitle'.tr),
-        content: Obx(
-          () => SingleChildScrollView(
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => GlassAlertDialog(
+          scrollable: true,
+          title: Text('settings.dialog.adaptiveQualityTitle'.tr),
+          content: GlassDialogListPanel(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
                 for (final opt in AdaptiveStreamQualityCeiling.values)
                   GlassListTile(
                     title: Text(_adaptiveQualityOptionLabel(opt)),
-                    trailing: _app.adaptiveStreamQualityCeiling.value == opt
+                    trailing: pending == opt
                         ? const Icon(
                             Icons.check_rounded,
                             color: Colors.white,
                           )
                         : null,
-                    selected: _app.adaptiveStreamQualityCeiling.value == opt,
-                    onTap: () async {
-                      await _app.setAdaptiveStreamQualityCeiling(opt);
-                      if (c.mounted) Navigator.pop(c);
-                    },
+                    selected: pending == opt,
+                    onTap: () => setDialogState(() => pending = opt),
                   ),
               ],
             ),
           ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(c),
-            child: Text('common.close'.tr),
+          actions: glassDialogPickerActions(
+            dialogContext,
+            onCancel: () => Navigator.pop(dialogContext),
+            onApply: () async {
+              await _app.setAdaptiveStreamQualityCeiling(pending);
+              if (dialogContext.mounted) Navigator.pop(dialogContext);
+            },
           ),
-        ],
+        ),
       ),
     );
   }
@@ -1000,6 +1213,100 @@ class SettingsController extends GetxController {
       case AdaptiveStreamQualityCeiling.p4k:
         return 'settings.adaptiveQuality.option4k'.tr;
     }
+  }
+
+  /// Ayarlar > Oynatıcı > "Yayın Formatı" tile'ı için kısa açıklama.
+  String get liveStreamFormatSubtitle {
+    final mode = _app.liveStreamFormat.value;
+    if (mode == AppSettingsService.liveStreamFormatTs) {
+      return 'settings.streamFormat.tsShort'.tr;
+    }
+    if (mode == AppSettingsService.liveStreamFormatHls) {
+      return 'settings.streamFormat.hlsShort'.tr;
+    }
+    // auto — çözülen biçimi de göster
+    final resolved = _app.prefersTsLiveStreamFormat
+        ? 'settings.streamFormat.tsShort'.tr
+        : 'settings.streamFormat.hlsShort'.tr;
+    return 'settings.streamFormat.autoShort'.trParams({'fmt': resolved});
+  }
+
+  /// Canlı yayın taşıma biçimini (Otomatik / HLS / MPEG-TS) seçtirir.
+  Future<void> showLiveStreamFormatDialog() async {
+    final ctx = Get.context;
+    if (ctx == null) return;
+
+    var pending = _app.liveStreamFormat.value;
+    const options = <String>[
+      AppSettingsService.liveStreamFormatAuto,
+      AppSettingsService.liveStreamFormatHls,
+      AppSettingsService.liveStreamFormatTs,
+    ];
+
+    await showDialog<void>(
+      context: ctx,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => GlassAlertDialog(
+          scrollable: true,
+          title: Text('settings.dialog.streamFormatTitle'.tr),
+          content: GlassDialogListPanel(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                for (final opt in options)
+                  GlassListTile(
+                    title: Text(_liveStreamFormatLabel(opt)),
+                    subtitle: Text(
+                      _liveStreamFormatDesc(opt),
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.6),
+                        fontSize: 12,
+                        height: 1.3,
+                      ),
+                    ),
+                    trailing: pending == opt
+                        ? const Icon(
+                            Icons.check_rounded,
+                            color: Colors.white,
+                          )
+                        : null,
+                    selected: pending == opt,
+                    onTap: () => setDialogState(() => pending = opt),
+                  ),
+              ],
+            ),
+          ),
+          actions: glassDialogPickerActions(
+            dialogContext,
+            onCancel: () => Navigator.pop(dialogContext),
+            onApply: () async {
+              await _app.setLiveStreamFormat(pending);
+              if (dialogContext.mounted) Navigator.pop(dialogContext);
+            },
+          ),
+        ),
+      ),
+    );
+  }
+
+  String _liveStreamFormatLabel(String v) {
+    if (v == AppSettingsService.liveStreamFormatTs) {
+      return 'settings.streamFormat.tsTitle'.tr;
+    }
+    if (v == AppSettingsService.liveStreamFormatHls) {
+      return 'settings.streamFormat.hlsTitle'.tr;
+    }
+    return 'settings.streamFormat.autoTitle'.tr;
+  }
+
+  String _liveStreamFormatDesc(String v) {
+    if (v == AppSettingsService.liveStreamFormatTs) {
+      return 'settings.streamFormat.tsDesc'.tr;
+    }
+    if (v == AppSettingsService.liveStreamFormatHls) {
+      return 'settings.streamFormat.hlsDesc'.tr;
+    }
+    return 'settings.streamFormat.autoDesc'.tr;
   }
 
   Future<void> showCatchUpUrlTemplateDialog() async {
@@ -1020,18 +1327,25 @@ class SettingsController extends GetxController {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               mainAxisSize: MainAxisSize.min,
               children: [
-                for (final opt in CatchUpUrlPreset.values)
-                  GlassListTile(
-                    title: Text(_catchUpPresetLabel(opt)),
-                    trailing: local == opt
-                        ? const Icon(
-                            Icons.check_rounded,
-                            color: Colors.white,
-                          )
-                        : null,
-                    selected: local == opt,
-                    onTap: () => setDialogState(() => local = opt),
+                GlassDialogListPanel(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      for (final opt in CatchUpUrlPreset.values)
+                        GlassListTile(
+                          title: Text(_catchUpPresetLabel(opt)),
+                          trailing: local == opt
+                              ? const Icon(
+                                  Icons.check_rounded,
+                                  color: Colors.white,
+                                )
+                              : null,
+                          selected: local == opt,
+                          onTap: () => setDialogState(() => local = opt),
+                        ),
+                    ],
                   ),
+                ),
                 if (local == CatchUpUrlPreset.custom) ...[
                   const SizedBox(height: 8),
                   Text(
@@ -1067,17 +1381,18 @@ class SettingsController extends GetxController {
             ),
           ),
           actions: [
-            TextButton(
+            GlassDialogActionButton(
+              label: 'common.cancel'.tr,
               onPressed: () => Navigator.pop(c),
-              child: Text('common.cancel'.tr),
             ),
-            FilledButton(
+            GlassDialogActionButton(
+              label: 'common.save'.tr,
+              primary: true,
               onPressed: () async {
                 await _app.setCatchUpUrlPreset(local);
                 await _app.setCatchUpCustomTemplate(customCtrl.text);
                 if (c.mounted) Navigator.pop(c);
               },
-              child: Text('common.save'.tr),
             ),
           ],
         ),
@@ -1098,6 +1413,109 @@ class SettingsController extends GetxController {
       case CatchUpUrlPreset.custom:
         return 'settings.catchUp.optionCustom'.tr;
     }
+  }
+
+  /// Ses yükseltici üst sınırını seçtirir (100/125/150/175/200). 100 = kapalı
+  /// (boost yok). Değer kaydedildiğinde `PlayerController.setVolume` yeni
+  /// üst sınırla otomatik olarak çalışır; ek bir restart gerekmez.
+  Future<void> showVolumeBoostDialog() async {
+    final ctx = Get.context;
+    if (ctx == null) return;
+
+    final remoteNav = _app.layoutMode.value.usesRemoteNavigationStyle;
+    var local = AppSettingsService.normalizeVolumeBoostMaxPercent(
+      _app.volumeBoostMaxPercent.value,
+    );
+
+    await showDialog<void>(
+      context: ctx,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return GlassAlertDialog(
+              scrollable: false,
+              tvOsdStyle: remoteNav,
+              title: Text('settings.dialog.volumeBoost.title'.tr),
+              content: FocusTraversalGroup(
+                policy: OrderedTraversalPolicy(),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      'settings.dialog.volumeBoost.hint'.tr,
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.78),
+                        fontSize: 12.5,
+                        height: 1.35,
+                      ),
+                    ),
+                    const SizedBox(height: 10),
+                    GlassDialogListPanel(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          for (final opt in AppSettingsService
+                              .volumeBoostMaxPercentOptions)
+                            GlassListTile(
+                              title: Text(
+                                opt ==
+                                        AppSettingsService
+                                            .defaultVolumeBoostMaxPercent
+                                    ? 'settings.dialog.volumeBoost.off'.tr
+                                    : 'settings.dialog.volumeBoost.option'
+                                        .trParams({'n': '$opt'}),
+                              ),
+                              trailing: local == opt
+                                  ? const Icon(
+                                      Icons.check_rounded,
+                                      color: Colors.white,
+                                    )
+                                  : null,
+                              selected: local == opt,
+                              onTap: () => setDialogState(() => local = opt),
+                            ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                GlassDialogActionButton(
+                  label: 'common.cancel'.tr,
+                  onDarkSurface: remoteNav,
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                ),
+                GlassDialogActionButton(
+                  label: 'common.save'.tr,
+                  primary: true,
+                  onDarkSurface: remoteNav,
+                  onPressed: () async {
+                    await _app.setVolumeBoostMaxPercent(local);
+                    if (dialogContext.mounted) {
+                      Navigator.of(dialogContext).pop();
+                    }
+                  },
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  /// Ses Equalizer dialogunu açar. Servis kapalı bile olsa kullanıcı
+  /// dialog içinde anahtarı çevirebilir; tüm ayarlar reaktif olarak
+  /// MediaKit (libmpv) `af` zincirine uygulanır.
+  Future<void> showEqualizerDialog() async {
+    final ctx = Get.context;
+    if (ctx == null) return;
+    if (Get.isRegistered<EqualizerService>()) {
+      await EqualizerService.to.ensureLoaded();
+    }
+    await eq_dialog.showEqualizerDialog(ctx);
   }
 
   Future<void> showLiveBufferDialog() async {
@@ -1189,18 +1607,694 @@ class SettingsController extends GetxController {
                 ),
               ),
               actions: [
-                TextButton(
+                GlassDialogActionButton(
+                  label: 'common.cancel'.tr,
+                  onDarkSurface: remoteNav,
                   onPressed: () => Navigator.of(dialogContext).pop(),
-                  child: Text('common.cancel'.tr),
                 ),
-                FilledButton(
+                GlassDialogActionButton(
+                  label: 'common.save'.tr,
+                  primary: true,
+                  onDarkSurface: remoteNav,
                   onPressed: () async {
                     await _app.setLiveBufferSeconds(local);
                     if (dialogContext.mounted) {
                       Navigator.of(dialogContext).pop();
                     }
                   },
-                  child: Text('common.save'.tr),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  /// Şifrelenmiş `mina_backup.dat` dosyasını oluştur ve sistemin paylaşım
+  /// sayfası ile (Drive / WhatsApp / e‑posta vb.) dışarı çıkar. Hiçbir genel
+  /// depolama izni istenmez – Android, paylaşımı kendi anlık izniyle yapar.
+  Future<void> shareBackupFile() async {
+    if (isBackupBusy.value) return;
+    isBackupBusy.value = true;
+    try {
+      final result = await _backup.exportToShareSheet(
+        subject: 'Mina yedeği',
+      );
+      switch (result.status) {
+        case BackupShareStatus.success:
+          GlassSnackbar.show(
+            'settings.backup.title'.tr,
+            'settings.backup.shared'.tr,
+            snackPosition: SnackPosition.BOTTOM,
+          );
+          break;
+        case BackupShareStatus.dismissed:
+          // Kullanıcı paylaşımı iptal etti — sessizce geç.
+          break;
+        case BackupShareStatus.failure:
+          GlassSnackbar.show(
+            'settings.backup.title'.tr,
+            (result.message?.trim().isNotEmpty == true)
+                ? result.message!
+                : 'settings.backup.error'.tr,
+            snackPosition: SnackPosition.BOTTOM,
+          );
+          break;
+      }
+    } finally {
+      isBackupBusy.value = false;
+    }
+  }
+
+  /// `file_picker` ile kullanıcıya bir `.dat` dosyası seçtir, çöz ve
+  /// SharedPreferences + SecureStorage + yerel `.m3u` dosyalarını geri yükle.
+  /// Restart önerisi ile birlikte özet snackbar gösterilir.
+  Future<void> restoreBackupFromFile() async {
+    if (isBackupBusy.value) return;
+
+    // Geri yükleme yıkıcı bir işlem (mevcut `mina_*` key’leri temizlenir).
+    // Önce onay penceresi göster.
+    final ctx = Get.context;
+    if (ctx == null) return;
+    final remoteNav = _app.layoutMode.value.usesRemoteNavigationStyle;
+    final ok = await showDialog<bool>(
+      context: ctx,
+      builder: (dCtx) => GlassAlertDialog(
+        tvOsdStyle: remoteNav,
+        title: Text('settings.backup.restore.confirmTitle'.tr),
+        content: Text('settings.backup.restore.confirmBody'.tr),
+        actions: [
+          GlassDialogActionButton(
+            label: 'common.cancel'.tr,
+            onDarkSurface: remoteNav,
+            onPressed: () => Navigator.of(dCtx).pop(false),
+          ),
+          GlassDialogActionButton(
+            label: 'settings.backup.restore.confirmYes'.tr,
+            primary: true,
+            onDarkSurface: remoteNav,
+            onPressed: () => Navigator.of(dCtx).pop(true),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+
+    isBackupBusy.value = true;
+    try {
+      final result = await _backup.importFromUserPickedFile();
+      switch (result.status) {
+        case BackupImportStatus.success:
+          final s = result.summary!;
+          GlassSnackbar.show(
+            'settings.backup.title'.tr,
+            'settings.backup.restoredSummary'.trParams({
+              'prefs': '${s.prefsCount}',
+              'sec': '${s.secureCount}',
+              'm3u': '${s.localM3uCount}',
+            }),
+            snackPosition: SnackPosition.BOTTOM,
+          );
+          if (Get.context != null) {
+            await Future<void>.delayed(const Duration(milliseconds: 250));
+            await showDialog<void>(
+              context: Get.context!,
+              builder: (dCtx) => GlassAlertDialog(
+                tvOsdStyle: remoteNav,
+                title: Text('settings.backup.restore.doneTitle'.tr),
+                content: Text('settings.backup.restore.doneBody'.tr),
+                actions: [
+                  GlassDialogActionButton(
+                    label: 'common.ok'.tr,
+                    primary: true,
+                    onDarkSurface: remoteNav,
+                    onPressed: () => Navigator.of(dCtx).pop(),
+                  ),
+                ],
+              ),
+            );
+          }
+          // Tüm servisleri taze veriyle yeniden yükletmek için splash'ten
+          // temiz yeniden başlat (kısmi bellek yenilemesi yerine).
+          isBackupBusy.value = false;
+          Get.offAllNamed(AppRoutes.splash);
+          return;
+        case BackupImportStatus.cancelled:
+          // Sessizce geç.
+          break;
+        case BackupImportStatus.failure:
+          GlassSnackbar.show(
+            'settings.backup.title'.tr,
+            (result.message?.trim().isNotEmpty == true)
+                ? result.message!
+                : 'settings.backup.error'.tr,
+            snackPosition: SnackPosition.BOTTOM,
+          );
+          break;
+      }
+    } finally {
+      isBackupBusy.value = false;
+    }
+  }
+
+  /// Google hesabı bağlı değilse oturum açar; bağlıysa true döner.
+  Future<bool> ensureSignedInForCloud() async {
+    if (isCloudBusy.value) return false;
+    final auth = _auth;
+    if (auth == null || !auth.isAvailable) {
+      GlassSnackbar.show(
+        'cloud.title'.tr,
+        'cloud.notConfigured'.tr,
+        snackPosition: SnackPosition.BOTTOM,
+      );
+      return false;
+    }
+    if (auth.isSignedIn) return true;
+    isCloudBusy.value = true;
+    try {
+      final result = await auth.signInWithGoogle();
+      switch (result.outcome) {
+        case GoogleSignInOutcome.success:
+          return true;
+        case GoogleSignInOutcome.cancelled:
+          return false;
+        case GoogleSignInOutcome.notConfigured:
+          GlassSnackbar.show(
+            'cloud.title'.tr,
+            'cloud.notConfigured'.tr,
+            snackPosition: SnackPosition.BOTTOM,
+          );
+          return false;
+        case GoogleSignInOutcome.failed:
+          GlassSnackbar.show(
+            'cloud.title'.tr,
+            result.messageKey.tr,
+            snackPosition: SnackPosition.BOTTOM,
+          );
+          return false;
+      }
+    } finally {
+      isCloudBusy.value = false;
+    }
+  }
+
+  /// Tüm ayarları + 32 slot listelerini Google (Firestore) hesabına yedekler.
+  Future<void> backupToGoogle() async {
+    if (isCloudBusy.value) return;
+    isCloudBusy.value = true;
+    try {
+      if (!await ensureSignedInForCloud()) return;
+      // Çakışma koruması: bulutta bu cihazın son yedeğinden daha yeni bir
+      // yedek varsa (büyük olasılıkla başka bir cihazdan), üzerine yazmadan
+      // önce kullanıcıya sor.
+      if (!await _confirmOverwriteIfCloudNewer()) return;
+      final ok = await _auth!
+          .saveUserSettingsToCloud()
+          .timeout(const Duration(seconds: 30), onTimeout: () => false);
+      GlassSnackbar.show(
+        'cloud.title'.tr,
+        ok ? 'cloud.backupDone'.tr : 'cloud.backupFailed'.tr,
+        snackPosition: SnackPosition.BOTTOM,
+      );
+      if (ok) unawaited(refreshCloudBackupInfo());
+    } catch (_) {
+      GlassSnackbar.show(
+        'cloud.title'.tr,
+        'cloud.backupFailed'.tr,
+        snackPosition: SnackPosition.BOTTOM,
+      );
+    } finally {
+      isCloudBusy.value = false;
+    }
+  }
+
+  /// Bulutta yerel son yedek zamanından belirgin şekilde (>2 dk) daha yeni bir
+  /// yedek varsa, üzerine yazmadan önce onay penceresi gösterir. Onaylanırsa
+  /// veya bulut daha yeni değilse `true`, kullanıcı iptal ederse `false`.
+  Future<bool> _confirmOverwriteIfCloudNewer() async {
+    final auth = _auth;
+    if (auth == null) return true;
+    int? cloudMs;
+    try {
+      cloudMs = await auth
+          .fetchCloudUpdatedAtMs()
+          .timeout(const Duration(seconds: 10), onTimeout: () => null);
+    } catch (_) {
+      cloudMs = null;
+    }
+    if (cloudMs == null) return true;
+    final localMs = _app.lastCloudBackupTime.value;
+    // 2 dk pay: kendi yazımımızın saat sapmasından kaynaklı yanlış pozitifleri
+    // ele.
+    if (cloudMs <= localMs + 120000) return true;
+    final ctx = Get.context;
+    if (ctx == null) return true;
+    final remoteNav = _app.layoutMode.value.usesRemoteNavigationStyle;
+    final when = DateTime.fromMillisecondsSinceEpoch(cloudMs);
+    final stamp =
+        '${when.day.toString().padLeft(2, '0')}.${when.month.toString().padLeft(2, '0')}.${when.year} '
+        '${when.hour.toString().padLeft(2, '0')}:${when.minute.toString().padLeft(2, '0')}';
+    final proceed = await showDialog<bool>(
+      context: ctx,
+      builder: (dCtx) => GlassAlertDialog(
+        tvOsdStyle: remoteNav,
+        title: Text('cloud.backup.newerTitle'.tr),
+        content: Text('cloud.backup.newerBody'.trParams({'date': stamp})),
+        actions: [
+          GlassDialogActionButton(
+            label: 'common.cancel'.tr,
+            onDarkSurface: remoteNav,
+            onPressed: () => Navigator.of(dCtx).pop(false),
+          ),
+          GlassDialogActionButton(
+            label: 'cloud.backup.overwrite'.tr,
+            primary: true,
+            onDarkSurface: remoteNav,
+            onPressed: () => Navigator.of(dCtx).pop(true),
+          ),
+        ],
+      ),
+    );
+    return proceed == true;
+  }
+
+  /// Google hesabındaki yedeği yerel depoya geri yükler (onaylı).
+  Future<void> restoreFromGoogle() async {
+    if (isCloudBusy.value) return;
+    final ctx = Get.context;
+    if (ctx == null) return;
+    final remoteNav = _app.layoutMode.value.usesRemoteNavigationStyle;
+    final ok = await showDialog<bool>(
+      context: ctx,
+      builder: (dCtx) => GlassAlertDialog(
+        tvOsdStyle: remoteNav,
+        title: Text('cloud.restore.confirmTitle'.tr),
+        content: Text('cloud.restore.confirmBody'.tr),
+        actions: [
+          GlassDialogActionButton(
+            label: 'common.cancel'.tr,
+            onDarkSurface: remoteNav,
+            onPressed: () => Navigator.of(dCtx).pop(false),
+          ),
+          GlassDialogActionButton(
+            label: 'settings.backup.restore.confirmYes'.tr,
+            primary: true,
+            onDarkSurface: remoteNav,
+            onPressed: () => Navigator.of(dCtx).pop(true),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+
+    isCloudBusy.value = true;
+    try {
+      if (!await ensureSignedInForCloud()) return;
+      final cloud = await _auth!
+          .loadUserSettingsFromCloud()
+          .timeout(const Duration(seconds: 30), onTimeout: () => null);
+      if (cloud == null || cloud.isEmpty) {
+        GlassSnackbar.show(
+          'cloud.title'.tr,
+          'cloud.restore.empty'.tr,
+          snackPosition: SnackPosition.BOTTOM,
+        );
+        return;
+      }
+      final applied = await _auth!.applyCloudSettingsLocally(cloud);
+      if (!applied) {
+        GlassSnackbar.show(
+          'cloud.title'.tr,
+          'cloud.restoreFailed'.tr,
+          snackPosition: SnackPosition.BOTTOM,
+        );
+        return;
+      }
+      _logCloudRestore(success: true);
+      if (Get.context != null) {
+        await Future<void>.delayed(const Duration(milliseconds: 250));
+        await showDialog<void>(
+          context: Get.context!,
+          builder: (dCtx) => GlassAlertDialog(
+            tvOsdStyle: remoteNav,
+            title: Text('settings.backup.restore.doneTitle'.tr),
+            content: Text('settings.backup.restore.doneBody'.tr),
+            actions: [
+              GlassDialogActionButton(
+                label: 'common.ok'.tr,
+                primary: true,
+                onDarkSurface: remoteNav,
+                onPressed: () => Navigator.of(dCtx).pop(),
+              ),
+            ],
+          ),
+        );
+      }
+      // Geri yükleme tüm `mina_*` ayarlarını, listeleri, favori ve izleme
+      // geçmişini değiştirir. Kısmi bellek yenileme yerine splash'ten temiz
+      // yeniden başlatarak tüm servislerin taze veriyle yüklenmesini garanti
+      // ederiz (sihirbaz geri yükleme akışıyla aynı davranış).
+      isCloudBusy.value = false;
+      Get.offAllNamed(AppRoutes.splash);
+      return;
+    } catch (_) {
+      _logCloudRestore(success: false);
+      GlassSnackbar.show(
+        'cloud.title'.tr,
+        'cloud.restoreFailed'.tr,
+        snackPosition: SnackPosition.BOTTOM,
+      );
+    } finally {
+      isCloudBusy.value = false;
+    }
+  }
+
+  void _logCloudRestore({required bool success}) {
+    if (!Get.isRegistered<MinaTelemetryService>()) return;
+    unawaited(
+      Get.find<MinaTelemetryService>().logCloudRestore(success: success),
+    );
+  }
+
+  /// Otomatik bulut yedekleme aralığını ayarlar (0: kapalı, 1: günlük,
+  /// 7: haftalık). Açık bir aralık seçildiyse ve zamanı gelmişse arka planda
+  /// hemen bir yedek tetiklenir.
+  Future<void> setCloudAutoBackupInterval(int days) async {
+    await _app.setCloudAutoBackupDays(days);
+    if (days > 0) {
+      final auth = _auth;
+      if (auth != null && auth.isAvailable && auth.isSignedIn) {
+        unawaited(auth.maybeAutoBackup());
+      }
+    }
+  }
+
+  /// Google oturumunu kapatır.
+  Future<void> signOutFromGoogle() async {
+    final auth = _auth;
+    if (auth == null) return;
+    await auth.signOut();
+    GlassSnackbar.show(
+      'cloud.title'.tr,
+      'cloud.signedOut'.tr,
+      snackPosition: SnackPosition.BOTTOM,
+    );
+  }
+
+  /// Buluttaki tüm kullanıcı verisini siler (GDPR). Onaylı; yerel veriler
+  /// etkilenmez. Başarılı olursa son bulut yedek zamanı sıfırlanır.
+  Future<void> deleteCloudData() async {
+    if (isCloudBusy.value) return;
+    final auth = _auth;
+    if (auth == null) return;
+    final ctx = Get.context;
+    if (ctx == null) return;
+    final remoteNav = _app.layoutMode.value.usesRemoteNavigationStyle;
+    final ok = await showDialog<bool>(
+      context: ctx,
+      builder: (dCtx) => GlassAlertDialog(
+        tvOsdStyle: remoteNav,
+        title: Text('cloud.delete.confirmTitle'.tr),
+        content: Text('cloud.delete.confirmBody'.tr),
+        actions: [
+          GlassDialogActionButton(
+            label: 'common.cancel'.tr,
+            onDarkSurface: remoteNav,
+            onPressed: () => Navigator.of(dCtx).pop(false),
+          ),
+          GlassDialogActionButton(
+            label: 'cloud.delete.confirmYes'.tr,
+            primary: true,
+            onDarkSurface: remoteNav,
+            onPressed: () => Navigator.of(dCtx).pop(true),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    isCloudBusy.value = true;
+    try {
+      if (!await ensureSignedInForCloud()) return;
+      final done = await auth
+          .deleteCloudData()
+          .timeout(const Duration(seconds: 30), onTimeout: () => false);
+      GlassSnackbar.show(
+        'cloud.title'.tr,
+        done ? 'cloud.delete.done'.tr : 'cloud.delete.failed'.tr,
+        snackPosition: SnackPosition.BOTTOM,
+      );
+      if (done) cloudBackupInfo.value = null;
+    } catch (_) {
+      GlassSnackbar.show(
+        'cloud.title'.tr,
+        'cloud.delete.failed'.tr,
+        snackPosition: SnackPosition.BOTTOM,
+      );
+    } finally {
+      isCloudBusy.value = false;
+    }
+  }
+
+  /// Yatay OSD kapsülünün arka plan saydamlığını ayarla (0–100, 100 = opak).
+  /// Yalnızca arka planı / kenarı / gölgesi etkiler; butonlar ve ikonlar
+  /// olduğu gibi kalır.
+  Future<void> showOsdLandscapeBackgroundOpacityDialog() async {
+    final ctx = Get.context;
+    if (ctx == null) return;
+
+    final remoteNav = _app.layoutMode.value.usesRemoteNavigationStyle;
+
+    await showDialog<void>(
+      context: ctx,
+      builder: (dialogContext) {
+        var local = _app.osdLandscapeBackgroundOpacity.value.clamp(0, 100);
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return GlassAlertDialog(
+              scrollable: false,
+              tvOsdStyle: remoteNav,
+              title: Text('settings.dialog.osdOpacityTitle'.tr),
+              content: FocusTraversalGroup(
+                policy: OrderedTraversalPolicy(),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      'settings.dialog.osdOpacitySlider'
+                          .trParams({'n': '$local'}),
+                    ),
+                    const SizedBox(height: 8),
+                    if (remoteNav) ...[
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          FocusTraversalOrder(
+                            order: const NumericFocusOrder(1),
+                            child: IconButton.filledTonal(
+                              autofocus: true,
+                              icon: const Icon(Icons.remove_rounded),
+                              onPressed: local > 0
+                                  ? () => setDialogState(() {
+                                        local = (local - 5).clamp(0, 100);
+                                      })
+                                  : null,
+                            ),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 20),
+                            child: Text(
+                              '$local%',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .headlineSmall
+                                  ?.copyWith(fontWeight: FontWeight.w700),
+                            ),
+                          ),
+                          FocusTraversalOrder(
+                            order: const NumericFocusOrder(2),
+                            child: IconButton.filledTonal(
+                              icon: const Icon(Icons.add_rounded),
+                              onPressed: local < 100
+                                  ? () => setDialogState(() {
+                                        local = (local + 5).clamp(0, 100);
+                                      })
+                                  : null,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ] else
+                      FocusTraversalOrder(
+                        order: const NumericFocusOrder(1),
+                        child: Slider(
+                          autofocus: true,
+                          min: 0,
+                          max: 100,
+                          divisions: 20,
+                          value: local.clamp(0, 100).toDouble(),
+                          onChanged: (nv) {
+                            setDialogState(() {
+                              local = nv.round().clamp(0, 100);
+                            });
+                          },
+                        ),
+                      ),
+                    const SizedBox(height: 8),
+                    Text(
+                      'settings.dialog.osdOpacityHint'.tr,
+                      style: TextStyle(
+                        color: Theme.of(context)
+                            .colorScheme
+                            .onSurface
+                            .withValues(alpha: 0.6),
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                GlassDialogActionButton(
+                  label: 'common.cancel'.tr,
+                  onDarkSurface: remoteNav,
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                ),
+                GlassDialogActionButton(
+                  label: 'common.save'.tr,
+                  primary: true,
+                  onDarkSurface: remoteNav,
+                  onPressed: () async {
+                    await _app.setOsdLandscapeBackgroundOpacity(local);
+                    if (dialogContext.mounted) {
+                      Navigator.of(dialogContext).pop();
+                    }
+                  },
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> showEpgDiskCacheRefreshDialog() async {
+    final ctx = Get.context;
+    if (ctx == null) return;
+
+    final remoteNav = _app.layoutMode.value.usesRemoteNavigationStyle;
+
+    await showDialog<void>(
+      context: ctx,
+      builder: (dialogContext) {
+        var local = _app.epgDiskCacheRefreshDays.value.clamp(1, 5);
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            return GlassAlertDialog(
+              scrollable: false,
+              tvOsdStyle: remoteNav,
+              title: Text('settings.epg.refreshFrequency'.tr),
+              content: FocusTraversalGroup(
+                policy: OrderedTraversalPolicy(),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      'settings.dialog.epgCacheHint'.tr,
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.82),
+                        fontSize: 13,
+                        height: 1.35,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    Text(
+                      'settings.dialog.epgCacheSlider'.trParams({
+                        'n': '$local',
+                      }),
+                    ),
+                    const SizedBox(height: 8),
+                    if (remoteNav) ...[
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          FocusTraversalOrder(
+                            order: const NumericFocusOrder(1),
+                            child: IconButton.filledTonal(
+                              autofocus: true,
+                              icon: const Icon(Icons.remove_rounded),
+                              onPressed: local > 1
+                                  ? () => setDialogState(() {
+                                        local = (local - 1).clamp(1, 5);
+                                      })
+                                  : null,
+                            ),
+                          ),
+                          Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 20,
+                            ),
+                            child: Text(
+                              '$local',
+                              style: Theme.of(context)
+                                  .textTheme
+                                  .headlineSmall
+                                  ?.copyWith(
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                            ),
+                          ),
+                          FocusTraversalOrder(
+                            order: const NumericFocusOrder(2),
+                            child: IconButton.filledTonal(
+                              icon: const Icon(Icons.add_rounded),
+                              onPressed: local < 5
+                                  ? () => setDialogState(() {
+                                        local = (local + 1).clamp(1, 5);
+                                      })
+                                  : null,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ] else
+                      FocusTraversalOrder(
+                        order: const NumericFocusOrder(1),
+                        child: Slider(
+                          autofocus: true,
+                          min: 1,
+                          max: 5,
+                          divisions: 4,
+                          value: local.clamp(1, 5).toDouble(),
+                          onChanged: (nv) {
+                            setDialogState(() {
+                              local = nv.round().clamp(1, 5);
+                            });
+                          },
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              actions: [
+                GlassDialogActionButton(
+                  label: 'common.cancel'.tr,
+                  onDarkSurface: remoteNav,
+                  onPressed: () => Navigator.of(dialogContext).pop(),
+                ),
+                GlassDialogActionButton(
+                  label: 'common.save'.tr,
+                  primary: true,
+                  onDarkSurface: remoteNav,
+                  onPressed: () async {
+                    await _app.setEpgDiskCacheRefreshDays(local);
+                    if (dialogContext.mounted) {
+                      Navigator.of(dialogContext).pop();
+                    }
+                  },
                 ),
               ],
             );
@@ -1242,6 +2336,7 @@ class SettingsController extends GetxController {
         tvOsdStyle: _app.layoutMode.value == AppLayoutMode.tv,
         title: 'Uygulama Fontu',
         hint: 'Tum uygulama arayuzu icin font secimi.',
+        options: kAppFontFamilyOptions,
         onCancel: () => Navigator.of(dialogContext).pop(),
         onSave: (key) async {
           await _app.setAppFontFamilyKey(key);
@@ -1250,6 +2345,425 @@ class SettingsController extends GetxController {
           }
         },
       ),
+    );
+  }
+
+  void openEpgSettings() => Get.toNamed(AppRoutes.epgSettings);
+
+  void openEpgSourceManage() => Get.toNamed(AppRoutes.epgSourceManage);
+
+  String get epgStatusSubtitle {
+    final epg = Get.find<EpgService>();
+
+    // GlobalEpgService (GitHub yedek) `EpgService`'ten ayrı kendi belleğini
+    // tutar; UI duruma hem Xtream/M3U EPG hem de GitHub yedek katkısını
+    // birleştirerek bakmalı, aksi halde "Sadece GitHub" modunda her şey yüklü
+    // olsa bile "Rehber yüklenmedi" görünür.
+    var channels = epg.loadedXmlChannelCount;
+    var programs = epg.loadedProgrammeKeyCount;
+    var globalLoading = false;
+    if (Get.isRegistered<GlobalEpgService>()) {
+      final g = Get.find<GlobalEpgService>();
+      // Reaktivite için: generation aboneliği. Bu getter Obx() içinde çağrılır.
+      g.loadGeneration.value;
+      channels += g.loadedMemoryChannelCount;
+      programs += g.loadedMemoryProgrammeCount;
+      globalLoading = g.isLoading.value;
+    }
+
+    if (epg.isLoading.value || globalLoading) {
+      return 'settings.epg.status.sub.loading'.tr;
+    }
+    if (channels == 0 && programs == 0) {
+      return 'settings.epg.status.sub.empty'.tr;
+    }
+    return 'settings.epg.status.sub.loaded'.trParams({
+      'channels': '$channels',
+      'programs': '$programs',
+    });
+  }
+
+  /// Ayarlar > EPG > EPG Kaynağı tile'ı için alt başlık.
+  /// Hangi kaynağın gerçekten aktif olduğunu kullanıcıya gösterir:
+  ///   • Xtream EPG başarılıysa "Xtream sunucusundan canlı"
+  ///   • Xtream başarısızsa ve GlobalEPG doluysa "GitHub yedek aktif"
+  ///   • Auto'da ikisi de varsa "Xtream + GitHub yedek"
+  String get xtreamEpgSourceSubtitle {
+    final epg = Get.find<EpgService>();
+    final mode = _app.xtreamEpgSourceMode.value;
+    final xtreamOk = epg.xtreamLastSuccess.value;
+    final hasGlobal = Get.isRegistered<GlobalEpgService>() &&
+        Get.find<GlobalEpgService>().loadedMemoryChannelCount > 0;
+
+    switch (mode) {
+      case XtreamEpgSourceMode.xtreamOnly:
+        return xtreamOk
+            ? 'settings.epg.sourcePref.sub.xtreamOk'.tr
+            : 'settings.epg.sourcePref.sub.xtreamOnlyFail'.tr;
+      case XtreamEpgSourceMode.githubOnly:
+        return hasGlobal
+            ? 'settings.epg.sourcePref.sub.githubOk'.tr
+            : 'settings.epg.sourcePref.sub.githubLoading'.tr;
+      case XtreamEpgSourceMode.auto:
+        if (xtreamOk && hasGlobal) {
+          return 'settings.epg.sourcePref.sub.both'.tr;
+        }
+        if (xtreamOk) {
+          return 'settings.epg.sourcePref.sub.xtreamOk'.tr;
+        }
+        if (hasGlobal) {
+          return 'settings.epg.sourcePref.sub.githubFallback'.tr;
+        }
+        return 'settings.epg.sourcePref.sub.autoLoading'.tr;
+    }
+  }
+
+  /// EPG Kaynağı tile'ında badge metni — `XTREAM` / `GITHUB` / `OTOMATİK`.
+  String get xtreamEpgSourceBadge {
+    switch (_app.xtreamEpgSourceMode.value) {
+      case XtreamEpgSourceMode.auto:
+        return 'settings.epg.sourcePref.badge.auto'.tr;
+      case XtreamEpgSourceMode.xtreamOnly:
+        return 'settings.epg.sourcePref.badge.xtream'.tr;
+      case XtreamEpgSourceMode.githubOnly:
+        return 'settings.epg.sourcePref.badge.github'.tr;
+    }
+  }
+
+  /// Ayarlar > EPG > EPG Kaynağı tile tıklanınca açılan dialog.
+  /// Kullanıcı 3 seçenekten birini seçebilir; ardından mevcut Xtream listesi
+  /// için EPG yeniden yüklenir.
+  Future<void> showXtreamEpgSourceDialog() async {
+    final ctx = Get.context;
+    if (ctx == null) return;
+
+    final source = await _repo.readSource();
+    if (source is! XtreamSource) {
+      GlassSnackbar.show(
+        'settings.snackbar.info'.tr,
+        'settings.snackbar.xtreamOnly'.tr,
+      );
+      return;
+    }
+
+    var pending = _app.xtreamEpgSourceMode.value;
+    final remoteNav = _app.layoutMode.value.usesRemoteNavigationStyle;
+
+    final picked = await showDialog<XtreamEpgSourceMode>(
+      context: ctx,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => GlassAlertDialog(
+          scrollable: true,
+          tvOsdStyle: remoteNav,
+          title: Text('settings.epg.sourcePref.title'.tr),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'settings.epg.sourcePref.body'.tr,
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.78),
+                  fontSize: 13,
+                  height: 1.4,
+                ),
+              ),
+              const SizedBox(height: 14),
+              GlassDialogListPanel(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _epgSourceOption(
+                      title: 'settings.epg.sourcePref.optAuto.title'.tr,
+                      desc: 'settings.epg.sourcePref.optAuto.desc'.tr,
+                      icon: Icons.auto_awesome_rounded,
+                      selected: pending == XtreamEpgSourceMode.auto,
+                      onTap: () => setDialogState(
+                          () => pending = XtreamEpgSourceMode.auto),
+                    ),
+                    _epgSourceOption(
+                      title: 'settings.epg.sourcePref.optXtream.title'.tr,
+                      desc: 'settings.epg.sourcePref.optXtream.desc'.tr,
+                      icon: Icons.dns_rounded,
+                      selected: pending == XtreamEpgSourceMode.xtreamOnly,
+                      onTap: () => setDialogState(
+                          () => pending = XtreamEpgSourceMode.xtreamOnly),
+                    ),
+                    _epgSourceOption(
+                      title: 'settings.epg.sourcePref.optGithub.title'.tr,
+                      desc: 'settings.epg.sourcePref.optGithub.desc'.tr,
+                      icon: Icons.cloud_download_rounded,
+                      selected: pending == XtreamEpgSourceMode.githubOnly,
+                      onTap: () => setDialogState(
+                          () => pending = XtreamEpgSourceMode.githubOnly),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          actions: glassDialogPickerActions(
+            dialogContext,
+            onDarkSurface: remoteNav,
+            onCancel: () => Navigator.of(dialogContext).pop(),
+            onApply: () => Navigator.of(dialogContext).pop(pending),
+          ),
+        ),
+      ),
+    );
+
+    if (picked == null || picked == _app.xtreamEpgSourceMode.value) return;
+
+    await _app.setXtreamEpgSourceMode(picked);
+
+    final epg = Get.find<EpgService>();
+    epg.clear();
+
+    GlassSnackbar.show(
+      'settings.epg.sourcePref.title'.tr,
+      'settings.tile.refresh.loading'.tr,
+      snackPosition: SnackPosition.BOTTOM,
+    );
+
+    try {
+      await _reloadEpgAfterPlaylist(source);
+      final cacheKey = EpgSnapshotKeys.logicalKeyFor(source, _app);
+      if (cacheKey != null && epg.hasLoadedGuideData()) {
+        await epg.persistSnapshotToDisk(cacheKey);
+      }
+      GlassSnackbar.show(
+        'settings.epg.sourcePref.title'.tr,
+        epg.hasLoadedGuideData() ? 'common.success'.tr : 'common.error'.tr,
+        snackPosition: SnackPosition.BOTTOM,
+      );
+    } catch (e) {
+      GlassSnackbar.show(
+        'settings.epg.sourcePref.title'.tr,
+        'common.error'.tr,
+        snackPosition: SnackPosition.BOTTOM,
+      );
+    }
+  }
+
+  Widget _epgSourceOption({
+    required String title,
+    required String desc,
+    required IconData icon,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
+    return GlassListTile(
+      title: Row(
+        children: [
+          Icon(icon, color: Colors.white.withValues(alpha: 0.92), size: 20),
+          const SizedBox(width: 10),
+          Expanded(child: Text(title)),
+        ],
+      ),
+      subtitle: Padding(
+        padding: const EdgeInsets.only(left: 30, top: 2),
+        child: Text(
+          desc,
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.7),
+            fontSize: 12.5,
+            height: 1.3,
+          ),
+        ),
+      ),
+      trailing: selected
+          ? const Icon(Icons.check_rounded, color: Colors.white)
+          : null,
+      selected: selected,
+      onTap: onTap,
+    );
+  }
+
+  Future<void> refreshEpgGuide() async {
+    if (isRefreshing.value) return;
+    final epg = Get.find<EpgService>();
+    if (epg.isLoading.value) return;
+
+    isRefreshing.value = true;
+    GlassSnackbar.show(
+      'settings.epg.status'.tr,
+      'settings.tile.refresh.loading'.tr,
+      snackPosition: SnackPosition.BOTTOM,
+    );
+
+    try {
+      // Yeni EPG verilerinin yansıması için mevcut bellek görüntüsünü sıfırla.
+      // Aksi halde bir önceki Xtream/Global EPG kayıtları üzerine yazılır ve
+      // sayaçlar / durum doğru güncellenmeyebilir.
+      epg.clear();
+
+      final source = await _repo.readSource();
+      if (source != null) {
+        await _reloadEpgAfterPlaylist(source);
+        final cacheKey = EpgSnapshotKeys.logicalKeyFor(source, _app);
+        if (cacheKey != null && epg.hasLoadedGuideData()) {
+          await epg.persistSnapshotToDisk(cacheKey);
+        }
+      } else {
+        await epg.loadEpgFirstSuccessful(_app.m3uEpgFetchUrls);
+        if (epg.hasLoadedGuideData()) {
+          await _app.markM3uEpgFetchedOk();
+        }
+      }
+      GlassSnackbar.show(
+        'settings.epg.status'.tr,
+        epg.hasLoadedGuideData() ? 'common.success'.tr : 'common.error'.tr,
+        snackPosition: SnackPosition.BOTTOM,
+      );
+    } catch (_) {
+      GlassSnackbar.show(
+        'settings.epg.status'.tr,
+        'common.error'.tr,
+        snackPosition: SnackPosition.BOTTOM,
+      );
+    } finally {
+      isRefreshing.value = false;
+    }
+  }
+
+  Future<void> showEpgTimeFormatDialog() async {
+    final ctx = Get.context;
+    if (ctx == null) return;
+    final remoteNav = _app.layoutMode.value.usesRemoteNavigationStyle;
+
+    await showDialog<void>(
+      context: ctx,
+      builder: (dialogContext) {
+        var use24 = _app.epgTimeFormat24h.value;
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return GlassAlertDialog(
+              tvOsdStyle: remoteNav,
+              title: Text('settings.epg.timeFormat'.tr),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  RadioListTile<bool>(
+                    title: Text('settings.epg.timeFormat24'.tr),
+                    value: true,
+                    groupValue: use24,
+                    onChanged: (v) => setState(() => use24 = true),
+                  ),
+                  RadioListTile<bool>(
+                    title: Text('settings.epg.timeFormat12'.tr),
+                    value: false,
+                    groupValue: use24,
+                    onChanged: (v) => setState(() => use24 = false),
+                  ),
+                ],
+              ),
+              actions: [
+                GlassDialogActionButton(
+                  label: 'common.cancel'.tr,
+                  onDarkSurface: remoteNav,
+                  onPressed: () => Navigator.pop(dialogContext),
+                ),
+                GlassDialogActionButton(
+                  label: 'common.save'.tr,
+                  primary: true,
+                  onDarkSurface: remoteNav,
+                  onPressed: () async {
+                    await _app.setEpgTimeFormat24h(use24);
+                    if (dialogContext.mounted) Navigator.pop(dialogContext);
+                  },
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<void> showEpgOffsetDialog() async {
+    final ctx = Get.context;
+    if (ctx == null) return;
+    final remoteNav = _app.layoutMode.value.usesRemoteNavigationStyle;
+    const options = <int>[
+      -720,
+      -660,
+      -600,
+      -540,
+      -480,
+      -420,
+      -360,
+      -300,
+      -240,
+      -180,
+      -120,
+      -60,
+      0,
+      60,
+      120,
+      180,
+      240,
+      300,
+      360,
+      420,
+      480,
+      540,
+      600,
+      660,
+      720,
+      780,
+    ];
+
+    await showDialog<void>(
+      context: ctx,
+      builder: (dialogContext) {
+        var selected = _app.epgTimezoneOffsetMinutes.value;
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return GlassAlertDialog(
+              scrollable: true,
+              tvOsdStyle: remoteNav,
+              title: Text('settings.epg.offset'.tr),
+              content: SizedBox(
+                width: double.maxFinite,
+                child: ListView(
+                  shrinkWrap: true,
+                  children: [
+                    for (final m in options)
+                      RadioListTile<int>(
+                        title: Text(
+                          m == 0
+                              ? 'settings.epg.offset.zero'.tr
+                              : '${m > 0 ? '+' : ''}${m ~/ 60}h ${(m.abs() % 60).toString().padLeft(2, '0')}m',
+                        ),
+                        value: m,
+                        groupValue: selected,
+                        onChanged: (v) {
+                          if (v != null) setState(() => selected = v);
+                        },
+                      ),
+                  ],
+                ),
+              ),
+              actions: [
+                GlassDialogActionButton(
+                  label: 'common.cancel'.tr,
+                  onDarkSurface: remoteNav,
+                  onPressed: () => Navigator.pop(dialogContext),
+                ),
+                GlassDialogActionButton(
+                  label: 'common.save'.tr,
+                  primary: true,
+                  onDarkSurface: remoteNav,
+                  onPressed: () async {
+                    await _app.setEpgTimezoneOffsetMinutes(selected);
+                    if (dialogContext.mounted) Navigator.pop(dialogContext);
+                  },
+                ),
+              ],
+            );
+          },
+        );
+      },
     );
   }
 
@@ -1275,20 +2789,196 @@ class SettingsController extends GetxController {
           }),
         ),
         actions: [
-          TextButton(
+          GlassDialogActionButton(
+            label: 'settings.dialog.changelogTitle'.tr,
             onPressed: () {
               Navigator.pop(c);
               showChangelog();
             },
-            child: Text('settings.dialog.changelogTitle'.tr),
           ),
-          FilledButton(
+          Obx(
+            () => GlassDialogActionButton(
+              label: isCheckingUpdate.value
+                  ? 'settings.update.checking'.tr
+                  : 'settings.update.check'.tr,
+              onPressed: isCheckingUpdate.value
+                  ? null
+                  : () => unawaited(checkForUpdate()),
+            ),
+          ),
+          GlassDialogActionButton(
+            label: 'common.close'.tr,
+            primary: true,
             onPressed: () => Navigator.pop(c),
-            child: Text('common.close'.tr),
           ),
         ],
       ),
     );
+  }
+
+  /// «Hakkında» → Güncelleme Denetle: Play Store mağaza sayfasından en güncel
+  /// sürümü çekip yüklü sürümle karşılaştırır. Güncelleme varsa kullanıcıya
+  /// mağazaya yönlendiren bir diyalog, yoksa «güncelsiniz» bilgisi gösterir.
+  Future<void> checkForUpdate() async {
+    if (isCheckingUpdate.value) return;
+    isCheckingUpdate.value = true;
+    String packageName = '';
+    try {
+      final info = await PackageInfo.fromPlatform();
+      packageName = info.packageName;
+      final current = info.version;
+      final store = await _fetchPlayStoreVersion(packageName);
+      if (store == null || store.isEmpty) {
+        _showUpdateResultDialog(
+          available: false,
+          unavailable: true,
+          storeVersion: null,
+          packageName: packageName,
+        );
+        return;
+      }
+      final hasUpdate = _isStoreVersionNewer(current, store);
+      _showUpdateResultDialog(
+        available: hasUpdate,
+        unavailable: false,
+        storeVersion: store,
+        packageName: packageName,
+      );
+    } catch (_) {
+      _showUpdateResultDialog(
+        available: false,
+        unavailable: true,
+        storeVersion: null,
+        packageName: packageName,
+      );
+    } finally {
+      isCheckingUpdate.value = false;
+    }
+  }
+
+  Future<String?> _fetchPlayStoreVersion(String packageName) async {
+    if (packageName.isEmpty) return null;
+    final url =
+        'https://play.google.com/store/apps/details?id=$packageName&hl=en';
+    final dio = Dio(
+      BaseOptions(
+        connectTimeout: const Duration(seconds: 10),
+        receiveTimeout: const Duration(seconds: 10),
+        responseType: ResponseType.plain,
+        headers: const {
+          'User-Agent':
+              'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 '
+                  '(KHTML, like Gecko) Chrome/120.0 Safari/537.36',
+        },
+      ),
+    );
+    try {
+      final res = await dio.get<String>(url);
+      final body = res.data ?? '';
+      if (body.isEmpty) return null;
+      // Play Store sayfası sürümü AF_initDataCallback bloğunda gömülü tutuyor.
+      final regex = RegExp(r'\[\[\["(\d+(?:\.\d+)+)"\]\]');
+      final match = regex.firstMatch(body);
+      return match?.group(1);
+    } catch (_) {
+      return null;
+    } finally {
+      dio.close(force: true);
+    }
+  }
+
+  /// Mağaza sürümü yüklü sürümden yeni mi? Noktayla ayrılmış parçaları
+  /// sayısal olarak karşılaştırır (örn. 1.10.0 > 1.9.5).
+  bool _isStoreVersionNewer(String current, String store) {
+    final c =
+        current.split('.').map((e) => int.tryParse(e.trim()) ?? 0).toList();
+    final s = store.split('.').map((e) => int.tryParse(e.trim()) ?? 0).toList();
+    final len = c.length > s.length ? c.length : s.length;
+    for (var i = 0; i < len; i++) {
+      final cv = i < c.length ? c[i] : 0;
+      final sv = i < s.length ? s[i] : 0;
+      if (sv > cv) return true;
+      if (sv < cv) return false;
+    }
+    return false;
+  }
+
+  void _showUpdateResultDialog({
+    required bool available,
+    required bool unavailable,
+    required String? storeVersion,
+    required String packageName,
+  }) {
+    final ctx = Get.context;
+    if (ctx == null) return;
+
+    final String title;
+    final String body;
+    if (unavailable) {
+      title = 'settings.update.failTitle'.tr;
+      body = 'settings.update.failBody'.tr;
+    } else if (available) {
+      title = 'settings.update.availableTitle'.tr;
+      body =
+          'settings.update.availableBody'.trParams({'v': storeVersion ?? ''});
+    } else {
+      title = 'settings.update.latestTitle'.tr;
+      body = 'settings.update.latestBody'.tr;
+    }
+
+    showDialog<void>(
+      context: ctx,
+      builder: (c) => GlassAlertDialog(
+        title: Text(title),
+        content: Text(
+          body,
+          style: TextStyle(
+            color: Theme.of(c).colorScheme.onSurface.withValues(alpha: 0.9),
+            height: 1.45,
+          ),
+        ),
+        actions: [
+          if (available)
+            GlassDialogActionButton(
+              label: 'settings.update.openStore'.tr,
+              primary: true,
+              onPressed: () {
+                Navigator.pop(c);
+                unawaited(_openPlayStore(packageName));
+              },
+            )
+          else
+            GlassDialogActionButton(
+              label: 'common.close'.tr,
+              primary: true,
+              onPressed: () => Navigator.pop(c),
+            ),
+          if (available)
+            GlassDialogActionButton(
+              label: 'common.close'.tr,
+              onPressed: () => Navigator.pop(c),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _openPlayStore(String packageName) async {
+    if (packageName.isEmpty) return;
+    final marketUri = Uri.parse('market://details?id=$packageName');
+    final webUri = Uri.parse(
+      'https://play.google.com/store/apps/details?id=$packageName',
+    );
+    try {
+      final ok = await launchUrl(
+        marketUri,
+        mode: LaunchMode.externalApplication,
+      );
+      if (ok) return;
+    } catch (_) {}
+    try {
+      await launchUrl(webUri, mode: LaunchMode.platformDefault);
+    } catch (_) {}
   }
 
   void showChangelog() {
@@ -1309,9 +2999,10 @@ class SettingsController extends GetxController {
           ),
         ),
         actions: [
-          FilledButton(
+          GlassDialogActionButton(
+            label: 'common.close'.tr,
+            primary: true,
             onPressed: () => Navigator.pop(c),
-            child: Text('common.close'.tr),
           ),
         ],
       ),
@@ -1331,9 +3022,10 @@ class SettingsController extends GetxController {
           style: const TextStyle(fontSize: 16, height: 1.4),
         ),
         actions: [
-          FilledButton(
+          GlassDialogActionButton(
+            label: 'common.ok'.tr,
+            primary: true,
             onPressed: () => Navigator.pop(c),
-            child: Text('common.ok'.tr),
           ),
         ],
       ),
@@ -1427,12 +3119,152 @@ class SettingsController extends GetxController {
         title: Text('settings.tile.alarm'.tr),
         content: Text('Alarm ayarleri'),
         actions: [
-          FilledButton(
+          GlassDialogActionButton(
+            label: 'common.close'.tr,
+            primary: true,
             onPressed: () => Navigator.pop(c),
-            child: Text('common.close'.tr),
           ),
         ],
       ),
     );
+  }
+
+  // ---------------------------------------------------------------------------
+  // User-Agent: IPTV oynatıcısı için seçilen UA. Stalker/Ministra panelleri
+  // belirli bir UA bekleyebilir; "Özel" seçeneği ile kullanıcı kendi UA'sını
+  // girebilir. Tüm değişiklikler `IptvPlaybackDefaults.effectiveUserAgent`
+  // üzerinden anında player isteklerine yansır.
+  // ---------------------------------------------------------------------------
+
+  String get playbackUserAgentSubtitle {
+    final id = _app.playbackUserAgentId.value;
+    if (id == kPlaybackUserAgentCustomId) {
+      final custom = _app.playbackUserAgentCustomValue.value.trim();
+      if (custom.isEmpty) {
+        return 'settings.tile.userAgent.subCustomEmpty'.tr;
+      }
+      return 'settings.tile.userAgent.subCustom'.trParams({
+        'v': _shortenUserAgent(custom),
+      });
+    }
+    final preset = playbackUserAgentPresetById(id);
+    return preset.label;
+  }
+
+  static String _shortenUserAgent(String s) {
+    if (s.length <= 48) return s;
+    return '${s.substring(0, 48)}…';
+  }
+
+  Future<void> showPlaybackUserAgentDialog() async {
+    final ctx = Get.context;
+    if (ctx == null) return;
+
+    var selectedId = _app.playbackUserAgentId.value;
+    final customController = TextEditingController(
+      text: _app.playbackUserAgentCustomValue.value,
+    );
+
+    await showDialog<void>(
+      context: ctx,
+      builder: (dCtx) => StatefulBuilder(
+        builder: (context, setDialogState) {
+          return GlassAlertDialog(
+            scrollable: true,
+            title: Text('settings.dialog.userAgent.title'.tr),
+            content: SizedBox(
+              width: 380,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Text(
+                    'settings.dialog.userAgent.hint'.tr,
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.65),
+                      fontSize: 12.5,
+                      height: 1.35,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+                  for (final preset in kPlaybackUserAgentPresets)
+                    RadioListTile<String>(
+                      value: preset.id,
+                      groupValue: selectedId,
+                      contentPadding: EdgeInsets.zero,
+                      dense: true,
+                      title: Text(preset.label),
+                      subtitle: preset.description != null
+                          ? Text(
+                              preset.description!,
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.55),
+                                fontSize: 11.5,
+                              ),
+                            )
+                          : null,
+                      onChanged: (v) {
+                        if (v == null) return;
+                        setDialogState(() => selectedId = v);
+                      },
+                    ),
+                  RadioListTile<String>(
+                    value: kPlaybackUserAgentCustomId,
+                    groupValue: selectedId,
+                    contentPadding: EdgeInsets.zero,
+                    dense: true,
+                    title: Text('settings.dialog.userAgent.custom'.tr),
+                    onChanged: (v) {
+                      if (v == null) return;
+                      setDialogState(() => selectedId = v);
+                    },
+                  ),
+                  if (selectedId == kPlaybackUserAgentCustomId) ...[
+                    const SizedBox(height: 8),
+                    TextField(
+                      controller: customController,
+                      maxLines: 3,
+                      minLines: 2,
+                      decoration: InputDecoration(
+                        labelText: 'settings.dialog.userAgent.customLabel'.tr,
+                        hintText: 'settings.dialog.userAgent.customHint'.tr,
+                        border: const OutlineInputBorder(),
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+            actions: [
+              GlassDialogActionButton(
+                label: 'common.cancel'.tr,
+                onPressed: () => Navigator.pop(dCtx),
+              ),
+              GlassDialogActionButton(
+                label: 'common.save'.tr,
+                primary: true,
+                onPressed: () async {
+                  if (selectedId == kPlaybackUserAgentCustomId) {
+                    final t = customController.text.trim();
+                    await _app.setPlaybackUserAgentCustomValue(t);
+                    if (t.isEmpty) {
+                      // Boş özel değer girildiyse varsayılana dön.
+                      await _app.setPlaybackUserAgentPreset(
+                        kPlaybackUserAgentDefaultId,
+                      );
+                    }
+                  } else {
+                    await _app.setPlaybackUserAgentPreset(selectedId);
+                  }
+                  if (dCtx.mounted) Navigator.pop(dCtx);
+                },
+              ),
+            ],
+          );
+        },
+      ),
+    );
+
+    customController.dispose();
   }
 }

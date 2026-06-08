@@ -56,16 +56,40 @@
 		<key>UISupportedInterfaceOrientations</key>
 		<array>
 			<string>UIInterfaceOrientationPortrait</string>
+			<string>UIInterfaceOrientationPortraitUpsideDown</string>
 			<string>UIInterfaceOrientationLandscapeLeft</string>
 			<string>UIInterfaceOrientationLandscapeRight</string>
 		</array>
 		<key>UISupportedInterfaceOrientations~ipad</key>
 		<array>
 			<string>UIInterfaceOrientationPortrait</string>
+			<string>UIInterfaceOrientationPortraitUpsideDown</string>
 			<string>UIInterfaceOrientationLandscapeLeft</string>
 			<string>UIInterfaceOrientationLandscapeRight</string>
 		</array>
 		<key>UIStatusBarHidden</key>
 		<false/>
+		<key>NSAppTransportSecurity</key>
+		<dict>
+			<key>NSAllowsArbitraryLoads</key>
+			<true/>
+		</dict>
+		<!-- Harici Oynatıcı: iOS sandbox nedeniyle yüklü uygulamalar
+		     listelenemez; bunun yerine bilinen video oynatıcıların URL
+		     şemaları için canOpenURL izni isteriz. Mina, kullanıcının
+		     listesinden bunlardan yüklü olanları gösterir. -->
+		<key>LSApplicationQueriesSchemes</key>
+		<array>
+			<string>vlc</string>
+			<string>vlc-x-callback</string>
+			<string>infuse</string>
+			<string>nplayer-https</string>
+			<string>nplayer-http</string>
+			<string>nplayer-rtmp</string>
+			<string>oplayer</string>
+			<string>oplayer-http</string>
+			<string>iina</string>
+			<string>outplayer</string>
+		</array>
 	</dict>
 </plist>

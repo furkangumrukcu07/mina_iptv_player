@@ -6,10 +6,12 @@ import 'package:get/get.dart';
 import '../../core/layout/app_layout_mode.dart';
 import '../../core/routes/app_routes.dart';
 import '../../core/services/app_settings_service.dart';
+import '../../core/services/epg_deferred_load_service.dart';
 import '../../core/services/favorites_service.dart';
 import '../../core/services/iptv_precache_service.dart';
 import '../../core/services/playlist_cache_service.dart';
 import '../../core/services/playlist_category_hide.dart';
+import '../../core/services/search_history_service.dart';
 import 'package:better_player_plus/better_player_plus.dart';
 import '../../core/player/better_player_iptv_config.dart'
     show
@@ -19,7 +21,22 @@ import '../../core/player/better_player_iptv_config.dart'
 import '../../core/player/iptv_playback_defaults.dart';
 import '../../domain/entities/channel.dart';
 import '../../domain/entities/m3u_result.dart';
+import '../../services/user_history_service.dart';
 import '../../ui/glass_tv_shell.dart';
+
+/// Sanal "Favoriler" kategorisi için sentinel kimliği. Gerçek M3U/Xtream
+/// kategorileri her zaman > 0 olduğundan negatif sabit çatışma yaratmaz.
+/// Aynı sabit `_PortraitLiveTvPanel`'da da kullanılır.
+const int kFavoritesVirtualCategoryId = -1;
+
+/// Sanal "Son İzlenenler" kategorisi — kullanıcının son 20 farklı canlı
+/// kanalını listeler. Yalnızca [UserHistoryService] içinde `kind == live`
+/// kayıt varsa görünür; aksi halde kategori UI'da gizlenir.
+const int kRecentlyWatchedVirtualCategoryId = -2;
+
+/// "Son İzlenenler" sanal kategorisinde gösterilecek azami canlı kanal
+/// sayısı (en yeni → en eski).
+const int kRecentlyWatchedLiveLimit = 20;
 
 class ChannelsController extends GetxController {
   static const _previewFocusHoldDelay = Duration(seconds: 2);
@@ -44,10 +61,17 @@ class ChannelsController extends GetxController {
   final effectiveSearchQuery = ''.obs;
 
   final now = DateTime.now().obs;
+
+  /// "Listeler" barından farklı bir listeye geçildiğinde artar — kategori
+  /// paneli ve kanal listesi `Obx`'lerini yeniden çizmek için.
+  final playlistRevision = 0.obs;
+
   Timer? _clock;
   Timer? _precacheDebounce;
   Timer? _previewDebounce;
   Worker? _searchDebounceWorker;
+  Worker? _cacheWorker;
+  Worker? _hideAdultWorker;
   int? _visibleChannelsCacheKey;
   List<Channel>? _visibleChannelsCache;
   int? _filteredChannelsCacheKey;
@@ -63,6 +87,9 @@ class ChannelsController extends GetxController {
 
   /// TV / yatay: ilk kategori satırı (ekrana girişte kumanda odağı).
   final categoryFocusNode = FocusNode(debugLabel: 'liveCategoriesFirst');
+
+  /// TV / yatay: "Listeler" barı odak düğümü (kategorilerin üstünde).
+  final listsBarFocusNode = FocusNode(debugLabel: 'liveListsBar');
 
   /// TV: kategori seçilince odak buraya taşınır (browse ile aynı desen).
   final channelsListFocusNode = FocusNode(debugLabel: 'liveChannelsList');
@@ -90,6 +117,19 @@ class ChannelsController extends GetxController {
   /// TV: detay önizleme alanı — yukarı: arama; aşağı: tam ekran düğmesi.
   final detailPreviewFocusNode = FocusNode(debugLabel: 'liveDetailPreview');
 
+  /// TV kanal listesi [ListView] kaydırması — satır hizalı `jumpTo` için.
+  ScrollController? _tvChannelListScroll;
+
+  /// Mobil portre kategori listesi kaydırması — seçili satırı görünür tutmak için.
+  ScrollController? _categoryListScroll;
+
+  /// Mobil portre [TabController] — oynatıcıdan dönüşte sekme sıfırlanmasın diye
+  /// StatefulWidget içinde tutulur; geri adımı buradan okunur.
+  TabController? _portraitTabController;
+
+  /// Çift KeyDown / hızlı tekrarın aynı karede iki satır atlamasını önler.
+  int? _lastTvChannelNudgeMs;
+
   M3uResult? _data;
 
   /// [Get.arguments] ile `{'openSearch': true}` gelince ilk karede arama popup’ı.
@@ -110,13 +150,14 @@ class ChannelsController extends GetxController {
 
   List<ChannelCategory> get categories {
     final raw = _data?.channelCategories ?? [];
-    return raw
+    final visible = raw
         .where((c) => !PlaylistCategoryHide.liveCategoryRowHidden(
               _app,
               _cache,
               c,
             ))
         .toList();
+    return PlaylistCategoryHide.orderLiveCategories(_app, _cache, visible);
   }
 
   @override
@@ -128,7 +169,18 @@ class ChannelsController extends GetxController {
       return;
     }
     _data = value;
+    if (_app.layoutMode.value == AppLayoutMode.tv &&
+        Get.isRegistered<EpgDeferredLoadService>()) {
+      unawaited(Get.find<EpgDeferredLoadService>().ensureTvLazyLoad());
+    }
     _invalidateChannelListCaches();
+    // "Listeler" barından liste değişince önbellek güncellenir; _data'yı
+    // tazele + paneli yeniden çiz.
+    _cacheWorker = ever<M3uResult?>(_cache.result, _onActivePlaylistChanged);
+    _hideAdultWorker = ever<int>(_app.xtreamHideRevision, (_) {
+      _invalidateChannelListCaches();
+      playlistRevision.value++;
+    });
     effectiveSearchQuery.value = searchQuery.value;
     _searchDebounceWorker = debounce<String>(
       searchQuery,
@@ -180,6 +232,27 @@ class ChannelsController extends GetxController {
     tvTrapFocusInChannelList.value = true;
   }
 
+  /// Aktif playlist (gösterilen liste) değiştiğinde — önbellek yeni slot'un
+  /// içeriğiyle güncellenir. `_data`'yı tazele, kategori/kanal önbelleklerini
+  /// boşalt ve panelleri yeniden çiz. Seçili kategori yeni listede yoksa
+  /// "Tümü"ne döner.
+  void _onActivePlaylistChanged(M3uResult? value) {
+    if (value == null) return;
+    if (identical(value, _data)) return;
+    _data = value;
+    _invalidateChannelListCaches();
+    final sel = selectedCategoryId.value;
+    final stillExists = sel == null ||
+        sel == kFavoritesVirtualCategoryId ||
+        sel == kRecentlyWatchedVirtualCategoryId ||
+        (_data?.channelCategories.any((c) => c.id == sel) ?? false);
+    if (!stillExists) {
+      selectedCategoryId.value = null;
+    }
+    playlistRevision.value++;
+    _ensureSelectionInList();
+  }
+
   @override
   void onReady() {
     super.onReady();
@@ -203,6 +276,7 @@ class ChannelsController extends GetxController {
         searchController: searchController,
         onSearchChanged: onSearchChanged,
         searchHint: 'channels.search'.tr,
+        historyScope: SearchHistoryScope.liveTv,
       ),
     );
   }
@@ -215,6 +289,8 @@ class ChannelsController extends GetxController {
     _precacheDebounce?.cancel();
     _previewDebounce?.cancel();
     _searchDebounceWorker?.dispose();
+    _cacheWorker?.dispose();
+    _hideAdultWorker?.dispose();
     try {
       final old = previewController;
       previewController = null;
@@ -226,6 +302,7 @@ class ChannelsController extends GetxController {
     searchController.dispose();
     channelsListFocusNode.removeListener(_onChannelsListFocusChanged);
     categoryFocusNode.dispose();
+    listsBarFocusNode.dispose();
     channelsListFocusNode.dispose();
     channelsBarSearchFocusNode.dispose();
     channelsBarSettingsFocusNode.dispose();
@@ -241,7 +318,25 @@ class ChannelsController extends GetxController {
     final id = selectedCategoryId.value;
     final d = _data;
     if (d == null) return base;
-    final cacheKey = Object.hash(d.hashCode, d.channels.length, id);
+    // Sanal "Favoriler" kategorisi seçildiyse cache anahtarına favori sayısını
+    // ekle — favori toggle'ı RxList değişimini panel `Obx`'leri üzerinden de
+    // tetikler, ancak cache invalidation kaynak listede uzunluk değişmedikçe
+    // tutarsız kalmasın.
+    final favLen = id == kFavoritesVirtualCategoryId ? _fav.channelIds.length : 0;
+    // "Son İzlenenler" sanal kategorisi seçildiyse cache anahtarına
+    // [UserHistoryService.revision] eklenir — yeni izleme kayıt edildiğinde
+    // liste senkron olarak tazelenir.
+    final histRev = id == kRecentlyWatchedVirtualCategoryId
+        ? _userHistoryRevisionSafe()
+        : 0;
+    final cacheKey = Object.hash(
+      d.hashCode,
+      d.channels.length,
+      id,
+      favLen,
+      histRev,
+      _app.xtreamHideRevision.value,
+    );
     if (_visibleChannelsCacheKey == cacheKey && _visibleChannelsCache != null) {
       return _visibleChannelsCache!;
     }
@@ -257,8 +352,55 @@ class ChannelsController extends GetxController {
             ),
           )
           .toList();
+    } else if (id == kFavoritesVirtualCategoryId) {
+      // Sanal "Favoriler" kategorisi — kullanıcının kalp ile eklediği canlı
+      // kanallar; gizli kategorideki kanallar yine süzülür.
+      result = base
+          .where(
+            (c) =>
+                _fav.hasChannel(c.id) &&
+                !PlaylistCategoryHide.channelHiddenInLive(
+                  _app,
+                  _cache,
+                  d,
+                  c,
+                ),
+          )
+          .toList();
+    } else if (id == kRecentlyWatchedVirtualCategoryId) {
+      // Sanal "Son İzlenenler" — UserHistory snapshot'ından son 20 unique
+      // canlı kanal; UserHistory sırası (en yeni önce) korunur.
+      final orderedIds = _recentlyWatchedLiveChannelIds();
+      if (orderedIds.isEmpty) {
+        result = const <Channel>[];
+      } else {
+        final byId = <int, Channel>{
+          for (final c in base) c.id: c,
+        };
+        final out = <Channel>[];
+        for (final cid in orderedIds) {
+          final ch = byId[cid];
+          if (ch == null) continue;
+          if (PlaylistCategoryHide.channelHiddenInLive(_app, _cache, d, ch)) {
+            continue;
+          }
+          out.add(ch);
+        }
+        result = out;
+      }
     } else {
-      result = base.where((c) => c.categoryId == id).toList();
+      result = base
+          .where(
+            (c) =>
+                c.categoryId == id &&
+                !PlaylistCategoryHide.channelHiddenInLive(
+                  _app,
+                  _cache,
+                  d,
+                  c,
+                ),
+          )
+          .toList();
     }
     _visibleChannelsCacheKey = cacheKey;
     _visibleChannelsCache = result;
@@ -300,31 +442,163 @@ class ChannelsController extends GetxController {
           )
           .length;
     }
-    return all.where((c) => c.categoryId == categoryId).length;
+    if (categoryId == kFavoritesVirtualCategoryId) {
+      return all
+          .where(
+            (c) =>
+                _fav.hasChannel(c.id) &&
+                !PlaylistCategoryHide.channelHiddenInLive(
+                  _app,
+                  _cache,
+                  d,
+                  c,
+                ),
+          )
+          .length;
+    }
+    if (categoryId == kRecentlyWatchedVirtualCategoryId) {
+      return _recentlyWatchedVisibleCount();
+    }
+    return all
+        .where(
+          (c) =>
+              c.categoryId == categoryId &&
+              !PlaylistCategoryHide.channelHiddenInLive(
+                _app,
+                _cache,
+                d,
+                c,
+              ),
+        )
+        .length;
   }
+
+  /// `UserHistoryService` kayıtlı değilse 0 döner — uygulama erken aşamada
+  /// kategori panelini bu metoda göre sayım gösterirken çakışmasın.
+  int _userHistoryRevisionSafe() {
+    if (!Get.isRegistered<UserHistoryService>()) return 0;
+    return Get.find<UserHistoryService>().revision.value;
+  }
+
+  /// Son izlenen canlı kanalların ID dizisi (en yeni önce, max 20 unique).
+  List<int> _recentlyWatchedLiveChannelIds() {
+    if (!Get.isRegistered<UserHistoryService>()) return const <int>[];
+    final history = Get.find<UserHistoryService>().snapshotSync();
+    if (history.isEmpty) return const <int>[];
+    final filtered = history
+        .where((e) => e.kind == UserHistoryKind.live)
+        .toList(growable: false)
+      ..sort((a, b) => b.timestampMs.compareTo(a.timestampMs));
+    if (filtered.isEmpty) return const <int>[];
+    final out = <int>[];
+    final seen = <int>{};
+    for (final e in filtered) {
+      if (seen.contains(e.contentId)) continue;
+      seen.add(e.contentId);
+      out.add(e.contentId);
+      if (out.length >= kRecentlyWatchedLiveLimit) break;
+    }
+    return out;
+  }
+
+  /// "Son İzlenenler" satırında **fiilen görünür** olacak kanal sayısı —
+  /// UserHistory ID'lerinden playlist'te bulunan + gizli olmayanları sayar.
+  int _recentlyWatchedVisibleCount() {
+    final ids = _recentlyWatchedLiveChannelIds();
+    if (ids.isEmpty) return 0;
+    final d = _data;
+    if (d == null) return 0;
+    final byId = <int, Channel>{
+      for (final c in d.channels) c.id: c,
+    };
+    var n = 0;
+    for (final cid in ids) {
+      final ch = byId[cid];
+      if (ch == null) continue;
+      if (PlaylistCategoryHide.channelHiddenInLive(_app, _cache, d, ch)) {
+        continue;
+      }
+      n++;
+    }
+    return n;
+  }
+
+  /// Kategori panelinde "Son İzlenenler" satırının görünüp görünmeyeceği —
+  /// hiç kayıt yoksa satır gizlenir.
+  bool get hasRecentlyWatchedLiveChannels =>
+      _recentlyWatchedVisibleCount() > 0;
 
   void _invalidateChannelListCaches() {
     _visibleChannelsCacheKey = null;
     _visibleChannelsCache = null;
     _filteredChannelsCacheKey = null;
     _filteredChannelsCache = null;
+    _categoryCountCacheKey = null;
+    _categoryCountCache = null;
   }
 
-  ({int allVisibleCount, Map<int, int> categoryCounts}) categoryCountSnapshot() {
+  String? _categoryCountCacheKey;
+  ({
+    int allVisibleCount,
+    int favoritesVisibleCount,
+    int recentlyWatchedVisibleCount,
+    Map<int, int> categoryCounts,
+  })? _categoryCountCache;
+
+  String _buildCategoryCountCacheKey() {
+    final d = _data;
+    if (d == null) return 'null';
+    return Object.hash(
+      identityHashCode(d),
+      _app.xtreamHideRevision.value,
+      _cache.layoutRevision.value,
+      _fav.channelIds.length,
+      _userHistoryRevisionSafe(),
+    ).toString();
+  }
+
+  ({
+    int allVisibleCount,
+    int favoritesVisibleCount,
+    int recentlyWatchedVisibleCount,
+    Map<int, int> categoryCounts,
+  }) categoryCountSnapshot() {
+    final cacheKey = _buildCategoryCountCacheKey();
+    if (_categoryCountCacheKey == cacheKey && _categoryCountCache != null) {
+      return _categoryCountCache!;
+    }
     final d = _data;
     if (d == null) {
-      return (allVisibleCount: 0, categoryCounts: <int, int>{});
+      const empty = (
+        allVisibleCount: 0,
+        favoritesVisibleCount: 0,
+        recentlyWatchedVisibleCount: 0,
+        categoryCounts: <int, int>{},
+      );
+      _categoryCountCacheKey = cacheKey;
+      _categoryCountCache = empty;
+      return empty;
     }
     final counts = <int, int>{};
     var visibleAll = 0;
+    var favCount = 0;
     for (final channel in d.channels) {
       if (PlaylistCategoryHide.channelHiddenInLive(_app, _cache, d, channel)) {
         continue;
       }
       visibleAll++;
+      if (_fav.hasChannel(channel.id)) favCount++;
       counts[channel.categoryId] = (counts[channel.categoryId] ?? 0) + 1;
     }
-    return (allVisibleCount: visibleAll, categoryCounts: counts);
+    final snapshot = (
+      allVisibleCount: visibleAll,
+      favoritesVisibleCount: favCount,
+      recentlyWatchedVisibleCount: _recentlyWatchedVisibleCount(),
+      categoryCounts: counts,
+    );
+    _categoryCountCacheKey = cacheKey;
+    _categoryCountCache = snapshot;
+    return snapshot;
   }
 
   bool isFavorite(Channel c) => _fav.hasChannel(c.id);
@@ -400,9 +674,12 @@ class ChannelsController extends GetxController {
       unawaited(_app.setLastLiveCategoryId(ch.categoryId));
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (categoryFocusNode.canRequestFocus) {
-        categoryFocusNode.requestFocus();
-      }
+      // focusNode seçili kategori satırına taşındıktan sonra odak ver.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (categoryFocusNode.canRequestFocus) {
+          categoryFocusNode.requestFocus();
+        }
+      });
     });
   }
 
@@ -462,10 +739,75 @@ class ChannelsController extends GetxController {
     });
   }
 
+  void attachTvChannelListScroll(ScrollController controller) {
+    _tvChannelListScroll = controller;
+  }
+
+  void detachTvChannelListScroll(ScrollController controller) {
+    if (_tvChannelListScroll == controller) {
+      _tvChannelListScroll = null;
+    }
+  }
+
+  void attachCategoryListScroll(ScrollController controller) {
+    _categoryListScroll = controller;
+  }
+
+  void detachCategoryListScroll(ScrollController controller) {
+    if (_categoryListScroll == controller) {
+      _categoryListScroll = null;
+    }
+  }
+
+  void bindPortraitTabController(TabController? controller) {
+    _portraitTabController = controller;
+  }
+
+  /// Kategori listesinde seçili satırın [ListView.builder] dizinini döndürür.
+  int categoryListIndexForSelection() {
+    final sel = selectedCategoryId.value;
+    final counts = categoryCountSnapshot();
+    final showRecentlyWatched = counts.recentlyWatchedVisibleCount > 0;
+    final fixedRowCount = showRecentlyWatched ? 3 : 2;
+    if (sel == null) return 0;
+    if (sel == kFavoritesVirtualCategoryId) return 1;
+    if (sel == kRecentlyWatchedVirtualCategoryId && showRecentlyWatched) {
+      return 2;
+    }
+    final cats = categories;
+    final catIndex = cats.indexWhere((c) => c.id == sel);
+    if (catIndex < 0) return 0;
+    return fixedRowCount + catIndex;
+  }
+
+  /// Mobil: kategori listesini seçili satıra kaydır (portre geri dönüş / sekme).
+  void scrollCategoryListToSelection() {
+    final sc = _categoryListScroll;
+    if (sc == null || !sc.hasClients) return;
+    final index = categoryListIndexForSelection();
+    final vp = sc.position.viewportDimension;
+    final target = (index * kTvGlassListRowExtent - vp * 0.32)
+        .clamp(0.0, sc.position.maxScrollExtent);
+    if ((sc.offset - target).abs() > 1) {
+      sc.jumpTo(target);
+    }
+  }
+
+  bool _throttleTvListNudge() {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (_lastTvChannelNudgeMs != null &&
+        now - _lastTvChannelNudgeMs! < 90) {
+      return true;
+    }
+    _lastTvChannelNudgeMs = now;
+    return false;
+  }
+
   /// TV Bölge B: yalnızca kanal listesi içinde dikey hareket (indeks tabanlı).
   void tvNudgeChannelListRow(int delta) {
     if (!_effectiveRemoteNav()) return;
     if (delta == 0) return;
+    if (_throttleTvListNudge()) return;
     final list = filteredChannels;
     if (list.isEmpty) return;
     final cur = selectedChannel.value;
@@ -476,9 +818,6 @@ class ChannelsController extends GetxController {
     focusChannel(list[next]);
   }
 
-  static const _tvChannelVerticalHoldPauseBeforeRepeat =
-      Duration(milliseconds: 420);
-
   Timer? _tvListVerticalHoldInitial;
   Timer? _tvListVerticalHoldPeriodic;
 
@@ -488,7 +827,7 @@ class ChannelsController extends GetxController {
     if (delta == 0) return;
     stopTvChannelListVerticalHold();
     _tvListVerticalHoldInitial =
-        Timer(_tvChannelVerticalHoldPauseBeforeRepeat, () {
+        Timer(kTvListVerticalHoldPauseBeforeRepeat, () {
       _tvListVerticalHoldInitial = null;
       if (isClosed) return;
       _tvListVerticalHoldPeriodic = Timer.periodic(interval, (_) {
@@ -550,14 +889,29 @@ class ChannelsController extends GetxController {
   /// [onFocusChange] kaydırmaz — seçili satırı görünür yap.
   void _scheduleScrollLiveListToFocusedRow() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      final list = filteredChannels;
+      final cur = selectedChannel.value;
+      if (cur != null) {
+        final i = list.indexWhere((c) => c.id == cur.id);
+        final sc = _tvChannelListScroll;
+        if (i >= 0 && sc != null && sc.hasClients) {
+          final vp = sc.position.viewportDimension;
+          final target = (i * kTvGlassListRowExtent - vp * 0.22)
+              .clamp(0.0, sc.position.maxScrollExtent);
+          if ((sc.offset - target).abs() > 0.5) {
+            sc.jumpTo(target);
+            return;
+          }
+        }
+      }
       final ctx = channelsListFocusNode.context;
       if (ctx == null || !ctx.mounted) return;
       Scrollable.ensureVisible(
         ctx,
-        duration: const Duration(milliseconds: 200),
-        curve: Curves.easeOutCubic,
-        alignment: 0.28,
-        alignmentPolicy: ScrollPositionAlignmentPolicy.explicit,
+        duration: Duration.zero,
+        curve: Curves.linear,
+        alignment: 0.22,
+        alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
       );
     });
   }
@@ -723,6 +1077,44 @@ class ChannelsController extends GetxController {
     if (c != null) {
       openChannel(c);
     }
+  }
+
+  /// Seçili kanalla aynı kategorideki görünür kanallar (gizli kanallar hariç).
+  List<Channel> channelsInSameCategory(Channel channel) {
+    final d = _data;
+    if (d == null) return const [];
+    final peers = <Channel>[];
+    for (final c in d.channels) {
+      if (c.categoryId != channel.categoryId) continue;
+      if (PlaylistCategoryHide.channelHiddenInLive(_app, _cache, d, c)) {
+        continue;
+      }
+      peers.add(c);
+    }
+    peers.sort((a, b) {
+      final o = a.sortOrder.compareTo(b.sortOrder);
+      if (o != 0) return o;
+      return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+    });
+    return peers;
+  }
+
+  String? categoryNameFor(Channel channel) {
+    for (final c in categories) {
+      if (c.id == channel.categoryId) return c.name;
+    }
+    return null;
+  }
+
+  /// Detay panelinden kanal seçimi — seçimi günceller ve doğrudan oynatır.
+  void playChannelFromDetail(Channel channel) {
+    selectedChannel.value = channel;
+    if (selectedCategoryId.value != channel.categoryId) {
+      selectedCategoryId.value = channel.categoryId;
+    }
+    unawaited(_app.setLastLiveCategoryId(channel.categoryId));
+    unawaited(_app.setLastLiveChannelId(channel.id));
+    openChannel(channel);
   }
 
   void openChannel(Channel channel) {
@@ -930,7 +1322,7 @@ class ChannelsController extends GetxController {
 
   /// Portre canlı TV (mobil/tablet): EPG → detay → kanallar → kategoriler → [goHome]. TV düzeninde kullanılmaz.
   void onPortraitChannelsStepBack(BuildContext context) {
-    final tc = DefaultTabController.maybeOf(context);
+    final tc = _portraitTabController ?? DefaultTabController.maybeOf(context);
     if (tc == null) {
       goHome();
       return;
@@ -939,10 +1331,19 @@ class ChannelsController extends GetxController {
       searchQuery.value = '';
       searchController.clear();
       tc.animateTo(0);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        scrollCategoryListToSelection();
+      });
       return;
     }
     if (tc.index > 0) {
-      tc.animateTo(tc.index - 1);
+      final next = tc.index - 1;
+      tc.animateTo(next);
+      if (next == 0) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          scrollCategoryListToSelection();
+        });
+      }
     } else {
       goHome();
     }
@@ -957,8 +1358,13 @@ class ChannelsController extends GetxController {
     }
   }
 
-  /// Tam ekran oynatıcıdan [Get.back] sonrası: liste kaydırılır, kumanda odağı izlenen kanal satırında kalır.
+  /// Tam ekran oynatıcıdan [Get.back] sonrası: TV'de liste kaydırılır, kumanda
+  /// odağı izlenen kanal satırında kalır. Mobilde [tvTrapFocusInChannelList]
+  /// tetiklenmez — aksi halde üst [Obx] yeniden çizer ve portre sekmeleri /
+  /// kategori kaydırması sıfırlanır.
   void restoreChannelListFocusAfterPlayerPop() {
+    if (!_effectiveRemoteNav()) return;
+
     tvTrapFocusInChannelList.value = true;
     tvDetailColumnUnlocked.value = false;
 

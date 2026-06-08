@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -9,12 +10,18 @@ import '../../core/constants/playlist_storage.dart';
 import '../../core/error/app_exception.dart';
 import '../../core/routes/app_routes.dart';
 import '../../core/services/app_settings_service.dart';
+import '../../core/services/epg_service.dart';
 import '../../core/services/playlist_cache_service.dart';
+import '../../core/services/playlist_qr_server_service.dart';
 import '../../core/services/toast_service.dart';
+import '../../data/local/epg_snapshot_keys.dart';
+import '../../data/remote/m3u_xtream_sniffer.dart';
+import '../../data/remote/xtream_api.dart';
 import '../../domain/entities/m3u_result.dart';
 import '../../domain/entities/playlist_source.dart';
 import '../../domain/repositories/playlist_repository.dart';
 import '../../ui/glass_overlays.dart';
+import 'widgets/playlist_load_summary_dialog.dart';
 
 class PlaylistController extends GetxController {
   final m3uUrlController = TextEditingController();
@@ -51,11 +58,222 @@ class PlaylistController extends GetxController {
   void Function()? setupWizardOnSuccess;
 
   void _navigateAfterPlaylistLoad() {
+    // İlk playlist yüklemesinde splash atlanır, dolayısıyla Xtream EPG'sini
+    // arka planda burada başlatıyoruz (M3U → Xtream dönüşümü dahil her durum
+    // için tek noktada). Kaynak persist edilmiş olduğundan readSource() güvenli.
+    unawaited(_repo.readSource().then((src) {
+      if (src != null) _kickoffXtreamEpgIfNeeded(src);
+    }).catchError((_) {}));
+
     if (setupWizardCompletionMode && setupWizardOnSuccess != null) {
       setupWizardOnSuccess!();
       return;
     }
     Get.offAllNamed(AppRoutes.home);
+  }
+
+  /// Şu an açık olan yükleme özeti dialog'unun ilerleme notifier'ı. Submit
+  /// anında [_openLoadSummaryDialog] tarafından oluşturulur, [_finishLoad]
+  /// veya [_failLoadSummary] tarafından kapatılır.
+  ValueNotifier<PlaylistLoadProgress>? _summaryProgress;
+
+  /// Açıkken dialog kapanmasını izleyen Future — kullanıcı Tamam ya da
+  /// **URL'yi Düzelt**'e bastığında tamamlanır. `true` dönerse kullanıcı
+  /// URL'yi düzeltmek istiyor demektir; çağıran taraf focus'u alana taşımalı.
+  Future<bool?>? _summaryDialogFuture;
+
+  /// Kurulum sihirbazı (TV) veya playlist sayfası tarafından override
+  /// edilebilir; verilmezse mevcut [_focusPrimaryM3uUrlField] binding'i
+  /// kullanılır. Dialog hata gösterip kullanıcı "URL'yi Düzelt"'e bastığında
+  /// çağrılır.
+  void Function()? onLoadErrorRetryUrl;
+
+  /// Submit kuyruğu başlar başlamaz dialog'u aç. Tüm satırlar başlangıçta
+  /// **yükleniyor** durumundadır. Veri geldiğinde [_finishLoad] çağrılır.
+  void _openLoadSummaryDialog() {
+    final ctx = Get.overlayContext ?? Get.context;
+    if (ctx == null) return;
+    final notifier =
+        ValueNotifier<PlaylistLoadProgress>(const PlaylistLoadProgress.loading());
+    _summaryProgress = notifier;
+    _summaryDialogFuture =
+        PlaylistLoadSummaryDialog.show(ctx, progress: notifier);
+  }
+
+  /// Yükleme başarılı bittiğinde dialog'a sayıları gönder, kullanıcı
+  /// **Tamam**'a basana kadar bekle, sonra navigate et.
+  ///
+  /// `setupWizardCompletionMode` durumunda da gösteririz — kullanıcı kurulum
+  /// sırasında da "kaç kanalı/filmi/dizisi yüklendi" özetini görmeli.
+  Future<void> _finishLoad(M3uResult result) async {
+    final notifier = _summaryProgress;
+    if (notifier == null) {
+      // Dialog hiç açılmamışsa (Get.context yoktu) direkt yönlendir.
+      _navigateAfterPlaylistLoad();
+      return;
+    }
+    notifier.value = PlaylistLoadProgress.done(
+      liveChannelCount: result.channels.length,
+      filmCount: result.vod.length,
+      seriesCount: result.series.length,
+    );
+    final future = _summaryDialogFuture;
+    if (future != null) {
+      try {
+        await future;
+      } finally {
+        _summaryProgress = null;
+        _summaryDialogFuture = null;
+        notifier.dispose();
+      }
+    } else {
+      _summaryProgress = null;
+      notifier.dispose();
+    }
+    _navigateAfterPlaylistLoad();
+  }
+
+  /// Yükleme hata ile sonlandı — dialog AÇIK kalır ve hata bölümünü gösterir.
+  /// Kullanıcı **URL'yi Düzelt**'e basarsa [onLoadErrorRetryUrl] çağrılır.
+  /// Dialog hiç açılmamışsa eski davranış: toast.
+  Future<void> _failLoadSummary(
+    String message, {
+    String hint = '',
+    bool canRetryUrl = true,
+    String? title,
+  }) async {
+    final notifier = _summaryProgress;
+    final future = _summaryDialogFuture;
+    if (notifier == null || future == null) {
+      // Dialog yok — geri toast'a düş.
+      Get.find<ToastService>().show(message, isError: true);
+      return;
+    }
+    notifier.value = PlaylistLoadProgress.error(
+      errorTitle: title ?? 'playlist.summary.errorTitle'.tr,
+      errorMessage: message,
+      errorHint: hint,
+      canRetryUrl: canRetryUrl,
+    );
+    final retry = await future;
+    _summaryProgress = null;
+    _summaryDialogFuture = null;
+    notifier.dispose();
+    if (retry == true && canRetryUrl) {
+      final cb = onLoadErrorRetryUrl ?? _focusPrimaryM3uUrlField;
+      cb?.call();
+    }
+  }
+
+  /// Geri uyumluluk — dialog'u zorla kapatır (eski hata akışı için).
+  void _abortLoadSummary() {
+    final notifier = _summaryProgress;
+    final future = _summaryDialogFuture;
+    if (notifier == null && future == null) return;
+    if (Get.isDialogOpen ?? false) {
+      Get.back<void>();
+    }
+    _summaryProgress = null;
+    _summaryDialogFuture = null;
+    notifier?.dispose();
+  }
+
+  /// HTTPS başarısızsa `http://...` öner; tersi de geçerli. Kullanıcının
+  /// yazdığı şema soldaki butonda gösterilmez — sadece ipucu satırı.
+  String _suggestSchemeSwap(String url) {
+    final raw = url.trim();
+    if (raw.isEmpty) return '';
+    final lower = raw.toLowerCase();
+    if (lower.startsWith('https://')) {
+      return 'playlist.error.hint.tryHttp'.tr;
+    }
+    if (lower.startsWith('http://')) {
+      return 'playlist.error.hint.tryHttps'.tr;
+    }
+    return 'playlist.error.hint.addScheme'.tr;
+  }
+
+  /// `NetworkException` / `ParseException` mesajından kullanıcıya gösterilecek
+  /// insan okunabilir mesaj ve ipucu üretir.
+  ({String message, String hint}) _humanizeUrlError(
+    Object error, {
+    required String url,
+  }) {
+    final raw = error is AppException ? error.message : error.toString();
+    final lower = raw.toLowerCase();
+
+    String message = raw;
+    String hint = _suggestSchemeSwap(url);
+
+    if (lower.contains('handshake') ||
+        lower.contains('certificate') ||
+        lower.contains('ssl') ||
+        lower.contains('tls') ||
+        lower.contains('x509')) {
+      message = 'playlist.error.url.ssl'.tr;
+      hint = 'playlist.error.hint.tryHttp'.tr;
+    } else if (lower.contains('host lookup') ||
+        lower.contains('nodename nor servname') ||
+        lower.contains('failed host lookup') ||
+        lower.contains('no address associated') ||
+        lower.contains('unknown host')) {
+      message = 'playlist.error.url.host'.tr;
+    } else if (lower.contains('timed out') ||
+        lower.contains('timeout') ||
+        lower.contains('zaman aşımı')) {
+      message = 'playlist.error.url.timeout'.tr;
+    } else if (lower.contains('connection refused') ||
+        lower.contains('connection reset') ||
+        lower.contains('connection closed') ||
+        lower.contains('connection terminated') ||
+        lower.contains('software caused connection')) {
+      message = 'playlist.error.url.refused'.tr;
+    } else if (lower.contains('http 401') || lower.contains('http 403')) {
+      message = 'playlist.error.url.auth'.tr;
+      hint = '';
+    } else if (lower.contains('http 404')) {
+      message = 'playlist.error.url.notFound'.tr;
+    } else if (lower.contains('http 5')) {
+      message = 'playlist.error.url.server'.tr;
+    } else if (lower.contains('empty response') ||
+        lower.contains('m3u content is empty') ||
+        lower.contains('playlist url is empty')) {
+      message = 'playlist.error.url.empty'.tr;
+    } else if (lower.contains('failed to load playlist') ||
+        lower.contains('network error')) {
+      message = 'playlist.error.url.network'.tr;
+    }
+    return (message: message, hint: hint);
+  }
+
+  /// İlk playlist yüklemesinden sonra Xtream EPG'sini arka planda indirir;
+  /// kullanıcı yeniden başlatma yapmadan EPG'yi görebilsin diye gerekli.
+  /// Splash akışı zaten `XtreamSource` algıladığında aynı kanaldan yüklüyor
+  /// olduğundan, throttle/in-flight paylaşımı sayesinde çift indirme olmaz.
+  void _kickoffXtreamEpgIfNeeded(PlaylistSource source) {
+    if (source is! XtreamSource) return;
+    if (!Get.isRegistered<EpgService>()) return;
+
+    Future<void>.microtask(() async {
+      try {
+        final epg = Get.find<EpgService>();
+        final app = Get.find<AppSettingsService>();
+        final mode = app.xtreamEpgSourceMode.value;
+        if (mode == XtreamEpgSourceMode.githubOnly) return;
+        final api = XtreamApi(
+          baseUrl: source.baseUrl,
+          username: source.username,
+          password: source.password,
+        );
+        await epg.loadXtreamAllLiveEpg(api, force: true);
+        final cacheKey = EpgSnapshotKeys.logicalKeyFor(source, app);
+        if (cacheKey != null && epg.hasLoadedGuideData()) {
+          await epg.persistSnapshotToDisk(cacheKey);
+        }
+      } catch (_) {
+        // sessiz: splash sonraki açılışta tekrar deneyecek
+      }
+    });
   }
 
   String? _m3uLocalRaw;
@@ -366,6 +584,31 @@ class PlaylistController extends GetxController {
 
   void setSecondaryTab(int index) => secondaryTabIndex.value = index;
 
+  /// **Karekod dialog'undan gelen submission'ı birincil forma yazar ve
+  /// otomatik [submit] tetikler.**
+  ///
+  /// QR sayfasından telefonun M3U veya Xtream verisi `submissionStream`
+  /// üzerinden gelir; dialog kapanırken bunu controller'a aktarır.
+  void applyQrSubmission(QrPlaylistSubmission sub) {
+    switch (sub) {
+      case QrM3uSubmission(:final url):
+        setTab(0);
+        m3uUrlController.text = url;
+        m3uLocalFileName.value = null;
+        break;
+      case QrXtreamSubmission(:final server, :final username, :final password):
+        setTab(1);
+        xtreamBaseUrlController.text = server;
+        xtreamUsernameController.text = username;
+        xtreamPasswordController.text = password;
+        break;
+    }
+    _updateSubmitState();
+    // Kullanıcı QR ile gönderdiğinde direkt submit istiyor. Dialog
+    // kapandıktan hemen sonra çağrı yapılır.
+    unawaited(submit());
+  }
+
   Future<void> pickM3uFile() async {
     try {
       final r = await FilePicker.platform.pickFiles(
@@ -484,6 +727,7 @@ https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscap
 #EXTINF:-1 tvg-id="5" tvg-name="Demo Music" tvg-logo="https://via.placeholder.com/150" group-title="Music",Demo Music Channel
 https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4''';
 
+      _openLoadSummaryDialog();
       final parsedPrimary = await _repo.persistM3uLocalContent(demoM3uContent);
       final cacheLabel = 'Demo Playlist';
 
@@ -491,19 +735,32 @@ https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.m
       await _repo.persistMergedPlaylistSnapshot(parsedPrimary);
       isM3uLoaded.value = true; // Demo playlist yüklendi olarak işaretle
 
+      final persisted = await _repo.readSource();
+      final m3uK = persisted is M3uSource
+          ? AppSettingsService.m3uPreferenceKey(persisted.url)
+          : null;
+
       _cache.setPlaylist(
         value: parsedPrimary,
         url: cacheLabel,
         xtreamPreferenceKey: null,
+        m3uLayoutKey: m3uK,
       );
 
-      _navigateAfterPlaylistLoad();
-
-      Get.find<ToastService>().show('Demo playlist loaded successfully');
+      isLoading.value = false;
+      await _finishLoad(parsedPrimary);
     } on AppException catch (e) {
-      Get.find<ToastService>().show(e.message, isError: true);
+      isLoading.value = false;
+      await _failLoadSummary(
+        e.message,
+        canRetryUrl: false,
+      );
     } catch (e) {
-      Get.find<ToastService>().show(e.toString(), isError: true);
+      isLoading.value = false;
+      await _failLoadSummary(
+        e.toString(),
+        canRetryUrl: false,
+      );
     } finally {
       isLoading.value = false;
     }
@@ -529,6 +786,11 @@ https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.m
 
       // All validations passed, start loading
       isLoading.value = true;
+      // Dialog'u **HEMEN** aç — kullanıcı M3U URL'i / Xtream bilgilerini
+      // gönderir göndermez "Canlı kanallar / Filmler / Diziler yükleniyor"
+      // satırlarını spinner ile görsün. Veri geldiğinde [_finishLoad]
+      // sayıları gönderir ve Tamam butonunu aktifleştirir.
+      _openLoadSummaryDialog();
 
       if (tabIndex.value == 0) {
         if (_m3uLocalRaw != null) {
@@ -536,20 +798,100 @@ https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.m
           cacheLabel = m3uLocalFileName.value ?? 'playlist.label.localM3u'.tr;
         } else {
           final source = _m3uSource();
-          parsedPrimary = await _repo.loadFromM3uUrl(source.url);
-          await _repo.persistSource(source);
-          cacheLabel = source.url;
-          isM3uLoaded.value = true; // M3U listesi yüklendi olarak işaretle
+          // Otomatik biçim: URL'de `output=ts`/`output=m3u8` ipucu varsa
+          // `auto` modundaki canlı yayın biçimini buna göre çöz (sniff sonrası
+          // `output` parametresi kaybolduğu için orijinal URL'den yakalanır).
+          final fmtHint = M3uXtreamSniffer.liveFormatHint(source.url);
+          if (fmtHint != null) {
+            unawaited(
+              Get.find<AppSettingsService>()
+                  .applyAutoDetectedLiveStreamFormat(fmtHint),
+            );
+          }
+          // Akıllı dönüşüm: M3U URL'si Xtream tarzı (username/password)
+          // parametreleri içeriyorsa kullanıcıya hiçbir şey hissettirmeden
+          // doğrudan Xtream API üzerinden yüklüyoruz; EPG/VOD/Series uçları
+          // da çalışmış oluyor.
+          final converted = M3uXtreamSniffer.toXtreamSource(source.url);
+          M3uResult? xtreamLoaded;
+          XtreamSource? resolvedXtream;
+          if (converted != null) {
+            // Xtream sniff başarılı görünse de panel `player_api.php`
+            // ucunu kapatabilir veya çok yavaş cevap verebilir. Hata olursa
+            // sessiz fallback olarak ham M3U URL'sini deniyoruz; kullanıcı
+            // "URL'yi düzelt" diyaloğuyla karşılaşmadan listesi yüklenir.
+            //
+            // `loadFromXtreamResolved`: kullanıcının yazdığı şema (http/https)
+            // sunucuda kapalıysa karşı şemayı **yine Xtream olarak** dener;
+            // çalışan base URL'i döndürür.
+            try {
+              final res = await _repo.loadFromXtreamResolved(
+                baseUrl: converted.baseUrl,
+                username: converted.username,
+                password: converted.password,
+              );
+              xtreamLoaded = res.result;
+              resolvedXtream = XtreamSource(
+                baseUrl: res.resolvedBaseUrl,
+                username: converted.username,
+                password: converted.password,
+              );
+            } catch (e) {
+              debugPrint(
+                '[playlist] Xtream sniff failed for ${converted.baseUrl}, '
+                'falling back to raw M3U: $e',
+              );
+              xtreamLoaded = null;
+            }
+          }
+
+          if (xtreamLoaded != null && resolvedXtream != null) {
+            parsedPrimary = xtreamLoaded;
+            await _repo.persistSource(resolvedXtream);
+            cacheLabel = resolvedXtream.baseUrl;
+            // UI durumunu da senkronla — kullanıcı playlist ekranına geri
+            // döndüğünde Xtream sekmesinde alanları dolu olarak görsün.
+            xtreamBaseUrlController.text = resolvedXtream.baseUrl;
+            xtreamUsernameController.text = resolvedXtream.username;
+            xtreamPasswordController.text = resolvedXtream.password;
+            m3uUrlController.clear();
+            tabIndex.value = 1;
+            isM3uLoaded.value = true;
+          } else {
+            // `loadFromM3uUrlResolved`: yalnızca **bağlantı düzeyi** hata
+            // alındığında ters şemayı dener. Kullanıcının yazdığı orijinal
+            // metni hem text alanında hem disk persistleme'de koru —
+            // `http://` yazdıysa bir sonraki açılışta yine `http://` görür.
+            // Şema swap fallback'i gerekirse internal fetch sırasında yine
+            // devreye girer; persist edilen URL kullanıcının orijinali kalır.
+            final loaded = await _repo.loadFromM3uUrlResolved(source.url);
+            parsedPrimary = loaded.result;
+            await _repo.persistSource(source);
+            cacheLabel = source.url;
+            isM3uLoaded.value = true; // M3U listesi yüklendi olarak işaretle
+          }
         }
       } else {
         final source = _xtreamSource();
-        parsedPrimary = await _repo.loadFromXtream(
+        // Xtream sekmesinde de şema otomatik düzeltilir: kullanıcı `https://`
+        // yazıp sunucu yalnızca `http://` veriyorsa (veya tersi) çalışan
+        // şema bulunur ve o base URL persist edilir.
+        final res = await _repo.loadFromXtreamResolved(
           baseUrl: source.baseUrl,
           username: source.username,
           password: source.password,
         );
-        await _repo.persistSource(source);
-        cacheLabel = source.baseUrl;
+        parsedPrimary = res.result;
+        final resolvedSource = XtreamSource(
+          baseUrl: res.resolvedBaseUrl,
+          username: source.username,
+          password: source.password,
+        );
+        await _repo.persistSource(resolvedSource);
+        cacheLabel = resolvedSource.baseUrl;
+        if (res.resolvedBaseUrl != source.baseUrl) {
+          xtreamBaseUrlController.text = res.resolvedBaseUrl;
+        }
       }
 
       if (!enableSecondary.value) {
@@ -558,12 +900,18 @@ https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.m
         final xk = tabIndex.value == 1
             ? AppSettingsService.xtreamPreferenceKey(_xtreamSource())
             : null;
+        final persisted = await _repo.readSource();
+        final m3uK = persisted is M3uSource
+            ? AppSettingsService.m3uPreferenceKey(persisted.url)
+            : null;
         _cache.setPlaylist(
           value: parsedPrimary,
           url: cacheLabel,
           xtreamPreferenceKey: xk,
+          m3uLayoutKey: m3uK,
         );
-        _navigateAfterPlaylistLoad();
+        isLoading.value = false;
+        await _finishLoad(parsedPrimary);
         return;
       }
 
@@ -600,15 +948,80 @@ https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.m
               throw ParseException('playlist.error.secondaryUrl'.tr);
             }
           } else {
-            final s2 = M3uSource(url: url);
-            await _repo.loadFromM3uUrl(s2.url);
-            await _repo.persistSecondarySource(s2);
-            isM3uLoaded.value = true; // M3U listesi yüklendi olarak işaretle
+            final fmtHint2 = M3uXtreamSniffer.liveFormatHint(url);
+            if (fmtHint2 != null) {
+              unawaited(
+                Get.find<AppSettingsService>()
+                    .applyAutoDetectedLiveStreamFormat(fmtHint2),
+              );
+            }
+            // İkincil link de Xtream-tarzıysa otomatik dönüştür; başarısız
+            // olursa ham M3U URL'sine fallback (primary akışla aynı strateji).
+            final converted2 = M3uXtreamSniffer.toXtreamSource(url);
+            XtreamSource? resolvedSecondary;
+            if (converted2 != null) {
+              try {
+                final res = await _repo.loadFromXtreamResolved(
+                  baseUrl: converted2.baseUrl,
+                  username: converted2.username,
+                  password: converted2.password,
+                );
+                resolvedSecondary = XtreamSource(
+                  baseUrl: res.resolvedBaseUrl,
+                  username: converted2.username,
+                  password: converted2.password,
+                );
+              } catch (e) {
+                debugPrint(
+                  '[playlist] Secondary Xtream sniff failed for '
+                  '${converted2.baseUrl}, falling back to raw M3U: $e',
+                );
+              }
+            }
+            if (resolvedSecondary != null) {
+              await _repo.persistSecondarySource(resolvedSecondary);
+              xtreamSecondaryBaseUrlController.text = resolvedSecondary.baseUrl;
+              xtreamSecondaryUsernameController.text =
+                  resolvedSecondary.username;
+              xtreamSecondaryPasswordController.text =
+                  resolvedSecondary.password;
+              m3uSecondaryUrlController.clear();
+              secondaryTabIndex.value = 1;
+              isM3uLoaded.value = true;
+            } else {
+              // Birincil akışla aynı kural: şema swap fallback'i internal
+              // fetch sırasında çalışır ama kalıcı kaynak **kullanıcının
+              // yazdığı orijinal URL** olur. Kullanıcı `http://` yazdıysa
+              // sonraki açılışta yine `http://` görür.
+              await _repo.loadFromM3uUrlResolved(url);
+              await _repo.persistSecondarySource(M3uSource(url: url));
+              isM3uLoaded.value = true; // M3U listesi yüklendi olarak işaretle
+            }
           }
         }
       } else {
         final x2 = _xtreamSecondarySource();
-        await _repo.persistSecondarySource(x2);
+        // İkincil Xtream sekmesinde de şema otomatik düzeltilir.
+        try {
+          final res = await _repo.loadFromXtreamResolved(
+            baseUrl: x2.baseUrl,
+            username: x2.username,
+            password: x2.password,
+          );
+          final resolved2 = XtreamSource(
+            baseUrl: res.resolvedBaseUrl,
+            username: x2.username,
+            password: x2.password,
+          );
+          await _repo.persistSecondarySource(resolved2);
+          if (res.resolvedBaseUrl != x2.baseUrl) {
+            xtreamSecondaryBaseUrlController.text = res.resolvedBaseUrl;
+          }
+        } catch (_) {
+          // Çözümleme başarısızsa kullanıcının yazdığı kaynağı persist et;
+          // loadMergedPlaylist sırasında uygun hata yüzeye çıkar.
+          await _repo.persistSecondarySource(x2);
+        }
       }
 
       final merged = await _repo.loadMergedPlaylist(
@@ -617,19 +1030,87 @@ https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.m
       final xk = tabIndex.value == 1
           ? AppSettingsService.xtreamPreferenceKey(_xtreamSource())
           : null;
+      final persistedPrimary = await _repo.readSource();
+      final m3uK = persistedPrimary is M3uSource
+          ? AppSettingsService.m3uPreferenceKey(persistedPrimary.url)
+          : null;
       _cache.setPlaylist(
         value: merged,
         url: '$cacheLabel (+2)',
         xtreamPreferenceKey: xk,
+        m3uLayoutKey: m3uK,
       );
-      _navigateAfterPlaylistLoad();
+      isLoading.value = false;
+      await _finishLoad(merged);
     } on AppException catch (e) {
-      Get.find<ToastService>().show(e.message, isError: true);
+      isLoading.value = false;
+      await _handleSubmitError(e.message, cause: e);
     } catch (e) {
-      Get.find<ToastService>().show(e.toString(), isError: true);
+      isLoading.value = false;
+      await _handleSubmitError(e.toString(), cause: e);
     } finally {
       isLoading.value = false;
     }
+  }
+
+  /// Submit içinde fırlayan hata için dialog hata akışını yönetir.
+  /// * Xtream kimlik hataları → Xtream sekmesinde snackbar (klasik akış).
+  /// * URL/ağ/SSL hataları → dialog içinde "URL'yi Düzelt" akışı.
+  Future<void> _handleSubmitError(String raw, {Object? cause}) async {
+    final t = raw.trim();
+    if (t.startsWith('xtream.error.')) {
+      _abortLoadSummary();
+      _showSubmitError(t, cause: cause);
+      return;
+    }
+    final isM3uTab = tabIndex.value == 0;
+    final url = isM3uTab
+        ? m3uUrlController.text.trim()
+        : xtreamBaseUrlController.text.trim();
+    final humanized = _humanizeUrlError(cause ?? t, url: url);
+    await _failLoadSummary(
+      humanized.message,
+      hint: humanized.hint,
+      canRetryUrl: isM3uTab && url.isNotEmpty,
+    );
+  }
+
+  /// `xtream.error.*` anahtarlarını insan okunabilir mesaja çevirip Xtream
+  /// hatasında kullanıcıya tekrar girmesini söyleyen snackbar gösterir.
+  /// Alanlar (`baseUrl`, `username`, `password`) **silinmez** — kullanıcı
+  /// düzeltip yeniden gönderebilir.
+  void _showSubmitError(String raw, {Object? cause}) {
+    final t = raw.trim();
+    // `xtream.error.invalidCredentialsMsg|<panel mesajı>` — panelin mesajı varsa
+    // kullanıcıya birebir göstermek faydalı (örn. "User and pass not found").
+    if (t.startsWith('xtream.error.invalidCredentialsMsg|')) {
+      final panelMessage = t.substring('xtream.error.invalidCredentialsMsg|'.length).trim();
+      GlassSnackbar.show(
+        'xtream.error.title'.tr,
+        'xtream.error.invalidCredentialsWithMsg'
+            .trParams({'m': panelMessage}),
+        snackPosition: SnackPosition.BOTTOM,
+        duration: const Duration(seconds: 5),
+      );
+      return;
+    }
+    if (t == 'xtream.error.invalidCredentials' ||
+        t == 'xtream.error.credentialsEmpty') {
+      GlassSnackbar.show(
+        'xtream.error.title'.tr,
+        t.tr,
+        snackPosition: SnackPosition.BOTTOM,
+        duration: const Duration(seconds: 5),
+      );
+      return;
+    }
+    // Ağ / parse hataları (Xtream öncesi M3U vb.) için eski davranış.
+    Get.find<ToastService>().show(
+      t.startsWith('xtream.error.')
+          ? 'xtream.error.title'.tr
+          : t,
+      isError: true,
+    );
   }
 
   M3uSource _m3uSource() {

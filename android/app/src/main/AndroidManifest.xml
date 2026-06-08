@@ -2,6 +2,19 @@
     xmlns:tools="http://schemas.android.com/tools">
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+    <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- Push bildirim (Firebase Cloud Messaging): Android 13+ (API 33) runtime
+         izni. Reddedilse bile uygulama normal çalışır; yalnızca bildirim
+         gösterilmez. Hassas izin değildir, Play Store ek beyan gerektirmez. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Karekod ile playlist yükleme: cihazın yerel Wi-Fi/Ethernet IP'sini
+         okumak ve LAN üzerinden HTTP sunucusu kurmak için. -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
+    <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
+    <!-- Ses Equalizer: BetterPlayer/ExoPlayer çıkışına bağlı AudioEffect.Equalizer
+         için. Android 9+'da session=0 (global output mix) bazı cihazlarda
+         kısıtlanır; bu durumda Dart tarafı kullanıcıya bilgi verir. -->
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <!-- Play: READ_MEDIA_* kullanılmıyor; bağımlılık manifest birleşiminde gelirse düşürülür. -->
     <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" tools:node="remove" />
     <uses-permission android:name="android.permission.READ_MEDIA_VIDEO" tools:node="remove" />
@@ -65,9 +78,7 @@
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
-        <meta-data
-            android:name="io.flutter.embedding.android.EnableImpeller"
-            android:value="true" />
+        <!-- Impeller/Skia: [MinaRendererPolicy] + MainActivity Intent bayrağı (cihaza göre). -->
 
         <receiver
             android:name=".BootReceiver"
@@ -76,6 +87,20 @@
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
             </intent-filter>
         </receiver>
+
+        <!-- FileProvider: kayıt / indirilen dosyaları paylaşmak için (Share
+             intent → WhatsApp, Drive, Gallery, vb.). Yalnızca app-scoped
+             external storage path'leri açığa çıkar. -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
+
     </application>
     <!-- Required to query activities that can process text, see:
          https://developer.android.com/training/package-visibility and
@@ -90,6 +115,25 @@
         <intent>
             <action android:name="android.intent.action.SENDTO" />
             <data android:scheme="mailto" />
+        </intent>
+        <!-- Harici Oynatıcı: Android 11+ paket görünürlüğü için VLC, MX Player,
+             Just Player, nPlayer vb. yüklü video oynatıcıları listeleyebilmek
+             gerekiyor. Spesifik paket adları yerine MIME türüne göre query. -->
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:mimeType="video/*" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:mimeType="application/x-mpegURL" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="https" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="http" />
         </intent>
     </queries>
 </manifest>

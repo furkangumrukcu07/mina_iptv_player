@@ -13,6 +13,7 @@ class AndroidPlaybackSocHints {
   static bool? _amlogicLike;
   static bool? _weakMpvDevice;
   static bool? _androidTv;
+  static bool? _playbackChallengedTv;
   static bool? _xiaomiFamily;
   static String? _buildModel;
   static int? _totalRamBytes;
@@ -43,6 +44,10 @@ class AndroidPlaybackSocHints {
   /// Leanback / television (Android TV). [ensureLoaded] sonrası güvenilir.
   static bool get androidTv => _androidTv ?? false;
 
+  /// TCL / MediaTek / Realtek / Amlogic Android TV: VOD donanım kod çözücü ve
+  /// mpv `mediacodec-copy` sık başarısız — yazılım Exo + `mediacodec` tercih edilir.
+  static bool get playbackChallengedTv => _playbackChallengedTv ?? false;
+
   /// Xiaomi / Redmi / POCO / Black Shark. Adaptif tavan ve [useTextureView] ipucu için.
   static bool get xiaomiFamily => _xiaomiFamily ?? false;
 
@@ -64,6 +69,7 @@ class AndroidPlaybackSocHints {
       _amlogicLike ??= false;
       _weakMpvDevice ??= false;
       _androidTv ??= false;
+      _playbackChallengedTv ??= false;
       _xiaomiFamily ??= false;
       _buildModel = null;
       _totalRamBytes = null;
@@ -74,6 +80,7 @@ class AndroidPlaybackSocHints {
       _amlogicLike ??= false;
       _weakMpvDevice ??= false;
       _androidTv ??= false;
+      _playbackChallengedTv ??= false;
       _xiaomiFamily ??= false;
       _buildModel = null;
       _totalRamBytes = null;
@@ -106,6 +113,7 @@ class AndroidPlaybackSocHints {
         _amlogicLike = v == true;
         _weakMpvDevice = raw['weakMpvDevice'] == true;
         _androidTv = raw['isAndroidTv'] == true;
+        _playbackChallengedTv = raw['playbackChallengedTv'] == true;
         _xiaomiFamily = raw['xiaomiFamily'] == true;
 
         final mod = raw['model'];
@@ -135,6 +143,7 @@ class AndroidPlaybackSocHints {
     _amlogicLike = false;
     _weakMpvDevice = false;
     _androidTv ??= false;
+    _playbackChallengedTv ??= false;
     _xiaomiFamily ??= false;
     _buildModel = null;
     _totalRamBytes = null;

@@ -1,4 +1,4 @@
-#EXTM3U x-tvg-url="https://iptv-org.github.io/epg/guides/tr.xml"
+#EXTM3U x-tvg-url="https://worker-9dd4.onrender.com/guide.xml"
 
 #EXTINF:-1 tvg-logo="https://upload.wikimedia.org/wikipedia/commons/d/d1/Deutsche_Welle_logo.svg" group-title="Canlı TV" description="Gerçek zamanlı dünya gündemi ve bilim yayınları.",DW English #1
 https://dwamdstream102.akamaized.net/hls/live/2015415/dwstream102/index.m3u8

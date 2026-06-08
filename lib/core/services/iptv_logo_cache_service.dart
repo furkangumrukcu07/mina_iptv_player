@@ -18,6 +18,14 @@ class IptvLogoCacheService extends GetxService {
   static const maxEdgePx = 384;
   static const _maxDownloadBytes = 4 * 1024 * 1024;
 
+  /// Logo disk önbelleği için sabit byte bütçesi. Toplam uygulama görsel
+  /// önbelleği ~200 MB hedefinin logo payı (kalan poster payı
+  /// [AppImageCacheService] tarafında obje adediyle sınırlanır). Aşılırsa en
+  /// eski (yazım zamanı en küçük) dosyalar silinerek bütçeye inilir.
+  static const int maxCacheBytes = 120 * 1024 * 1024;
+
+  bool _budgetRunning = false;
+
   final Dio _dio = Dio(
     BaseOptions(
       connectTimeout: const Duration(seconds: 12),
@@ -29,6 +37,16 @@ class IptvLogoCacheService extends GetxService {
 
   final Map<String, Future<File?>> _inFlight = {};
   Directory? _dir;
+
+  @override
+  void onInit() {
+    super.onInit();
+    // Önceki oturumlardan birikmiş önbelleği splash'i bloklamadan, açılıştan
+    // bir süre sonra bütçeye indir.
+    Future.delayed(const Duration(seconds: 12), () {
+      unawaited(_enforceBudget());
+    });
+  }
 
   Future<Directory> _ensureDir() async {
     if (_dir != null) return _dir!;
@@ -104,6 +122,46 @@ class IptvLogoCacheService extends GetxService {
     }
 
     await Future.wait(List.generate(parallel, (_) => worker()));
+    // Büyük yazımdan sonra bütçeyi uygula (LRU/FIFO eviction).
+    await _enforceBudget();
+  }
+
+  /// Disk önbelleğini [maxCacheBytes] sınırına indirir: toplam boyut bütçeyi
+  /// aşıyorsa en eski (yazım zamanı en küçük) dosyalardan başlayarak siler.
+  /// Aynı anda yalnızca bir kez çalışır.
+  Future<void> _enforceBudget() async {
+    if (_budgetRunning) return;
+    _budgetRunning = true;
+    try {
+      final dir = await _ensureDir();
+      final entries = <({File file, int size, int modified})>[];
+      var total = 0;
+      await for (final e in dir.list()) {
+        if (e is! File) continue;
+        try {
+          final st = await e.stat();
+          total += st.size;
+          entries.add((
+            file: e,
+            size: st.size,
+            modified: st.modified.millisecondsSinceEpoch,
+          ));
+        } catch (_) {}
+      }
+      if (total <= maxCacheBytes) return;
+      entries.sort((a, b) => a.modified.compareTo(b.modified));
+      for (final e in entries) {
+        if (total <= maxCacheBytes) break;
+        try {
+          await e.file.delete();
+          total -= e.size;
+        } catch (_) {}
+      }
+    } catch (_) {
+      // Sessiz: önbellek temizliği kritik değil.
+    } finally {
+      _budgetRunning = false;
+    }
   }
 
   Future<void> wipeDisk() async {

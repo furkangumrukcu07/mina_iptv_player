@@ -7,6 +7,8 @@ import java.util.Properties
 plugins {
     id("com.android.application")
     id("kotlin-android")
+    // Firebase: google-services.json'dan kaynak (ör. default_web_client_id) üretir.
+    id("com.google.gms.google-services")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
@@ -95,6 +97,7 @@ android {
     }
 
     compileOptions {
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -108,7 +111,8 @@ android {
         applicationId = "com.mina.iptv.mina_iptv_player"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        minSdk = flutter.minSdkVersion
+        // Firebase Auth / Firestore en az API 23 (Android 6) gerektirir.
+        minSdk = maxOf(23, flutter.minSdkVersion)
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
@@ -147,6 +151,7 @@ flutter {
 }
 
 dependencies {
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.1.4")
     // Android 15 edge-to-edge: MainActivity’de [enableEdgeToEdge].
     implementation("androidx.activity:activity-ktx:1.10.1")
     // HLS master + WEBVTT altyazı track’leri için Media3 HLS modülü zorunlu.

@@ -3,6 +3,7 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
+import '../../core/services/app_bootstrap_service.dart';
 import '../../core/services/app_settings_service.dart';
 import '../../core/theme/app_theme.dart';
 import 'splash_controller.dart';
@@ -27,95 +28,146 @@ class SplashView extends GetView<SplashController> {
             themeLabel: themeLabel,
           ),
           child: Stack(
-          children: [
-            // Floating Glass Bubbles (Visual decoration)
-            Positioned(
-              top: -50,
-              right: -50,
-              child: _GlassBubble(size: 200, color: cs.primary),
-            ),
-            Positioned(
-              bottom: -80,
-              left: -80,
-              child: _GlassBubble(size: 250, color: cs.tertiary),
-            ),
-            SafeArea(
-              child: Center(
-                child: _GlassPanel(
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.all(24),
-                        decoration: BoxDecoration(
-                          shape: BoxShape.circle,
-                          color: Colors.white.withValues(alpha: 0.08),
-                          border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.15),
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: cs.primary.withValues(alpha: 0.3),
-                              blurRadius: 40,
-                              spreadRadius: 2,
+            children: [
+              // Floating Glass Bubbles (Visual decoration)
+              Positioned(
+                top: -50,
+                right: -50,
+                child: _GlassBubble(size: 200, color: cs.primary),
+              ),
+              Positioned(
+                bottom: -80,
+                left: -80,
+                child: _GlassBubble(size: 250, color: cs.tertiary),
+              ),
+              SafeArea(
+                child: Center(
+                  child: _GlassPanel(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.all(24),
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: Colors.white.withValues(alpha: 0.08),
+                            border: Border.all(
+                              color: Colors.white.withValues(alpha: 0.15),
                             ),
-                          ],
+                            boxShadow: [
+                              BoxShadow(
+                                color: cs.primary.withValues(alpha: 0.3),
+                                blurRadius: 40,
+                                spreadRadius: 2,
+                              ),
+                            ],
+                          ),
+                          // Uygulamanın ana logosu (mavi şemsiye) yanıp söner.
+                          child: const _PulsingLogo(),
                         ),
-                        child: const Icon(
-                          Icons.live_tv_rounded,
-                          size: 80,
-                          color: Colors.white,
+                        const SizedBox(height: 14),
+                        Text(
+                          'common.loading'.tr,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.65),
+                            fontSize: 14,
+                            fontWeight: FontWeight.w600,
+                            letterSpacing: 0.3,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 14),
-                      Text(
-                        'common.loading'.tr,
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.65),
-                          fontSize: 14,
-                          fontWeight: FontWeight.w600,
-                          letterSpacing: 0.3,
+                        const SizedBox(height: 28),
+                        const Text(
+                          'Mina IPTV',
+                          style: TextStyle(
+                            fontSize: 32,
+                            fontWeight: FontWeight.w900,
+                            letterSpacing: -1,
+                            color: Colors.white,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 28),
-                      const Text(
-                        'Mina IPTV',
-                        style: TextStyle(
-                          fontSize: 32,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: -1,
-                          color: Colors.white,
+                        const SizedBox(height: 12),
+                        // Aşamalı durum metni: liste yükleniyor / program rehberi
+                        // hazırlanıyor / neredeyse hazır vb.
+                        Obx(() {
+                          final key = Get.find<AppBootstrapService>()
+                              .splashStatusKey
+                              .value;
+                          return Text(
+                            key.tr,
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 15,
+                              letterSpacing: 0.2,
+                            ),
+                          );
+                        }),
+                        const SizedBox(height: 48),
+                        const SizedBox(
+                          width: 40,
+                          height: 40,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 3,
+                            color: Colors.white,
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 12),
-                      Text(
-                        'splash.preparing'.tr,
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          color: Colors.white70,
-                          fontSize: 15,
-                          letterSpacing: 0.2,
-                        ),
-                      ),
-                      const SizedBox(height: 48),
-                      const SizedBox(
-                        width: 40,
-                        height: 40,
-                        child: CircularProgressIndicator(
-                          strokeWidth: 3,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ),
-            ),
-          ],
-        ),
+            ],
+          ),
         );
       }),
+    );
+  }
+}
+
+/// Ana logo (mavi şemsiye) yumuşak nabız efektiyle yanıp söner; ana ekran
+/// açılınca splash route kapanır ve animasyon kendiliğinden durur.
+class _PulsingLogo extends StatefulWidget {
+  const _PulsingLogo();
+
+  @override
+  State<_PulsingLogo> createState() => _PulsingLogoState();
+}
+
+class _PulsingLogoState extends State<_PulsingLogo>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _anim;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1100),
+    )..repeat(reverse: true);
+    _anim = CurvedAnimation(parent: _controller, curve: Curves.easeInOut);
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: Tween<double>(begin: 0.35, end: 1.0).animate(_anim),
+      child: ScaleTransition(
+        scale: Tween<double>(begin: 0.92, end: 1.0).animate(_anim),
+        child: Image.asset(
+          'assets/images/app_icon.png',
+          width: 80,
+          height: 80,
+          filterQuality: FilterQuality.medium,
+        ),
+      ),
     );
   }
 }

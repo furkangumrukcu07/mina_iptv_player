@@ -21,6 +21,7 @@ class SubtitleFontFamilyPickerDialog extends StatefulWidget {
     required this.tvOsdStyle,
     this.title = 'Font Secimi',
     this.hint = 'Font secimi.',
+    this.options = kSubtitleFontFamilyOptions,
     required this.onCancel,
     required this.onSave,
   });
@@ -30,6 +31,9 @@ class SubtitleFontFamilyPickerDialog extends StatefulWidget {
   final bool tvOsdStyle;
   final String title;
   final String hint;
+
+  /// Gösterilecek font seçenekleri (altyazı veya uygulama fontu listesi).
+  final List<SubtitleFontFamilyOption> options;
   final VoidCallback onCancel;
   final Future<void> Function(String key) onSave;
 
@@ -44,21 +48,20 @@ class _SubtitleFontFamilyPickerDialogState
   late int _focusId;
 
   late final List<FocusNode> _rowNodes = List.generate(
-    kSubtitleFontFamilyOptions.length,
+    widget.options.length,
     (i) => FocusNode(debugLabel: 'subFontFamily$i'),
   );
   final FocusNode _cancelNode = FocusNode(debugLabel: 'subFontFamilyCancel');
   final FocusNode _saveNode = FocusNode(debugLabel: 'subFontFamilySave');
 
-  int get _cancelFocusId => kSubtitleFontFamilyOptions.length;
-  int get _saveFocusId => kSubtitleFontFamilyOptions.length + 1;
+  int get _cancelFocusId => widget.options.length;
+  int get _saveFocusId => widget.options.length + 1;
 
   @override
   void initState() {
     super.initState();
-    _selectedKey = isValidSubtitleFontFamilyKey(widget.initialKey)
-        ? widget.initialKey
-        : kDefaultSubtitleFontFamilyKey;
+    final hasKey = widget.options.any((o) => o.key == widget.initialKey);
+    _selectedKey = hasKey ? widget.initialKey : widget.options.first.key;
     _focusId = _indexForKey(_selectedKey);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -67,8 +70,8 @@ class _SubtitleFontFamilyPickerDialogState
   }
 
   int _indexForKey(String key) {
-    for (var i = 0; i < kSubtitleFontFamilyOptions.length; i++) {
-      if (kSubtitleFontFamilyOptions[i].key == key) return i;
+    for (var i = 0; i < widget.options.length; i++) {
+      if (widget.options[i].key == key) return i;
     }
     return 0;
   }
@@ -88,7 +91,7 @@ class _SubtitleFontFamilyPickerDialogState
     if (event is! KeyDownEvent) return KeyEventResult.ignored;
     final k = event.logicalKey;
     if (k == LogicalKeyboardKey.arrowDown) {
-      if (i < kSubtitleFontFamilyOptions.length - 1) {
+      if (i < widget.options.length - 1) {
         setState(() => _focusId = i + 1);
         _rowNodes[i + 1].requestFocus();
       } else {
@@ -106,7 +109,7 @@ class _SubtitleFontFamilyPickerDialogState
     }
     if (_isActivateKey(k)) {
       setState(() {
-        _selectedKey = kSubtitleFontFamilyOptions[i].key;
+        _selectedKey = widget.options[i].key;
         _focusId = i;
       });
       return KeyEventResult.handled;
@@ -119,7 +122,7 @@ class _SubtitleFontFamilyPickerDialogState
     if (event is! KeyDownEvent) return KeyEventResult.ignored;
     final k = event.logicalKey;
     if (k == LogicalKeyboardKey.arrowUp) {
-      final last = kSubtitleFontFamilyOptions.length - 1;
+      final last = widget.options.length - 1;
       setState(() => _focusId = last);
       _rowNodes[last].requestFocus();
       return KeyEventResult.handled;
@@ -153,7 +156,7 @@ class _SubtitleFontFamilyPickerDialogState
   }
 
   Widget _row(int i) {
-    final item = kSubtitleFontFamilyOptions[i];
+    final item = widget.options[i];
     final selected = _selectedKey == item.key;
     final focused = _focusId == i;
     final row = Material(
@@ -269,11 +272,17 @@ class _SubtitleFontFamilyPickerDialogState
         : Row(
             mainAxisAlignment: MainAxisAlignment.end,
             children: [
-              TextButton(onPressed: widget.onCancel, child: const Text('Iptal')),
+              GlassDialogActionButton(
+                label: 'Iptal',
+                onPressed: widget.onCancel,
+                onDarkSurface: widget.tvOsdStyle,
+              ),
               const SizedBox(width: 8),
-              FilledButton(
+              GlassDialogActionButton(
+                label: 'Kaydet',
+                primary: true,
                 onPressed: () => unawaited(widget.onSave(_selectedKey)),
-                child: const Text('Kaydet'),
+                onDarkSurface: widget.tvOsdStyle,
               ),
             ],
           );
@@ -294,7 +303,7 @@ class _SubtitleFontFamilyPickerDialogState
             ),
           ),
           const SizedBox(height: 12),
-          for (var i = 0; i < kSubtitleFontFamilyOptions.length; i++) _row(i),
+          for (var i = 0; i < widget.options.length; i++) _row(i),
           const SizedBox(height: 4),
           actions,
         ],
@@ -313,9 +322,12 @@ class _SubtitleFontFamilyPickerDialogState
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(12),
         border: Border.all(
-          color: focused ? Colors.white : Colors.white24,
-          width: focused ? 2.5 : 1,
+          color: focused ? Colors.white : Colors.white.withValues(alpha: 0.28),
+          width: focused ? 2.5 : 1.2,
         ),
+        color: focused
+            ? Colors.white.withValues(alpha: 0.12)
+            : Colors.black.withValues(alpha: 0.38),
       ),
       child: Material(
         color: Colors.transparent,

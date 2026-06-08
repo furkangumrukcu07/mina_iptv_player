@@ -1,16 +1,41 @@
 abstract final class AppRoutes {
   static const splash = '/';
   static const setupWizard = '/setup-wizard';
-  static const setupWizardTv = '/setup-wizard-tv';
   static const playlist = '/playlist';
+  static const playlistsManager = '/playlists-manager';
 
   /// [Get.toNamed] ile ayarlardan playlist ekranı: ikinci kaynak bölümü gösterilir.
   static const argPlaylistManage = 'managePlaylist';
   static const home = '/home';
+  static const recommendedFilms = '/recommended-films';
+  static const recommendedFilmsCategory = '/recommended-films-category';
+  static const filmDiziDetail = '/film-dizi-detail';
+  static const filmDiziSeriesDetail = '/film-dizi-series-detail';
+  static const filmDiziActor = '/film-dizi-actor';
+  static const epgMix = '/epg-mix';
+  static const chat = '/chat';
+  static const chatRoom = '/chat-room';
+  static const chatSupportInbox = '/chat-support-inbox';
   static const channels = '/channels';
   static const browse = '/browse';
   static const settings = '/settings';
+  static const epgSettings = '/epg-settings';
+  static const epgSourceManage = '/epg-source-manage';
   static const xtreamCategoryHide = '/xtream-category-hide';
+  static const channelListEditor = '/channel-list-editor';
+  static const homeCardOrderEditor = '/home-card-order-editor';
+  static const homeSettings = '/home-settings';
+  static const backupRestore = '/backup-restore';
+  static const cloudSync = '/cloud-sync';
+  static const channelCategoryLayout = '/channel-category-layout';
+  static const playbackSettings = '/playback-settings';
+  static const otherTools = '/other-tools';
+  static const contactUs = '/contact-us';
+  static const subtitleOptions = '/subtitle-options';
   static const parentalControl = '/parental-control';
+  static const profiles = '/profiles';
   static const player = '/player';
+  static const minaAnalytics = '/mina-analytics';
+  static const dataUsage = '/data-usage';
+  static const downloads = '/downloads';
 }

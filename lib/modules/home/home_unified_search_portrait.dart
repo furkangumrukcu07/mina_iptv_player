@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
@@ -6,20 +7,48 @@ import 'package:get/get.dart';
 
 import '../../core/layout/app_layout_mode.dart';
 import '../../core/services/app_settings_service.dart';
+import '../../core/services/search_history_service.dart';
+import '../../domain/entities/series.dart';
+import '../../domain/entities/vod.dart';
 import '../../ui/glass_overlays.dart';
+import '../../ui/recent_searches_strip.dart';
 import 'home_controller.dart';
 
 /// Ana ekran birleşik arama — metin + canlı / film / dizi sonuçları (mobil + TV).
-Future<void> showPortraitHomeUnifiedSearchDialog(BuildContext context) async {
+///
+/// [excludeLive] true ise canlı kanal sonuçları gizlenir (Film & Dizi
+/// sayfasından gelen aramada sadece film + dizi sonuçları görünür).
+///
+/// [onVodPick] / [onSeriesPick] verilirse VOD/dizi seçildiğinde varsayılan
+/// «Browse» navigasyonu yerine bu callback'ler çağrılır — Film & Dizi
+/// sayfasından açılan aramada doğrudan yeni detay sayfalarına gitmek için.
+Future<void> showPortraitHomeUnifiedSearchDialog(
+  BuildContext context, {
+  bool excludeLive = false,
+  void Function(VodItem vod)? onVodPick,
+  void Function(SeriesItem series)? onSeriesPick,
+}) async {
   await showDialog<void>(
     context: context,
     useRootNavigator: true,
-    builder: (ctx) => const _HomeUnifiedSearchDialog(),
+    builder: (ctx) => _HomeUnifiedSearchDialog(
+      excludeLive: excludeLive,
+      onVodPick: onVodPick,
+      onSeriesPick: onSeriesPick,
+    ),
   );
 }
 
 class _HomeUnifiedSearchDialog extends StatefulWidget {
-  const _HomeUnifiedSearchDialog();
+  const _HomeUnifiedSearchDialog({
+    this.excludeLive = false,
+    this.onVodPick,
+    this.onSeriesPick,
+  });
+
+  final bool excludeLive;
+  final void Function(VodItem vod)? onVodPick;
+  final void Function(SeriesItem series)? onSeriesPick;
 
   @override
   State<_HomeUnifiedSearchDialog> createState() =>
@@ -31,6 +60,25 @@ class _HomeUnifiedSearchDialogState extends State<_HomeUnifiedSearchDialog> {
   late final FocusNode _queryFocus = FocusNode(debugLabel: 'unifiedSearchQuery');
   late final FocusNode _closeFocus = FocusNode(debugLabel: 'unifiedSearchClose');
   final List<FocusNode> _resultNodes = [];
+
+  /// Kullanıcı bir sonuca tıkladığında o anki sorguyu geçmişe iter — sadece
+  /// gerçek bir seçim yapıldığında yazılır (boş çıkıp kapatma kaydedilmez).
+  void _recordQuery() {
+    final q = _queryCtrl.text.trim();
+    if (q.isEmpty) return;
+    unawaited(
+      Get.find<SearchHistoryService>().record(SearchHistoryScope.home, q),
+    );
+  }
+
+  void _applyRecent(String query) {
+    _queryCtrl.value = TextEditingValue(
+      text: query,
+      selection: TextSelection.collapsed(offset: query.length),
+    );
+    setState(() {});
+    _queryFocus.requestFocus();
+  }
 
   @override
   void dispose() {
@@ -249,7 +297,7 @@ class _HomeUnifiedSearchDialogState extends State<_HomeUnifiedSearchDialog> {
 
     final listChildren = <Widget>[];
 
-    if (buckets.channels.isNotEmpty) {
+    if (buckets.channels.isNotEmpty && !widget.excludeLive) {
       listChildren.add(sectionTitle('home.search.sectionLive'.tr));
       for (final ch in buckets.channels) {
         final idx = rowI++;
@@ -264,11 +312,14 @@ class _HomeUnifiedSearchDialogState extends State<_HomeUnifiedSearchDialog> {
               size: 22,
             ),
             title: ch.name,
-            onPick: () => c.portraitSearchNavigateToChannel(
-              context,
-              ch,
-              q.trim(),
-            ),
+            onPick: () {
+              _recordQuery();
+              c.portraitSearchNavigateToChannel(
+                context,
+                ch,
+                q.trim(),
+              );
+            },
           ),
         );
       }
@@ -289,11 +340,16 @@ class _HomeUnifiedSearchDialogState extends State<_HomeUnifiedSearchDialog> {
               size: 22,
             ),
             title: v.name,
-            onPick: () => c.portraitSearchNavigateToVod(
-              context,
-              v,
-              q.trim(),
-            ),
+            onPick: () {
+              _recordQuery();
+              final cb = widget.onVodPick;
+              if (cb != null) {
+                Navigator.of(context).pop();
+                Future.microtask(() => cb(v));
+              } else {
+                c.portraitSearchNavigateToVod(context, v, q.trim());
+              }
+            },
           ),
         );
       }
@@ -314,18 +370,24 @@ class _HomeUnifiedSearchDialogState extends State<_HomeUnifiedSearchDialog> {
               size: 22,
             ),
             title: s.name,
-            onPick: () => c.portraitSearchNavigateToSeries(
-              context,
-              s,
-              q.trim(),
-            ),
+            onPick: () {
+              _recordQuery();
+              final cb = widget.onSeriesPick;
+              if (cb != null) {
+                Navigator.of(context).pop();
+                Future.microtask(() => cb(s));
+              } else {
+                c.portraitSearchNavigateToSeries(context, s, q.trim());
+              }
+            },
           ),
         );
       }
     }
 
+    final liveEmptyForResults = widget.excludeLive || buckets.channels.isEmpty;
     if (q.trim().isNotEmpty &&
-        buckets.channels.isEmpty &&
+        liveEmptyForResults &&
         buckets.vods.isEmpty &&
         buckets.series.isEmpty) {
       listChildren.add(
@@ -345,14 +407,10 @@ class _HomeUnifiedSearchDialogState extends State<_HomeUnifiedSearchDialog> {
       );
     }
 
-    final closeButton = TextButton(
+    final closeButton = GlassDialogActionButton(
+      label: 'common.close'.tr,
       onPressed: () => Navigator.of(context).pop(),
-      child: Text(
-        'common.close'.tr,
-        style: TextStyle(
-          color: Colors.white.withValues(alpha: 0.88),
-        ),
-      ),
+      onDarkSurface: true,
     );
 
     final wrappedClose = directional
@@ -390,10 +448,17 @@ class _HomeUnifiedSearchDialogState extends State<_HomeUnifiedSearchDialog> {
               order: const NumericFocusOrder(0),
               child: searchField(),
             ),
-            if (q.trim().isEmpty)
+            if (q.trim().isEmpty) ...[
+              ExcludeFocus(
+                child: RecentSearchesStrip(
+                  scope: SearchHistoryScope.home,
+                  padding: const EdgeInsets.only(top: 14, bottom: 4),
+                  onTap: _applyRecent,
+                ),
+              ),
               ExcludeFocus(
                 child: Padding(
-                  padding: const EdgeInsets.only(top: 16),
+                  padding: const EdgeInsets.only(top: 8),
                   child: Text(
                     'home.search.typeToSeeResults'.tr,
                     style: TextStyle(
@@ -403,6 +468,7 @@ class _HomeUnifiedSearchDialogState extends State<_HomeUnifiedSearchDialog> {
                   ),
                 ),
               ),
+            ],
             Expanded(
               child: q.trim().isEmpty
                   ? const SizedBox.shrink()

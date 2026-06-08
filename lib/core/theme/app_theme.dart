@@ -1,3 +1,6 @@
+import 'dart:io' show Platform;
+
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -7,6 +10,8 @@ import 'glass_appearance.dart';
 abstract final class AppTheme {
   static const _purpleSeed = Color(0xFF21E6EB);
   static const _blueSeed = Color(0xFF2563EB);
+  static const _flyBlue = Color(0xFF219BF0);
+  static const _flyCyan = Color(0xFF1BC9B8);
 
   static const _bgDir = 'assets/images';
   static const _bg2xDir = 'assets/images/2x';
@@ -44,11 +49,32 @@ abstract final class AppTheme {
 
   static const _glassmorphismBackgroundBase = 'glassmorphism_background';
 
+  /// [GlassThemeLabels.minaGlass]: kullanıcı PNG’leri (yatay / dikey).
+  static const _minaGlassLandscapeAsset = '$_bgDir/mina_glass_landscape.png';
+  static const _minaGlassPortraitAsset = '$_bgDir/mina_glass_portrait.png';
+
+  /// [GlassThemeLabels.semcTheme]: Xperia Cosmic Flow duvar kağıtları (yatay / dikey).
+  static const _semcLandscapeAsset = '$_bgDir/semc_landscape.jpg';
+  static const _semcPortraitAsset = '$_bgDir/semc_portrait.jpg';
+
+  /// [GlassThemeLabels.flyUi]: Flyme OS 8 duvar kağıdı (yatay 1653×800 / dikey 800×1653, PNG).
+  static const _flyUiLandscapeAsset = '$_bgDir/fly_ui_landscape.png';
+  static const _flyUiPortraitAsset = '$_bgDir/fly_ui_portrait.png';
+
+  /// [GlassThemeLabels.amoledBlack]: saf siyah AMOLED duvar kağıtları (yatay / dikey).
+  static const _amoledLandscapeAsset = '$_bgDir/blackyatay.webp';
+  static const _amoledPortraitAsset = '$_bgDir/blackdikey.webp';
+
   /// [themeLabel]: [AppSettingsService.themeLabel] (örn. `GlassThemeLabels.koyuCam`).
   static String homeBackgroundAsset(
     BuildContext context, {
     String? themeLabel,
   }) {
+    if (themeLabel == GlassThemeLabels.minaGlass) {
+      return MediaQuery.orientationOf(context) == Orientation.portrait
+          ? _minaGlassPortraitAsset
+          : _minaGlassLandscapeAsset;
+    }
     if (themeLabel == GlassThemeLabels.glassGri) {
       // Glass gri temas için tek görsel kullan (koyu cam gibi)
       return _bgAssetFor(context, _glassGriBackgroundBase);
@@ -61,12 +87,26 @@ abstract final class AppTheme {
       // Flat black temas için tek görsel kullan (koyu cam gibi)
       return _bgAssetFor(context, _flatBlackBackgroundBase);
     }
+    if (themeLabel == GlassThemeLabels.flyUi) {
+      return MediaQuery.orientationOf(context) == Orientation.portrait
+          ? _flyUiPortraitAsset
+          : _flyUiLandscapeAsset;
+    }
     if (themeLabel == GlassThemeLabels.glassmorphism) {
-      // Glassmorphism temas için tek görsel kullan (koyu cam gibi)
       return _bgAssetFor(context, _glassmorphismBackgroundBase);
     }
     if (themeLabel == GlassThemeLabels.koyuCam) {
       return _bgAssetFor(context, _darkGlassBackgroundBase);
+    }
+    if (themeLabel == GlassThemeLabels.amoledBlack) {
+      return MediaQuery.orientationOf(context) == Orientation.portrait
+          ? _amoledPortraitAsset
+          : _amoledLandscapeAsset;
+    }
+    if (themeLabel == GlassThemeLabels.semcTheme) {
+      return MediaQuery.orientationOf(context) == Orientation.portrait
+          ? _semcPortraitAsset
+          : _semcLandscapeAsset;
     }
     return MediaQuery.orientationOf(context) == Orientation.portrait
         ? _bgAssetFor(context, _defaultBackgroundPortraitBase)
@@ -87,11 +127,32 @@ abstract final class AppTheme {
     double decodeHeightFactor = 1.0,
     bool isTvLayout = false,
   }) {
+    // Android + TV: arka plan görselini ekran çözünürlüğüne indirerek decode et.
+    // Eski TV box'larda tam çözünürlüklü webp/png (ör. ~5.8 MB AMOLED) tam decode
+    // edilince RAM/GPU'yu boğuyordu. Tema fark etmeksizin TV'de küçült.
+    // (Telefon/tablet ve iOS yolu aşağıdaki mevcut davranışta kalır.)
+    if (isTvLayout && !kIsWeb && Platform.isAndroid) {
+      final dpr = MediaQuery.devicePixelRatioOf(context);
+      final sz = MediaQuery.sizeOf(context);
+      final w = (sz.width * dpr).round();
+      final h = (sz.height * dpr).round();
+      if (w > 0 && h > 0) {
+        return (
+          zoom: 1.0,
+          cacheWidth: w.clamp(64, 1920),
+          cacheHeight: h.clamp(64, 1920),
+        );
+      }
+    }
     if (themeLabel == GlassThemeLabels.koyuCam ||
+        themeLabel == GlassThemeLabels.amoledBlack ||
+        themeLabel == GlassThemeLabels.semcTheme ||
         themeLabel == GlassThemeLabels.darkFlat ||
         themeLabel == GlassThemeLabels.flatBlack ||
         themeLabel == GlassThemeLabels.glassGri ||
-        themeLabel == GlassThemeLabels.glassmorphism) {
+        themeLabel == GlassThemeLabels.glassmorphism ||
+        themeLabel == GlassThemeLabels.minaGlass ||
+        themeLabel == GlassThemeLabels.flyUi) {
       return (
         zoom: 1.0,
         cacheWidth: null,
@@ -118,12 +179,17 @@ abstract final class AppTheme {
     );
   }
 
-  /// Tam ekran tema arka planı: Her zaman yüksek kalite için FilterQuality.high kullanılır.
+  /// Tam ekran tema arka planı filter kalitesi.
+  /// Android + TV: eski GPU'larda bicubic (high) örnekleme pahalı; görsel zaten
+  /// ekran çözünürlüğüne indirildiği için [FilterQuality.low] yeterli ve hızlı.
+  /// Telefon/tablet ve iOS'ta yüksek kalite korunur.
   static FilterQuality homeBackgroundFilterQuality({
     required bool isTvLayout,
     String? themeLabel,
   }) {
-    // Tüm arka plan resimleri için yüksek kalite
+    if (isTvLayout && !kIsWeb && Platform.isAndroid) {
+      return FilterQuality.low;
+    }
     return FilterQuality.high;
   }
 
@@ -198,6 +264,32 @@ abstract final class AppTheme {
     );
   }
 
+  /// [GlassThemeLabels.amoledBlack]: saf siyah yüzeyler, camgöbeği vurgu.
+  static ColorScheme _colorSchemeAmoled() {
+    final base = ColorScheme.fromSeed(
+      seedColor: const Color(0xFF22D3EE),
+      brightness: Brightness.dark,
+      surface: const Color(0xFF000000),
+    );
+    return base.copyWith(
+      primary: const Color(0xFF22D3EE),
+      onPrimary: const Color(0xFF00171C),
+      primaryContainer: const Color(0xFF06414C),
+      onPrimaryContainer: const Color(0xFFCFF8FF),
+      secondary: const Color(0xFF67E8F9),
+      onSecondary: const Color(0xFF001317),
+      surface: const Color(0xFF000000),
+      surfaceContainerLow: const Color(0xFF050507),
+      surfaceContainer: const Color(0xFF0A0A0C),
+      surfaceContainerHigh: const Color(0xFF101012),
+      surfaceContainerHighest: const Color(0xFF18181B),
+      onSurface: const Color(0xFFF4F4F5),
+      onSurfaceVariant: const Color(0xFF9CA3AF),
+      outline: const Color(0xFF2A2A2E),
+      outlineVariant: const Color(0xFF1A1A1E),
+    );
+  }
+
   /// [GlassThemeLabels.glassmorphism]: odak / birincil vurgular mavi.
   static ColorScheme _colorSchemeBlue() {
     final base = ColorScheme.fromSeed(
@@ -242,6 +334,84 @@ abstract final class AppTheme {
       onSurfaceVariant: const Color(0xFF9E9E9E),
       outline: const Color(0xFF383838),
       outlineVariant: const Color(0xFF282828),
+    );
+  }
+
+  /// [GlassThemeLabels.minaGlass]: Samsung One UI tarzı mavi vurgu, koyu lacivert yüzeyler.
+  static ColorScheme _colorSchemeMinaGlass() {
+    final base = ColorScheme.fromSeed(
+      seedColor: const Color(0xFF3288F6),
+      brightness: Brightness.dark,
+      surface: const Color(0xFF0D1522),
+    );
+    return base.copyWith(
+      primary: const Color(0xFF3288F6),
+      onPrimary: Colors.white,
+      primaryContainer: const Color(0xFF1E4A8C),
+      onPrimaryContainer: const Color(0xFFE3F2FF),
+      secondary: const Color(0xFF5BA3F5),
+      onSecondary: const Color(0xFF061018),
+      surface: const Color(0xFF0D1522),
+      surfaceContainerLow: const Color(0xFF121C2C),
+      surfaceContainer: const Color(0xFF182436),
+      surfaceContainerHigh: const Color(0xFF1F2D42),
+      surfaceContainerHighest: const Color(0xFF263550),
+      onSurface: const Color(0xFFF0F4FA),
+      onSurfaceVariant: const Color(0xFFB8C4DA),
+      outline: const Color(0xFF3D4F6B),
+      outlineVariant: const Color(0xFF2A384D),
+    );
+  }
+
+  /// [GlassThemeLabels.flyUi]: Flyme mavi–camgöbeği vurgu, antrasit cam yüzeyler.
+  static ColorScheme _colorSchemeFlyUi() {
+    final base = ColorScheme.fromSeed(
+      seedColor: _flyBlue,
+      brightness: Brightness.dark,
+      surface: const Color(0xFF1A1A1E),
+    );
+    return base.copyWith(
+      primary: _flyBlue,
+      onPrimary: Colors.white,
+      primaryContainer: const Color(0xFF1A4A7A),
+      onPrimaryContainer: const Color(0xFFD6EEFF),
+      secondary: _flyCyan,
+      onSecondary: const Color(0xFF0A1A18),
+      surface: const Color(0xFF1A1A1E),
+      surfaceContainerLow: const Color(0xFF202024),
+      surfaceContainer: const Color(0xFF26262C),
+      surfaceContainerHigh: const Color(0xFF2C2C32),
+      surfaceContainerHighest: const Color(0xFF34343A),
+      onSurface: const Color(0xFFF2F3F5),
+      onSurfaceVariant: const Color(0xFFA8ADB8),
+      outline: const Color(0xFF454550),
+      outlineVariant: const Color(0xFF323238),
+    );
+  }
+
+  /// [GlassThemeLabels.semcTheme]: Xperia SEMC koyu yüzey, yeşil vurgu.
+  static ColorScheme _colorSchemeSemc() {
+    final base = ColorScheme.fromSeed(
+      seedColor: const Color(0xFF00A877),
+      brightness: Brightness.dark,
+      surface: const Color(0xFF0A0C10),
+    );
+    return base.copyWith(
+      primary: const Color(0xFF00C989),
+      onPrimary: const Color(0xFF001A12),
+      primaryContainer: const Color(0xFF0D4D3A),
+      onPrimaryContainer: const Color(0xFFB8F5E0),
+      secondary: const Color(0xFF33D4A8),
+      onSecondary: const Color(0xFF001A12),
+      surface: const Color(0xFF0A0C10),
+      surfaceContainerLow: const Color(0xFF101418),
+      surfaceContainer: const Color(0xFF161C20),
+      surfaceContainerHigh: const Color(0xFF1C2428),
+      surfaceContainerHighest: const Color(0xFF242E32),
+      onSurface: const Color(0xFFE8F0EC),
+      onSurfaceVariant: const Color(0xFF8FA89C),
+      outline: const Color(0xFF2E4038),
+      outlineVariant: const Color(0xFF1E2C26),
     );
   }
 
@@ -428,6 +598,82 @@ abstract final class AppTheme {
         const Color(0xFF5BA3F5).withValues(alpha: 0.38),
       );
 
+  /// AMOLED siyah: koyu cam ile aynı yapı, saf siyah yüzey + camgöbeği odak.
+  static ThemeData get amoledBlack => _darkTheme(
+        _colorSchemeAmoled(),
+        const Color(0xFF22D3EE).withValues(alpha: 0.42),
+      );
+
+  /// One UI benzeri daha geniş köşe yarıçapları ve mavi odak.
+  static ThemeData get minaGlass {
+    final cs = _colorSchemeMinaGlass();
+    final base = _darkTheme(
+      cs,
+      const Color(0xFF4B9BFF).withValues(alpha: 0.42),
+    );
+    return base.copyWith(
+      cardTheme: CardThemeData(
+        elevation: 0,
+        color: cs.surfaceContainer.withValues(alpha: 0.9),
+        surfaceTintColor: cs.primary.withValues(alpha: 0.08),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(26),
+          side: BorderSide(color: cs.outline.withValues(alpha: 0.42)),
+        ),
+        clipBehavior: Clip.antiAlias,
+      ),
+      chipTheme: ChipThemeData(
+        backgroundColor: cs.surfaceContainerHigh,
+        selectedColor: cs.primaryContainer,
+        disabledColor: cs.surfaceContainerHighest,
+        labelStyle: TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.w500,
+          color: cs.onSurface,
+        ),
+        secondaryLabelStyle: TextStyle(
+          fontSize: 14,
+          color: cs.onPrimaryContainer,
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
+        side: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.5)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(24),
+        ),
+        showCheckmark: false,
+      ),
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(
+          padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 16),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+          ),
+          elevation: 0,
+        ),
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: cs.surfaceContainerHigh.withValues(alpha: 0.72),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(22),
+          borderSide:
+              BorderSide(color: cs.outlineVariant.withValues(alpha: 0.72)),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(22),
+          borderSide:
+              BorderSide(color: cs.outlineVariant.withValues(alpha: 0.52)),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(22),
+          borderSide: BorderSide(color: cs.primary, width: 2),
+        ),
+      ),
+    );
+  }
+
   static ThemeData get darkFlat {
     final cs = _colorSchemeDarkFlat();
     final base = _darkTheme(
@@ -541,6 +787,146 @@ abstract final class AppTheme {
         const Color(0xFFE2E8F0).withValues(alpha: 0.40),
       );
 
+  /// Flyme: yuvarlatılmış kartlar, mavi odak, hafif cam yüzeyler.
+  static ThemeData get flyUi {
+    final cs = _colorSchemeFlyUi();
+    final base = _darkTheme(
+      cs,
+      _flyBlue.withValues(alpha: 0.36),
+    );
+    return base.copyWith(
+      cardTheme: CardThemeData(
+        elevation: 0,
+        color: cs.surfaceContainer.withValues(alpha: 0.92),
+        surfaceTintColor: cs.primary.withValues(alpha: 0.06),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(color: cs.outline.withValues(alpha: 0.35)),
+        ),
+        clipBehavior: Clip.antiAlias,
+      ),
+      chipTheme: ChipThemeData(
+        backgroundColor: cs.surfaceContainerHigh,
+        selectedColor: cs.primaryContainer,
+        disabledColor: cs.surfaceContainerHighest,
+        labelStyle: TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.w500,
+          color: cs.onSurface,
+        ),
+        secondaryLabelStyle: TextStyle(
+          fontSize: 14,
+          color: cs.onPrimaryContainer,
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
+        side: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.45)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(18),
+        ),
+        showCheckmark: false,
+      ),
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(
+          padding: const EdgeInsets.symmetric(horizontal: 26, vertical: 14),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+          ),
+          elevation: 0,
+        ),
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: cs.surfaceContainerHigh.withValues(alpha: 0.75),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 18, vertical: 14),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(18),
+          borderSide:
+              BorderSide(color: cs.outlineVariant.withValues(alpha: 0.55)),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(18),
+          borderSide:
+              BorderSide(color: cs.outlineVariant.withValues(alpha: 0.42)),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(18),
+          borderSide: BorderSide(color: cs.primary, width: 1.8),
+        ),
+      ),
+    );
+  }
+
+  /// Xperia SEMC: yeşil odak, koyu cam kartlar, hafif yuvarlatılmış köşeler.
+  static ThemeData get semcTheme {
+    final cs = _colorSchemeSemc();
+    final base = _darkTheme(
+      cs,
+      const Color(0xFF00C989).withValues(alpha: 0.38),
+    );
+    return base.copyWith(
+      cardTheme: CardThemeData(
+        elevation: 0,
+        color: cs.surfaceContainer.withValues(alpha: 0.88),
+        surfaceTintColor: cs.primary.withValues(alpha: 0.10),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(18),
+          side: BorderSide(color: cs.outline.withValues(alpha: 0.40)),
+        ),
+        clipBehavior: Clip.antiAlias,
+      ),
+      chipTheme: ChipThemeData(
+        backgroundColor: cs.surfaceContainerHigh,
+        selectedColor: cs.primaryContainer,
+        disabledColor: cs.surfaceContainerHighest,
+        labelStyle: TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.w500,
+          color: cs.onSurface,
+        ),
+        secondaryLabelStyle: TextStyle(
+          fontSize: 14,
+          color: cs.onPrimaryContainer,
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 0),
+        side: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.55)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+        ),
+        showCheckmark: false,
+      ),
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(
+          padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 16),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          elevation: 0,
+        ),
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: cs.surfaceContainerHigh.withValues(alpha: 0.70),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide:
+              BorderSide(color: cs.outlineVariant.withValues(alpha: 0.65)),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide:
+              BorderSide(color: cs.outlineVariant.withValues(alpha: 0.48)),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide(color: cs.primary, width: 1.8),
+        ),
+      ),
+    );
+  }
+
   /// [GetMaterialApp.theme].
   static ThemeData materialThemeForLabel(
     String? themeLabel, {
@@ -549,12 +935,20 @@ abstract final class AppTheme {
     ThemeData base;
     if (themeLabel == GlassThemeLabels.glassmorphism) {
       base = darkGlassmorphism;
+    } else if (themeLabel == GlassThemeLabels.amoledBlack) {
+      base = amoledBlack;
+    } else if (themeLabel == GlassThemeLabels.minaGlass) {
+      base = minaGlass;
     } else if (themeLabel == GlassThemeLabels.darkFlat) {
       base = darkFlat;
     } else if (themeLabel == GlassThemeLabels.flatBlack) {
       base = flatBlack;
     } else if (themeLabel == GlassThemeLabels.glassGri) {
       base = glassGri;
+    } else if (themeLabel == GlassThemeLabels.semcTheme) {
+      base = semcTheme;
+    } else if (themeLabel == GlassThemeLabels.flyUi) {
+      base = flyUi;
     } else {
       base = dark;
     }
@@ -570,6 +964,14 @@ abstract final class AppTheme {
     switch (key) {
       case 'roboto':
         return GoogleFonts.robotoTextTheme(base);
+      case 'roboto_flex':
+        return GoogleFonts.robotoFlexTextTheme(base);
+      case 'poppins':
+        return GoogleFonts.poppinsTextTheme(base);
+      case 'rubik':
+        return GoogleFonts.rubikTextTheme(base);
+      case 'montserrat':
+        return GoogleFonts.montserratTextTheme(base);
       case 'noto':
         return GoogleFonts.notoSansTextTheme(base);
       case 'mono':

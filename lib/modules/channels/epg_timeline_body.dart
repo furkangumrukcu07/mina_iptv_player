@@ -8,12 +8,14 @@ import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 
+import '../../core/utils/epg_channel_display.dart';
 import '../../core/services/app_settings_service.dart';
 import '../../core/services/epg_service.dart';
 import '../../core/services/playlist_cache_service.dart';
 import '../../core/layout/app_layout_mode.dart';
 import '../../core/theme/app_performance.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/theme/app_scroll_physics.dart';
 import '../../core/theme/glass_appearance.dart';
 import '../../domain/entities/channel.dart';
 import '../../domain/entities/epg_entities.dart';
@@ -21,14 +23,13 @@ import '../player/player_controller.dart';
 import 'channels_controller.dart';
 import '../../ui/iptv_channel_logo.dart';
 
-const double _kPxPerMinute = 2.75;
-const int _kWindowHours = 6;
+const double _kPxPerMinute = 4.0;
+const int _kWindowHours = 12;
 /// Kanal adı sütunu (logo + saat + isim); dikey/yatay kompakt.
-const double _kNameCol = 72;
-const double _kRowH = 44;
+const double _kNameColPortrait = 84; // Dikey modda daha fazla yer açın
+const double _kNameColLandscape = 108;
 const double _kTimelineStripH = 40;
 /// Yatay EPG: referans düzeni — daha geniş kanal satırı.
-const double _kNameColLandscape = 108;
 const double _kRowLandscape = 52;
 final Map<String, Timer> _epgEnsureVisibleDebounceTimers = <String, Timer>{};
 
@@ -57,10 +58,33 @@ bool _epgIsPortrait(BuildContext context) =>
     MediaQuery.orientationOf(context) == Orientation.portrait;
 
 double _epgNameColW(BuildContext context) =>
-    _epgIsPortrait(context) ? _kNameCol : _kNameColLandscape;
+    _epgIsPortrait(context) ? _kNameColPortrait : _kNameColLandscape;
 
-double _epgRowH(BuildContext context) =>
-    _epgIsPortrait(context) ? _kRowH : _kRowLandscape;
+double _epgRowH(BuildContext context) {
+  if (_epgIsPortrait(context)) {
+    // Portre modunda, 7 kanalı sığdırmak için dinamik yükseklik hesaplayın
+    final mediaQuery = MediaQuery.of(context);
+    final screenHeight = mediaQuery.size.height;
+    // SafeArea, başlık ve zaman şeridi yüksekliğini çıkarın
+    // Bu değerler sabit kabul edilirse veya dinamik olarak hesaplanabilirse daha iyi olur
+    final headerHeight = 60.0; // Tahmini başlık yüksekliği
+    final epgHeroHeight = _epgHeroHeight(context); // Dinamik olarak hesaplanan Hero panel yüksekliği
+    final timelineStripHeight = _kTimelineStripH + 4 + 4; // Zaman şeridi + üst/alt dolgu
+    final bottomPadding = 12.0; // ListView padding bottom
+
+    final availableHeight = screenHeight -
+        mediaQuery.padding.top -
+        mediaQuery.padding.bottom -
+        headerHeight -
+        epgHeroHeight -
+        timelineStripHeight -
+        bottomPadding;
+
+    // Yaklaşık 7 kanal için satır yüksekliği
+    return (availableHeight / 7).clamp(48.0, 70.0); // Minimum ve maksimum değeri belirleyin
+  }
+  return _kRowLandscape;
+}
 
 double _epgHeroHeight(BuildContext context) {
   if (MediaQuery.orientationOf(context) == Orientation.portrait) {
@@ -100,6 +124,22 @@ bool _epgTvCenterActivateKey(LogicalKeyboardKey k) =>
     k == LogicalKeyboardKey.space ||
     k == LogicalKeyboardKey.gameButtonSelect;
 
+bool _epgProgrammeHasContent(EpgProgramme p) {
+  final t = p.title.trim();
+  if (t.isEmpty) return false;
+  final lower = t.toLowerCase();
+  const placeholders = {
+    'no information',
+    'bilgi yok',
+    'to be announced',
+    'tba',
+    'n/a',
+    'unknown',
+    'no info',
+  };
+  return !placeholders.contains(lower);
+}
+
 /// Tam ekran: üstte cam çerçeveli detay + önizleme, altta zaman şeridi ve ızgara.
 class ChannelsEpgTimelineScaffold extends StatelessWidget {
   const ChannelsEpgTimelineScaffold({super.key, required this.controller});
@@ -122,7 +162,10 @@ class ChannelsEpgTimelineScaffold extends StatelessWidget {
             final mode = settings.layoutMode.value;
             final sharpBg = remoteNavForScreenLayout(context, mode);
             const sigma = 6.5;
-            final skipBgBlur = reduce || sharpBg;
+            final skipBgBlur = reduce ||
+                sharpBg ||
+                GlassAppearance.fromLabel(themeLabel)
+                    .usesSyntheticGlassSurface;
             final bgDecode = AppTheme.homeBackgroundImageDecodeParams(
               context,
               themeLabel,
@@ -328,10 +371,34 @@ class _ChannelsEpgTimelineBodyState extends State<ChannelsEpgTimelineBody> {
   /// setState() yerine kullanılarak rebuild kapsamı sadece liste ile sınırlanır
   final ValueNotifier<int> _tickValue = ValueNotifier<int>(0);
 
+  /// İlk açılışta “şimdi” çizgisini görünür alana getir (bir kez).
+  bool _didInitialTimeAlignment = false;
+  bool _initialAlignCallbackPending = false;
+
   /// Kullanıcının seçtiği program (ızgara); null iken kanal + “şimdiki” özetlenir.
   int? _pickChannelId;
   DateTime? _pickProgStart;
   String? _pickProgTitle;
+
+  void _scheduleInitialTimelineScroll({
+    required double viewportW,
+    required double nameColW,
+    required DateTime windowStart,
+    required DateTime nowTime,
+  }) {
+    if (_didInitialTimeAlignment || _initialAlignCallbackPending) return;
+    _initialAlignCallbackPending = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initialAlignCallbackPending = false;
+      if (!mounted || !_hScroll.hasClients) return;
+      _didInitialTimeAlignment = true;
+      final x = nowTime.difference(windowStart).inMinutes * _kPxPerMinute;
+      final needleX = nameColW + x;
+      final target = needleX - viewportW * 0.38;
+      final max = _hScroll.position.maxScrollExtent;
+      _hScroll.jumpTo(target.clamp(0.0, max));
+    });
+  }
 
   @override
   void initState() {
@@ -425,11 +492,12 @@ class _ChannelsEpgTimelineBodyState extends State<ChannelsEpgTimelineBody> {
 
       final raw = widget.controller.filteredChannels;
       final channels = List<Channel>.from(raw);
-      final windowProgrammesByChannel = <int, List<EpgProgramme>>{};
-      for (final ch in channels) {
-        windowProgrammesByChannel[ch.id] =
-            epg.programmesInWindowForLiveChannel(ch, w0, w1);
-      }
+      // [PERF] Window programlarını burada (tüm kanallar için) eager hesaplamak
+      // "Tüm kanallar" seçiliyken binlerce kanal × her `now` (30 sn) tetikte
+      // ana thread'i bloke ediyordu. Artık her satır kendi programını
+      // itemBuilder içinde lazy çözer; EpgService zaten sonucu cache'liyor.
+      List<EpgProgramme> windowProgrammesFor(Channel ch) =>
+          epg.programmesInWindowForLiveChannel(ch, w0, w1);
 
       if (channels.isEmpty) {
         return Center(
@@ -521,93 +589,135 @@ class _ChannelsEpgTimelineBodyState extends State<ChannelsEpgTimelineBody> {
                           ),
                         ),
                       ),
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
-                        child: _EpgTimelineStripGlass(
-                          windowStart: w0,
-                          windowEnd: w1,
-                          gridWidth: gridW,
-                          nameColWidth: nameCol,
-                          stripHeight: _kTimelineStripH,
-                          xAt: xAt,
-                          now: now,
-                        ),
-                      ),
                       Expanded(
-                        child: Scrollbar(
-                          controller: _hScroll,
-                          thumbVisibility: true,
-                          child: SingleChildScrollView(
-                            controller: _hScroll,
-                            scrollDirection: Axis.horizontal,
-                            child: SizedBox(
-                              width: totalW,
-                              child: Scrollbar(
-                                controller: _vScroll,
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+                          child: LayoutBuilder(
+                            builder: (context, gridConstraints) {
+                              _scheduleInitialTimelineScroll(
+                                viewportW: gridConstraints.maxWidth,
+                                nameColW: nameCol,
+                                windowStart: w0,
+                                nowTime: now,
+                              );
+                              return Scrollbar(
+                                controller: _hScroll,
                                 thumbVisibility: true,
-                                child: ValueListenableBuilder<int>(
-                                  valueListenable: _tickValue,
-                                  builder: (context, tick, child) {
-                                    return ListView.builder(
-                                      controller: _vScroll,
-                                      padding:
-                                          const EdgeInsets.fromLTRB(0, 0, 12, 12),
-                                      itemCount: channels.length,
-                                      itemBuilder: (context, index) {
-                                        final ch = channels[index];
-                                        final windowProgrammes =
-                                            windowProgrammesByChannel[ch.id] ??
-                                                const <EpgProgramme>[];
-                                        return SizedBox(
-                                          height: rowH,
-                                          child: Row(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.stretch,
-                                            children: [
-                                              SizedBox(
-                                                width: nameCol,
-                                                child: _EpgChannelLogoCell(
-                                                  channel: ch,
-                                                  programmeStartLabel:
-                                                      _programmeStartLabelForRow(
-                                                    ch,
-                                                    epg,
-                                                    windowProgrammes,
-                                                  ),
-                                                  onFocused: () =>
-                                                      _onChannelCellFocused(ch),
-                                                  landscapeEpgLayout:
-                                                      !_epgIsPortrait(context),
-                                                  isResolvedChannelRow:
-                                                      ch.id == selCh.id,
-                                                  landscapeChannelRank:
-                                                      !_epgIsPortrait(context)
-                                                      ? index + 1
-                                                      : null,
-                                                ),
-                                              ),
-                                              SizedBox(
-                                                width: gridW,
-                                                child: _EpgProgrammeRowGlass(
-                                                  channel: ch,
-                                                  programmes:
-                                                      windowProgrammes,
-                                                  gridWidth: gridW,
-                                                  xAt: xAt,
-                                                  now: now,
-                                                  isPicked: _isPicked,
-                                                  onPick: _selectProgramme,
-                                                ),
-                                              ),
-                                            ],
+                                child: SingleChildScrollView(
+                                  controller: _hScroll,
+                                  scrollDirection: Axis.horizontal,
+                                  physics: AppScrollPhysics.list(),
+                                  child: SizedBox(
+                                    width: totalW,
+                                    height: gridConstraints.maxHeight,
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Padding(
+                                          padding:
+                                              const EdgeInsets.only(bottom: 6),
+                                          child: _EpgTimelineStripGlass(
+                                            windowStart: w0,
+                                            windowEnd: w1,
+                                            gridWidth: gridW,
+                                            nameColWidth: nameCol,
+                                            stripHeight: _kTimelineStripH,
+                                            xAt: xAt,
+                                            now: now,
                                           ),
-                                        );
-                                      },
-                                    );
-                                  },
+                                        ),
+                                        Expanded(
+                                          child: Scrollbar(
+                                            controller: _vScroll,
+                                            thumbVisibility: true,
+                                            child: ValueListenableBuilder<int>(
+                                              valueListenable: _tickValue,
+                                              builder: (context, tick, child) {
+                                                return ListView.builder(
+                                                  controller: _vScroll,
+                                                  primary: false,
+                                                  physics:
+                                                      AppScrollPhysics.list(),
+                                                  padding:
+                                                      const EdgeInsets.only(
+                                                    right: 4,
+                                                    bottom: 8,
+                                                  ),
+                                                  itemCount: channels.length,
+                                                  itemBuilder:
+                                                      (context, index) {
+                                                    final ch =
+                                                        channels[index];
+                                                    final windowProgrammes =
+                                                        windowProgrammesFor(
+                                                            ch);
+                                                    return SizedBox(
+                                                      height: rowH,
+                                                      child: Row(
+                                                        crossAxisAlignment:
+                                                            CrossAxisAlignment
+                                                                .stretch,
+                                                        children: [
+                                                          SizedBox(
+                                                            width: nameCol,
+                                                            child:
+                                                                _EpgChannelLogoCell(
+                                                              channel: ch,
+                                                              programmeStartLabel:
+                                                                  _programmeStartLabelForRow(
+                                                                ch,
+                                                                epg,
+                                                                windowProgrammes,
+                                                              ),
+                                                              onFocused: () =>
+                                                                  _onChannelCellFocused(
+                                                                      ch),
+                                                              landscapeEpgLayout:
+                                                                  !_epgIsPortrait(
+                                                                      context),
+                                                              isResolvedChannelRow:
+                                                                  ch.id ==
+                                                                      selCh.id,
+                                                              landscapeChannelRank:
+                                                                  !_epgIsPortrait(
+                                                                          context)
+                                                                      ? index +
+                                                                          1
+                                                                      : null,
+                                                            ),
+                                                          ),
+                                                          SizedBox(
+                                                            width: gridW,
+                                                            child:
+                                                                _EpgProgrammeRowGlass(
+                                                              channel: ch,
+                                                              programmes:
+                                                                  windowProgrammes,
+                                                              gridWidth: gridW,
+                                                              xAt: xAt,
+                                                              now: now,
+                                                              isPicked:
+                                                                  _isPicked,
+                                                              onPick:
+                                                                  _selectProgramme,
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                    );
+                                                  },
+                                                );
+                                              },
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
                                 ),
-                              ),
-                            ),
+                              );
+                            },
                           ),
                         ),
                       ),
@@ -641,6 +751,8 @@ class _PlayerSingleChannelEpgPanelState extends State<PlayerSingleChannelEpgPane
   late ScrollController _vScroll;
   Timer? _tick;
   final ValueNotifier<int> _tickValue = ValueNotifier<int>(0);
+  bool _didInitialTimeAlignment = false;
+  bool _initialAlignCallbackPending = false;
 
   int? _pickChannelId;
   DateTime? _pickProgStart;
@@ -713,6 +825,26 @@ class _PlayerSingleChannelEpgPanelState extends State<PlayerSingleChannelEpgPane
     if (cur != null) return _fmtHm(cur.start);
     if (windowProgrammes.isNotEmpty) return _fmtHm(windowProgrammes.first.start);
     return '--:--';
+  }
+
+  void _scheduleInitialTimelineScroll({
+    required double viewportW,
+    required double nameColW,
+    required DateTime windowStart,
+    required DateTime nowTime,
+  }) {
+    if (_didInitialTimeAlignment || _initialAlignCallbackPending) return;
+    _initialAlignCallbackPending = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _initialAlignCallbackPending = false;
+      if (!mounted || !_hScroll.hasClients) return;
+      _didInitialTimeAlignment = true;
+      final x = nowTime.difference(windowStart).inMinutes * _kPxPerMinute;
+      final needleX = nameColW + x;
+      final target = needleX - viewportW * 0.38;
+      final max = _hScroll.position.maxScrollExtent;
+      _hScroll.jumpTo(target.clamp(0.0, max));
+    });
   }
 
   @override
@@ -806,84 +938,131 @@ class _PlayerSingleChannelEpgPanelState extends State<PlayerSingleChannelEpgPane
                           }),
                         ),
                       ),
-                      Padding(
-                        padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
-                        child: _EpgTimelineStripGlass(
-                          windowStart: w0,
-                          windowEnd: w1,
-                          gridWidth: gridW,
-                          nameColWidth: nameCol,
-                          stripHeight: _kTimelineStripH,
-                          xAt: xAt,
-                          now: now,
-                        ),
-                      ),
                       Expanded(
-                        child: Scrollbar(
-                          controller: _hScroll,
-                          thumbVisibility: true,
-                          child: SingleChildScrollView(
-                            controller: _hScroll,
-                            scrollDirection: Axis.horizontal,
-                            child: SizedBox(
-                              width: totalW,
-                              child: Scrollbar(
-                                controller: _vScroll,
+                        child: Padding(
+                          padding: const EdgeInsets.fromLTRB(12, 0, 12, 4),
+                          child: LayoutBuilder(
+                            builder: (context, gridConstraints) {
+                              _scheduleInitialTimelineScroll(
+                                viewportW: gridConstraints.maxWidth,
+                                nameColW: nameCol,
+                                windowStart: w0,
+                                nowTime: now,
+                              );
+                              return Scrollbar(
+                                controller: _hScroll,
                                 thumbVisibility: true,
-                                child: ListView.builder(
-                                  controller: _vScroll,
-                                  padding:
-                                      const EdgeInsets.fromLTRB(0, 0, 12, 12),
-                                  itemCount: channels.length,
-                                  itemBuilder: (context, index) {
-                                    final rowCh = channels[index];
-                                    return SizedBox(
-                                      height: rowH,
-                                      child: Row(
-                                        crossAxisAlignment:
-                                            CrossAxisAlignment.stretch,
-                                        children: [
-                                          SizedBox(
-                                            width: nameCol,
-                                            child: _EpgChannelLogoCell(
-                                              channel: rowCh,
-                                              programmeStartLabel:
-                                                  _programmeStartLabelForRow(
-                                                rowCh,
-                                                epg,
-                                                windowProgrammes,
-                                              ),
-                                              onFocused: () =>
-                                                  _onChannelCellFocused(rowCh),
-                                              landscapeEpgLayout:
-                                                  !_epgIsPortrait(context),
-                                              isResolvedChannelRow:
-                                                  rowCh.id == ch.id,
-                                              landscapeChannelRank:
-                                                  !_epgIsPortrait(context)
-                                                      ? 1
-                                                      : null,
+                                child: SingleChildScrollView(
+                                  controller: _hScroll,
+                                  scrollDirection: Axis.horizontal,
+                                  physics: AppScrollPhysics.list(),
+                                  child: SizedBox(
+                                    width: totalW,
+                                    height: gridConstraints.maxHeight,
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Padding(
+                                          padding:
+                                              const EdgeInsets.only(bottom: 6),
+                                          child: _EpgTimelineStripGlass(
+                                            windowStart: w0,
+                                            windowEnd: w1,
+                                            gridWidth: gridW,
+                                            nameColWidth: nameCol,
+                                            stripHeight: _kTimelineStripH,
+                                            xAt: xAt,
+                                            now: now,
+                                          ),
+                                        ),
+                                        Expanded(
+                                          child: Scrollbar(
+                                            controller: _vScroll,
+                                            thumbVisibility: true,
+                                            child: ValueListenableBuilder<int>(
+                                              valueListenable: _tickValue,
+                                              builder: (context, tick, _) {
+                                                return ListView.builder(
+                                                  controller: _vScroll,
+                                                  primary: false,
+                                                  physics:
+                                                      AppScrollPhysics.list(),
+                                                  padding:
+                                                      const EdgeInsets.only(
+                                                    right: 4,
+                                                    bottom: 8,
+                                                  ),
+                                                  itemCount: channels.length,
+                                                  itemBuilder:
+                                                      (context, index) {
+                                                    final rowCh =
+                                                        channels[index];
+                                                    return SizedBox(
+                                                      height: rowH,
+                                                      child: Row(
+                                                        crossAxisAlignment:
+                                                            CrossAxisAlignment
+                                                                .stretch,
+                                                        children: [
+                                                          SizedBox(
+                                                            width: nameCol,
+                                                            child:
+                                                                _EpgChannelLogoCell(
+                                                              channel: rowCh,
+                                                              programmeStartLabel:
+                                                                  _programmeStartLabelForRow(
+                                                                rowCh,
+                                                                epg,
+                                                                windowProgrammes,
+                                                              ),
+                                                              onFocused: () =>
+                                                                  _onChannelCellFocused(
+                                                                      rowCh),
+                                                              landscapeEpgLayout:
+                                                                  !_epgIsPortrait(
+                                                                      context),
+                                                              isResolvedChannelRow:
+                                                                  rowCh.id ==
+                                                                      ch.id,
+                                                              landscapeChannelRank:
+                                                                  !_epgIsPortrait(
+                                                                          context)
+                                                                      ? 1
+                                                                      : null,
+                                                            ),
+                                                          ),
+                                                          SizedBox(
+                                                            width: gridW,
+                                                            child:
+                                                                _EpgProgrammeRowGlass(
+                                                              channel: rowCh,
+                                                              programmes:
+                                                                  windowProgrammes,
+                                                              gridWidth: gridW,
+                                                              xAt: xAt,
+                                                              now: now,
+                                                              isPicked:
+                                                                  _isPicked,
+                                                              onPick:
+                                                                  _selectProgramme,
+                                                            ),
+                                                          ),
+                                                        ],
+                                                      ),
+                                                    );
+                                                  },
+                                                );
+                                              },
                                             ),
                                           ),
-                                          SizedBox(
-                                            width: gridW,
-                                            child: _EpgProgrammeRowGlass(
-                                              channel: rowCh,
-                                              programmes: windowProgrammes,
-                                              gridWidth: gridW,
-                                              xAt: xAt,
-                                              now: now,
-                                              isPicked: _isPicked,
-                                              onPick: _selectProgramme,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    );
-                                  },
+                                        ),
+                                      ],
+                                    ),
+                                  ),
                                 ),
-                              ),
-                            ),
+                              );
+                            },
                           ),
                         ),
                       ),
@@ -1190,7 +1369,7 @@ class _EpgHeroGlassPanel extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         Text(
-          channel.name,
+          EpgChannelDisplay.liveChannelName(channel.name),
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
           style: TextStyle(
@@ -1300,7 +1479,7 @@ class _EpgHeroGlassPanel extends StatelessWidget {
         head,
         Expanded(
           child: SingleChildScrollView(
-            physics: const BouncingScrollPhysics(),
+            physics: AppScrollPhysics.list(),
             child: body,
           ),
         ),
@@ -1556,7 +1735,8 @@ class _EpgTimelineStripGlass extends StatelessWidget {
                 ),
               ),
             ),
-            Expanded(
+            SizedBox(
+              width: gridWidth,
               child: Stack(
                 clipBehavior: Clip.hardEdge,
                 children: [
@@ -1689,14 +1869,6 @@ class _EpgChannelLogoCell extends StatelessWidget {
     return Obx(() {
       final settings = Get.find<AppSettingsService>();
       final ga = GlassAppearance.fromLabel(settings.themeLabel.value);
-      final tv = settings.layoutMode.value == AppLayoutMode.tv;
-      final sigma = AppPerformance.glassSigma(
-        settings,
-        zeroOnTvLayout: true,
-        isTvLayout: tv,
-        fullSigma: 8,
-        reducedSigma: 4,
-      );
       final r = BorderRadius.circular(10);
       final prim = Theme.of(context).colorScheme.primary;
 
@@ -1814,7 +1986,7 @@ class _EpgChannelLogoCell extends StatelessWidget {
                               ),
                             ),
                             Text(
-                              channel.name,
+                              EpgChannelDisplay.liveChannelName(channel.name),
                               maxLines: 2,
                               overflow: TextOverflow.ellipsis,
                               style: TextStyle(
@@ -1876,12 +2048,7 @@ class _EpgChannelLogoCell extends StatelessWidget {
 
             return ClipRRect(
               borderRadius: r,
-              child: sigma <= 0
-                  ? decorated
-                  : BackdropFilter(
-                      filter: ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
-                      child: decorated,
-                    ),
+              child: decorated,
             );
           },
         ),
@@ -1969,20 +2136,33 @@ class _EpgProgrammeFocusCell extends StatelessWidget {
                   : Colors.white.withValues(alpha: 0.92))
               : borderIdle;
           final borderW = focused ? 2.0 : (picked ? 1.5 : 1.0);
+          final narrow = cellWidth < 56;
+          final titleFs = narrow
+              ? (landscapeBlueAccent ? 8.0 : 8.5)
+              : (landscapeBlueAccent ? 9.0 : 9.5);
+          final timeFs = narrow
+              ? (landscapeBlueAccent ? 7.5 : 8.0)
+              : (landscapeBlueAccent ? 8.0 : 8.5);
+          final hPad = narrow ? 4.0 : 5.0;
+          final vPad = narrow ? 2.0 : 3.0;
+          final titleLines = narrow ? 1 : (cellWidth < 88 ? 1 : 2);
+          final showTime = cellWidth >= 40;
           return Material(
             color: Colors.transparent,
             child: InkWell(
               onTap: () => onPick(channel, p),
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(8),
               child: AnimatedContainer(
                 duration: AppPerformance.uiDuration(
                   const Duration(milliseconds: 160),
                 ),
                 width: cellWidth,
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 6, vertical: 4),
+                padding: EdgeInsets.symmetric(
+                  horizontal: hPad,
+                  vertical: vPad,
+                ),
                 decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(10),
+                  borderRadius: BorderRadius.circular(8),
                   border: Border.all(color: borderColor, width: borderW),
                   gradient: LinearGradient(
                     begin: Alignment.topLeft,
@@ -1999,31 +2179,41 @@ class _EpgProgrammeFocusCell extends StatelessWidget {
                             offset: const Offset(0, 3),
                           ),
                         ]
-                      : null,
+                      : [
+                          BoxShadow(
+                            color: Colors.black.withValues(alpha: 0.1),
+                            blurRadius: 4,
+                            offset: const Offset(0, 2),
+                          ),
+                        ],
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Text(
-                      p.title,
-                      maxLines: 2,
+                      p.title.trim(),
+                      maxLines: titleLines,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.94),
-                        fontSize: 11,
+                        color: Colors.white.withValues(alpha: 0.96),
+                        fontSize: titleFs,
                         height: 1.12,
                         fontWeight: live ? FontWeight.w800 : FontWeight.w600,
+                        letterSpacing: 0.05,
                       ),
                     ),
-                    Text(
-                      timeFmt.format(p.start),
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.5),
-                        fontSize: 9,
-                        fontWeight: FontWeight.w600,
+                    if (showTime)
+                      Text(
+                        timeFmt.format(p.start),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.52),
+                          fontSize: timeFs,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
-                    ),
                   ],
                 ),
               ),
@@ -2056,7 +2246,7 @@ class _EpgProgrammeRowGlass extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final list = programmes;
+    final list = programmes.where(_epgProgrammeHasContent).toList();
     final nowX = xAt(now);
     final timeFmt =
         DateFormat('HH:mm', Localizations.localeOf(context).toString());
@@ -2071,7 +2261,8 @@ class _EpgProgrammeRowGlass extends StatelessWidget {
       ...list.map((p) {
         final left = xAt(p.start);
         final right = xAt(p.end);
-        final w = (right - left).clamp(10.0, gridWidth);
+        final w = (right - left).clamp(0.0, gridWidth);
+        if (w < 14) return const SizedBox.shrink();
         final picked = isPicked(channel, p);
         final live = p.isLive;
         final fill = live

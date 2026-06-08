@@ -8,17 +8,36 @@ import 'package:flutter/services.dart';
 
 import '../core/layout/app_layout_mode.dart';
 import '../core/services/app_settings_service.dart';
+import '../core/services/search_history_service.dart';
 import '../core/theme/app_performance.dart';
 import '../core/theme/glass_appearance.dart';
 import 'glass_overlays.dart';
 import 'iptv_channel_logo.dart';
+import 'recent_searches_strip.dart';
+
+/// TV orta sütun [GlassListNumberTile] satır yüksekliği (padding + içerik).
+/// [ListView.itemExtent] ve programlı scroll ile hizalı kalır.
+const double kTvGlassListRowExtent = 56;
+
+/// TV liste: basılı tutunca her adımda tek satır (ivmesiz).
+const Duration kTvListVerticalHoldStepInterval =
+    Duration(milliseconds: 120);
+
+/// TV liste: basılı tutma tekrarları başlamadan önce bekleme (ilk adım KeyDown'da).
+const Duration kTvListVerticalHoldPauseBeforeRepeat =
+    Duration(milliseconds: 400);
 
 /// Canlı TV / gözat üst çubuğu ile aynı kanal arama popup’ı.
+///
+/// [historyScope] verilirse giriş alanı boşken kullanıcının son aramaları
+/// chip olarak listelenir; tıklanan chip metni doldurur, "Uygula"
+/// basıldığında sorgu geçmişe işlenir.
 Future<void> showGlassChannelSearchDialog({
   required BuildContext context,
   required TextEditingController searchController,
   required ValueChanged<String> onSearchChanged,
   required String searchHint,
+  SearchHistoryScope? historyScope,
 }) async {
   final local = TextEditingController(text: searchController.text);
   await showDialog<void>(
@@ -31,9 +50,83 @@ Future<void> showGlassChannelSearchDialog({
           text: t,
           selection: TextSelection.collapsed(offset: t.length),
         );
+        if (historyScope != null) {
+          // Geçmişe yaz — diyalog kapanmasını beklemeden, hata sessizce yutulur.
+          unawaited(
+            Get.find<SearchHistoryService>().record(historyScope, t),
+          );
+        }
         Navigator.of(ctx).pop();
         // Gözat TabController + arama: pop ile ağaç değişirken aynı karede Obx tetiklenmesin.
         Future<void>.microtask(() => onSearchChanged(t));
+      }
+
+      final inputField = TextField(
+        controller: local,
+        autofocus: true,
+        onSubmitted: (_) => applyAndClose(),
+        style: const TextStyle(color: Colors.white, fontSize: 15),
+        decoration: InputDecoration(
+          hintText: searchHint,
+          hintStyle: TextStyle(
+            color: Colors.white.withValues(alpha: 0.45),
+          ),
+          filled: true,
+          fillColor: Colors.white.withValues(alpha: 0.08),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(
+              color: Colors.white.withValues(alpha: 0.25),
+            ),
+          ),
+          enabledBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: BorderSide(
+              color: Colors.white.withValues(alpha: 0.25),
+            ),
+          ),
+          focusedBorder: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(12),
+            borderSide: const BorderSide(
+              color: Color(0xFF4EC4D4),
+              width: 1.5,
+            ),
+          ),
+        ),
+      );
+
+      Widget content;
+      if (historyScope == null) {
+        content = inputField;
+      } else {
+        content = Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            inputField,
+            // Şeridi yalnız giriş boşken göster — kullanıcı yazmaya
+            // başladığında geçmiş yerini sonuç akışına bırakmalı.
+            AnimatedBuilder(
+              animation: local,
+              builder: (_, __) {
+                if (local.text.trim().isNotEmpty) {
+                  return const SizedBox.shrink();
+                }
+                return RecentSearchesStrip(
+                  scope: historyScope,
+                  padding: const EdgeInsets.only(top: 12),
+                  onTap: (q) {
+                    local.value = TextEditingValue(
+                      text: q,
+                      selection: TextSelection.collapsed(offset: q.length),
+                    );
+                    applyAndClose();
+                  },
+                );
+              },
+            ),
+          ],
+        );
       }
 
       return GlassAlertDialog(
@@ -43,54 +136,18 @@ Future<void> showGlassChannelSearchDialog({
           style: const TextStyle(fontWeight: FontWeight.w700),
         ),
         scrollable: false,
-        content: TextField(
-          controller: local,
-          autofocus: true,
-          onSubmitted: (_) => applyAndClose(),
-          style: const TextStyle(color: Colors.white, fontSize: 15),
-          decoration: InputDecoration(
-            hintText: searchHint,
-            hintStyle: TextStyle(
-              color: Colors.white.withValues(alpha: 0.45),
-            ),
-            filled: true,
-            fillColor: Colors.white.withValues(alpha: 0.08),
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(
-                color: Colors.white.withValues(alpha: 0.25),
-              ),
-            ),
-            enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(
-                color: Colors.white.withValues(alpha: 0.25),
-              ),
-            ),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(
-                color: Color(0xFF4EC4D4),
-                width: 1.5,
-              ),
-            ),
-          ),
-        ),
+        content: content,
         actions: [
-          TextButton(
+          GlassDialogActionButton(
+            label: 'common.close'.tr,
             onPressed: () => Navigator.of(ctx).pop(),
-            child: Text(
-              'common.close'.tr,
-              style: TextStyle(color: Colors.white.withValues(alpha: 0.85)),
-            ),
+            onDarkSurface: true,
           ),
-          FilledButton(
+          GlassDialogActionButton(
+            label: 'channels.searchSubmit'.tr,
+            primary: true,
             onPressed: applyAndClose,
-            style: FilledButton.styleFrom(
-              backgroundColor: const Color(0xFF4EC4D4),
-              foregroundColor: Colors.black87,
-            ),
-            child: Text('channels.searchSubmit'.tr),
+            onDarkSurface: true,
           ),
         ],
       );
@@ -257,7 +314,9 @@ class GlassLiveTopBar extends StatelessWidget {
     this.onPlaylist,
     required this.clockBuilder,
     required this.searchHint,
+    this.searchHistoryScope,
     this.showBackButton = true,
+    this.tvPlaylistFocusNode,
     this.tvSearchFocusNode,
     this.tvSettingsFocusNode,
     this.tvEpgTimelineFocusNode,
@@ -274,10 +333,14 @@ class GlassLiveTopBar extends StatelessWidget {
   final Widget Function() clockBuilder;
   final String searchHint;
 
+  /// Arama geçmişi kapsamı — verilirse popup'ta son aramalar listelenir.
+  final SearchHistoryScope? searchHistoryScope;
+
   /// Canlı / gözat gibi ana sekmelerde sol üst geri kapatılabilir (kumanda Geri yeter).
   final bool showBackButton;
 
-  /// TV: üst çubukta arama / ayarlar için odak düğümleri (null = dokunmatik davranış).
+  /// TV: üst çubukta liste / arama / ayarlar için odak düğümleri (null = dokunmatik davranış).
+  final FocusNode? tvPlaylistFocusNode;
   final FocusNode? tvSearchFocusNode;
   final FocusNode? tvSettingsFocusNode;
   final FocusNode? tvEpgTimelineFocusNode;
@@ -291,6 +354,7 @@ class GlassLiveTopBar extends StatelessWidget {
       searchController: searchController,
       onSearchChanged: onSearchChanged,
       searchHint: searchHint,
+      historyScope: searchHistoryScope,
     );
   }
 
@@ -372,22 +436,12 @@ class GlassLiveTopBar extends StatelessWidget {
         const SizedBox(width: 12),
         const Spacer(),
         const SizedBox(width: 4),
-        if (onPlaylist != null) ...[
-          IconButton(
-            onPressed: onPlaylist,
-            icon: const Icon(Icons.swap_horiz_rounded),
-            color: Colors.white.withValues(alpha: 0.9),
-            padding:
-                isPortrait ? const EdgeInsets.all(4) : const EdgeInsets.all(8),
-            constraints: isPortrait ? const BoxConstraints(minWidth: 32) : null,
-            tooltip: 'Listeyi değiştir',
-          ),
-          if (isPortrait) const SizedBox(width: 2),
-        ],
         GlassTopCombinedClockSettings(
           clockBuilder: clockBuilder,
           onSettings: onSettings,
           onOpenSearch: () => _openSearchDialog(context),
+          onPlaylist: onPlaylist,
+          tvPlaylistFocusNode: tvPlaylistFocusNode,
           tvSearchFocusNode: tvSearchFocusNode,
           tvSettingsFocusNode: tvSettingsFocusNode,
           tvEpgTimelineFocusNode: tvEpgTimelineFocusNode,
@@ -400,7 +454,7 @@ class GlassLiveTopBar extends StatelessWidget {
   }
 }
 
-enum _TvTopBarSlot { search, timeline, settings }
+enum _TvTopBarSlot { playlist, search, timeline, settings }
 
 class GlassTopCombinedClockSettings extends StatelessWidget {
   const GlassTopCombinedClockSettings({
@@ -408,6 +462,8 @@ class GlassTopCombinedClockSettings extends StatelessWidget {
     required this.clockBuilder,
     required this.onSettings,
     this.onOpenSearch,
+    this.onPlaylist,
+    this.tvPlaylistFocusNode,
     this.tvSearchFocusNode,
     this.tvSettingsFocusNode,
     this.tvEpgTimelineFocusNode,
@@ -419,6 +475,11 @@ class GlassTopCombinedClockSettings extends StatelessWidget {
   final Widget Function() clockBuilder;
   final VoidCallback onSettings;
   final VoidCallback? onOpenSearch;
+
+  /// Liste seçici (Listeler) — verilirse arama butonunun solunda icon olarak
+  /// çizilir; dokununca/OK ile liste seçici açılır.
+  final VoidCallback? onPlaylist;
+  final FocusNode? tvPlaylistFocusNode;
   final FocusNode? tvSearchFocusNode;
   final FocusNode? tvSettingsFocusNode;
   final FocusNode? tvEpgTimelineFocusNode;
@@ -427,6 +488,7 @@ class GlassTopCombinedClockSettings extends StatelessWidget {
   final VoidCallback? onTvNavigateLeftFromTopBar;
 
   static KeyEventResult _tvTopBarNav({
+    required FocusNode? playlistNode,
     required FocusNode? searchNode,
     required FocusNode? timelineNode,
     required FocusNode? settingsNode,
@@ -439,14 +501,21 @@ class GlassTopCombinedClockSettings extends StatelessWidget {
       onDown?.call();
       return KeyEventResult.handled;
     }
-    if (k == LogicalKeyboardKey.arrowLeft) {
-      onLeft?.call();
-      return KeyEventResult.handled;
-    }
+    // Önce buton-arası yatay gezinme; en soldaki butonda sol ok ile top bar'dan
+    // çıkış (onLeft) fallback olarak en sonda denenir.
     switch (slot) {
+      case _TvTopBarSlot.playlist:
+        if (k == LogicalKeyboardKey.arrowRight) {
+          (searchNode ?? timelineNode ?? settingsNode)?.requestFocus();
+          return KeyEventResult.handled;
+        }
       case _TvTopBarSlot.search:
         if (k == LogicalKeyboardKey.arrowRight) {
           (timelineNode ?? settingsNode)?.requestFocus();
+          return KeyEventResult.handled;
+        }
+        if (k == LogicalKeyboardKey.arrowLeft && playlistNode != null) {
+          playlistNode.requestFocus();
           return KeyEventResult.handled;
         }
       case _TvTopBarSlot.timeline:
@@ -455,14 +524,18 @@ class GlassTopCombinedClockSettings extends StatelessWidget {
           return KeyEventResult.handled;
         }
         if (k == LogicalKeyboardKey.arrowLeft) {
-          searchNode?.requestFocus();
+          (searchNode ?? playlistNode)?.requestFocus();
           return KeyEventResult.handled;
         }
       case _TvTopBarSlot.settings:
         if (k == LogicalKeyboardKey.arrowLeft) {
-          (timelineNode ?? searchNode)?.requestFocus();
+          (timelineNode ?? searchNode ?? playlistNode)?.requestFocus();
           return KeyEventResult.handled;
         }
+    }
+    if (k == LogicalKeyboardKey.arrowLeft) {
+      onLeft?.call();
+      return KeyEventResult.handled;
     }
     return KeyEventResult.ignored;
   }
@@ -470,6 +543,96 @@ class GlassTopCombinedClockSettings extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final useTvFocus = tvSearchFocusNode != null && tvSettingsFocusNode != null;
+
+    Widget playlistWidget() {
+      void open() => onPlaylist?.call();
+      final icon = Padding(
+        padding: const EdgeInsets.all(8),
+        child: Icon(
+          Icons.layers_rounded,
+          color: Colors.white.withValues(alpha: 0.92),
+          size: 20,
+        ),
+      );
+      final tvPlaylist = useTvFocus && tvPlaylistFocusNode != null;
+      if (tvPlaylist) {
+        final primary = Theme.of(context).colorScheme.primary;
+        return Focus(
+          focusNode: tvPlaylistFocusNode,
+          onKeyEvent: (node, event) {
+            if (event is KeyRepeatEvent) {
+              return KeyEventResult.ignored;
+            }
+            if (event is! KeyDownEvent) {
+              return KeyEventResult.ignored;
+            }
+            final k = event.logicalKey;
+            final nav = _tvTopBarNav(
+              playlistNode: tvPlaylistFocusNode,
+              searchNode: tvSearchFocusNode,
+              timelineNode: tvEpgTimelineFocusNode,
+              settingsNode: tvSettingsFocusNode,
+              onDown: onTvNavigateDownFromTopBar,
+              onLeft: onTvNavigateLeftFromTopBar,
+              k: k,
+              slot: _TvTopBarSlot.playlist,
+            );
+            if (nav != KeyEventResult.ignored) return nav;
+            if (k == LogicalKeyboardKey.select ||
+                k == LogicalKeyboardKey.enter ||
+                k == LogicalKeyboardKey.numpadEnter ||
+                k == LogicalKeyboardKey.space) {
+              open();
+              return KeyEventResult.handled;
+            }
+            return KeyEventResult.ignored;
+          },
+          child: ListenableBuilder(
+            listenable: tvPlaylistFocusNode!,
+            builder: (context, _) {
+              final focused = tvPlaylistFocusNode!.hasFocus;
+              return SizedBox(
+                width: 44,
+                height: 44,
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 120),
+                  curve: Curves.easeOut,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(10),
+                    border: Border.all(
+                      color: focused
+                          ? primary.withValues(alpha: 0.95)
+                          : Colors.transparent,
+                      width: 2,
+                    ),
+                    color: focused
+                        ? Colors.white.withValues(alpha: 0.14)
+                        : Colors.transparent,
+                  ),
+                  child: Material(
+                    color: Colors.transparent,
+                    child: InkWell(
+                      onTap: onPlaylist,
+                      borderRadius: BorderRadius.circular(10),
+                      child: icon,
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        );
+      }
+      return Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onPlaylist,
+          borderRadius: BorderRadius.circular(10),
+          child: icon,
+        ),
+      );
+    }
 
     Widget searchWidget() {
       void open() => onOpenSearch?.call();
@@ -494,6 +657,7 @@ class GlassTopCombinedClockSettings extends StatelessWidget {
             }
             final k = event.logicalKey;
             final nav = _tvTopBarNav(
+              playlistNode: tvPlaylistFocusNode,
               searchNode: tvSearchFocusNode,
               timelineNode: tvEpgTimelineFocusNode,
               settingsNode: tvSettingsFocusNode,
@@ -581,6 +745,7 @@ class GlassTopCombinedClockSettings extends StatelessWidget {
             }
             final k = event.logicalKey;
             final nav = _tvTopBarNav(
+              playlistNode: tvPlaylistFocusNode,
               searchNode: tvSearchFocusNode,
               timelineNode: tvEpgTimelineFocusNode,
               settingsNode: tvSettingsFocusNode,
@@ -672,6 +837,7 @@ class GlassTopCombinedClockSettings extends StatelessWidget {
             }
             final k = event.logicalKey;
             final nav = _tvTopBarNav(
+              playlistNode: tvPlaylistFocusNode,
               searchNode: tvSearchFocusNode,
               timelineNode: tvEpgTimelineFocusNode,
               settingsNode: tvSettingsFocusNode,
@@ -744,6 +910,10 @@ class GlassTopCombinedClockSettings extends StatelessWidget {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
+          if (onPlaylist != null) ...[
+            playlistWidget(),
+            const SizedBox(width: 2),
+          ],
           if (onOpenSearch != null) ...[
             searchWidget(),
             const SizedBox(width: 2),
@@ -794,6 +964,11 @@ class GlassCategoryRow extends StatefulWidget {
     /// TV: sağ ok ile orta sütuna geçiş yok; kategori yalnızca OK ile onaylanır.
     this.tvBlockArrowRight = false,
 
+    /// TV (canlı TV): sağ ok bu kategorinin 1. kanalına geçer. `true` iken sağ
+    /// ok [onBeforeFocusMoveRight] çağrılır (kategoriyi seçip odağı kanallara
+    /// taşır) ve traversal `move(right)` yapılmaz — odağı kontrolcü yönetir.
+    this.tvArrowRightEntersChannels = false,
+
     /// TV + orta sütun tuzağı: odağı kanallardayken sol sütunda yalnızca gerçek
     /// seçili kategori vurgulansın; eski odak satırı mor çerçeve göstermesin.
     this.tvSuppressFocusRingUnlessSelected = false,
@@ -816,6 +991,7 @@ class GlassCategoryRow extends StatefulWidget {
   final bool tvBlockArrowUp;
   final bool tvBlockArrowDown;
   final bool tvBlockArrowRight;
+  final bool tvArrowRightEntersChannels;
   final bool tvSuppressFocusRingUnlessSelected;
   final VoidCallback? onTvFocusGained;
 
@@ -826,6 +1002,20 @@ class GlassCategoryRow extends StatefulWidget {
 class _GlassCategoryRowState extends State<GlassCategoryRow> {
   bool _focused = false;
   bool _pressed = false;
+
+  // Kategori sütununda basılı tutma ile kesintisiz kaydırma. Odak satır satır
+  // gezerken farklı [GlassCategoryRow] örneklerine taşındığı için throttle
+  // zaman damgası statiktir (örnekler arası korunur). KeyDown daima hareket
+  // eder ve damgayı günceller; çok erken gelen sahte KeyRepeat'ler (bazı
+  // Android TV cihazları KeyDown ardından anında repeat üretir) süzülür.
+  static int _lastCategoryMoveMs = 0;
+
+  bool _allowCategoryMove(bool isRepeat) {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (isRepeat && now - _lastCategoryMoveMs < 110) return false;
+    _lastCategoryMoveMs = now;
+    return true;
+  }
 
   bool get _effectiveFocused {
     if (!widget.tvSuppressFocusRingUnlessSelected) return _focused;
@@ -856,10 +1046,13 @@ class _GlassCategoryRowState extends State<GlassCategoryRow> {
     final isPortrait =
         MediaQuery.orientationOf(context) == Orientation.portrait;
 
-    return Obx(() {
-      final ga = GlassAppearance.fromLabel(
-        Get.find<AppSettingsService>().themeLabel.value,
-      );
+    // Android + TV: kategori satırı başına Obx aboneliği ve odak animasyonunu
+    // kaldır (ga yatay TV'de görsel olarak kullanılmıyor). Telefon/tablet eski
+    // davranışta kalır.
+    final settings = Get.find<AppSettingsService>();
+    final isTvAndroid = AppPerformance.isTvAndroidLayout(settings);
+
+    Widget body(GlassAppearance ga) {
       final textColor = _effectiveFocused
           ? Colors.white
           : Colors.white.withValues(alpha: 0.7);
@@ -899,8 +1092,12 @@ class _GlassCategoryRowState extends State<GlassCategoryRow> {
                 if (widget.tvBlockArrowDown) {
                   return KeyEventResult.handled;
                 }
-                // Kumanda tekrarı: tek basışta iki satır atlamasın (Android TV / KM2 vb.).
-                if (isRepeat) return KeyEventResult.handled;
+                // Basılı tutma: KeyRepeat de hareketi sürer (kesintisiz
+                // kaydırma). Sahte/çok hızlı tekrarlar throttle ile süzülür;
+                // tek basış yalnızca KeyDown ürettiği için çift atlama olmaz.
+                if (!_allowCategoryMove(isRepeat)) {
+                  return KeyEventResult.handled;
+                }
                 move(TraversalDirection.down);
                 return KeyEventResult.handled;
               }
@@ -910,15 +1107,25 @@ class _GlassCategoryRowState extends State<GlassCategoryRow> {
                 }
                 if (widget.tvIsFirstRow &&
                     widget.tvArrowUpFocusTarget != null) {
+                  // İlk satırdan üst hedefe (üst çubuk / playlist) yalnızca tek
+                  // basışta geç; tekrarlar yutulur (istemsiz çıkış olmasın).
                   if (isRepeat) return KeyEventResult.handled;
                   widget.tvArrowUpFocusTarget!.requestFocus();
                   return KeyEventResult.handled;
                 }
-                if (isRepeat) return KeyEventResult.handled;
+                if (!_allowCategoryMove(isRepeat)) {
+                  return KeyEventResult.handled;
+                }
                 move(TraversalDirection.up);
                 return KeyEventResult.handled;
               }
               if (k == LogicalKeyboardKey.arrowRight) {
+                // Canlı TV: sağ ok kategorinin 1. kanalına gider. Kontrolcü
+                // odağı kanallara taşıdığı için ayrıca traversal yapılmaz.
+                if (widget.tvArrowRightEntersChannels) {
+                  if (isDown) widget.onBeforeFocusMoveRight?.call();
+                  return KeyEventResult.handled;
+                }
                 if (widget.tvBlockArrowRight) {
                   return KeyEventResult.handled;
                 }
@@ -966,7 +1173,9 @@ class _GlassCategoryRowState extends State<GlassCategoryRow> {
                     ),
                   RepaintBoundary(
                     child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 200),
+                      duration: isTvAndroid
+                          ? Duration.zero
+                          : const Duration(milliseconds: 200),
                       curve: Curves.easeOutCubic,
                       padding: EdgeInsets.symmetric(
                         horizontal: isPortrait ? 16 : 12,
@@ -1033,7 +1242,13 @@ class _GlassCategoryRowState extends State<GlassCategoryRow> {
           ),
         ),
       );
-    });
+    }
+
+    if (isTvAndroid) {
+      return body(GlassAppearance.fromLabel(settings.themeLabel.value));
+    }
+    return Obx(() => body(GlassAppearance.fromLabel(
+        Get.find<AppSettingsService>().themeLabel.value)));
   }
 }
 
@@ -1042,6 +1257,7 @@ class GlassListNumberTile extends StatefulWidget {
     super.key,
     required this.number,
     required this.title,
+    this.titleContent,
     this.subtitle,
     this.progress,
     required this.selected,
@@ -1079,6 +1295,10 @@ class GlassListNumberTile extends StatefulWidget {
     /// TV: sağ ok tuşu için özel callback (örneğin üst menüye geçiş).
     this.tvOnArrowRight,
 
+    /// TV (canlı TV): sol ok tuşu için özel callback (örn. kategori sütununa
+    /// dönüş). Verilirse [tvBlockArrowLeft] ve traversal yerine bu çağrılır.
+    this.tvOnArrowLeft,
+
     /// TV Bölge B: yukarı/aşağı yalnızca liste içinde (yan sütunlara sıçramaz).
     this.tvStrictVerticalList = false,
     this.tvListIndex,
@@ -1094,6 +1314,8 @@ class GlassListNumberTile extends StatefulWidget {
 
   final String number;
   final String title;
+  /// Verilirse [title] metni yerine kullanılır (ör. EPG satırı).
+  final Widget? titleContent;
   final String? subtitle;
   final double? progress;
   final bool selected;
@@ -1116,6 +1338,7 @@ class GlassListNumberTile extends StatefulWidget {
   final FocusNode? focusNode;
   final VoidCallback? tvRequestDetailPanelFocus;
   final VoidCallback? tvOnArrowRight;
+  final VoidCallback? tvOnArrowLeft;
   final bool tvStrictVerticalList;
   final int? tvListIndex;
   final int? tvListLength;
@@ -1203,6 +1426,42 @@ class _GlassListNumberTileState extends State<GlassListNumberTile> {
     _verticalHoldPeriodic = null;
   }
 
+  /// TV tuzaklı liste: yukarı/aşağı yalnızca indeks tabanlı ±1; sistem KeyRepeat'i yut.
+  KeyEventResult? _handleTvStrictVerticalListKey(
+    LogicalKeyboardKey k, {
+    required bool isDown,
+    required bool isRepeat,
+  }) {
+    if (!widget.tvStrictVerticalList ||
+        widget.tvOnVerticalMove == null ||
+        widget.tvListIndex == null ||
+        widget.tvListLength == null) {
+      return null;
+    }
+    if (k != LogicalKeyboardKey.arrowDown && k != LogicalKeyboardKey.arrowUp) {
+      return null;
+    }
+    if (!isDown && !isRepeat) return KeyEventResult.ignored;
+    final delta = k == LogicalKeyboardKey.arrowDown ? 1 : -1;
+    final i = widget.tvListIndex!;
+    final len = widget.tvListLength!;
+    if (delta > 0 && i >= len - 1) return KeyEventResult.handled;
+    if (delta < 0 && i <= 0) return KeyEventResult.handled;
+    // Basılı tutma: platform tekrar (KeyRepeat) olayları da hareketi sürer.
+    // Kontrolcüdeki 90ms throttle, KeyDown + hold timer + KeyRepeat çakışsa
+    // bile çift atlamayı engeller. Böylece odak satır değişiminde hold timer
+    // odak kaybıyla ölse dahi kesintisiz kaydırma sürer (eski 8 satır sınırı
+    // kalkar).
+    widget.tvOnVerticalMove!(delta);
+    if (isDown) {
+      final hold = widget.tvVerticalHoldNudgeInterval;
+      if (hold != null) {
+        widget.tvOnVerticalHoldStart?.call(delta, hold);
+      }
+    }
+    return KeyEventResult.handled;
+  }
+
   void _scheduleVerticalHoldScroll(void Function() step) {
     _cancelVerticalHoldScroll();
     _verticalHoldInitial = Timer(const Duration(milliseconds: 420), () {
@@ -1233,6 +1492,12 @@ class _GlassListNumberTileState extends State<GlassListNumberTile> {
 
     final borderRadius = BorderRadius.circular(isPortrait ? 16 : 14);
 
+    // Android + TV: uzun kanal listesinde satır başına Obx aboneliği ve odak
+    // animasyonu eski kutuları kasıyordu; reaktif sarmalayıcıyı kaldırıp odak
+    // vurgusunu anlık yapıyoruz. Telefon/tablet eski davranışta kalır.
+    final settings = Get.find<AppSettingsService>();
+    final isTvAndroid = AppPerformance.isTvAndroidLayout(settings);
+
     return Padding(
       padding: EdgeInsets.only(
         bottom: isPortrait ? 10 : 6,
@@ -1248,8 +1513,14 @@ class _GlassListNumberTileState extends State<GlassListNumberTile> {
           onFocusChange: (hasFocus) {
             setState(() => _isFocused = hasFocus);
             if (!hasFocus) {
-              widget.tvOnVerticalHoldStop?.call();
-              _cancelVerticalHoldScroll();
+              // TV tuzaklı listede odak satır değişince paylaşımlı FocusNode
+              // yeniden bağlanırken kısa süre hasFocus=false olur; hold'u burada
+              // durdurmak 8 satır sonra tek tek kaydırmaya yol açıyordu.
+              // Durdurma yalnızca KeyUp'ta (strict mod) veya normal modda yapılır.
+              if (!widget.tvStrictVerticalList) {
+                widget.tvOnVerticalHoldStop?.call();
+                _cancelVerticalHoldScroll();
+              }
             }
             if (hasFocus) {
               widget.onFocus?.call();
@@ -1297,35 +1568,16 @@ class _GlassListNumberTileState extends State<GlassListNumberTile> {
             final isRepeat = event is KeyRepeatEvent;
             if (!isDown && !isRepeat) return KeyEventResult.ignored;
 
-            // ListView: tekrarlayan oklar Scrollable’a gidip kaydırma yapmasın; odak güvenilir kaysın.
+            // TV orta sütun: tek KeyDown = bir satır; KeyRepeat yutulur (çift atlama önlenir).
+            // Basılı tutma yalnızca [tvOnVerticalHoldStart] periyodu ile (ivmesiz ±1).
+            final strictVertical = _handleTvStrictVerticalListKey(
+              k,
+              isDown: isDown,
+              isRepeat: isRepeat,
+            );
+            if (strictVertical != null) return strictVertical;
+
             if (k == LogicalKeyboardKey.arrowDown) {
-              if (widget.tvStrictVerticalList &&
-                  widget.tvOnVerticalMove != null &&
-                  widget.tvListIndex != null &&
-                  widget.tvListLength != null) {
-                final hold = widget.tvVerticalHoldNudgeInterval;
-                if (hold != null) {
-                  if (isRepeat) {
-                    return KeyEventResult.handled;
-                  }
-                  if (isDown) {
-                    if (widget.tvListIndex! < widget.tvListLength! - 1) {
-                      widget.tvOnVerticalMove!(1);
-                      widget.tvOnVerticalHoldStart?.call(1, hold);
-                    }
-                  }
-                  return KeyEventResult.handled;
-                }
-                // Bölge B: yalnızca tuş başına bir satır; basılı tutma zamanlayıcısı
-                // bazı kutularda KeyUp gelmeyince listeyi sürekli kaydırıyordu.
-                if (widget.tvAcceleratedListScroll && isRepeat) {
-                  return KeyEventResult.handled;
-                }
-                if (widget.tvListIndex! < widget.tvListLength! - 1) {
-                  widget.tvOnVerticalMove!(1);
-                }
-                return KeyEventResult.handled;
-              }
               if (widget.tvBlockArrowDown) {
                 return KeyEventResult.handled;
               }
@@ -1340,31 +1592,6 @@ class _GlassListNumberTileState extends State<GlassListNumberTile> {
               return KeyEventResult.handled;
             }
             if (k == LogicalKeyboardKey.arrowUp) {
-              if (widget.tvStrictVerticalList &&
-                  widget.tvOnVerticalMove != null &&
-                  widget.tvListIndex != null &&
-                  widget.tvListLength != null) {
-                final hold = widget.tvVerticalHoldNudgeInterval;
-                if (hold != null) {
-                  if (isRepeat) {
-                    return KeyEventResult.handled;
-                  }
-                  if (isDown) {
-                    if (widget.tvListIndex! > 0) {
-                      widget.tvOnVerticalMove!(-1);
-                      widget.tvOnVerticalHoldStart?.call(-1, hold);
-                    }
-                  }
-                  return KeyEventResult.handled;
-                }
-                if (widget.tvAcceleratedListScroll && isRepeat) {
-                  return KeyEventResult.handled;
-                }
-                if (widget.tvListIndex! > 0) {
-                  widget.tvOnVerticalMove!(-1);
-                }
-                return KeyEventResult.handled;
-              }
               if (widget.tvBlockArrowUp) {
                 return KeyEventResult.handled;
               }
@@ -1378,6 +1605,11 @@ class _GlassListNumberTileState extends State<GlassListNumberTile> {
               return KeyEventResult.handled;
             }
             if (k == LogicalKeyboardKey.arrowLeft) {
+              // Canlı TV: sol ok kategori sütununa döner (özel callback).
+              if (widget.tvOnArrowLeft != null) {
+                if (isDown) widget.tvOnArrowLeft!.call();
+                return KeyEventResult.handled;
+              }
               if (widget.tvBlockArrowLeft) {
                 return KeyEventResult.handled;
               }
@@ -1446,13 +1678,14 @@ class _GlassListNumberTileState extends State<GlassListNumberTile> {
                     ),
                   ),
                 RepaintBoundary(
-                  child: Obx(() {
-                    final tl = Get.find<AppSettingsService>().themeLabel.value;
-                    final isFb = tl == GlassThemeLabels.flatBlack;
+                  child: Builder(builder: (context) {
+                    Widget body(bool isFb) {
                     final listTv = widget.tvStrictVerticalList;
-                    final dur = listTv
-                        ? const Duration(milliseconds: 240)
-                        : const Duration(milliseconds: 200);
+                    final dur = isTvAndroid
+                        ? Duration.zero
+                        : (listTv
+                            ? const Duration(milliseconds: 240)
+                            : const Duration(milliseconds: 200));
                     const curve = Curves.easeOutCubic;
 
                     // Yeni 'Sinematik' Liste Tasarımı
@@ -1508,20 +1741,21 @@ class _GlassListNumberTileState extends State<GlassListNumberTile> {
                               mainAxisSize: MainAxisSize.min,
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
-                                Text(
-                                  widget.title,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(
-                                    color: textColor,
-                                    fontSize: isPortrait ? 15 : 13.5,
-                                    height: 1.1,
-                                    fontWeight: _effectiveFocused
-                                        ? FontWeight.w700
-                                        : FontWeight.w600,
-                                    letterSpacing: 0.2,
-                                  ),
-                                ),
+                                widget.titleContent ??
+                                    Text(
+                                      widget.title,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(
+                                        color: textColor,
+                                        fontSize: isPortrait ? 15 : 13.5,
+                                        height: 1.1,
+                                        fontWeight: _effectiveFocused
+                                            ? FontWeight.w700
+                                            : FontWeight.w600,
+                                        letterSpacing: 0.2,
+                                      ),
+                                    ),
                                 if (widget.subtitle != null) ...[
                                   const SizedBox(height: 1),
                                   Text(
@@ -1607,6 +1841,15 @@ class _GlassListNumberTileState extends State<GlassListNumberTile> {
                         ],
                       ),
                     );
+                    }
+
+                    if (isTvAndroid) {
+                      return body(settings.themeLabel.value ==
+                          GlassThemeLabels.flatBlack);
+                    }
+                    return Obx(() => body(
+                        Get.find<AppSettingsService>().themeLabel.value ==
+                            GlassThemeLabels.flatBlack));
                   }),
                 ),
               ],

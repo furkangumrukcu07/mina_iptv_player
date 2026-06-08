@@ -49,11 +49,53 @@ const List<SubtitleFontFamilyOption> kSubtitleFontFamilyOptions = [
   ),
 ];
 
+/// Uygulama arayüzü fontu seçenekleri. Altyazı listesine ek olarak Google
+/// Fonts tabanlı arayüz fontlarını içerir (altyazı oynatıcısı bu fontları
+/// gömmediği için yalnızca arayüzde kullanılır).
+const List<SubtitleFontFamilyOption> kAppFontFamilyOptions = [
+  ...kSubtitleFontFamilyOptions,
+  SubtitleFontFamilyOption(
+    key: 'roboto_flex',
+    label: 'Roboto Flex',
+    preview: 'Android / Google TV yerel tarzı',
+    betterPlayerFamily: 'Roboto Flex',
+    mediaKitFamily: 'Roboto Flex',
+  ),
+  SubtitleFontFamilyOption(
+    key: 'poppins',
+    label: 'Poppins',
+    preview: 'Geometrik, yuvarlak — modern & premium',
+    betterPlayerFamily: 'Poppins',
+    mediaKitFamily: 'Poppins',
+  ),
+  SubtitleFontFamilyOption(
+    key: 'rubik',
+    label: 'Rubik',
+    preview: 'Yumuşak köşeli — TV ekranında rahat',
+    betterPlayerFamily: 'Rubik',
+    mediaKitFamily: 'Rubik',
+  ),
+  SubtitleFontFamilyOption(
+    key: 'montserrat',
+    label: 'Montserrat',
+    preview: 'Güçlü başlık fontu — sinematik',
+    betterPlayerFamily: 'Montserrat',
+    mediaKitFamily: 'Montserrat',
+  ),
+];
+
 SubtitleFontFamilyOption subtitleFontFamilyOptionForKey(String key) {
   for (final o in kSubtitleFontFamilyOptions) {
     if (o.key == key) return o;
   }
   return kSubtitleFontFamilyOptions.first;
+}
+
+SubtitleFontFamilyOption appFontFamilyOptionForKey(String key) {
+  for (final o in kAppFontFamilyOptions) {
+    if (o.key == key) return o;
+  }
+  return kAppFontFamilyOptions.first;
 }
 
 bool isValidSubtitleFontFamilyKey(String key) {
@@ -69,9 +111,15 @@ String betterPlayerSubtitleFontFamilyFor(String key) =>
 String mediaKitSubtitleFontFamilyFor(String key) =>
     subtitleFontFamilyOptionForKey(key).mediaKitFamily;
 
-String appFontFamilyLabelFor(String key) => subtitleFontFamilyOptionForKey(key).label;
+String appFontFamilyLabelFor(String key) =>
+    appFontFamilyOptionForKey(key).label;
 
 String appFontFamilyPreviewFor(String key) =>
-    subtitleFontFamilyOptionForKey(key).preview;
+    appFontFamilyOptionForKey(key).preview;
 
-bool isValidAppFontFamilyKey(String key) => isValidSubtitleFontFamilyKey(key);
+bool isValidAppFontFamilyKey(String key) {
+  for (final o in kAppFontFamilyOptions) {
+    if (o.key == key) return true;
+  }
+  return false;
+}

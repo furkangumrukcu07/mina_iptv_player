@@ -162,6 +162,11 @@ class M3uParser {
     return (val != null && val.isNotEmpty) ? val : null;
   }
 
+  /// IMDb id kalıbı: `tt` + en az 6 rakam (ör. `/vs/tt8637498/`). Aggregator
+  /// film listeleri grup adında `film/movie/vod` kullanmadığından bu girişler
+  /// aksi halde "canlı kanal" sanılır. IMDb id güçlü bir VOD sinyalidir.
+  static final RegExp _imdbIdInUrl = RegExp(r'/tt\d{6,}');
+
   bool _isMovie(String url, String group) {
     if (group.contains('movie') ||
         group.contains('vod') ||
@@ -169,6 +174,9 @@ class M3uParser {
       return true;
     }
     if (url.contains('/movie/')) return true;
+    // IMDb id taşıyan girişleri Film (VOD) kategorisine al. Dizi grupları
+    // [_isSeries] içinde ÖNCE yakalandığından gerçek diziler etkilenmez.
+    if (_imdbIdInUrl.hasMatch(url)) return true;
     return false;
   }
 

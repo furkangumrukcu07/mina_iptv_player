@@ -53,6 +53,7 @@ VideoControllerConfiguration _minaVideoControllerConfiguration() {
     return VideoControllerConfiguration(
       hwdec: s.resolveMediaKitHwdecMpvValue(
         amlogicLike: AndroidPlaybackSocHints.amlogicLike,
+        playbackChallengedTv: AndroidPlaybackSocHints.playbackChallengedTv,
       ),
     );
   }
@@ -68,6 +69,11 @@ Future<void> _applyMpvIptvTuning(Player player, String rawUrl) async {
     if (live) {
       // HLS/MPEG-TS: manifest tampon/seek uyarıları (hr-seek [PlayerController]’da).
       await plat.setProperty('force-seekable', 'yes');
+    } else {
+      // VOD: gömülü / harici altyazı parçalarının listelenmesi ve seçimi.
+      await plat.setProperty('sub-visibility', 'yes');
+      await plat.setProperty('subs-fallback', 'yes');
+      await plat.setProperty('sub-auto', 'fuzzy');
     }
   } catch (e) {
     debugPrint('mina_iptv: mpv IPTV tuning skipped: $e');
@@ -178,6 +184,9 @@ class _UniversalVideoPlayerState extends State<UniversalVideoPlayer> {
       try {
         await player.dispose();
       } catch (_) {}
+      if (Get.isRegistered<PlayerController>()) {
+        await Get.find<PlayerController>().handleMediaKitSurfaceInitFailed(e);
+      }
       return;
     }
 
@@ -220,15 +229,20 @@ class _UniversalVideoPlayerState extends State<UniversalVideoPlayer> {
         play: true,
       );
       if (Get.isRegistered<AppSettingsService>()) {
-        await applyMediaKitSubtitleFontPt(
+        final s = Get.find<AppSettingsService>();
+        await applyMediaKitSubtitleAppearance(
           player,
-          Get.find<AppSettingsService>().subtitleFontPt.value,
-          fontFamilyKey:
-              Get.find<AppSettingsService>().subtitleFontFamilyKey.value,
+          pt: s.subtitleFontPt.value,
+          fontFamilyKey: s.subtitleFontFamilyKey.value,
+          fontColor: s.subtitleFontColor,
+          outlineEnabled: s.subtitleOutlineEnabled.value,
         );
       }
     } catch (e, st) {
       debugPrint('mina_iptv: media_kit open error: $e\n$st');
+      if (Get.isRegistered<PlayerController>()) {
+        Get.find<PlayerController>().onMediaKitOpenFailed(e);
+      }
     }
   }
 
@@ -301,9 +315,13 @@ class _UniversalVideoPlayerState extends State<UniversalVideoPlayer> {
     if (widget.betterPlayerController == null) {
       return const Center(child: CircularProgressIndicator());
     }
-    return BetterPlayer(
-      key: _betterPlayerKey,
-      controller: widget.betterPlayerController!,
+    // Android Exo yüzeyinin üst widget sınırlarının dışına taşmasını
+    // engelle (dikey modda video altında beyaz/gri boşluk).
+    return ClipRect(
+      child: BetterPlayer(
+        key: _betterPlayerKey,
+        controller: widget.betterPlayerController!,
+      ),
     );
   }
 }

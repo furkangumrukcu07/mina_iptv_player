@@ -2,6 +2,8 @@ import 'dart:convert';
 
 import '../../domain/entities/epg_entities.dart';
 
+final _base64TitleRe = RegExp(r'^[A-Za-z0-9+/]+={0,2}$');
+
 /// `get_all_live_epg` gövdesini ayrıştırır; [compute] ile arka izolede çağrılmak üzere üst seviye.
 Map<int, List<EpgProgramme>> parseXtreamGetAllLiveEpgJsonString(String jsonString) {
   if (jsonString.isEmpty) return {};
@@ -82,8 +84,22 @@ Map<int, List<dynamic>> _extractAllLiveEpgRawLists(Map<String, dynamic> root) {
   return out;
 }
 
+String _xtreamEpgTitle(Map<String, dynamic> m) {
+  final raw = (m['title'] ?? m['name'] ?? '').toString().trim();
+  if (raw.isEmpty) return raw;
+  if (raw.length < 8 || raw.length % 4 != 0 || !_base64TitleRe.hasMatch(raw)) {
+    return raw;
+  }
+  try {
+    final decoded = utf8.decode(base64.decode(raw));
+    final t = decoded.trim();
+    if (t.isNotEmpty && !t.contains('\u0000')) return t;
+  } catch (_) {}
+  return raw;
+}
+
 EpgProgramme? _epgProgrammeFromXtreamRow(int streamId, Map<String, dynamic> m) {
-  final title = (m['title'] ?? m['name'] ?? '').toString().trim();
+  final title = _xtreamEpgTitle(m);
   if (title.isEmpty) return null;
 
   final start = _xtreamTimeToLocal(

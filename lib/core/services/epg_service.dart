@@ -1,3 +1,7 @@
+import 'dart:async' show unawaited;
+import 'dart:convert' show utf8;
+
+import 'package:archive/archive.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
@@ -5,9 +9,13 @@ import '../../domain/entities/channel.dart';
 import '../../domain/entities/epg_entities.dart';
 import '../../data/local/epg_snapshot_codec.dart';
 import '../../data/local/epg_snapshot_store.dart';
+import '../../data/local/epg_sqlite_store.dart';
 import '../../data/remote/xmltv_parser.dart';
 import '../../data/remote/xtream_api.dart';
 import '../epg/catch_up_url_template.dart';
+import '../epg/m3u_xmltv_name_matcher.dart';
+import '../epg/global_epg_service.dart';
+import '../telemetry/epg_perf_telemetry.dart';
 import 'app_settings_service.dart';
 
 class EpgService extends GetxService {
@@ -19,6 +27,14 @@ class EpgService extends GetxService {
     ),
   );
 
+  /// `Ayarlar > EPG > EPG Kapat` anahtarına bakar; servis kapsam dışı tüm
+  /// yükleme/indirme akışlarına bu kontrol eklenir. Servis kayıt edilmediyse
+  /// (test / boot süresi) varsayılan olarak `true` döner.
+  bool get _epgFeatureEnabled {
+    if (!Get.isRegistered<AppSettingsService>()) return true;
+    return Get.find<AppSettingsService>().epgEnabled.value;
+  }
+
   /// `get_all_live_epg` birleşiminde parça boyutu; büyük değer = daha az yield, daha hızlı birleşim.
   static const int _kXtreamMergeChunkStreams = 384;
 
@@ -26,38 +42,121 @@ class EpgService extends GetxService {
   final RxMap<String, List<EpgProgramme>> _programmes =
       <String, List<EpgProgramme>>{}.obs;
   final RxBool isLoading = false.obs;
+
+  // ---------------------------------------------------------------------------
+  // Xtream / GitHub EPG durum izleme. Ayarlar > EPG > EPG Kaynağı tile'ı bu
+  // alanları Obx ile dinler ve hangi yedeklerin gerçekten devrede olduğunu
+  // kullanıcıya gösterir.
+  // ---------------------------------------------------------------------------
+
+  /// `loadXtreamAllLiveEpg`'in son turunda `get_all_live_epg` + panel `xmltv.php`
+  /// üzerinden eklenen toplam program sayısı.
+  final RxInt xtreamProgrammeCount = 0.obs;
+
+  /// `loadXtreamAllLiveEpg` son turunda gelen kanal sayısı (panel xmltv.php).
+  final RxInt xtreamChannelCount = 0.obs;
+
+  /// Son Xtream EPG çağrısının başarılı oldu mu (en azından kısmen veri geldi).
+  final RxBool xtreamLastSuccess = false.obs;
+
+  /// Son Xtream EPG hatasının kullanıcı dostu metni (boşsa hata yok).
+  final RxString xtreamLastError = ''.obs;
+
+  /// Son Xtream EPG çağrısının tamamlanma zamanı (ms epoch). 0 = hiç denenmedi.
+  final RxInt xtreamLastFetchMs = 0.obs;
+
+  // ---------------------------------------------------------------------------
+  // Xtream EPG çağrı paylaşımı + throttle. Splash deferred turu, settings
+  // yenilemesi, EPG kaynağı mod değişimi aynı anda tetiklendiğinde tek bir
+  // ağ indirimini paylaşırız; ardışık tetiklemeler [_kXtreamLoadThrottleMs]
+  // içinde no-op. `GlobalEpgService`'teki paterne paralel.
+  // ---------------------------------------------------------------------------
+
+  Future<void>? _inflightXtreamLoad;
+  String _lastXtreamFingerprint = '';
+  int _lastXtreamLoadAtMs = 0;
+  static const int _kXtreamLoadThrottleMs = 30 * 1000;
   final Map<String, List<EpgProgramme>> _windowProgrammesCache =
       <String, List<EpgProgramme>>{};
   final Map<String, int> _currentProgrammeIndexCache = <String, int>{};
   static const int _kWindowProgrammesCacheMaxEntries = 4096;
 
+  /// M3U: yayın URL → XMLTV `channel id` (SQLite + isim benzerliği).
+  final Map<String, String> _m3uStreamUrlToXmlId = <String, String>{};
+
+  Map<String, String> get m3uStreamUrlToXmlId =>
+      Map<String, String>.unmodifiable(_m3uStreamUrlToXmlId);
+
+  String? xmlTvChannelDisplayName(String xmlChannelId) =>
+      _channels[xmlChannelId]?.name;
+
+  List<MapEntry<String, String>> get xmlTvChannelEntries {
+    final out = <MapEntry<String, String>>[];
+    for (final e in _channels.entries) {
+      out.add(MapEntry(e.key, e.value.name));
+    }
+    out.sort((a, b) => a.value.compareTo(b.value));
+    return out;
+  }
+
+  Future<void> updateM3uStreamMapping({
+    required String cacheKey,
+    required String streamUrl,
+    required String xmlChannelId,
+    required List<Channel> liveChannels,
+  }) async {
+    if (xmlChannelId.isEmpty) {
+      _m3uStreamUrlToXmlId.remove(streamUrl);
+    } else {
+      _m3uStreamUrlToXmlId[streamUrl] = xmlChannelId;
+    }
+    loadGeneration.value++;
+    await replaceM3uMappingsPersisted(cacheKey, liveChannels);
+  }
+
+  Future<void> replaceM3uMappingsPersisted(
+    String? cacheKey,
+    List<Channel> liveChannels,
+  ) async {
+    if (cacheKey == null || cacheKey.isEmpty) return;
+    await EpgSqliteStore.replaceM3uMappings(
+      cacheKey,
+      Map<String, String>.from(_m3uStreamUrlToXmlId),
+    );
+  }
+
   /// Obx / liste yenilemesi için; EPG yüklendikçe artar.
   final RxInt loadGeneration = 0.obs;
 
   /// Disk önbelleği: [logicalKey] ile [EpgSnapshotKeys.logicalKeyFor] aynı olmalı.
-  Future<bool> tryRestoreFromDiskIfFresh(String logicalKey) async {
+  Future<bool> tryRestoreFromDiskIfFresh(
+    String logicalKey, {
+    bool markXtreamSuccess = false,
+  }) async {
     try {
       final raw = await EpgSnapshotStore.readRaw(logicalKey);
       if (raw == null) return false;
-      final root = await decodeEpgSnapshotInIsolate(raw);
-      if (root == null) return false;
-      if ((root['key'] as String?) != logicalKey) return false;
-      final savedAt = (root['savedAtMs'] as num?)?.toInt();
+      // Çöz + entity + sıralama TAMAMI isolate'te → ana iş parçacığı bloke
+      // olmaz (splash imleci donmaz).
+      final decoded = await decodeAndBuildEpgSnapshotInIsolate(raw);
+      if (decoded == null) return false;
+      if (decoded.key != logicalKey) return false;
+      final savedAt = decoded.savedAtMs;
       if (savedAt == null) return false;
       final age = DateTime.now().millisecondsSinceEpoch - savedAt;
-      if (age < 0 || age > EpgSnapshotStore.ttlMs) return false;
+      final ttlMs = Get.find<AppSettingsService>().epgDiskCacheTtlMs;
+      if (age < 0 || age > ttlMs) return false;
+      if (!decoded.hasData) return false;
 
-      final applied = applyEpgSnapshotRoot(
-        root,
-        assign: (ch, pr) {
-          _channels.assignAll(ch);
-          _programmes.assignAll(pr);
-        },
-      );
-      if (!applied) return false;
-      _normalizeProgrammesInPlace();
+      // Listeler isolate'te zaten sıralandı; ana iş parçacığında yalnızca
+      // atama + cache temizliği yapılır (ucuz).
+      _channels.assignAll(decoded.channels);
+      _programmes.assignAll(decoded.programmes);
       _windowProgrammesCache.clear();
       _currentProgrammeIndexCache.clear();
+      if (markXtreamSuccess) {
+        _markXtreamSuccessFromSnapshot(savedAt);
+      }
 
       loadGeneration.value++;
       debugPrint(
@@ -68,6 +167,51 @@ class EpgService extends GetxService {
       debugPrint('mina_iptv: EPG cache restore failed: $e');
       return false;
     }
+  }
+
+  /// TTL dolmuş olsa bile (çevrimdışı / sıra gelmemiş yenileme) son kayıtlı anlık görüntüyü yükler.
+  Future<bool> tryRestoreFromDiskIgnoringTtl(
+    String logicalKey, {
+    bool markXtreamSuccess = false,
+  }) async {
+    try {
+      final raw = await EpgSnapshotStore.readRaw(logicalKey);
+      if (raw == null) return false;
+      final decoded = await decodeAndBuildEpgSnapshotInIsolate(raw);
+      if (decoded == null) return false;
+      if (decoded.key != logicalKey) return false;
+      if (!decoded.hasData) return false;
+      final savedAt = decoded.savedAtMs;
+
+      _channels.assignAll(decoded.channels);
+      _programmes.assignAll(decoded.programmes);
+      _windowProgrammesCache.clear();
+      _currentProgrammeIndexCache.clear();
+      if (markXtreamSuccess) {
+        _markXtreamSuccessFromSnapshot(savedAt);
+      }
+
+      loadGeneration.value++;
+      debugPrint(
+        'mina_iptv: EPG restored from disk (ignoring TTL, ${_channels.length} ch)',
+      );
+      return true;
+    } catch (e) {
+      debugPrint('mina_iptv: EPG stale cache restore failed: $e');
+      return false;
+    }
+  }
+
+  /// Diskten geri yüklenen snapshot tipik olarak son başarılı Xtream
+  /// `loadXtreamAllLiveEpg` çıktısıdır (M3U snapshot ayrı bir yola çıkar).
+  /// UI sayaçlarının "boş" görünmesini engellemek için sayaçları ayarlarız.
+  void _markXtreamSuccessFromSnapshot(int? savedAt) {
+    if (_channels.isEmpty && _programmes.isEmpty) return;
+    xtreamChannelCount.value = _channels.length;
+    xtreamProgrammeCount.value = _programmes.length;
+    xtreamLastSuccess.value = true;
+    xtreamLastError.value = '';
+    xtreamLastFetchMs.value = savedAt ?? DateTime.now().millisecondsSinceEpoch;
   }
 
   Future<void> persistSnapshotToDisk(String logicalKey) async {
@@ -84,45 +228,232 @@ class EpgService extends GetxService {
       final json = await encodeEpgSnapshotInIsolate(map);
       await EpgSnapshotStore.write(logicalKey, json);
       debugPrint('mina_iptv: EPG snapshot saved (${_programmes.length} stream keys)');
+      unawaited(
+        EpgSqliteStore.replaceSnapshot(
+          sourceKey: logicalKey,
+          channels: Map<String, EpgChannel>.from(_channels),
+          programmes: Map<String, List<EpgProgramme>>.from(
+            _programmes.map(
+              (k, v) => MapEntry(k, List<EpgProgramme>.from(v)),
+            ),
+          ),
+        ),
+      );
     } catch (e) {
       debugPrint('mina_iptv: EPG snapshot save failed: $e');
     }
   }
 
-  Future<void> loadEpg(String url) async {
-    if (url.isEmpty) return;
-    isLoading.value = true;
+  /// JSON önbellekten belleğe yüklendikten sonra SQLite kopyasını doldurur (yük yükseltme).
+  Future<void> persistSqliteMirrorOnly(String logicalKey) async {
+    if (logicalKey.isEmpty) return;
+    if (_channels.isEmpty && _programmes.isEmpty) return;
     try {
-      final response = await _dio.get<String>(
-        url,
-        options: Options(
-          responseType: ResponseType.plain,
-          receiveTimeout: const Duration(seconds: 90),
+      await EpgSqliteStore.replaceSnapshot(
+        sourceKey: logicalKey,
+        channels: Map<String, EpgChannel>.from(_channels),
+        programmes: Map<String, List<EpgProgramme>>.from(
+          _programmes.map(
+            (k, v) => MapEntry(k, List<EpgProgramme>.from(v)),
+          ),
         ),
       );
-      final xmlContent = response.data;
-      if (xmlContent != null && xmlContent.isNotEmpty) {
-        final result = await compute(parseXmlTvIsolate, xmlContent);
-        _channels.assignAll(result['channels'] as Map<String, EpgChannel>);
-        // Anahtar bazında yaz: Xtream `get_all_live_epg` ile paralel yüklenirken
-        // `stream_id` programları silinmesin.
-        final progMap =
-            result['programmes'] as Map<String, List<EpgProgramme>>;
-        for (final e in progMap.entries) {
-          _setProgrammesForKey(e.key, e.value);
-        }
-        loadGeneration.value++;
-        debugPrint(
-            'mina_iptv: EPG loaded. Channels: ${_channels.length}, Progs: ${_programmes.length}');
-      }
     } catch (e) {
-      debugPrint('mina_iptv: Error loading EPG: $e');
+      debugPrint('mina_iptv: EPG SQLite mirror failed: $e');
+    }
+  }
+
+  /// M3U XMLTV: kanal listesi ile XML kanallarını eşleştir; URL→XML id kalıcıdır.
+  Future<void> applyM3uXmltvChannelMappings({
+    required String? cacheKey,
+    required List<Channel> liveChannels,
+  }) async {
+    if (cacheKey == null || cacheKey.isEmpty) {
+      _m3uStreamUrlToXmlId.clear();
+      loadGeneration.value++;
+      return;
+    }
+
+    try {
+      _m3uStreamUrlToXmlId
+        ..clear()
+        ..addAll(await EpgSqliteStore.readM3uMappings(cacheKey));
+
+      final xmlCandidates = <XmlTvMatchCandidate>[];
+      for (final e in _channels.entries) {
+        final id = e.key;
+        final list = _programmes[id];
+        if (list == null || list.isEmpty) continue;
+        xmlCandidates.add(
+          XmlTvMatchCandidate(
+            xmlChannelId: id,
+            displayName: e.value.name,
+          ),
+        );
+      }
+
+      final needs = <M3uMatchNeed>[];
+      for (final ch in liveChannels) {
+        if (_playlistChannelHasXmltvRows(ch)) continue;
+        needs.add(
+          M3uMatchNeed(streamUrl: ch.streamUrl, playlistName: ch.name),
+        );
+      }
+
+      if (needs.isNotEmpty && xmlCandidates.isNotEmpty) {
+        final matched = await compute(
+          m3uXmltvMatchIsolate,
+          <String, dynamic>{
+            'xml': [
+              for (final x in xmlCandidates)
+                <String, String>{'id': x.xmlChannelId, 'name': x.displayName},
+            ],
+            'needs': [
+              for (final n in needs)
+                <String, String>{'u': n.streamUrl, 'n': n.playlistName},
+            ],
+          },
+        );
+        _m3uStreamUrlToXmlId.addAll(matched);
+      }
+
+      loadGeneration.value++;
+      await EpgSqliteStore.replaceM3uMappings(
+        cacheKey,
+        Map<String, String>.from(_m3uStreamUrlToXmlId),
+      );
+    } catch (e, st) {
+      debugPrint('mina_iptv: M3U XMLTV mapping failed: $e\n$st');
+    }
+  }
+
+  bool _playlistChannelHasXmltvRows(Channel ch) {
+    final id = ch.epgChannelId?.trim();
+    if (id != null && id.isNotEmpty) {
+      final list = _programmes[id];
+      if (list != null && list.isNotEmpty) return true;
+    }
+    return false;
+  }
+
+  int get loadedXmlChannelCount => _channels.length;
+
+  int get loadedProgrammeKeyCount => _programmes.length;
+
+  /// Bellekte çözümlenmiş EPG verisi var mı (XMLTV veya Xtream birleşimi).
+  bool hasLoadedGuideData() =>
+      _programmes.isNotEmpty || _channels.isNotEmpty;
+
+  static bool _isGzipMagic(List<int> bytes) =>
+      bytes.length >= 2 && bytes[0] == 0x1f && bytes[1] == 0x8b;
+
+  static List<int> _maybeGunzip(List<int> bytes) {
+    if (!_isGzipMagic(bytes)) return bytes;
+    try {
+      return GZipDecoder().decodeBytes(bytes);
+    } catch (e) {
+      debugPrint('mina_iptv: EPG gzip decode failed: $e');
+      return bytes;
+    }
+  }
+
+  Future<void> loadEpg(String url) async {
+    await loadEpgFirstSuccessful(<String>[url]);
+  }
+
+  /// Sırayla dener; ilk başarılı XMLTV yüklemesinde durur (yedek mirror için).
+  Future<void> loadEpgFirstSuccessful(Iterable<String> urls) async {
+    if (!_epgFeatureEnabled) return;
+    final list = urls.map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
+    if (list.isEmpty) return;
+    isLoading.value = true;
+    try {
+      for (final url in list) {
+        try {
+          debugPrint('mina_iptv: EPG candidate trying: $url');
+          await _fetchAndApplyXmlTv(url);
+          if (hasLoadedGuideData()) {
+            debugPrint('mina_iptv: EPG candidate success: $url');
+            return;
+          }
+        } catch (e) {
+          debugPrint('mina_iptv: EPG candidate failed ($url): $e');
+        }
+      }
     } finally {
       isLoading.value = false;
     }
   }
 
+  Future<void> _fetchAndApplyXmlTv(String url) async {
+    final lower = url.toLowerCase();
+    final receiveTimeout =
+        lower.contains('iptv-org.github.io') ||
+                lower.contains('worker-9dd4.onrender.com') ||
+                lower.contains('epgshare01.online') ||
+                lower.contains('epg.pw')
+            ? const Duration(seconds: 600)
+            : const Duration(seconds: 120);
+    final response = await _dio.get<List<int>>(
+      url,
+      options: Options(
+        responseType: ResponseType.bytes,
+        receiveTimeout: receiveTimeout,
+      ),
+    );
+    final raw = response.data;
+    if (raw == null || raw.isEmpty) return;
+
+    final xmlBytes = lower.endsWith('.gz') || _isGzipMagic(raw)
+        ? _maybeGunzip(raw)
+        : raw;
+    final xmlContent = utf8.decode(xmlBytes, allowMalformed: true);
+    if (xmlContent.isEmpty) return;
+
+    final result = await compute(parseXmlTvIsolate, xmlContent);
+    final newChannels = result['channels'] as Map<String, EpgChannel>;
+    final progMap = result['programmes'] as Map<String, List<EpgProgramme>>;
+
+    // Veri gerçekten değişti mi? (kanal/programme sayıları aynı + key set
+    // aynı → ana ekran widget'larını gereksiz rebuild etmemek için
+    // `loadGeneration++` atlanır). Aynı XMLTV'nin tekrar indirilmesi (snapshot
+    // restore sonrası `_fetchAndApplyXmlTv` veya yenileme) sıklıkla aynı veriyi
+    // yazar; bu durumda Obx dinleyicilerini boş yere tetiklemeyiz.
+    final sizeChanged = newChannels.length != _channels.length ||
+        progMap.length != _programmes.length;
+    var keysetChanged = sizeChanged;
+    if (!keysetChanged) {
+      // Aynı boyutta — key set'leri farklı olabilir, hızlıca karşılaştır.
+      for (final k in newChannels.keys) {
+        if (!_channels.containsKey(k)) {
+          keysetChanged = true;
+          break;
+        }
+      }
+    }
+
+    // [E1] Aynı kanal seti ise assignAll atlanır (gereksiz Rx bildirimi yok).
+    if (keysetChanged) {
+      _channels.assignAll(newChannels);
+      for (final e in progMap.entries) {
+        _setProgrammesForKey(e.key, e.value);
+      }
+    }
+    if (keysetChanged) {
+      loadGeneration.value++;
+      EpgPerfTelemetry.loadGenerationBumps++;
+    } else {
+      EpgPerfTelemetry.loadGenerationSkipped++;
+    }
+    debugPrint(
+      'mina_iptv: EPG loaded. Channels: ${_channels.length}, '
+      'prog keys: ${_programmes.length}'
+      '${keysetChanged ? '' : ' (no change, gen kept)'} · ${EpgPerfTelemetry.summaryLine()}',
+    );
+  }
+
   EpgProgramme? getCurrentProgramme(String? epgId) {
+    if (!_epgFeatureEnabled) return null;
     final key = epgId?.trim();
     if (key == null || key.isEmpty) return null;
 
@@ -165,12 +496,47 @@ class EpgService extends GetxService {
     return null;
   }
 
-  /// XMLTV `epg_channel_id` yoksa veya eşleşmezse Xtream `get_all_live_epg` ile gelen
-  /// **[stream_id]** anahtarına düşer.
+  /// XMLTV `tvg-id` / `epg_channel_id`, ardından M3U URL eşlemesi, son olarak Xtream
+  /// **[stream_id]** anahtarı.
   EpgProgramme? getCurrentProgrammeForLiveChannel(Channel ch) {
-    final byXml = getCurrentProgramme(ch.epgChannelId);
-    if (byXml != null) return byXml;
-    return getCurrentProgramme(ch.id.toString());
+    if (!_epgFeatureEnabled) return null;
+    final direct = ch.epgChannelId?.trim();
+    if (direct != null && direct.isNotEmpty) {
+      final prog = getCurrentProgramme(direct);
+      if (prog != null) return prog;
+    }
+    final mapped = _m3uStreamUrlToXmlId[ch.streamUrl];
+    if (mapped != null) {
+      final prog = getCurrentProgramme(mapped);
+      if (prog != null) return prog;
+    }
+    final byId = getCurrentProgramme(ch.id.toString());
+    if (byId != null) return byId;
+
+    // Eğer normal EPG'de bulunamadıysa, GlobalEpgService'den (Bellek Cache) kontrol et
+    if (Get.isRegistered<GlobalEpgService>()) {
+      final global = Get.find<GlobalEpgService>();
+      final list = global.getProgrammesForChannelName(ch.name);
+      if (list.isNotEmpty) {
+        // İkili arama (binary search) mantığını buraya da uygula
+        final now = DateTime.now();
+        var lo = 0;
+        var hi = list.length - 1;
+        while (lo <= hi) {
+          final mid = (lo + hi) >> 1;
+          final p = list[mid];
+          if (now.isBefore(p.start)) {
+            hi = mid - 1;
+          } else if (!now.isBefore(p.end)) {
+            lo = mid + 1;
+          } else {
+            return p;
+          }
+        }
+      }
+    }
+
+    return null;
   }
 
   List<EpgProgramme> getFullDayProgrammes(String? epgId) {
@@ -192,19 +558,31 @@ class EpgService extends GetxService {
     _windowProgrammesCache.removeWhere((k, _) => k.startsWith(prefix));
   }
 
-  void _normalizeProgrammesInPlace() {
-    final keys = _programmes.keys.toList(growable: false);
-    for (final key in keys) {
-      final list = _programmes[key];
-      if (list == null || list.isEmpty) continue;
-      _setProgrammesForKey(key, list);
-    }
-  }
-
   List<EpgProgramme> getFullDayProgrammesForLiveChannel(Channel ch) {
-    final fromXml = getFullDayProgrammes(ch.epgChannelId);
-    if (fromXml.isNotEmpty) return fromXml;
-    return getFullDayProgrammes(ch.id.toString());
+    if (!_epgFeatureEnabled) return const <EpgProgramme>[];
+    final direct = ch.epgChannelId?.trim();
+    if (direct != null && direct.isNotEmpty) {
+      final list = _programmes[direct];
+      if (list != null && list.isNotEmpty) {
+        return getFullDayProgrammes(direct);
+      }
+    }
+    final mapped = _m3uStreamUrlToXmlId[ch.streamUrl];
+    if (mapped != null) {
+      final ml = _programmes[mapped];
+      if (ml != null && ml.isNotEmpty) {
+        return getFullDayProgrammes(mapped);
+      }
+    }
+    final byId = getFullDayProgrammes(ch.id.toString());
+    if (byId.isNotEmpty) return byId;
+
+    // GlobalEpgService Fallback
+    if (Get.isRegistered<GlobalEpgService>()) {
+      return Get.find<GlobalEpgService>().getProgrammesForChannelName(ch.name);
+    }
+
+    return [];
   }
 
   String _epgLookupKeyForLiveChannel(Channel ch) {
@@ -212,6 +590,11 @@ class EpgService extends GetxService {
     if (xmlKey != null && xmlKey.isNotEmpty) {
       final list = _programmes[xmlKey];
       if (list != null && list.isNotEmpty) return xmlKey;
+    }
+    final mapped = _m3uStreamUrlToXmlId[ch.streamUrl];
+    if (mapped != null) {
+      final list = _programmes[mapped];
+      if (list != null && list.isNotEmpty) return mapped;
     }
     return ch.id.toString();
   }
@@ -400,11 +783,12 @@ class EpgService extends GetxService {
     return null;
   }
 
-  /// Xtream `get_all_live_epg` çıktısını [stream_id] string anahtarıyla birleştirir.
-  /// XMLTV ile çakışmada XMLTV (önce yüklenen) korunur; yalnızca boş anahtarlar dolar.
+  /// Xtream `get_all_live_epg` çıktısını **[stream_id]** string anahtarıyla yazar (canlı EPG).
   ///
-  /// Büyük listelerde parça parça yazar; her parçadan sonra [loadGeneration] artar ve
-  /// kısa gecikme ile olay döngüsüne dönülür (UI donması azalır).
+  /// Büyük listelerde parça parça yazar; UI donmamak için her chunk sonrası
+  /// kısa gecikme ile olay döngüsüne döner. [loadGeneration] her chunk yerine
+  /// tüm tur bitiminde **bir kez** ve yalnız yeni veri eklendiyse artar — Obx
+  /// dinleyicilerinin her chunk için rebuild olmasını engeller.
   Future<void> mergeXtreamApiEpgByStreamId(
     Map<int, List<EpgProgramme>> map,
   ) async {
@@ -420,28 +804,122 @@ class EpgService extends GetxService {
         final k = '${e.key}';
         final list = e.value;
         if (list.isEmpty) continue;
-        final existing = _programmes[k];
-        if (existing != null && existing.isNotEmpty) continue;
         _setProgrammesForKey(k, list);
         streams++;
         programmes += list.length;
       }
-      loadGeneration.value++;
       if (end < entries.length && entries.length > 800) {
         await Future<void>.delayed(Duration.zero);
       }
     }
+    if (streams > 0) {
+      loadGeneration.value++;
+    }
     debugPrint(
-      'mina_iptv: Xtream API EPG merged: $streams streams, $programmes programmes (skipped non-empty XMLTV keys)',
+      'mina_iptv: Xtream API EPG merged: $streams streams, $programmes programmes',
     );
   }
 
-  Future<void> loadXtreamAllLiveEpg(XtreamApi api) async {
+  /// Xtream canlı EPG: önce `get_all_live_epg` (stream_id), sonra panel `xmltv.php`.
+  ///
+  /// İki kaynaktan da hiç veri gelmediyse [xtreamLastSuccess] false olur ve
+  /// [xtreamLastError] doldurulur — UI bunu görüp GitHub yedeğin devrede
+  /// olduğunu kullanıcıya gösterebilir.
+  ///
+  /// Eş zamanlı çağrılar paylaşılır; ardışık çağrılar [_kXtreamLoadThrottleMs]
+  /// içinde no-op. [force]=true throttle'ı atlar (kullanıcı tetiklemesi).
+  Future<void> loadXtreamAllLiveEpg(
+    XtreamApi api, {
+    bool force = false,
+  }) {
+    if (!_epgFeatureEnabled) return Future<void>.value();
+    final pending = _inflightXtreamLoad;
+    if (pending != null) return pending;
+
+    // baseUrl + username Xtream hesabını benzersizleştirir; password ve port
+    // baseUrl içinde zaten gömülü. Throttle bu kimlik için çalışır.
+    final fp = '${api.baseUrl}|${api.username}';
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (!force &&
+        fp == _lastXtreamFingerprint &&
+        now - _lastXtreamLoadAtMs < _kXtreamLoadThrottleMs) {
+      final ageSec = ((now - _lastXtreamLoadAtMs) / 1000).toStringAsFixed(1);
+      debugPrint('mina_iptv: Xtream EPG - skip (throttled, age ${ageSec}s)');
+      EpgPerfTelemetry.xtreamLoadThrottled++;
+      return Future<void>.value();
+    }
+
+    EpgPerfTelemetry.xtreamLoadStarted++;
+    final fut = _runLoadXtreamAllLiveEpg(api);
+    _inflightXtreamLoad = fut;
+    return fut.whenComplete(() {
+      _inflightXtreamLoad = null;
+      _lastXtreamFingerprint = fp;
+      _lastXtreamLoadAtMs = DateTime.now().millisecondsSinceEpoch;
+    });
+  }
+
+  Future<void> _runLoadXtreamAllLiveEpg(XtreamApi api) async {
+    var apiStreams = 0;
+    final errors = <String>[];
+    var apiOk = false;
+    var xmltvOk = false;
+
     try {
       final map = await api.getAllLiveEpg(_dio);
+      apiStreams = map.length;
       await mergeXtreamApiEpgByStreamId(map);
+      // Bazı paneller `action=get_all_live_epg`'yi desteklemiyor ve boş
+      // gövde döndürüyor; bunu hata saymıyoruz — `xmltv.php` yedektir.
+      apiOk = apiStreams > 0;
+      if (apiStreams == 0) {
+        debugPrint(
+          'mina_iptv: get_all_live_epg: no stream EPG from panel '
+          '(action unsupported or empty) — using xmltv.php',
+        );
+      }
     } catch (e, st) {
       debugPrint('mina_iptv: get_all_live_epg failed (non-fatal): $e\n$st');
+      errors.add('get_all_live_epg: $e');
+    }
+
+    try {
+      final url = api.xmlTvUrl;
+      debugPrint('mina_iptv: Xtream panel XMLTV: $url');
+      await _fetchAndApplyXmlTv(url);
+      debugPrint(
+        'mina_iptv: Xtream EPG done — api streams: $apiStreams, '
+        'prog keys: ${_programmes.length}, xmltv channels: ${_channels.length}',
+      );
+      xmltvOk = true;
+    } catch (e, st) {
+      debugPrint('mina_iptv: Xtream panel XMLTV failed (non-fatal): $e\n$st');
+      errors.add('xmltv.php: $e');
+    }
+
+    // Mutlak değere bakıyoruz: snapshot restore'dan sonra XMLTV aynı
+    // programları yeniden yazsa bile fark 0 olur, ama gerçekte Xtream
+    // sunucusundan veri geliyor → başarılı saymalıyız.
+    xtreamProgrammeCount.value = _programmes.length;
+    xtreamChannelCount.value = _channels.length;
+    xtreamLastFetchMs.value = DateTime.now().millisecondsSinceEpoch;
+
+    // Başarı kriteri: en az bir Xtream kaynağı hatasız tamamlandı VE
+    // EpgService dolu. Hem hata aldıysak hem de veri yoksa — başarısız.
+    final dataPresent = _channels.isNotEmpty || _programmes.isNotEmpty;
+    final atLeastOneOk = apiOk || xmltvOk;
+    xtreamLastSuccess.value = atLeastOneOk && dataPresent;
+    xtreamLastError.value = xtreamLastSuccess.value ? '' : errors.join(' · ');
+  }
+
+  /// Global EPG servisi ile M3U için dinamik ülke bazlı EPG yükle
+  Future<void> loadGlobalEpgForM3U(List<Channel> channels) async {
+    if (!_epgFeatureEnabled) return;
+    try {
+      final globalEpgService = Get.find<GlobalEpgService>();
+      await globalEpgService.loadGlobalEpgForChannels(channels);
+    } catch (e, st) {
+      debugPrint('mina_iptv: Global EPG failed (non-fatal): $e\n$st');
     }
   }
 
@@ -479,8 +957,17 @@ class EpgService extends GetxService {
   void clear() {
     _channels.clear();
     _programmes.clear();
+    _m3uStreamUrlToXmlId.clear();
     _windowProgrammesCache.clear();
     _currentProgrammeIndexCache.clear();
+    xtreamProgrammeCount.value = 0;
+    xtreamChannelCount.value = 0;
+    xtreamLastSuccess.value = false;
+    xtreamLastError.value = '';
+    xtreamLastFetchMs.value = 0;
+    // Throttle sıfırla: kullanıcı yenile dediğinde 30sn beklemeden tekrar dener.
+    _lastXtreamFingerprint = '';
+    _lastXtreamLoadAtMs = 0;
     loadGeneration.value++;
   }
 }

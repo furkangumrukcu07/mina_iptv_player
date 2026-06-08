@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "678971140280",
+    "project_id": "mina-iptv-player",
+    "storage_bucket": "mina-iptv-player.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:678971140280:android:aac14166585a42a2156c4d",
+        "android_client_info": {
+          "package_name": "com.mina.iptv.mina_iptv_player"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "678971140280-ad16louksqhgi8odv17bd6q7cmeolhhh.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.mina.iptv.mina_iptv_player",
+            "certificate_hash": "9c147f5cc389b9cebf2da53dfe4262760243ff5c"
+          }
+        },
+        {
+          "client_id": "678971140280-jd0cui664nf6bp9bnfegt24j1609bcga.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBHk8sLt18SPF-2xuvvJRH3HLEm7ywD8lE"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "678971140280-jd0cui664nf6bp9bnfegt24j1609bcga.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -1,0 +1,53 @@
+---
+description: Mina IPTV GetX i18n — yeni anahtarlar ve translate_sync.py senkronu
+globs: lib/core/i18n/**/*
+alwaysApply: true
+---
+
+# Mina IPTV — i18n (GetX, Dart Map)
+
+Bu proje **JSON veya `.arb` kullanmaz**. Çeviriler **GetX** ile `lib/core/i18n/` altındaki Dart `const Map<String, String>` dosyalarında tutulur.
+
+## Dosya yapısı
+
+| Dosya | İçerik |
+|-------|--------|
+| `app_translations.dart` | Tam sözlük: `_tr`, `_en` (master) |
+| `locale_partials.dart` | 13 kısmi dil: `kLocalePartialFr`, `Ar`, `Zh`, `Ru`, `Ko`, `He`, `Da`, `Sv`, `Hi`, `Th`, `It`, `Pt`, `Id` |
+| `locale_es.dart` | `kLocalePartialEs` |
+| `locale_ja.dart` | `kLocalePartialJa` |
+
+Kısmi diller `mergeTranslations(_en, kLocalePartialXx)` ile İngilizce üzerine birleşir; eksik anahtar **EN** görünür.
+
+## Yeni özellik / metin eklerken
+
+1. Yeni anahtarları **yalnızca** `app_translations.dart` içindeki **`_tr` ve `_en`** map'lerine ekle (ikisi de zorunlu; aynı anahtar adı).
+2. Anahtar formatı: noktalı isim, örn. `'settings.ai.mode': '…'`.
+3. Dinamik parçalar için GetX placeholder: `@e`, `@id`, `@n`, `@title` → kodda `.trParams({'e': err})`.
+4. `_tr` ve `_en` sayıları uyumlu olmalı; `_en`'de olup `_tr`'de olmayan anahtar kabul edilmez.
+
+## 15 kısmi dili senkronize et
+
+Master `_en` güncellendikten sonra proje kökünde:
+
+```bash
+python3 -m pip install --user deep-translator   # ilk kurulum
+python3 translate_sync.py --dry-run             # eksikleri raporla
+python3 translate_sync.py                       # tüm kısmi dilleri çevir + yaz
+python3 translate_sync.py --lang fr             # tek dil
+```
+
+Script: `translate_sync.py` (kök dizin). Kaynak dil: `_en`. `@param` placeholder'ları çeviride korunur.
+
+## UI'da kullanım
+
+- `'anahtar'.tr`
+- `'anahtar'.trParams({'id': '1'})`
+
+Desteklenen dil kodları: `tr`, `en`, `fr`, `ar`, `zh`, `ru`, `ja`, `es`, `ko`, `he`, `da`, `sv`, `hi`, `th`, `it`, `pt`, `id`.
+
+## Yapma
+
+- `l10n.yaml` / `.arb` / harici JSON çeviri dosyası ekleme.
+- Yeni anahtarı sadece `locale_partials.dart`'a yazma (önce `_tr` + `_en`).
+- Placeholder'ı `@` olmadan çevirmeye bırakma (script maskeler; elle eklerken koru).

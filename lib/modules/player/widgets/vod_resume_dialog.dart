@@ -188,13 +188,14 @@ class _VodResumeDialogState extends State<VodResumeDialog> {
             title: Text('player.resume.title'.tr),
             content: Text('player.resume.body'.tr),
             actions: [
-              FilledButton.tonal(
+              GlassDialogActionButton(
+                label: 'player.resume.fromLast'.tr,
+                primary: true,
                 onPressed: _popFromLast,
-                child: Text('player.resume.fromLast'.tr),
               ),
-              TextButton(
+              GlassDialogActionButton(
+                label: 'player.resume.fromStart'.tr,
                 onPressed: _popFromStart,
-                child: Text('player.resume.fromStart'.tr),
               ),
             ],
           ),

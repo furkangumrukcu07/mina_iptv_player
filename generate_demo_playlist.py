@@ -9,7 +9,7 @@ def _placeholder_poster(text: str) -> str:
 
 
 def generate_m3u(output_path: str = "demo_playlist_5x10x3.m3u") -> None:
-    header = '#EXTM3U x-tvg-url="https://iptv-org.github.io/epg/guides/tr.xml"\n\n'
+    header = '#EXTM3U x-tvg-url="https://worker-9dd4.onrender.com/guide.xml"\n\n'
 
     sample_streams = [
         "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4",

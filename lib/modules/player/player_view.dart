@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 import 'dart:math' as math;
-import 'dart:ui';
+import 'dart:ui' as ui;
 import 'package:better_player_plus/better_player_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -10,26 +10,142 @@ import 'package:get/get.dart';
 import 'package:media_kit/media_kit.dart';
 import '../../core/player/playback_orientation_manager.dart';
 import '../../core/services/app_settings_service.dart';
+import '../../core/services/epg_service.dart';
+import '../../core/services/favorites_service.dart';
+import '../../core/services/playlist_cache_service.dart';
 import '../../core/layout/app_layout_mode.dart';
 import '../../../core/theme/app_performance.dart';
+import '../../../core/theme/app_scroll_physics.dart';
 import '../../../core/theme/glass_appearance.dart';
-import '../../../core/services/favorites_service.dart';
 import '../../../core/player/exo_native_track_option.dart';
 import '../../../core/player/better_player_video_track_label.dart';
 import '../../../core/player/iptv_playback_defaults.dart';
 import '../../../domain/entities/channel.dart';
+import '../../../domain/entities/epg_entities.dart';
+import '../../../domain/entities/m3u_result.dart';
 import '../../../domain/entities/series.dart';
+import '../../../domain/entities/series_episode_option.dart';
+import '../../../domain/entities/vod.dart';
+import 'widgets/landscape_status_overlay.dart';
 import 'widgets/osd_stream_quality_badges.dart';
 import 'widgets/live_channel_strip_overlay.dart';
+import 'widgets/player_cast_sheet.dart';
 import 'widgets/vod_browse_rail_overlay.dart';
 import 'widgets/player_live_epg_overlay.dart';
 import 'widgets/vod_autoplay_overlay.dart';
+import 'widgets/vod_seek_bar.dart';
 import 'widgets/player_glass_level_overlay.dart';
 import 'widgets/tv_media_kit_player_controls.dart';
+import 'widgets/playback_pinch_zoom_layer.dart';
 import 'widgets/universal_video_player.dart';
+import '../channels/channels_controller.dart'
+    show
+        kFavoritesVirtualCategoryId,
+        kRecentlyWatchedVirtualCategoryId,
+        kRecentlyWatchedLiveLimit;
+import '../../services/user_history_service.dart';
 import 'player_controller.dart';
+import 'series_player_panel_data.dart';
 import '../../../ui/glass_overlays.dart';
 import '../../../ui/iptv_channel_logo.dart';
+
+/// Parlaklık / ses dikey kaydırması için sol ve sağ kenar genişliği.
+double playbackGestureEdgeStripWidth(double screenWidth) =>
+    math.min(76.0, screenWidth * 0.14);
+
+/// Sol kenar: parlaklık, sağ kenar: ses (dikey sürükleme).
+class _PlaybackVolumeBrightnessEdgeGestures extends StatelessWidget {
+  const _PlaybackVolumeBrightnessEdgeGestures({
+    required this.onBrightnessDragStart,
+    required this.onVolumeDragStart,
+    required this.onVerticalDragUpdate,
+  });
+
+  final void Function(DragStartDetails) onBrightnessDragStart;
+  final void Function(DragStartDetails) onVolumeDragStart;
+  final void Function(DragUpdateDetails) onVerticalDragUpdate;
+
+  @override
+  Widget build(BuildContext context) {
+    final edgeW =
+        playbackGestureEdgeStripWidth(MediaQuery.sizeOf(context).width);
+    return Stack(
+      fit: StackFit.expand,
+      clipBehavior: Clip.none,
+      children: [
+        Positioned(
+          left: 0,
+          top: 0,
+          bottom: 0,
+          width: edgeW,
+          child: GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onVerticalDragStart: onBrightnessDragStart,
+            onVerticalDragUpdate: onVerticalDragUpdate,
+          ),
+        ),
+        Positioned(
+          right: 0,
+          top: 0,
+          bottom: 0,
+          width: edgeW,
+          child: GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onVerticalDragStart: onVolumeDragStart,
+            onVerticalDragUpdate: onVerticalDragUpdate,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Video yüzeyi + isteğe bağlı pinch-zoom (mobil/tablet).
+/// Parlaklık yalnızca sol kenarda, ses yalnızca sağ kenarda; orta alan zoom için serbest.
+Widget _playerVideoSurfaceStack({
+  required BuildContext context,
+  required PlayerController controller,
+  required bool enablePinchZoom,
+  required Widget player,
+  required bool useMediaKitPlayer,
+  required Widget? mkOsd,
+  required void Function(DragStartDetails) onBrightnessDragStart,
+  required void Function(DragStartDetails) onVolumeDragStart,
+  required void Function(DragUpdateDetails) onVerticalDragUpdate,
+  required VoidCallback? onLongPress,
+}) {
+  var video = player;
+  if (enablePinchZoom) {
+    video = PlaybackPinchZoomLayer(
+      playbackKey: controller.channel.value.streamUrl,
+      child: player,
+    );
+  }
+  return Stack(
+    fit: StackFit.expand,
+    clipBehavior: Clip.none,
+    children: [
+      const Positioned.fill(
+        child: ColoredBox(color: Colors.black),
+      ),
+      video,
+      if (useMediaKitPlayer) _PlaybackVideoDimmer(controller: controller),
+      if (useMediaKitPlayer && mkOsd != null) mkOsd,
+      if (onLongPress != null)
+        Positioned.fill(
+          child: GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onLongPress: onLongPress,
+          ),
+        ),
+      _PlaybackVolumeBrightnessEdgeGestures(
+        onBrightnessDragStart: onBrightnessDragStart,
+        onVolumeDragStart: onVolumeDragStart,
+        onVerticalDragUpdate: onVerticalDragUpdate,
+      ),
+    ],
+  );
+}
 
 /// TV / yatay kumanda: oynatıcı yüzeyi veya cam OSD henüz yokken bile canlıda kanal değişimi.
 Widget _liveRemoteZapWhenPlayerChromeMissing({
@@ -126,13 +242,16 @@ class _PlayerViewState extends State<PlayerView> with WidgetsBindingObserver {
 
   bool _hardwareKeyHandler(KeyEvent event) => _onGlobalHardwareKey(event);
 
-  void _handleVerticalDragStart(DragStartDetails details) {
-    final width = MediaQuery.sizeOf(context).width;
-    _isDraggingLeft = details.globalPosition.dx < width / 2;
+  void _handleBrightnessDragStart(DragStartDetails details) {
+    _isDraggingLeft = true;
     _verticalGestureOriginY = details.globalPosition.dy;
-    _verticalGestureStartLevel = _isDraggingLeft
-        ? controller.inAppPlaybackBrightness.value
-        : controller.currentVolume;
+    _verticalGestureStartLevel = controller.inAppPlaybackBrightness.value;
+  }
+
+  void _handleVolumeDragStart(DragStartDetails details) {
+    _isDraggingLeft = false;
+    _verticalGestureOriginY = details.globalPosition.dy;
+    _verticalGestureStartLevel = controller.currentVolume;
   }
 
   void _handleVerticalDragUpdate(DragUpdateDetails details) {
@@ -145,7 +264,8 @@ class _PlayerViewState extends State<PlayerView> with WidgetsBindingObserver {
     final dy = details.globalPosition.dy - originY;
     final gain = PlayerController.verticalPlaybackGestureGain;
     final delta = -(dy / height) * gain;
-    final newValue = (_verticalGestureStartLevel + delta).clamp(0.0, 1.0);
+    final cap = _isDraggingLeft ? 1.0 : controller.maxPlaybackVolume;
+    final newValue = (_verticalGestureStartLevel + delta).clamp(0.0, cap);
 
     if (_isDraggingLeft) {
       controller.setInAppPlaybackBrightness(newValue);
@@ -164,7 +284,8 @@ class _PlayerViewState extends State<PlayerView> with WidgetsBindingObserver {
   }
 
   void _nudgeInAppVolume(double delta) {
-    final v = (controller.currentVolume + delta).clamp(0.0, 1.0);
+    final cap = controller.maxPlaybackVolume;
+    final v = (controller.currentVolume + delta).clamp(0.0, cap);
     controller.setVolume(v);
     _overlayIcon.value = playerVolumeIconFor(v);
     _overlayValue.value = v;
@@ -265,6 +386,10 @@ class _PlayerViewState extends State<PlayerView> with WidgetsBindingObserver {
         .addPostFrameCallback((_) => _syncPlayerSystemChrome());
     controller.onRequestLiveChannelStripFromTvOsd = _openLiveChannelStrip;
     controller.onRequestVodBrowseRailFromTvOsd = _openVodBrowseRail;
+    // Hızlı kanal şeridinden seçim sonrası 3 sn işlem olmazsa kapanır
+    // (yayına dön, OSD açma).
+    controller.onRequestCloseLiveChannelStrip =
+        () => _closeLiveChannelStrip(showOsdAfter: false);
   }
 
   @override
@@ -294,6 +419,22 @@ class _PlayerViewState extends State<PlayerView> with WidgetsBindingObserver {
     return !u.contains('/movie/') && !u.contains('/series/');
   }
 
+  /// Kumanda/klavye sayı tuşunu (üst sıra veya numpad) 0–9 değerine çevirir.
+  /// Sayı tuşu değilse null döner.
+  static int? _digitFromKey(LogicalKeyboardKey key) => switch (key) {
+        LogicalKeyboardKey.digit0 || LogicalKeyboardKey.numpad0 => 0,
+        LogicalKeyboardKey.digit1 || LogicalKeyboardKey.numpad1 => 1,
+        LogicalKeyboardKey.digit2 || LogicalKeyboardKey.numpad2 => 2,
+        LogicalKeyboardKey.digit3 || LogicalKeyboardKey.numpad3 => 3,
+        LogicalKeyboardKey.digit4 || LogicalKeyboardKey.numpad4 => 4,
+        LogicalKeyboardKey.digit5 || LogicalKeyboardKey.numpad5 => 5,
+        LogicalKeyboardKey.digit6 || LogicalKeyboardKey.numpad6 => 6,
+        LogicalKeyboardKey.digit7 || LogicalKeyboardKey.numpad7 => 7,
+        LogicalKeyboardKey.digit8 || LogicalKeyboardKey.numpad8 => 8,
+        LogicalKeyboardKey.digit9 || LogicalKeyboardKey.numpad9 => 9,
+        _ => null,
+      };
+
   void _openLiveChannelStrip() {
     if (controller.liveChannelStripOverlayOpen.value) return;
     controller.prepareLiveChannelStrip();
@@ -306,6 +447,7 @@ class _PlayerViewState extends State<PlayerView> with WidgetsBindingObserver {
   /// [showOsdAfter]: `true` = şerit kapanınca kumanda OSD (cam panel) açılır; yayın açık kalır.
   void _closeLiveChannelStrip({required bool showOsdAfter}) {
     if (!controller.liveChannelStripOverlayOpen.value) return;
+    controller.cancelLiveStripAutoClose();
     controller.liveChannelStripOverlayOpen.value = false;
     if (showOsdAfter) {
       controller.tvOsdVisible.value = true;
@@ -327,6 +469,39 @@ class _PlayerViewState extends State<PlayerView> with WidgetsBindingObserver {
   void _onVodBrowseRailHardwareBack() {
     _consumeNextSystemBackPop = true;
     controller.closeVodBrowseRail(showOsdAfter: true);
+  }
+
+  /// Android/iOS sistem Geri — overlay önceliği, ardından oynatıcıdan çıkış.
+  void _onPlayerBackPressed() {
+    if (_consumeNextSystemBackPop) {
+      _consumeNextSystemBackPop = false;
+      return;
+    }
+    if (controller.liveSingleChannelEpgOpen.value) {
+      controller.closeLiveSingleChannelEpgOverlay(showOsdAfter: true);
+      return;
+    }
+    if (controller.vodBrowseRailOpen.value) {
+      controller.closeVodBrowseRail(showOsdAfter: true);
+      return;
+    }
+    if (controller.liveChannelStripOverlayOpen.value) {
+      _closeLiveChannelStrip(showOsdAfter: true);
+      return;
+    }
+    if (controller.vodAutoplayCountdown.value != null) {
+      controller.cancelVodAutoplayCountdown(cancelledByUser: true);
+      return;
+    }
+    if (Get.isDialogOpen == true) {
+      if (controller.vodResumeDialogOpen.value) {
+        Get.back<bool>(result: false);
+      } else {
+        Get.back<void>();
+      }
+      return;
+    }
+    controller.handleBack();
   }
 
   bool _onGlobalHardwareKey(KeyEvent event) {
@@ -389,9 +564,68 @@ class _PlayerViewState extends State<PlayerView> with WidgetsBindingObserver {
           return true;
         }
       }
+      // Şeritte gezinme/etkileşim oldukça otomatik kapanma süresini sıfırla
+      // (yalnızca bir seçim sonrası sayaç etkinse).
+      if (event is KeyDownEvent || event is KeyRepeatEvent) {
+        controller.bumpLiveStripAutoCloseIfActive();
+      }
       return false;
     }
     final ch = controller.channel.value;
+
+    // Kumandadan sayı tuşları (0–9): canlı yayında doğrudan kanal numarasına
+    // geçiş. OSD gizliyken de çalışır; girilen rakamlar kısa süre sonra (ya da
+    // OK ile) uygulanır, Geri ile iptal edilir.
+    if (_isLiveChannel(ch)) {
+      final tv =
+          Get.find<AppSettingsService>().layoutMode.value == AppLayoutMode.tv;
+      if (tv) {
+        final k = event.logicalKey;
+        final entryActive = controller.tvChannelNumberEntry.value.isNotEmpty;
+        if (entryActive &&
+            (k == LogicalKeyboardKey.goBack ||
+                k == LogicalKeyboardKey.escape)) {
+          if (event is KeyDownEvent) controller.cancelChannelNumberEntry();
+          return true;
+        }
+        if (entryActive &&
+            event is KeyDownEvent &&
+            (k == LogicalKeyboardKey.select ||
+                k == LogicalKeyboardKey.enter ||
+                k == LogicalKeyboardKey.numpadEnter ||
+                k == LogicalKeyboardKey.gameButtonSelect)) {
+          controller.commitChannelNumberEntry();
+          return true;
+        }
+        final digit = _digitFromKey(k);
+        if (digit != null) {
+          if (event is KeyDownEvent) {
+            controller.pushChannelNumberDigit(digit);
+          }
+          return true;
+        }
+      }
+    }
+
+    // Yatay + TV + OSD kapalı iken kumandadan SOL yön tuşu: hızlı menüyü açar.
+    // Canlı yayında kanal şeridi, film/dizi izlerken VOD browse rayı.
+    if (event is KeyDownEvent &&
+        event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+      final tv =
+          Get.find<AppSettingsService>().layoutMode.value == AppLayoutMode.tv;
+      final landscape = _lastAppliedOrientationInBuild == Orientation.landscape;
+      if (tv && landscape && !controller.tvOsdVisible.value) {
+        if (_isLiveChannel(ch)) {
+          _openLiveChannelStrip();
+          return true;
+        }
+        if (controller.vodBrowseRailAvailable) {
+          _openVodBrowseRail();
+          return true;
+        }
+      }
+    }
+
     if (!_isLiveChannel(ch)) {
       final tv =
           Get.find<AppSettingsService>().layoutMode.value == AppLayoutMode.tv;
@@ -466,433 +700,541 @@ class _PlayerViewState extends State<PlayerView> with WidgetsBindingObserver {
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: uiStyle,
-      child: PopScope(
-        canPop: false,
-        onPopInvokedWithResult: (didPop, _) {
-          if (didPop) return;
-          if (_consumeNextSystemBackPop) {
-            _consumeNextSystemBackPop = false;
-            return;
-          }
-          // Sistem Geri: önce tam ekran overlay’ler (yayından çıkma yok).
-          if (controller.liveSingleChannelEpgOpen.value) {
-            controller.closeLiveSingleChannelEpgOverlay(showOsdAfter: true);
-            return;
-          }
-          if (controller.vodBrowseRailOpen.value) {
-            controller.closeVodBrowseRail(showOsdAfter: true);
-            return;
-          }
-          if (controller.liveChannelStripOverlayOpen.value) {
-            _closeLiveChannelStrip(showOsdAfter: true);
-            return;
-          }
-          if (controller.vodAutoplayCountdown.value != null) {
-            controller.cancelVodAutoplayCountdown(cancelledByUser: true);
-            return;
-          }
-          if (Get.isDialogOpen == true) {
-            if (controller.vodResumeDialogOpen.value) {
-              Get.back<bool>(result: false);
-            } else {
-              Get.back<void>();
-            }
-            return;
-          }
-          controller.handleBack();
-        },
-        child: Scaffold(
-          backgroundColor: Colors.black,
-          body: FocusTraversalGroup(
-            policy: OrderedTraversalPolicy(),
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                // TvBetterPlayerControls ile aynı eksen; dar pencerede yanlışlıkla çift OSD olmasın.
-                final isPortrait =
-                    MediaQuery.orientationOf(context) == Orientation.portrait;
-
-                final playerWidget = Obx(() {
-                  // Tüm ilgili Rx’leri erken return’lerden önce oku; iç içe Obx kullanma.
-                  final busy = controller.isBusy.value;
-                  controller.suppressLiveZapLoadingUi.value;
-                  controller.vodResumeDialogOpen.value;
-                  final message = controller.error.value;
-                  final fit = controller.videoFit.value;
-                  controller.betterSurfaceEpoch.value;
-                  final bp = controller.better;
-                  final settings = Get.find<AppSettingsService>();
-                  controller.betterOsdOverride.value;
-                  final useMediaKitPlayer = controller.effectiveUseMediaKit;
-                  controller.orphanBetterSurfaceRecoveryAttempts.value;
-
-                  final remoteNav = remoteNavForScreenLayout(
-                      context, settings.layoutMode.value);
-                  final liveCh =
-                      remoteNav && _isLiveChannel(controller.channel.value);
-                  final live = _isLiveChannel(controller.channel.value);
-
-                  final loadMsg = 'player.loading.stream'.tr;
-
-                  if (message != null) {
-                    final err = _PlayerMessage(
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          PopScope(
+            canPop: false,
+            onPopInvokedWithResult: (didPop, _) {
+              if (didPop) return;
+              _onPlayerBackPressed();
+            },
+            child: Scaffold(
+              backgroundColor: Colors.black,
+              body: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                mainAxisAlignment: MainAxisAlignment.start,
+                children: [
+                  Expanded(
+                    child: FocusTraversalGroup(
+                      policy: OrderedTraversalPolicy(),
                       child: LayoutBuilder(
                         builder: (context, constraints) {
-                          final h = constraints.maxHeight;
-                          final maxScroll =
-                              h.isFinite ? math.max(120.0, h - 88) : 320.0;
-                          return Column(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.signal_wifi_off_rounded,
-                                size: 48,
-                                color: Colors.red.shade200,
-                              ),
-                              const SizedBox(height: 16),
-                              ConstrainedBox(
-                                constraints:
-                                    BoxConstraints(maxHeight: maxScroll),
-                                child: SingleChildScrollView(
+                          // TvBetterPlayerControls ile aynı eksen; dar pencerede yanlışlıkla çift OSD olmasın.
+                          final isPortrait =
+                              MediaQuery.orientationOf(context) ==
+                                  Orientation.portrait;
+                          controller.setPlaybackPortraitForAutoHide(isPortrait);
+
+                          final playerWidget = Obx(() {
+                            // Tüm ilgili Rx’leri erken return’lerden önce oku; iç içe Obx kullanma.
+                            final busy = controller.isBusy.value;
+                            controller.suppressLiveZapLoadingUi.value;
+                            controller.vodResumeDialogOpen.value;
+                            final message = controller.error.value;
+                            final fit = controller.videoFit.value;
+                            controller.betterSurfaceEpoch.value;
+                            final bp = controller.better;
+                            final settings = Get.find<AppSettingsService>();
+                            controller.betterOsdOverride.value;
+                            final useMediaKitPlayer =
+                                controller.effectiveUseMediaKit;
+                            controller
+                                .orphanBetterSurfaceRecoveryAttempts.value;
+
+                            final remoteNav = remoteNavForScreenLayout(
+                                context, settings.layoutMode.value);
+                            final enablePinchZoom =
+                                playbackPinchZoomEnabledForLayout(
+                              settings.layoutMode.value,
+                            );
+                            final liveCh = remoteNav &&
+                                _isLiveChannel(controller.channel.value);
+                            final live =
+                                _isLiveChannel(controller.channel.value);
+
+                            final loadMsg = 'player.loading.stream'.tr;
+
+                            if (message != null) {
+                              final err = _PlayerMessage(
+                                child: LayoutBuilder(
+                                  builder: (context, constraints) {
+                                    final h = constraints.maxHeight;
+                                    final maxScroll = h.isFinite
+                                        ? math.max(120.0, h - 88)
+                                        : 320.0;
+                                    return Column(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          Icons.signal_wifi_off_rounded,
+                                          size: 48,
+                                          color: Colors.red.shade200,
+                                        ),
+                                        const SizedBox(height: 16),
+                                        ConstrainedBox(
+                                          constraints: BoxConstraints(
+                                              maxHeight: maxScroll),
+                                          child: SingleChildScrollView(
+                                            child: Text(
+                                              message,
+                                              textAlign: TextAlign.center,
+                                              style: const TextStyle(
+                                                color: Colors.white,
+                                                fontSize: 16,
+                                                height: 1.4,
+                                              ),
+                                            ),
+                                          ),
+                                        ),
+                                      ],
+                                    );
+                                  },
+                                ),
+                              );
+                              return _liveRemoteZapWhenPlayerChromeMissing(
+                                controller: controller,
+                                enable: liveCh,
+                                child: err,
+                              );
+                            }
+
+                            final hasSurface = useMediaKitPlayer || bp != null;
+
+                            if (!hasSurface) {
+                              if (busy) {
+                                if (liveCh) {
+                                  final suppress =
+                                      controller.suppressLiveZapLoadingUi.value;
+                                  return Focus(
+                                    autofocus: true,
+                                    onKeyEvent: (node, event) {
+                                      if (event is! KeyDownEvent &&
+                                          event is! KeyRepeatEvent) {
+                                        return KeyEventResult.ignored;
+                                      }
+                                      if (controller
+                                              .vodResumeDialogOpen.value ||
+                                          controller
+                                                  .vodAutoplayCountdown.value !=
+                                              null) {
+                                        return KeyEventResult.ignored;
+                                      }
+                                      final k = event.logicalKey;
+                                      if (k == LogicalKeyboardKey.arrowUp ||
+                                          k == LogicalKeyboardKey.arrowLeft) {
+                                        controller.zapRelativeDebounced(-1);
+                                        return KeyEventResult.handled;
+                                      }
+                                      if (k == LogicalKeyboardKey.arrowDown ||
+                                          k == LogicalKeyboardKey.arrowRight) {
+                                        controller.zapRelativeDebounced(1);
+                                        return KeyEventResult.handled;
+                                      }
+                                      return KeyEventResult.ignored;
+                                    },
+                                    child: Stack(
+                                      fit: StackFit.expand,
+                                      children: [
+                                        const ColoredBox(
+                                            color: Color(0xFF0D0D0F)),
+                                        // Yatay canlı: Better/MediaKit henüz yok — merkez "Akış açılıyor" yerine
+                                        // gerçek OSD ile aynı cam panel (kanal değiştirme vb. çalışır); yüzey gelince bu dal biter.
+                                        if (!isPortrait && liveCh)
+                                          Obx(() {
+                                            final cid =
+                                                controller.channel.value.id;
+                                            return TvMediaKitPlayerControls(
+                                              key: ValueKey(
+                                                  'mk_osd_presurface_$cid'),
+                                              onPlayerVisibilityChanged: (v) {
+                                                controller
+                                                    .syncTvOsdVisibilityFromControls(
+                                                        v);
+                                              },
+                                            );
+                                          })
+                                        else ...[
+                                          if (!suppress)
+                                            _PlayerLoadingOverlay(
+                                              channel: controller.channel.value,
+                                              subtitle: loadMsg,
+                                            ),
+                                          if (useMediaKitPlayer)
+                                            Obx(() {
+                                              final cid =
+                                                  controller.channel.value.id;
+                                              return TvMediaKitPlayerControls(
+                                                key: ValueKey(
+                                                    'mk_osd_init_$cid'),
+                                                onPlayerVisibilityChanged: (v) {
+                                                  controller
+                                                      .syncTvOsdVisibilityFromControls(
+                                                          v);
+                                                },
+                                              );
+                                            }),
+                                        ],
+                                      ],
+                                    ),
+                                  );
+                                }
+                                return _PlayerMessage(
+                                  child: _PlayerLoadingCenter(
+                                    channel: controller.channel.value,
+                                    subtitle: loadMsg,
+                                  ),
+                                );
+                              }
+                              if (!useMediaKitPlayer &&
+                                  controller.orphanBetterSurfaceRecoveryAttempts
+                                          .value >=
+                                      controller
+                                          .effectiveMaxOrphanBetterSurfaceRetries) {
+                                final notReady = _PlayerMessage(
                                   child: Text(
-                                    message,
+                                    'player.notReady'.tr,
                                     textAlign: TextAlign.center,
                                     style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 16,
-                                      height: 1.4,
+                                        color: Colors.white70, fontSize: 16),
+                                  ),
+                                );
+                                return _liveRemoteZapWhenPlayerChromeMissing(
+                                  controller: controller,
+                                  enable: liveCh,
+                                  child: notReady,
+                                );
+                              }
+                              WidgetsBinding.instance.addPostFrameCallback((_) {
+                                if (!mounted) return;
+                                unawaited(
+                                    controller.ensureOrphanBetterBootRetry());
+                              });
+                              final recovering = !isPortrait && liveCh
+                                  ? Stack(
+                                      fit: StackFit.expand,
+                                      children: [
+                                        const ColoredBox(
+                                            color: Color(0xFF0D0D0F)),
+                                        Obx(() {
+                                          final cid =
+                                              controller.channel.value.id;
+                                          return TvMediaKitPlayerControls(
+                                            key: ValueKey(
+                                                'mk_osd_orphan_retry_$cid'),
+                                            onPlayerVisibilityChanged: (v) {
+                                              controller
+                                                  .syncTvOsdVisibilityFromControls(
+                                                      v);
+                                            },
+                                          );
+                                        }),
+                                      ],
+                                    )
+                                  : _PlayerMessage(
+                                      child: _PlayerLoadingCenter(
+                                        channel: controller.channel.value,
+                                        subtitle: loadMsg,
+                                      ),
+                                    );
+                              return _liveRemoteZapWhenPlayerChromeMissing(
+                                controller: controller,
+                                enable: liveCh,
+                                child: recovering,
+                              );
+                            }
+
+                            if (useMediaKitPlayer) {
+                              controller.mediaKitAttachEpoch.value;
+                            }
+
+                            final player = UniversalVideoPlayer(
+                              key: _videoSurfaceKey,
+                              url: controller.surfaceStreamUrl,
+                              useMediaKit: useMediaKitPlayer,
+                              betterPlayerController: bp,
+                              fit: fit,
+                              onMediaKitPlayerChanged:
+                                  controller.attachMediaKitPlayer,
+                            );
+
+                            final mkOsd = useMediaKitPlayer && !isPortrait
+                                ? Obx(() {
+                                    final epoch =
+                                        controller.mediaKitAttachEpoch.value;
+                                    final cid = controller.channel.value.id;
+                                    return TvMediaKitPlayerControls(
+                                      key: ValueKey('mk_osd_${cid}_$epoch'),
+                                      onPlayerVisibilityChanged: (v) {
+                                        controller
+                                            .syncTvOsdVisibilityFromControls(v);
+                                      },
+                                    );
+                                  })
+                                : null;
+
+                            Widget addBusyShell(Widget core) {
+                              if (!busy) return core;
+                              final suppress =
+                                  controller.suppressLiveZapLoadingUi.value;
+                              if (liveCh || suppress) {
+                                return core;
+                              }
+                              // Mobil dikey: kanal değişiminde tam ekran logo/splash yerine
+                              // mevcut player kontrolleri kalsın, yalnız merkezde loading görünsün.
+                              if (isPortrait) {
+                                return Stack(
+                                  fit: StackFit.expand,
+                                  children: [
+                                    core,
+                                    const Positioned.fill(
+                                      child: _PlayerCenterLoadingSpinner(),
+                                    ),
+                                  ],
+                                );
+                              }
+                              return Stack(
+                                fit: StackFit.expand,
+                                children: [
+                                  core,
+                                  Positioned.fill(
+                                    child: _PlayerLoadingOverlay(
+                                      channel: controller.channel.value,
+                                      subtitle: loadMsg,
+                                    ),
+                                  ),
+                                ],
+                              );
+                            }
+
+                            if (remoteNav) {
+                              // TV / tablet kumanda veya mobil yatay: ok ile OSD, oklar ile kanal (canlı).
+                              return ExcludeFocus(
+                                excluding: controller.vodResumeDialogOpen.value,
+                                child: Focus(
+                                  // Yalnızca yedek: birincil odak Tv*PlayerControls’ta olmalı; burada
+                                  // autofocus verilirse dış düğüm odak çalar ve oklar yalnız zap yapıp
+                                  // OSD açılmaz (kilitlenme).
+                                  autofocus: false,
+                                  canRequestFocus: false,
+                                  onKeyEvent: (node, event) {
+                                    if (event is! KeyDownEvent) {
+                                      return KeyEventResult.ignored;
+                                    }
+                                    // VOD devam diyaloğu açıkken yut. [Get.isDialogOpen] kapanışta
+                                    // yanlışlıkla true kalabildiği için burada kullanılmıyor.
+                                    if (controller.vodResumeDialogOpen.value) {
+                                      return KeyEventResult.ignored;
+                                    }
+                                    final k = event.logicalKey;
+                                    // Odak üst katmana kaçtıysa: tek ok basışı yalnız OSD aç (zap yok).
+                                    if (!controller.tvOsdVisible.value) {
+                                      if (k == LogicalKeyboardKey.arrowUp ||
+                                          k == LogicalKeyboardKey.arrowDown ||
+                                          k == LogicalKeyboardKey.arrowLeft ||
+                                          k == LogicalKeyboardKey.arrowRight) {
+                                        controller.tvOsdVisible.value = true;
+                                        controller.scheduleTvOsdAutoHide();
+                                        return KeyEventResult.handled;
+                                      }
+                                      if (k == LogicalKeyboardKey.select ||
+                                          k == LogicalKeyboardKey.enter ||
+                                          k == LogicalKeyboardKey.numpadEnter) {
+                                        controller.tvOsdVisible.value = true;
+                                        controller.scheduleTvOsdAutoHide();
+                                        return KeyEventResult.handled;
+                                      }
+                                    }
+                                    return KeyEventResult.ignored;
+                                  },
+                                  child: addBusyShell(
+                                    _playerVideoSurfaceStack(
+                                      context: context,
+                                      controller: controller,
+                                      enablePinchZoom: enablePinchZoom,
+                                      player: player,
+                                      useMediaKitPlayer: useMediaKitPlayer,
+                                      mkOsd: mkOsd,
+                                      onBrightnessDragStart:
+                                          _handleBrightnessDragStart,
+                                      onVolumeDragStart: _handleVolumeDragStart,
+                                      onVerticalDragUpdate:
+                                          _handleVerticalDragUpdate,
+                                      onLongPress: live
+                                          ? _openLiveChannelStrip
+                                          : (controller.vodBrowseRailAvailable
+                                              ? _openVodBrowseRail
+                                              : null),
                                     ),
                                   ),
                                 ),
+                              );
+                            }
+                            if (useMediaKitPlayer && mkOsd != null) {
+                              return addBusyShell(
+                                _playerVideoSurfaceStack(
+                                  context: context,
+                                  controller: controller,
+                                  enablePinchZoom: enablePinchZoom,
+                                  player: player,
+                                  useMediaKitPlayer: useMediaKitPlayer,
+                                  mkOsd: mkOsd,
+                                  onBrightnessDragStart:
+                                      _handleBrightnessDragStart,
+                                  onVolumeDragStart: _handleVolumeDragStart,
+                                  onVerticalDragUpdate:
+                                      _handleVerticalDragUpdate,
+                                  onLongPress: live
+                                      ? _openLiveChannelStrip
+                                      : (controller.vodBrowseRailAvailable
+                                          ? _openVodBrowseRail
+                                          : null),
+                                ),
+                              );
+                            }
+                            return addBusyShell(
+                              _playerVideoSurfaceStack(
+                                context: context,
+                                controller: controller,
+                                enablePinchZoom: enablePinchZoom,
+                                player: player,
+                                useMediaKitPlayer: useMediaKitPlayer,
+                                mkOsd: null,
+                                onBrightnessDragStart:
+                                    _handleBrightnessDragStart,
+                                onVolumeDragStart: _handleVolumeDragStart,
+                                onVerticalDragUpdate: _handleVerticalDragUpdate,
+                                onLongPress: live
+                                    ? _openLiveChannelStrip
+                                    : (controller.vodBrowseRailAvailable
+                                        ? _openVodBrowseRail
+                                        : null),
                               ),
-                            ],
-                          );
-                        },
-                      ),
-                    );
-                    return _liveRemoteZapWhenPlayerChromeMissing(
-                      controller: controller,
-                      enable: liveCh,
-                      child: err,
-                    );
-                  }
+                            );
+                          });
 
-                  final hasSurface = useMediaKitPlayer || bp != null;
-
-                  if (!hasSurface) {
-                    if (busy) {
-                      if (liveCh) {
-                        final suppress =
-                            controller.suppressLiveZapLoadingUi.value;
-                        return Focus(
-                          autofocus: true,
-                          onKeyEvent: (node, event) {
-                            if (event is! KeyDownEvent &&
-                                event is! KeyRepeatEvent) {
-                              return KeyEventResult.ignored;
-                            }
-                            if (controller.vodResumeDialogOpen.value ||
-                                controller.vodAutoplayCountdown.value != null) {
-                              return KeyEventResult.ignored;
-                            }
-                            final k = event.logicalKey;
-                            if (k == LogicalKeyboardKey.arrowUp ||
-                                k == LogicalKeyboardKey.arrowLeft) {
-                              controller.zapRelativeDebounced(-1);
-                              return KeyEventResult.handled;
-                            }
-                            if (k == LogicalKeyboardKey.arrowDown ||
-                                k == LogicalKeyboardKey.arrowRight) {
-                              controller.zapRelativeDebounced(1);
-                              return KeyEventResult.handled;
-                            }
-                            return KeyEventResult.ignored;
-                          },
-                          child: Stack(
+                          return Stack(
                             fit: StackFit.expand,
                             children: [
-                              const ColoredBox(color: Color(0xFF0D0D0F)),
-                              if (!suppress)
-                                _PlayerLoadingOverlay(
-                                  channel: controller.channel.value,
-                                  subtitle: loadMsg,
+                              Positioned.fill(
+                                child: Obx(
+                                  () => ExcludeFocus(
+                                    excluding: controller
+                                            .liveChannelStripOverlayOpen
+                                            .value ||
+                                        controller
+                                            .liveSingleChannelEpgOpen.value ||
+                                        controller.vodBrowseRailOpen.value,
+                                    child: isPortrait
+                                        ? ColoredBox(
+                                            color: const Color(0xFF0B0F14),
+                                            child: _PlayerPortraitSurfaceShell(
+                                              controller: controller,
+                                              playerWidget: playerWidget,
+                                              onBrightnessDragStart:
+                                                  _handleBrightnessDragStart,
+                                              onVolumeDragStart:
+                                                  _handleVolumeDragStart,
+                                              onVerticalDragUpdate:
+                                                  _handleVerticalDragUpdate,
+                                            ),
+                                          )
+                                        : playerWidget,
+                                  ),
                                 ),
-                              // TV'de yüzey henüz yokken bile OSD'yi göster (logo/kanal ismi güncellenir)
-                              if (useMediaKitPlayer)
-                                Obx(() {
-                                  final cid = controller.channel.value.id;
-                                  return TvMediaKitPlayerControls(
-                                    key: ValueKey('mk_osd_init_$cid'),
-                                    onPlayerVisibilityChanged: (v) {
-                                      controller
-                                          .syncTvOsdVisibilityFromControls(v);
-                                    },
-                                  );
-                                }),
-                            ],
-                          ),
-                        );
-                      }
-                      return _PlayerMessage(
-                        child: _PlayerLoadingCenter(
-                          channel: controller.channel.value,
-                          subtitle: loadMsg,
-                        ),
-                      );
-                    }
-                    if (!useMediaKitPlayer &&
-                        controller.orphanBetterSurfaceRecoveryAttempts.value >=
-                            controller.effectiveMaxOrphanBetterSurfaceRetries) {
-                      final notReady = _PlayerMessage(
-                        child: Text(
-                          'player.notReady'.tr,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                              color: Colors.white70, fontSize: 16),
-                        ),
-                      );
-                      return _liveRemoteZapWhenPlayerChromeMissing(
-                        controller: controller,
-                        enable: liveCh,
-                        child: notReady,
-                      );
-                    }
-                    WidgetsBinding.instance.addPostFrameCallback((_) {
-                      if (!mounted) return;
-                      unawaited(controller.ensureOrphanBetterBootRetry());
-                    });
-                    final recovering = _PlayerMessage(
-                      child: _PlayerLoadingCenter(
-                        channel: controller.channel.value,
-                        subtitle: loadMsg,
-                      ),
-                    );
-                    return _liveRemoteZapWhenPlayerChromeMissing(
-                      controller: controller,
-                      enable: liveCh,
-                      child: recovering,
-                    );
-                  }
-
-                  if (useMediaKitPlayer) {
-                    controller.mediaKitAttachEpoch.value;
-                  }
-
-                  final player = UniversalVideoPlayer(
-                    key: _videoSurfaceKey,
-                    url: controller.surfaceStreamUrl,
-                    useMediaKit: useMediaKitPlayer,
-                    betterPlayerController: bp,
-                    fit: fit,
-                    onMediaKitPlayerChanged: controller.attachMediaKitPlayer,
-                  );
-
-                  final mkOsd = useMediaKitPlayer && !isPortrait
-                      ? Obx(() {
-                          final epoch = controller.mediaKitAttachEpoch.value;
-                          final cid = controller.channel.value.id;
-                          return TvMediaKitPlayerControls(
-                            key: ValueKey('mk_osd_${cid}_$epoch'),
-                            onPlayerVisibilityChanged: (v) {
-                              controller.syncTvOsdVisibilityFromControls(v);
-                            },
-                          );
-                        })
-                      : null;
-
-                  Widget addBusyShell(Widget core) {
-                    if (!busy) return core;
-                    final suppress = controller.suppressLiveZapLoadingUi.value;
-                    if (liveCh || suppress) {
-                      return core;
-                    }
-                    // Mobil dikey: kanal değişiminde tam ekran logo/splash yerine
-                    // mevcut player kontrolleri kalsın, yalnız merkezde loading görünsün.
-                    if (isPortrait) {
-                      return Stack(
-                        fit: StackFit.expand,
-                        children: [
-                          core,
-                          const Positioned.fill(
-                            child: _PlayerCenterLoadingSpinner(),
-                          ),
-                        ],
-                      );
-                    }
-                    return Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        core,
-                        Positioned.fill(
-                          child: _PlayerLoadingOverlay(
-                            channel: controller.channel.value,
-                            subtitle: loadMsg,
-                          ),
-                        ),
-                      ],
-                    );
-                  }
-
-                  if (remoteNav) {
-                    // TV / tablet kumanda veya mobil yatay: ok ile OSD, oklar ile kanal (canlı).
-                    return ExcludeFocus(
-                      excluding: controller.vodResumeDialogOpen.value,
-                      child: Focus(
-                        // Yalnızca yedek: birincil odak Tv*PlayerControls’ta olmalı; burada
-                        // autofocus verilirse dış düğüm odak çalar ve oklar yalnız zap yapıp
-                        // OSD açılmaz (kilitlenme).
-                        autofocus: false,
-                        canRequestFocus: false,
-                        onKeyEvent: (node, event) {
-                          if (event is! KeyDownEvent) {
-                            return KeyEventResult.ignored;
-                          }
-                          // VOD devam diyaloğu açıkken yut. [Get.isDialogOpen] kapanışta
-                          // yanlışlıkla true kalabildiği için burada kullanılmıyor.
-                          if (controller.vodResumeDialogOpen.value) {
-                            return KeyEventResult.ignored;
-                          }
-                          final k = event.logicalKey;
-                          // Odak üst katmana kaçtıysa: tek ok basışı yalnız OSD aç (zap yok).
-                          if (!controller.tvOsdVisible.value) {
-                            if (k == LogicalKeyboardKey.arrowUp ||
-                                k == LogicalKeyboardKey.arrowDown ||
-                                k == LogicalKeyboardKey.arrowLeft ||
-                                k == LogicalKeyboardKey.arrowRight) {
-                              controller.tvOsdVisible.value = true;
-                              controller.scheduleTvOsdAutoHide();
-                              return KeyEventResult.handled;
-                            }
-                            if (k == LogicalKeyboardKey.select ||
-                                k == LogicalKeyboardKey.enter ||
-                                k == LogicalKeyboardKey.numpadEnter) {
-                              controller.tvOsdVisible.value = true;
-                              controller.scheduleTvOsdAutoHide();
-                              return KeyEventResult.handled;
-                            }
-                          }
-                          return KeyEventResult.ignored;
-                        },
-                        child: addBusyShell(
-                          GestureDetector(
-                            onVerticalDragStart: _handleVerticalDragStart,
-                            onVerticalDragUpdate: _handleVerticalDragUpdate,
-                            onLongPress: live
-                                ? _openLiveChannelStrip
-                                : (controller.vodBrowseRailAvailable
-                                    ? _openVodBrowseRail
-                                    : null),
-                            child: Stack(
-                              fit: StackFit.expand,
-                              children: [
-                                player,
-                                if (useMediaKitPlayer)
-                                  _PlaybackVideoDimmer(controller: controller),
-                                if (useMediaKitPlayer && mkOsd != null) mkOsd,
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    );
-                  }
-                  if (useMediaKitPlayer && mkOsd != null) {
-                    return addBusyShell(
-                      GestureDetector(
-                        onVerticalDragStart: _handleVerticalDragStart,
-                        onVerticalDragUpdate: _handleVerticalDragUpdate,
-                        onLongPress: live
-                            ? _openLiveChannelStrip
-                            : (controller.vodBrowseRailAvailable
-                                ? _openVodBrowseRail
-                                : null),
-                        child: Stack(
-                          fit: StackFit.expand,
-                          children: [
-                            player,
-                            if (useMediaKitPlayer)
-                              _PlaybackVideoDimmer(controller: controller),
-                            mkOsd,
-                          ],
-                        ),
-                      ),
-                    );
-                  }
-                  return addBusyShell(
-                    GestureDetector(
-                      onVerticalDragStart: _handleVerticalDragStart,
-                      onVerticalDragUpdate: _handleVerticalDragUpdate,
-                      onLongPress: live
-                          ? _openLiveChannelStrip
-                          : (controller.vodBrowseRailAvailable
-                              ? _openVodBrowseRail
-                              : null),
-                      child: Stack(
-                        fit: StackFit.expand,
-                        children: [
-                          player,
-                          if (useMediaKitPlayer)
-                            _PlaybackVideoDimmer(controller: controller),
-                        ],
-                      ),
-                    ),
-                  );
-                });
-
-                return Stack(
-                  children: [
-                    Obx(
-                      () => ExcludeFocus(
-                        excluding:
-                            controller.liveChannelStripOverlayOpen.value ||
-                                controller.liveSingleChannelEpgOpen.value ||
-                                controller.vodBrowseRailOpen.value,
-                        child: isPortrait
-                            ? _PlayerPortraitSurfaceShell(
+                              ),
+                              Obx(() => AnimatedOpacity(
+                                    duration: const Duration(milliseconds: 200),
+                                    opacity: _showOverlay.value ? 1.0 : 0.0,
+                                    child: PlayerGlassLevelOverlay(
+                                      visible: _showOverlay.value,
+                                      icon: _overlayIcon.value,
+                                      value01: _overlayValue.value,
+                                      maxValue: controller.maxPlaybackVolume,
+                                    ),
+                                  )),
+                              _PlayerFadeLayer(controller: controller),
+                              _PlayerLiveStripLayer(
                                 controller: controller,
-                                playerWidget: playerWidget,
-                              )
-                            : playerWidget,
+                                channelStripKey: _channelStripKey,
+                                onClose: (showOsdAfter) =>
+                                    _closeLiveChannelStrip(
+                                        showOsdAfter: showOsdAfter),
+                                onBackToOsd:
+                                    _onLiveChannelStripOverlayBackToOsd,
+                              ),
+                              _PlayerLiveSingleEpgLayer(
+                                controller: controller,
+                                onHardwareBack: () {
+                                  _consumeNextSystemBackPop = true;
+                                },
+                              ),
+                              _PlayerVodBrowseRailLayer(
+                                controller: controller,
+                                onHardwareBack: _onVodBrowseRailHardwareBack,
+                              ),
+                              VodAutoplayOverlay(controller: controller),
+                            ],
+                          );
+                        },
                       ),
                     ),
-                    Obx(() => AnimatedOpacity(
-                          duration: const Duration(milliseconds: 200),
-                          opacity: _showOverlay.value ? 1.0 : 0.0,
-                          child: PlayerGlassLevelOverlay(
-                            visible: _showOverlay.value,
-                            icon: _overlayIcon.value,
-                            value01: _overlayValue.value,
-                          ),
-                        )),
-                    _PlayerFadeLayer(controller: controller),
-                    _PlayerLiveStripLayer(
-                      controller: controller,
-                      channelStripKey: _channelStripKey,
-                      onClose: (showOsdAfter) =>
-                          _closeLiveChannelStrip(showOsdAfter: showOsdAfter),
-                      onBackToOsd: _onLiveChannelStripOverlayBackToOsd,
-                    ),
-                    _PlayerLiveSingleEpgLayer(
-                      controller: controller,
-                      onHardwareBack: () {
-                        _consumeNextSystemBackPop = true;
-                      },
-                    ),
-                    _PlayerVodBrowseRailLayer(
-                      controller: controller,
-                      onHardwareBack: _onVodBrowseRailHardwareBack,
-                    ),
-                    VodAutoplayOverlay(controller: controller),
-                  ],
-                );
-              },
+                  ),
+                ],
+              ),
             ),
           ),
-        ),
+          // Akıllı Jenerik Atlatıcı — dizi içeriğinde, ilk
+          // `introSkipTargetSec` saniyesi boyunca sağ alt köşede
+          // beliren cam buton.
+          _SkipIntroPositioned(controller: controller),
+          // Kumandadan sayı tuşu ile kanal numarası girişi kutusu (canlı, TV).
+          _ChannelNumberEntryPositioned(controller: controller),
+          // Yatay durum göstergeleri — gerçek saat (SOL üst) + batarya yüzdesi
+          // (SAĞ üst), saydam arka planla ayrı ayrı konumlanır. Tam ekranda
+          // sistem saat/batarya gizlendiği için opsiyonel. TV'de (batarya yok)
+          // gösterilmez. Ayar kapalıysa boş döner.
+          if (landscape) ...[
+            Positioned(
+              top: 10 + MediaQuery.paddingOf(context).top,
+              left: 16 + MediaQuery.paddingOf(context).left,
+              child: Obx(() {
+                final s = Get.find<AppSettingsService>();
+                if (!s.landscapeStatusBarEnabled.value ||
+                    s.layoutMode.value == AppLayoutMode.tv) {
+                  return const SizedBox.shrink();
+                }
+                return const IgnorePointer(child: LandscapeClockOverlay());
+              }),
+            ),
+            Positioned(
+              top: 10 + MediaQuery.paddingOf(context).top,
+              right: 16 + MediaQuery.paddingOf(context).right,
+              child: Obx(() {
+                final s = Get.find<AppSettingsService>();
+                if (!s.landscapeStatusBarEnabled.value ||
+                    s.layoutMode.value == AppLayoutMode.tv) {
+                  return const SizedBox.shrink();
+                }
+                return const IgnorePointer(child: LandscapeBatteryOverlay());
+              }),
+            ),
+          ],
+        ],
       ),
     );
   }
 }
 
+/// Player Stack'inin üstüne yerleşen Positioned banner. Canlı kanal + OSD
+/// görünürlüğü + settings toggle filtrelemesi tek `Obx` içinde yapılır;
+/// banner gerekmediğinde `SizedBox.shrink()` ile sıfır maliyetli kalır.
+///
+/// **Layout stratejisi:** Mobil/tablet portrait & landscape ve TV — üç
+/// modda da OSD farklı yükseklikte bir cam panel olarak çıkıyor.
+///
+/// **Portrait** (telefon dik) ve **Landscape & TV** (yatay) için OSD ve
+/// üstündeki bilgi şeritleri ayrı widget'lar tarafından yönetilir.
 class _PortraitOsdPanel extends StatefulWidget {
   const _PortraitOsdPanel({required this.controller});
 
@@ -902,35 +1244,395 @@ class _PortraitOsdPanel extends StatefulWidget {
   State<_PortraitOsdPanel> createState() => _PortraitOsdPanelState();
 }
 
-class _PlayerPortraitSurfaceShell extends StatelessWidget {
-  const _PlayerPortraitSurfaceShell({
-    required this.controller,
-    required this.playerWidget,
-  });
+/// OSD kapalıyken tek dokunuşla panel açar; iki parmak pinch için olayları videoya bırakır.
+class _PortraitVideoTapToShowOsd extends StatefulWidget {
+  const _PortraitVideoTapToShowOsd({required this.controller});
 
   final PlayerController controller;
-  final Widget playerWidget;
+
+  @override
+  State<_PortraitVideoTapToShowOsd> createState() =>
+      _PortraitVideoTapToShowOsdState();
+}
+
+class _PortraitVideoTapToShowOsdState
+    extends State<_PortraitVideoTapToShowOsd> {
+  int _activePointers = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    final edgeW =
+        playbackGestureEdgeStripWidth(MediaQuery.sizeOf(context).width);
+    return IgnorePointer(
+      ignoring: _activePointers >= 2,
+      child: Listener(
+        behavior: HitTestBehavior.translucent,
+        onPointerDown: (_) => setState(() => _activePointers++),
+        onPointerUp: (_) =>
+            setState(() => _activePointers = math.max(0, _activePointers - 1)),
+        onPointerCancel: (_) =>
+            setState(() => _activePointers = math.max(0, _activePointers - 1)),
+        // Kenarlar ses/parlaklık sürüklemesi için boş — yalnızca ortada tap.
+        child: Row(
+          children: [
+            SizedBox(width: edgeW),
+            Expanded(
+              child: GestureDetector(
+                behavior: HitTestBehavior.translucent,
+                onTap: () {
+                  widget.controller.tvOsdVisible.value = true;
+                  widget.controller.scheduleTvOsdAutoHide();
+                },
+                child: const ColoredBox(color: Colors.transparent),
+              ),
+            ),
+            SizedBox(width: edgeW),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Akıllı Jenerik Atlatıcı (Smart Stream Cutter) — dizi içeriğinde,
+/// ilk `introSkipTargetSec` saniyesi boyunca sağ alt köşede beliren
+/// cam "Jeneriği Atla" butonu.
+///
+/// **Görünürlük:**
+/// 1. `controller.introSkipTargetSec.value > 0` (o dizi için intro
+///    süresi öğrenilmiş).
+/// 2. Mevcut pozisyon `0..introSkipTargetSec` aralığında.
+///
+/// **Throttle:** Player'ın `currentPosition`'ı Rx değil — Duration
+/// getter. Saniyede ~30 kez stream tetiklenebileceği için TV
+/// box'larda UI yorulmasın diye `Timer.periodic(1 sn)` kullanıyoruz.
+/// Cihaz işlemcisi yalnız saniyede 1 kez state güncellemesi yaşar.
+/// Kumandadan sayı tuşu (0–9) ile girilen kanal numarasını sağ üstte gösteren
+/// cam kutu. Boşken görünmez. Geçerli kategorideki toplam kanal sayısı küçük
+/// bir alt etiket olarak yazılır.
+class _ChannelNumberEntryPositioned extends StatelessWidget {
+  const _ChannelNumberEntryPositioned({required this.controller});
+
+  final PlayerController controller;
 
   @override
   Widget build(BuildContext context) {
     return Obx(() {
-      final layout = Get.find<AppSettingsService>().layoutMode.value;
-      return Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          AspectRatio(
-            aspectRatio: 16 / 9,
-            child: playerWidget,
+      final entry = controller.tvChannelNumberEntry.value;
+      if (entry.isEmpty) return const SizedBox.shrink();
+      final total = controller.liveChannelsInCurrentCategory().length;
+      final cs = Theme.of(context).colorScheme;
+      return Positioned(
+        top: 24 + MediaQuery.paddingOf(context).top,
+        right: 24 + MediaQuery.paddingOf(context).right,
+        child: IgnorePointer(
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(18),
+            child: BackdropFilter(
+              filter: ui.ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+              child: Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(18),
+                  color: Colors.black.withValues(alpha: 0.55),
+                  border: Border.all(
+                    color: cs.primary.withValues(alpha: 0.85),
+                    width: 2,
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: cs.primary.withValues(alpha: 0.35),
+                      blurRadius: 18,
+                      spreadRadius: 1,
+                    ),
+                  ],
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Text(
+                      entry,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 46,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: 4,
+                        height: 1.0,
+                      ),
+                    ),
+                    if (total > 0) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        '1–$total',
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.6),
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 1,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ),
           ),
-          const SizedBox(height: 24),
-          _PortraitOsdPanel(controller: controller),
-          if (layout != AppLayoutMode.tv) ...[
-            const SizedBox(height: 12),
-            _PortraitCategoryChannelBar(controller: controller),
-          ],
-        ],
+        ),
       );
     });
+  }
+}
+
+class _SkipIntroPositioned extends StatefulWidget {
+  const _SkipIntroPositioned({required this.controller});
+  final PlayerController controller;
+
+  @override
+  State<_SkipIntroPositioned> createState() => _SkipIntroPositionedState();
+}
+
+class _SkipIntroPositionedState extends State<_SkipIntroPositioned> {
+  Timer? _ticker;
+  int _posSec = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      final s = widget.controller.currentPosition.inSeconds;
+      if (s != _posSec) setState(() => _posSec = s);
+    });
+  }
+
+  @override
+  void dispose() {
+    _ticker?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Obx(() {
+      final target = widget.controller.introSkipTargetSec.value;
+      final visible = target > 0 && _posSec < target && _posSec >= 0;
+      final isPortrait =
+          MediaQuery.orientationOf(context) == Orientation.portrait;
+      // Sağ alt köşe — portraitte OSD'nin biraz yukarısında, landscape
+      // / TV'de OSD daha alçak olduğu için biraz daha yakın.
+      final bottom = isPortrait ? 150.0 : 110.0;
+      return Positioned(
+        right: 18,
+        bottom: bottom,
+        child: AnimatedOpacity(
+          opacity: visible ? 1.0 : 0.0,
+          duration: const Duration(milliseconds: 220),
+          curve: Curves.easeOut,
+          child: IgnorePointer(
+            ignoring: !visible,
+            child: _SkipIntroButton(
+              onTap: widget.controller.skipIntroNow,
+            ),
+          ),
+        ),
+      );
+    });
+  }
+}
+
+class _SkipIntroButton extends StatelessWidget {
+  const _SkipIntroButton({required this.onTap});
+  final VoidCallback onTap;
+
+  Widget _buildSkipIntroCapsule(Color primary) {
+    final capsule = Container(
+      padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 12),
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Colors.black.withValues(alpha: 0.72),
+            Colors.black.withValues(alpha: 0.52),
+          ],
+        ),
+        borderRadius: BorderRadius.circular(28),
+        border: Border.all(
+          width: 0.7,
+          color: Colors.white.withValues(alpha: 0.32),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: primary.withValues(alpha: 0.30),
+            blurRadius: 18,
+            spreadRadius: 0,
+            offset: const Offset(0, 4),
+          ),
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.40),
+            blurRadius: 10,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(
+            Icons.fast_forward_rounded,
+            color: Colors.white,
+            size: 18,
+          ),
+          const SizedBox(width: 6),
+          Text(
+            'player.skip_intro'.tr,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
+              letterSpacing: 0.2,
+            ),
+          ),
+        ],
+      ),
+    );
+    if (!Get.isRegistered<AppSettingsService>()) return capsule;
+    final settings = Get.find<AppSettingsService>();
+    if (!AppPerformance.usePlayerOsdBackdropBlur(settings)) {
+      return capsule;
+    }
+    return BackdropFilter(
+      filter: ui.ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+      child: capsule,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final primary = Theme.of(context).colorScheme.primary;
+    return Semantics(
+      label: 'player.skip_intro'.tr,
+      button: true,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(28),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(28),
+            child: _buildSkipIntroCapsule(primary),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PlayerPortraitSurfaceShell extends StatelessWidget {
+  const _PlayerPortraitSurfaceShell({
+    required this.controller,
+    required this.playerWidget,
+    required this.onBrightnessDragStart,
+    required this.onVolumeDragStart,
+    required this.onVerticalDragUpdate,
+  });
+
+  final PlayerController controller;
+  final Widget playerWidget;
+  final void Function(DragStartDetails) onBrightnessDragStart;
+  final void Function(DragStartDetails) onVolumeDragStart;
+  final void Function(DragUpdateDetails) onVerticalDragUpdate;
+
+  @override
+  Widget build(BuildContext context) {
+    // `top: true` → video ve panel telefonun durum çubuğunun **altına**
+    // konumlansın (saat / pil çubuğunu kapatmasın). `bottom: false` →
+    // gestür çubuğu boşluğunu Column kendisi yönetiyor.
+    return SafeArea(
+      top: true,
+      bottom: false,
+      left: false,
+      right: false,
+      child: Obx(() {
+        // Playlist arka planda yüklenince kategori/kanal listesi anında güncellensin.
+        if (Get.isRegistered<PlaylistCacheService>()) {
+          Get.find<PlaylistCacheService>().result.value;
+        }
+        // Reactive: kanal değişiminde Obx rebuild olsun.
+        controller.channel.value;
+        // Live TV paneli yalnızca **movie/series** modundayken gizlensin.
+        // `channel.streamUrl` boot sırasında geç set edilebildiği için
+        // controller'ın resmi `isMovie/isSeries` flag'lerine güvenelim;
+        // aksi halde 4-5 saniye boyunca panel yer kaplamaz ve kullanıcı
+        // boş gri zemin görür.
+        final isLive = !controller.isMovie && !controller.isSeries;
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Video — ekranın en üstünde, 16:9 oranlı.
+            AspectRatio(
+              aspectRatio: 16 / 9,
+              child: ClipRect(
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    playerWidget,
+                    // Tap-to-show OSD katmanı her zaman aktif olsun;
+                    // OSD paneli artık daima görünür ama kullanıcı video
+                    // alanına tıklayarak auto-hide süresini yeniler.
+                    Positioned.fill(
+                      child: _PortraitVideoTapToShowOsd(
+                        controller: controller,
+                      ),
+                    ),
+                    // Dikey modda tap katmanı tam ekranı kapladığı için ses /
+                    // parlaklık şeritleri videonun üstünde tekrar eklenir.
+                    _PlaybackVolumeBrightnessEdgeGestures(
+                      onBrightnessDragStart: onBrightnessDragStart,
+                      onVolumeDragStart: onVolumeDragStart,
+                      onVerticalDragUpdate: onVerticalDragUpdate,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            // Video ile OSD arasına boşluk.
+            const SizedBox(height: 12),
+            // OSD paneli — dikey modda **daima** görünür. Yatay tam ekran
+            // OSD'sinden farklı olarak burada panel video alanını
+            // kaplamadığı için auto-hide gerekli değil; kullanıcı kanal
+            // adı / play-pause / favori butonlarına sürekli erişmeli.
+            _PortraitOsdPanel(controller: controller),
+            // OSD altındaki ikincil panel:
+            //  • Canlı TV → Kategoriler / Kanallar / EPG sekmeleri
+            //  • Film     → Kategoriler / Filmler sekmeleri
+            //  • Dizi     → Dizi (özet/IMDb/oyuncular) / Bölümler sekmeleri
+            if (isLive) ...[
+              const SizedBox(height: 12),
+              Expanded(
+                child: _PortraitLiveTvPanel(controller: controller),
+              ),
+            ] else if (controller.isSeries) ...[
+              const SizedBox(height: 12),
+              Expanded(
+                child: _PortraitSeriesPanel(controller: controller),
+              ),
+            ] else ...[
+              const SizedBox(height: 12),
+              Expanded(
+                child: _PortraitVodPanel(
+                  controller: controller,
+                  isSeriesMode: false,
+                ),
+              ),
+            ],
+          ],
+        );
+      }),
+    );
   }
 }
 
@@ -982,7 +1684,8 @@ class _PlayerLiveStripLayer extends StatelessWidget {
       final catTabs = controller.liveChannelStripShowsCategoryTabs;
       final chipIdx = chipNames.isEmpty
           ? 0
-          : controller.liveStripCategoryIndex.value.clamp(0, chipNames.length - 1);
+          : controller.liveStripCategoryIndex.value
+              .clamp(0, chipNames.length - 1);
       return LiveChannelStripOverlay(
         key: channelStripKey,
         channels: List<Channel>.from(channels),
@@ -990,13 +1693,18 @@ class _PlayerLiveStripLayer extends StatelessWidget {
         onClose: () => onClose(true),
         onBackToOsd: onBackToOsd,
         categoryShortcutEnabled: catTabs,
-        onCategoryPrevious: catTabs ? () => controller.shiftLiveStripCategory(-1) : null,
-        onCategoryNext: catTabs ? () => controller.shiftLiveStripCategory(1) : null,
+        onCategoryPrevious:
+            catTabs ? () => controller.shiftLiveStripCategory(-1) : null,
+        onCategoryNext:
+            catTabs ? () => controller.shiftLiveStripCategory(1) : null,
         categoryChipLabels: chipNames.isNotEmpty ? chipNames : null,
         selectedCategoryChipIndex: chipIdx,
         onPick: (ch) async {
-          onClose(false);
+          // Seçim sonrası şeridi HEMEN kapatma; kullanıcı işlem yapmazsa
+          // 3 sn sonra otomatik kapanır (etkileşimde süre sıfırlanır).
+          controller.scheduleLiveStripAutoClose();
           await controller.zapTo(ch);
+          controller.scheduleLiveStripAutoClose();
         },
       );
     });
@@ -1051,7 +1759,8 @@ class _PlayerVodBrowseRailLayer extends StatelessWidget {
       final chipNames = controller.vodBrowseRailCategoryTabNames;
       final chipIdx = chipNames.isEmpty
           ? 0
-          : controller.vodBrowseRailCategoryIndex.value.clamp(0, chipNames.length - 1);
+          : controller.vodBrowseRailCategoryIndex.value
+              .clamp(0, chipNames.length - 1);
       final movies = controller.vodBrowseRailMovies;
       final catTabs = controller.vodBrowseRailShowsCategoryTabs;
       if (movies != null && movies.isNotEmpty) {
@@ -1069,8 +1778,10 @@ class _PlayerVodBrowseRailLayer extends StatelessWidget {
           onClose: () => controller.closeVodBrowseRail(showOsdAfter: true),
           onHardwareBack: onHardwareBack,
           categoryShortcutEnabled: catTabs,
-          onCategoryPrevious: catTabs ? () => controller.shiftVodBrowseRailCategory(-1) : null,
-          onCategoryNext: catTabs ? () => controller.shiftVodBrowseRailCategory(1) : null,
+          onCategoryPrevious:
+              catTabs ? () => controller.shiftVodBrowseRailCategory(-1) : null,
+          onCategoryNext:
+              catTabs ? () => controller.shiftVodBrowseRailCategory(1) : null,
           categoryChipLabels: chipNames.isNotEmpty ? chipNames : null,
           selectedCategoryChipIndex: chipIdx,
         );
@@ -1091,8 +1802,10 @@ class _PlayerVodBrowseRailLayer extends StatelessWidget {
           onClose: () => controller.closeVodBrowseRail(showOsdAfter: true),
           onHardwareBack: onHardwareBack,
           categoryShortcutEnabled: catTabs,
-          onCategoryPrevious: catTabs ? () => controller.shiftVodBrowseRailCategory(-1) : null,
-          onCategoryNext: catTabs ? () => controller.shiftVodBrowseRailCategory(1) : null,
+          onCategoryPrevious:
+              catTabs ? () => controller.shiftVodBrowseRailCategory(-1) : null,
+          onCategoryNext:
+              catTabs ? () => controller.shiftVodBrowseRailCategory(1) : null,
           categoryChipLabels: chipNames.isNotEmpty ? chipNames : null,
           selectedCategoryChipIndex: chipIdx,
         );
@@ -1103,8 +1816,6 @@ class _PlayerVodBrowseRailLayer extends StatelessWidget {
 }
 
 class _PortraitOsdPanelState extends State<_PortraitOsdPanel> {
-  final _fav = Get.find<FavoritesService>();
-
   @override
   Widget build(BuildContext context) {
     return OrientationBuilder(
@@ -1127,13 +1838,11 @@ class _PortraitOsdPanelState extends State<_PortraitOsdPanel> {
               AppLayoutMode.tv;
           // TV düzeni veya yatay ekranda kumanda dostu OSD (TvBetterPlayer ile aynı düğüm stili).
           final useTvOsdStyle = layoutTv || landscape;
-          final favOn = isLive
-              ? _fav.channelIds.contains(ch.id)
-              : _fav.vodIds.contains(ch.id);
 
           final bp = widget.controller.better;
           final settings = Get.find<AppSettingsService>();
           settings.useMediaKit.value;
+          settings.liveUseMediaKit.value;
           widget.controller.mediaKitFallbackSession.value;
           widget.controller.betterOsdOverride.value;
           final useMediaKitPlayer = widget.controller.effectiveUseMediaKit;
@@ -1144,494 +1853,571 @@ class _PortraitOsdPanelState extends State<_PortraitOsdPanel> {
           // Dikey modda yayın açılmasa bile OSD paneli görünür kalsın.
           // Böylece kullanıcı "akış açılıyor" durumunda paneli kaybetmez.
           // Dikey mod: OSD cam şeridine maksimum genişlik (yatay tam ekran OSD’ye dokunulmaz).
-          return Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(16),
-              child: Obx(() {
-                final settings = Get.find<AppSettingsService>();
-                final ga = GlassAppearance.fromLabel(settings.themeLabel.value);
-                final remoteStyle =
-                    settings.layoutMode.value.usesRemoteNavigationStyle;
-                final sigma = AppPerformance.glassSigmaRemoteStyle(
-                  settings,
-                  remoteStyle: remoteStyle,
-                  fullSigma: 20,
-                  reducedSigma: 10,
-                );
-                final decorated = Container(
-                  padding: const EdgeInsets.fromLTRB(12, 16, 12, 16),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(color: ga.playerBarBorder),
-                    gradient: LinearGradient(
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
-                      colors: ga.playerBarGradientColors,
-                    ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: ga.playerBarShadowColor,
-                        blurRadius: 24,
-                        offset: const Offset(0, 10),
+          return Listener(
+            behavior: HitTestBehavior.deferToChild,
+            onPointerDown: (_) => widget.controller.scheduleTvOsdAutoHide(),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                // İç içe Obx kullanılmaz — Rx okumadan Obx GetX'te
+                // "improper Obx" fırlatır ve alttaki panel/OSD çizilmez
+                // (beyaz/gri perde). Tüm reactive okumalar üst Obx'te.
+                child: ColoredBox(
+                  color: const Color(0xCC0B0F14),
+                  child: Container(
+                    padding: const EdgeInsets.fromLTRB(12, 16, 12, 16),
+                    decoration: BoxDecoration(
+                      color: const Color(0xE60B0F14),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.18),
                       ),
-                    ],
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Padding(
-                        padding: const EdgeInsets.only(bottom: 10),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: Text(
-                                ch.name,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  color: Colors.white.withValues(alpha: 0.96),
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.w800,
-                                  height: 1.15,
-                                  shadows: [
-                                    Shadow(
-                                      color:
-                                          Colors.black.withValues(alpha: 0.45),
-                                      blurRadius: 8,
-                                    ),
-                                  ],
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.45),
+                          blurRadius: 24,
+                          offset: const Offset(0, 10),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 10),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  ch.name,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    color: Colors.white.withValues(alpha: 0.96),
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w800,
+                                    height: 1.15,
+                                    shadows: [
+                                      Shadow(
+                                        color: Colors.black
+                                            .withValues(alpha: 0.45),
+                                        blurRadius: 8,
+                                      ),
+                                    ],
+                                  ),
                                 ),
                               ),
-                            ),
-                            ...() {
-                              final badges = osdStreamQualityBadgeWidgets(
-                                resolutionTier: resolutionTier,
-                                hzLabel: hzLabel,
-                                fontSize: 12,
-                                borderRadius: 8,
-                                padding: const EdgeInsets.symmetric(
-                                  horizontal: 8,
-                                  vertical: 4,
-                                ),
-                              );
-                              if (badges.isEmpty) return <Widget>[];
-                              return <Widget>[
-                                const SizedBox(width: 8),
-                                Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: badges,
-                                ),
-                              ];
-                            }(),
-                          ],
+                              ...() {
+                                final badges = osdStreamQualityBadgeWidgets(
+                                  resolutionTier: resolutionTier,
+                                  hzLabel: hzLabel,
+                                  fontSize: 12,
+                                  borderRadius: 8,
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 4,
+                                  ),
+                                );
+                                if (badges.isEmpty) return <Widget>[];
+                                return <Widget>[
+                                  const SizedBox(width: 8),
+                                  Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: badges,
+                                  ),
+                                ];
+                              }(),
+                            ],
+                          ),
                         ),
-                      ),
-                      if (bp != null)
-                        _BetterPlayerValueBuilder(
-                          bp: bp,
-                          builder: (value) {
-                            if (value != null &&
-                                (value.duration?.inMilliseconds ?? 0) > 0) {
-                              if (isLive &&
-                                  !widget
-                                      .controller.liveTimeshiftSeekAvailable) {
-                                return const SizedBox.shrink();
+                        if (bp != null)
+                          _BetterPlayerValueBuilder(
+                            bp: bp,
+                            builder: (value) {
+                              if (value != null &&
+                                  (value.duration?.inMilliseconds ?? 0) > 0) {
+                                if (isLive &&
+                                    !widget.controller
+                                        .liveTimeshiftSeekAvailable) {
+                                  return const SizedBox.shrink();
+                                }
+                                return _VideoProgressBar(
+                                  bp: bp,
+                                  value: value,
+                                  onScrub: (s) => s
+                                      ? widget.controller.beginVodScrub()
+                                      : widget.controller.endVodScrub(),
+                                );
                               }
-                              return _VideoProgressBar(bp: bp, value: value);
-                            }
-                            return const SizedBox.shrink();
-                          },
-                        ),
-                      if (bp != null)
-                        _BetterPlayerValueBuilder(
-                          bp: bp,
-                          builder: (value) {
-                            final playing = value?.isPlaying ?? false;
-                            return _osdControlRow(
-                              tv: useTvOsdStyle,
-                              children: [
-                                _osdAction(
-                                  icon: Icons.fast_rewind_rounded,
-                                  onTap: () => isLive &&
-                                          !widget.controller
-                                              .liveTimeshiftSeekAvailable
-                                      ? _zap(-1)
-                                      : _skip(-15),
-                                  tv: useTvOsdStyle,
-                                  autofocus: useTvOsdStyle,
-                                ),
-                                _osdAction(
-                                  icon: playing
-                                      ? Icons.pause_rounded
-                                      : Icons.play_arrow_rounded,
-                                  onTap: () => playing
-                                      ? widget.controller.pause()
-                                      : widget.controller.play(),
-                                  primary: true,
-                                  tv: useTvOsdStyle,
-                                ),
-                                _osdAction(
-                                  icon: Icons.fast_forward_rounded,
-                                  onTap: () => isLive &&
-                                          !widget.controller
-                                              .liveTimeshiftSeekAvailable
-                                      ? _zap(1)
-                                      : _skip(15),
-                                  tv: useTvOsdStyle,
-                                ),
-                                _osdAction(
-                                  icon: favOn
-                                      ? Icons.favorite_rounded
-                                      : Icons.favorite_border_rounded,
-                                  onTap: () => isLive
-                                      ? _fav.toggleChannel(ch.id)
-                                      : _fav.toggleVod(ch.id),
-                                  tv: useTvOsdStyle,
-                                ),
-                                if (quickMenuBadge)
-                                  Tooltip(
-                                    message: 'player.tooltip.quickMenuOpen'.tr,
-                                    child: _osdAction(
-                                      icon: Icons.view_sidebar_rounded,
-                                      onTap: _openQuickMenuFromPortraitOsd,
+                              return const SizedBox.shrink();
+                            },
+                          ),
+                        if (bp != null)
+                          _BetterPlayerValueBuilder(
+                            bp: bp,
+                            builder: (value) {
+                              final playing = value?.isPlaying ?? false;
+                              return _osdControlRow(
+                                tv: useTvOsdStyle,
+                                children: [
+                                  _osdAction(
+                                    icon: Icons.fast_rewind_rounded,
+                                    onTap: () => isLive &&
+                                            !widget.controller
+                                                .liveTimeshiftSeekAvailable
+                                        ? _zap(-1)
+                                        : _skip(-15),
+                                    tv: useTvOsdStyle,
+                                    autofocus: useTvOsdStyle,
+                                  ),
+                                  _osdAction(
+                                    icon: playing
+                                        ? Icons.pause_rounded
+                                        : Icons.play_arrow_rounded,
+                                    onTap: () => playing
+                                        ? widget.controller.pause()
+                                        : widget.controller.play(),
+                                    primary: true,
+                                    tv: useTvOsdStyle,
+                                  ),
+                                  _osdAction(
+                                    icon: Icons.fast_forward_rounded,
+                                    onTap: () => isLive &&
+                                            !widget.controller
+                                                .liveTimeshiftSeekAvailable
+                                        ? _zap(1)
+                                        : _skip(15),
+                                    tv: useTvOsdStyle,
+                                  ),
+                                  if (quickMenuBadge)
+                                    Tooltip(
+                                      message:
+                                          'player.tooltip.quickMenuOpen'.tr,
+                                      child: _osdAction(
+                                        icon: Icons.view_sidebar_rounded,
+                                        onTap: _openQuickMenuFromPortraitOsd,
+                                        tv: useTvOsdStyle,
+                                      ),
+                                    ),
+                                  if (isLive)
+                                    Tooltip(
+                                      message: 'player.tooltip.liveEpg'.tr,
+                                      child: _osdAction(
+                                        icon: Icons.view_timeline_rounded,
+                                        onTap: () {
+                                          widget.controller
+                                              .openLiveSingleChannelEpgOverlay();
+                                        },
+                                        tv: useTvOsdStyle,
+                                      ),
+                                    ),
+                                  _buildPortraitFavToggle(tv: useTvOsdStyle),
+                                  _osdAction(
+                                    icon: Icons.high_quality_rounded,
+                                    onTap: () =>
+                                        unawaited(_showQualityMenu(context)),
+                                    tv: useTvOsdStyle,
+                                  ),
+                                  _osdAction(
+                                    icon: Icons.cast_rounded,
+                                    onTap: () => unawaited(showPlayerCastSheet(
+                                      context,
+                                      controller: widget.controller,
+                                    )),
+                                    tv: useTvOsdStyle,
+                                  ),
+                                  if (!isLive) ...[
+                                    _osdAction(
+                                      icon: Icons.audiotrack_rounded,
+                                      onTap: () =>
+                                          unawaited(_showAudioMenu(context)),
                                       tv: useTvOsdStyle,
                                     ),
-                                  ),
-                                _osdAction(
-                                  icon: Icons.high_quality_rounded,
-                                  onTap: () =>
-                                      unawaited(_showQualityMenu(context)),
-                                  tv: useTvOsdStyle,
-                                ),
-                                if (!isLive) ...[
-                                  _osdAction(
-                                    icon: Icons.audiotrack_rounded,
-                                    onTap: () =>
-                                        unawaited(_showAudioMenu(context)),
-                                    tv: useTvOsdStyle,
-                                  ),
-                                  _osdAction(
-                                    icon: Icons.closed_caption_rounded,
-                                    onTap: () =>
-                                        unawaited(_showSubtitleMenu(context)),
-                                    tv: useTvOsdStyle,
-                                  ),
-                                ],
-                                if (Platform.isAndroid || Platform.isIOS)
+                                    _osdAction(
+                                      icon: Icons.closed_caption_rounded,
+                                      onTap: () => unawaited(
+                                          _showVodSubtitleMenu(context)),
+                                      tv: useTvOsdStyle,
+                                    ),
+                                    Obx(() {
+                                      final rate =
+                                          widget.controller.playbackRate.value;
+                                      final isNormal =
+                                          (rate - 1.0).abs() < 0.001;
+                                      return _osdAction(
+                                        icon: isNormal
+                                            ? Icons.speed_rounded
+                                            : null,
+                                        letter: isNormal
+                                            ? null
+                                            : '${_portraitFmtRate(rate)}x',
+                                        onTap: () => widget.controller
+                                            .cyclePlaybackRate(),
+                                        tv: useTvOsdStyle,
+                                      );
+                                    }),
+                                  ],
+                                  if (Platform.isAndroid || Platform.isIOS)
+                                    Obx(() {
+                                      Get.find<AppSettingsService>()
+                                          .layoutMode
+                                          .value;
+                                      widget.controller.mediaKitFallbackSession
+                                          .value;
+                                      Get.find<AppSettingsService>()
+                                          .useMediaKit
+                                          .value;
+                                      Get.find<AppSettingsService>()
+                                          .liveUseMediaKit
+                                          .value;
+                                      if (widget.controller
+                                              .effectiveUseMediaKit ||
+                                          Get.find<AppSettingsService>()
+                                                  .layoutMode
+                                                  .value ==
+                                              AppLayoutMode.tv) {
+                                        return const SizedBox.shrink();
+                                      }
+                                      return _osdAction(
+                                        icon: Icons
+                                            .picture_in_picture_alt_rounded,
+                                        onTap: () => unawaited(widget.controller
+                                            .enterPictureInPictureIfSupported()),
+                                        tv: useTvOsdStyle,
+                                      );
+                                    }),
+                                  _engineToggleAction(tv: useTvOsdStyle),
                                   Obx(() {
-                                    Get.find<AppSettingsService>()
-                                        .layoutMode
-                                        .value;
-                                    widget.controller.mediaKitFallbackSession
-                                        .value;
-                                    Get.find<AppSettingsService>()
-                                        .useMediaKit
-                                        .value;
-                                    if (widget
-                                            .controller.effectiveUseMediaKit ||
-                                        Get.find<AppSettingsService>()
-                                                .layoutMode
-                                                .value ==
-                                            AppLayoutMode.tv) {
+                                    final s = Get.find<AppSettingsService>();
+                                    if (s.layoutMode.value !=
+                                        AppLayoutMode.mobile) {
                                       return const SizedBox.shrink();
                                     }
-                                    return _osdAction(
-                                      icon:
-                                          Icons.picture_in_picture_alt_rounded,
-                                      onTap: () => unawaited(widget.controller
-                                          .enterPictureInPictureIfSupported()),
-                                      tv: useTvOsdStyle,
+                                    final toPortrait = landscape;
+                                    return Tooltip(
+                                      message: toPortrait
+                                          ? 'player.tooltip.toPortrait'.tr
+                                          : 'player.tooltip.toLandscape'.tr,
+                                      child: _osdAction(
+                                        icon: toPortrait
+                                            ? Icons
+                                                .stay_current_portrait_rounded
+                                            : Icons.screen_rotation_rounded,
+                                        onTap: () => unawaited(
+                                          PlaybackOrientationManager
+                                              .toggleMobileForcedOrientation(),
+                                        ),
+                                        tv: useTvOsdStyle,
+                                      ),
                                     );
                                   }),
+                                ],
+                              );
+                            },
+                          )
+                        else if (!useMediaKitPlayer)
+                          _osdControlRow(
+                            tv: useTvOsdStyle,
+                            children: [
+                              _osdAction(
+                                icon: Icons.fast_rewind_rounded,
+                                onTap: () => isLive &&
+                                        !widget.controller
+                                            .liveTimeshiftSeekAvailable
+                                    ? _zap(-1)
+                                    : _skip(-15),
+                                tv: useTvOsdStyle,
+                                autofocus: useTvOsdStyle,
+                              ),
+                              _osdAction(
+                                icon: Icons.play_arrow_rounded,
+                                onTap: () => widget.controller.play(),
+                                primary: true,
+                                tv: useTvOsdStyle,
+                              ),
+                              _osdAction(
+                                icon: Icons.fast_forward_rounded,
+                                onTap: () => isLive &&
+                                        !widget.controller
+                                            .liveTimeshiftSeekAvailable
+                                    ? _zap(1)
+                                    : _skip(15),
+                                tv: useTvOsdStyle,
+                              ),
+                              if (quickMenuBadge)
+                                Tooltip(
+                                  message: 'player.tooltip.quickMenuOpen'.tr,
+                                  child: _osdAction(
+                                    icon: Icons.view_sidebar_rounded,
+                                    onTap: _openQuickMenuFromPortraitOsd,
+                                    tv: useTvOsdStyle,
+                                  ),
+                                ),
+                              if (isLive)
+                                Tooltip(
+                                  message: 'player.tooltip.liveEpg'.tr,
+                                  child: _osdAction(
+                                    icon: Icons.view_timeline_rounded,
+                                    onTap: () {
+                                      widget.controller
+                                          .openLiveSingleChannelEpgOverlay();
+                                    },
+                                    tv: useTvOsdStyle,
+                                  ),
+                                ),
+                              _buildPortraitFavToggle(tv: useTvOsdStyle),
+                              _osdAction(
+                                icon: Icons.high_quality_rounded,
+                                onTap: () =>
+                                    unawaited(_showQualityMenu(context)),
+                                tv: useTvOsdStyle,
+                              ),
+                              _osdAction(
+                                icon: Icons.cast_rounded,
+                                onTap: () => unawaited(showPlayerCastSheet(
+                                  context,
+                                  controller: widget.controller,
+                                )),
+                                tv: useTvOsdStyle,
+                              ),
+                              if (!isLive) ...[
+                                _osdAction(
+                                  icon: Icons.audiotrack_rounded,
+                                  onTap: () =>
+                                      unawaited(_showAudioMenu(context)),
+                                  tv: useTvOsdStyle,
+                                ),
+                                _osdAction(
+                                  icon: Icons.closed_caption_rounded,
+                                  onTap: () =>
+                                      unawaited(_showVodSubtitleMenu(context)),
+                                  tv: useTvOsdStyle,
+                                ),
                                 Obx(() {
-                                  final s = Get.find<AppSettingsService>();
-                                  if (s.layoutMode.value !=
-                                      AppLayoutMode.mobile) {
-                                    return const SizedBox.shrink();
-                                  }
-                                  final toPortrait = landscape;
-                                  return Tooltip(
-                                    message: toPortrait
-                                        ? 'player.tooltip.toPortrait'.tr
-                                        : 'player.tooltip.toLandscape'.tr,
-                                    child: _osdAction(
-                                      icon: toPortrait
-                                          ? Icons.stay_current_portrait_rounded
-                                          : Icons.screen_rotation_rounded,
-                                      onTap: () => unawaited(
-                                        PlaybackOrientationManager
-                                            .toggleMobileForcedOrientation(),
-                                      ),
-                                      tv: useTvOsdStyle,
-                                    ),
+                                  final rate =
+                                      widget.controller.playbackRate.value;
+                                  final isNormal = (rate - 1.0).abs() < 0.001;
+                                  return _osdAction(
+                                    icon: isNormal ? Icons.speed_rounded : null,
+                                    letter: isNormal
+                                        ? null
+                                        : '${_portraitFmtRate(rate)}x',
+                                    onTap: () =>
+                                        widget.controller.cyclePlaybackRate(),
+                                    tv: useTvOsdStyle,
                                   );
                                 }),
+                              ],
+                              if (Platform.isAndroid || Platform.isIOS)
                                 Obx(() {
-                                  widget.controller.betterOsdOverride.value;
                                   Get.find<AppSettingsService>()
-                                      .useMediaKit
+                                      .layoutMode
                                       .value;
                                   widget
                                       .controller.mediaKitFallbackSession.value;
-                                  if (widget.controller.effectiveUseMediaKit) {
+                                  Get.find<AppSettingsService>()
+                                      .useMediaKit
+                                      .value;
+                                  Get.find<AppSettingsService>()
+                                      .liveUseMediaKit
+                                      .value;
+                                  if (widget.controller.effectiveUseMediaKit ||
+                                      Get.find<AppSettingsService>()
+                                              .layoutMode
+                                              .value ==
+                                          AppLayoutMode.tv) {
                                     return const SizedBox.shrink();
                                   }
                                   return _osdAction(
-                                    letter: 'M',
+                                    icon: Icons.picture_in_picture_alt_rounded,
                                     onTap: () => unawaited(
-                                      widget.controller.switchToBackupPlayer(),
+                                      widget.controller
+                                          .enterPictureInPictureIfSupported(),
                                     ),
                                     tv: useTvOsdStyle,
                                   );
                                 }),
-                              ],
-                            );
-                          },
-                        )
-                      else if (!useMediaKitPlayer)
-                        _osdControlRow(
-                          tv: useTvOsdStyle,
-                          children: [
-                            _osdAction(
-                              icon: Icons.fast_rewind_rounded,
-                              onTap: () => isLive &&
-                                      !widget.controller.liveTimeshiftSeekAvailable
-                                  ? _zap(-1)
-                                  : _skip(-15),
-                              tv: useTvOsdStyle,
-                              autofocus: useTvOsdStyle,
-                            ),
-                            _osdAction(
-                              icon: Icons.play_arrow_rounded,
-                              onTap: () => widget.controller.play(),
-                              primary: true,
-                              tv: useTvOsdStyle,
-                            ),
-                            _osdAction(
-                              icon: Icons.fast_forward_rounded,
-                              onTap: () => isLive &&
-                                      !widget.controller.liveTimeshiftSeekAvailable
-                                  ? _zap(1)
-                                  : _skip(15),
-                              tv: useTvOsdStyle,
-                            ),
-                            _osdAction(
-                              icon: favOn
-                                  ? Icons.favorite_rounded
-                                  : Icons.favorite_border_rounded,
-                              onTap: () =>
-                                  isLive ? _fav.toggleChannel(ch.id) : _fav.toggleVod(ch.id),
-                              tv: useTvOsdStyle,
-                            ),
-                            if (quickMenuBadge)
-                              Tooltip(
-                                message: 'player.tooltip.quickMenuOpen'.tr,
-                                child: _osdAction(
-                                  icon: Icons.view_sidebar_rounded,
-                                  onTap: _openQuickMenuFromPortraitOsd,
-                                  tv: useTvOsdStyle,
-                                ),
-                              ),
-                            _osdAction(
-                              icon: Icons.high_quality_rounded,
-                              onTap: () =>
-                                  unawaited(_showQualityMenu(context)),
-                              tv: useTvOsdStyle,
-                            ),
-                            if (!isLive) ...[
-                              _osdAction(
-                                icon: Icons.audiotrack_rounded,
-                                onTap: () => unawaited(_showAudioMenu(context)),
-                                tv: useTvOsdStyle,
-                              ),
-                              _osdAction(
-                                icon: Icons.closed_caption_rounded,
-                                onTap: () => unawaited(_showSubtitleMenu(context)),
-                                tv: useTvOsdStyle,
-                              ),
-                            ],
-                            if (Platform.isAndroid || Platform.isIOS)
+                              _engineToggleAction(tv: useTvOsdStyle),
                               Obx(() {
-                                Get.find<AppSettingsService>().layoutMode.value;
-                                widget.controller.mediaKitFallbackSession.value;
-                                Get.find<AppSettingsService>().useMediaKit.value;
-                                if (widget.controller.effectiveUseMediaKit ||
-                                    Get.find<AppSettingsService>().layoutMode.value ==
-                                        AppLayoutMode.tv) {
+                                final s = Get.find<AppSettingsService>();
+                                if (s.layoutMode.value !=
+                                    AppLayoutMode.mobile) {
                                   return const SizedBox.shrink();
                                 }
-                                return _osdAction(
-                                  icon: Icons.picture_in_picture_alt_rounded,
-                                  onTap: () => unawaited(
-                                    widget.controller.enterPictureInPictureIfSupported(),
+                                final toPortrait = landscape;
+                                return Tooltip(
+                                  message: toPortrait
+                                      ? 'player.tooltip.toPortrait'.tr
+                                      : 'player.tooltip.toLandscape'.tr,
+                                  child: _osdAction(
+                                    icon: toPortrait
+                                        ? Icons.stay_current_portrait_rounded
+                                        : Icons.screen_rotation_rounded,
+                                    onTap: () => unawaited(
+                                      PlaybackOrientationManager
+                                          .toggleMobileForcedOrientation(),
+                                    ),
+                                    tv: useTvOsdStyle,
                                   ),
-                                  tv: useTvOsdStyle,
                                 );
                               }),
-                            Obx(() {
-                              final s = Get.find<AppSettingsService>();
-                              if (s.layoutMode.value != AppLayoutMode.mobile) {
-                                return const SizedBox.shrink();
-                              }
-                              final toPortrait = landscape;
-                              return Tooltip(
-                                message: toPortrait
-                                    ? 'player.tooltip.toPortrait'.tr
-                                    : 'player.tooltip.toLandscape'.tr,
-                                child: _osdAction(
-                                  icon: toPortrait
-                                      ? Icons.stay_current_portrait_rounded
-                                      : Icons.screen_rotation_rounded,
-                                  onTap: () => unawaited(
-                                    PlaybackOrientationManager
-                                        .toggleMobileForcedOrientation(),
-                                  ),
-                                  tv: useTvOsdStyle,
-                                ),
-                              );
-                            }),
-                            Obx(() {
-                              widget.controller.betterOsdOverride.value;
-                              Get.find<AppSettingsService>().useMediaKit.value;
-                              widget.controller.mediaKitFallbackSession.value;
-                              if (widget.controller.effectiveUseMediaKit) {
-                                return const SizedBox.shrink();
-                              }
-                              return _osdAction(
-                                letter: 'M',
-                                onTap: () => unawaited(
-                                  widget.controller.switchToBackupPlayer(),
-                                ),
-                                tv: useTvOsdStyle,
-                              );
-                            }),
-                          ],
-                        )
-                      else if (useMediaKitPlayer)
-                        _MediaKitPortraitStreamBuilder(
-                          controller: widget.controller,
-                          builder: (v) {
-                            final playing = v?.playing ?? false;
-                            return Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                if (!isLive &&
-                                    v != null &&
-                                    v.duration.inMilliseconds > 0)
-                                  _MkPortraitProgressBar(
-                                    position: v.position,
-                                    duration: v.duration,
-                                    onSeek: widget.controller.seekTo,
-                                  ),
-                                _osdControlRow(
-                                  tv: useTvOsdStyle,
-                                  children: [
-                                    _osdAction(
-                                      icon: Icons.fast_rewind_rounded,
-                                      onTap: () =>
-                                          isLive ? _zap(-1) : _skip(-15),
-                                      tv: useTvOsdStyle,
-                                      autofocus: useTvOsdStyle,
+                            ],
+                          )
+                        else if (useMediaKitPlayer)
+                          _MediaKitPortraitStreamBuilder(
+                            controller: widget.controller,
+                            builder: (v) {
+                              final playing = v?.playing ?? false;
+                              return Column(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  if (!isLive &&
+                                      v != null &&
+                                      v.duration.inMilliseconds > 0)
+                                    _MkPortraitProgressBar(
+                                      position: v.position,
+                                      duration: v.duration,
+                                      onSeek: widget.controller.seekTo,
+                                      onScrub: (s) => s
+                                          ? widget.controller.beginVodScrub()
+                                          : widget.controller.endVodScrub(),
                                     ),
-                                    _osdAction(
-                                      icon: playing
-                                          ? Icons.pause_rounded
-                                          : Icons.play_arrow_rounded,
-                                      onTap: () => playing
-                                          ? widget.controller.pause()
-                                          : widget.controller.play(),
-                                      primary: true,
-                                      tv: useTvOsdStyle,
-                                    ),
-                                    _osdAction(
-                                      icon: Icons.fast_forward_rounded,
-                                      onTap: () => isLive ? _zap(1) : _skip(15),
-                                      tv: useTvOsdStyle,
-                                    ),
-                                    _osdAction(
-                                      icon: favOn
-                                          ? Icons.favorite_rounded
-                                          : Icons.favorite_border_rounded,
-                                      onTap: () => isLive
-                                          ? _fav.toggleChannel(ch.id)
-                                          : _fav.toggleVod(ch.id),
-                                      tv: useTvOsdStyle,
-                                    ),
-                                    if (quickMenuBadge)
-                                      Tooltip(
-                                        message:
-                                            'player.tooltip.quickMenuOpen'.tr,
-                                        child: _osdAction(
-                                          icon: Icons.view_sidebar_rounded,
-                                          onTap: _openQuickMenuFromPortraitOsd,
-                                          tv: useTvOsdStyle,
-                                        ),
-                                      ),
-                                    _osdAction(
-                                      icon: Icons.high_quality_rounded,
-                                      onTap: () => _showMkQualityMenu(context),
-                                      tv: useTvOsdStyle,
-                                    ),
-                                    _osdAction(
-                                      icon: Icons.audiotrack_rounded,
-                                      onTap: () => _showMkAudioMenu(context),
-                                      tv: useTvOsdStyle,
-                                    ),
-                                    if (!isLive)
+                                  _osdControlRow(
+                                    tv: useTvOsdStyle,
+                                    children: [
                                       _osdAction(
-                                        icon: Icons.closed_caption_rounded,
+                                        icon: Icons.fast_rewind_rounded,
                                         onTap: () =>
-                                            _showMkSubtitleMenu(context),
+                                            isLive ? _zap(-1) : _skip(-15),
+                                        tv: useTvOsdStyle,
+                                        autofocus: useTvOsdStyle,
+                                      ),
+                                      _osdAction(
+                                        icon: playing
+                                            ? Icons.pause_rounded
+                                            : Icons.play_arrow_rounded,
+                                        onTap: () => playing
+                                            ? widget.controller.pause()
+                                            : widget.controller.play(),
+                                        primary: true,
                                         tv: useTvOsdStyle,
                                       ),
-                                    Obx(() {
-                                      final s = Get.find<AppSettingsService>();
-                                      if (s.layoutMode.value !=
-                                          AppLayoutMode.mobile) {
-                                        return const SizedBox.shrink();
-                                      }
-                                      final toPortrait = landscape;
-                                      return Tooltip(
-                                        message: toPortrait
-                                            ? 'player.tooltip.toPortrait'.tr
-                                            : 'player.tooltip.toLandscape'.tr,
-                                        child: _osdAction(
-                                          icon: toPortrait
-                                              ? Icons
-                                                  .stay_current_portrait_rounded
-                                              : Icons.screen_rotation_rounded,
+                                      _osdAction(
+                                        icon: Icons.fast_forward_rounded,
+                                        onTap: () =>
+                                            isLive ? _zap(1) : _skip(15),
+                                        tv: useTvOsdStyle,
+                                      ),
+                                      if (quickMenuBadge)
+                                        Tooltip(
+                                          message:
+                                              'player.tooltip.quickMenuOpen'.tr,
+                                          child: _osdAction(
+                                            icon: Icons.view_sidebar_rounded,
+                                            onTap:
+                                                _openQuickMenuFromPortraitOsd,
+                                            tv: useTvOsdStyle,
+                                          ),
+                                        ),
+                                      if (isLive)
+                                        Tooltip(
+                                          message: 'player.tooltip.liveEpg'.tr,
+                                          child: _osdAction(
+                                            icon: Icons.view_timeline_rounded,
+                                            onTap: () {
+                                              widget.controller
+                                                  .openLiveSingleChannelEpgOverlay();
+                                            },
+                                            tv: useTvOsdStyle,
+                                          ),
+                                        ),
+                                      _buildPortraitFavToggle(
+                                          tv: useTvOsdStyle),
+                                      _osdAction(
+                                        icon: Icons.high_quality_rounded,
+                                        onTap: () =>
+                                            _showMkQualityMenu(context),
+                                        tv: useTvOsdStyle,
+                                      ),
+                                      _osdAction(
+                                        icon: Icons.cast_rounded,
+                                        onTap: () => unawaited(
+                                          showPlayerCastSheet(
+                                            context,
+                                            controller: widget.controller,
+                                          ),
+                                        ),
+                                        tv: useTvOsdStyle,
+                                      ),
+                                      _osdAction(
+                                        icon: Icons.audiotrack_rounded,
+                                        onTap: () => _showMkAudioMenu(context),
+                                        tv: useTvOsdStyle,
+                                      ),
+                                      if (!isLive)
+                                        _osdAction(
+                                          icon: Icons.closed_caption_rounded,
                                           onTap: () => unawaited(
-                                            PlaybackOrientationManager
-                                                .toggleMobileForcedOrientation(),
+                                            _showVodSubtitleMenu(context),
                                           ),
                                           tv: useTvOsdStyle,
                                         ),
-                                      );
-                                    }),
-                                    _osdAction(
-                                      letter: 'B',
-                                      onTap: () => unawaited(
-                                        widget.controller
-                                            .promptSwitchToBetterFromMediaKit(),
-                                      ),
-                                      tv: useTvOsdStyle,
-                                    ),
-                                  ],
-                                ),
-                              ],
-                            );
-                          },
-                        ),
-                    ],
+                                      if (!isLive)
+                                        Obx(() {
+                                          final rate = widget
+                                              .controller.playbackRate.value;
+                                          final isNormal =
+                                              (rate - 1.0).abs() < 0.001;
+                                          return _osdAction(
+                                            icon: isNormal
+                                                ? Icons.speed_rounded
+                                                : null,
+                                            letter: isNormal
+                                                ? null
+                                                : '${_portraitFmtRate(rate)}x',
+                                            onTap: () => widget.controller
+                                                .cyclePlaybackRate(),
+                                            tv: useTvOsdStyle,
+                                          );
+                                        }),
+                                      _engineToggleAction(tv: useTvOsdStyle),
+                                      Obx(() {
+                                        final s =
+                                            Get.find<AppSettingsService>();
+                                        if (s.layoutMode.value !=
+                                            AppLayoutMode.mobile) {
+                                          return const SizedBox.shrink();
+                                        }
+                                        final toPortrait = landscape;
+                                        return Tooltip(
+                                          message: toPortrait
+                                              ? 'player.tooltip.toPortrait'.tr
+                                              : 'player.tooltip.toLandscape'.tr,
+                                          child: _osdAction(
+                                            icon: toPortrait
+                                                ? Icons
+                                                    .stay_current_portrait_rounded
+                                                : Icons.screen_rotation_rounded,
+                                            onTap: () => unawaited(
+                                              PlaybackOrientationManager
+                                                  .toggleMobileForcedOrientation(),
+                                            ),
+                                            tv: useTvOsdStyle,
+                                          ),
+                                        );
+                                      }),
+                                    ],
+                                  ),
+                                ],
+                              );
+                            },
+                          ),
+                      ],
+                    ),
                   ),
-                );
-                if (sigma <= 0) return decorated;
-                return BackdropFilter(
-                  filter: ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
-                  child: decorated,
-                );
-              }),
+                ),
+              ),
             ),
           );
         });
@@ -1731,50 +2517,66 @@ class _PortraitOsdPanelState extends State<_PortraitOsdPanel> {
     );
   }
 
-  Future<void> _showSubtitleMenu(BuildContext context) async {
-    final list = widget.controller.availableSubtitleSources;
-    final exo = await widget.controller.loadExoNativeTracks();
-    if (!context.mounted) return;
-    final hasExternal = list.any(
-      (s) => s.type != BetterPlayerSubtitlesSourceType.none,
+  Future<void> _showVodSubtitleMenu(BuildContext context) async {
+    final c = widget.controller;
+    c.cancelTvOsdAutoHide();
+    GlassSnackbar.show(
+      'player.sheet.subtitleTitle'.tr,
+      'common.loading'.tr,
+      snackPosition: SnackPosition.BOTTOM,
+      duration: const Duration(seconds: 2),
     );
-    if (!hasExternal && exo.text.isEmpty) {
-      await _showInfoSheet(
-        context,
-        title: 'player.sheet.subtitleTitle'.tr,
-        body: 'player.subtitle.noneLong'.tr,
-      );
+    final discovered = await c.discoverVodSubtitleOptions();
+    if (!context.mounted) return;
+    c.scheduleTvOsdAutoHide();
+
+    final mediaKitOnly = c.effectiveUseMediaKit &&
+        !discovered.hasBetterTracks &&
+        discovered.exoTextTracks.isEmpty;
+
+    if (!discovered.hasSelectableTracks) {
+      if (mediaKitOnly) {
+        GlassSnackbar.show(
+          'player.warn.title'.tr,
+          'player.subtitle.noneShort'.tr,
+          snackPosition: SnackPosition.BOTTOM,
+        );
+      } else {
+        await _showInfoSheet(
+          context,
+          title: 'player.sheet.subtitleTitle'.tr,
+          body: 'player.subtitle.noneLong'.tr,
+        );
+      }
       return;
     }
+
+    if (mediaKitOnly) {
+      _showMkSubtitleSheet(context, discovered.mediaKitTracks);
+      return;
+    }
+
     showModalBottomSheet<void>(
       context: context,
       backgroundColor: Colors.transparent,
       isScrollControlled: true,
       builder: (ctx) => _UnifiedSubtitleSheet(
-        controller: widget.controller,
-        sources: list,
-        exoTextTracks: exo.text,
+        controller: c,
+        sources: discovered.betterSources,
+        exoTextTracks: discovered.exoTextTracks,
       ),
     );
   }
 
-  Future<void> _showMkSubtitleMenu(BuildContext context) async {
-    final tracks = widget.controller.mediaKitSubtitleTrackLabels();
-    if (!context.mounted) return;
-    final realCount = tracks.keys.where((k) => k != 'no').length;
-    if (realCount == 0) {
-      GlassSnackbar.show(
-        'player.warn.title'.tr,
-        'player.subtitle.noneShort'.tr,
-        snackPosition: SnackPosition.BOTTOM,
-      );
-      return;
-    }
+  void _showMkSubtitleSheet(
+    BuildContext context,
+    Map<String, String> tracks,
+  ) {
     final list = tracks.entries.toList()
       ..sort((a, b) {
         if (a.key == 'no') return -1;
         if (b.key == 'no') return 1;
-        return a.key.compareTo(b.key);
+        return a.value.toLowerCase().compareTo(b.value.toLowerCase());
       });
     final active =
         widget.controller.mediaKitPlayer?.state.track.subtitle.id ?? 'no';
@@ -1880,6 +2682,46 @@ class _PortraitOsdPanelState extends State<_PortraitOsdPanel> {
     }
   }
 
+  /// OSD: oynatma motorunu (Better/Exo ↔ MediaKit/mpv) **yalnızca bu yayın
+  /// için** değiştiren buton. Mobil (Android/iOS) için; TV'de gizli.
+  /// Geçiş kalıcı ayarı değiştirmez — kanal/içerik değişince varsayılana döner.
+  Widget _engineToggleAction({required bool tv}) {
+    if (!(Platform.isAndroid || Platform.isIOS)) {
+      return const SizedBox.shrink();
+    }
+    if (Get.find<AppSettingsService>().layoutMode.value == AppLayoutMode.tv) {
+      return const SizedBox.shrink();
+    }
+    final mk = widget.controller.effectiveUseMediaKit;
+    return Tooltip(
+      message: mk ? 'player.engine.toExo'.tr : 'player.engine.toMediaKit'.tr,
+      child: _osdAction(
+        // Aktif motoru gösterir: MediaKit (mpv) → bellek ikonu, Better/Exo →
+        // şimşek (donanım hızlandırmalı) ikonu. Dokununca diğerine geçer.
+        icon: mk ? Icons.memory_rounded : Icons.bolt_rounded,
+        onTap: () => unawaited(_togglePlaybackEngine(mk)),
+        tv: tv,
+      ),
+    );
+  }
+
+  Future<void> _togglePlaybackEngine(bool currentlyMediaKit) async {
+    widget.controller.scheduleTvOsdAutoHide();
+    if (currentlyMediaKit) {
+      await widget.controller.switchToBetterPlayer();
+    } else {
+      await widget.controller.switchToBackupPlayer();
+    }
+    final nowMk = widget.controller.effectiveUseMediaKit;
+    GlassSnackbar.show(
+      'player.engine.title'.tr,
+      nowMk
+          ? 'player.engine.switchedMediaKit'.tr
+          : 'player.engine.switchedExo'.tr,
+      snackPosition: SnackPosition.BOTTOM,
+    );
+  }
+
   Widget _osdControlRow({
     required bool tv,
     required List<Widget> children,
@@ -1894,7 +2736,7 @@ class _PortraitOsdPanelState extends State<_PortraitOsdPanel> {
       builder: (context, constraints) {
         return SingleChildScrollView(
           scrollDirection: Axis.horizontal,
-          physics: const BouncingScrollPhysics(),
+          physics: AppScrollPhysics.list(),
           padding: const EdgeInsets.symmetric(horizontal: 2),
           child: ConstrainedBox(
             constraints: BoxConstraints(minWidth: constraints.maxWidth),
@@ -1976,182 +2818,2318 @@ class _PortraitOsdPanelState extends State<_PortraitOsdPanel> {
       ),
     );
   }
+
+  /// OSD kontrol satırına eklenen kalp ikonu — basılınca o an oynayan içerik
+  /// (canlı kanal / film / dizi) favorilere eklenir/çıkarılır. Favori durumu
+  /// `FavoritesService` Rx listeleri üzerinden izlenir.
+  Widget _buildPortraitFavToggle({required bool tv}) {
+    return Obx(() {
+      final c = widget.controller;
+      // Rx listelerine bağlan (kanal/film/dizi) ki durum değişince yenilensin.
+      final favs = Get.find<FavoritesService>();
+      favs.channelIds.length;
+      favs.vodIds.length;
+      favs.seriesIds.length;
+      c.channel.value;
+      final isFav = c.isCurrentMediaFavorite;
+      return Tooltip(
+        message: isFav ? 'player.tooltip.favOn'.tr : 'player.tooltip.favOff'.tr,
+        child: _osdAction(
+          icon: isFav ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+          onTap: () {
+            c.toggleCurrentMediaFavorite();
+            c.scheduleTvOsdAutoHide();
+          },
+          tv: tv,
+        ),
+      );
+    });
+  }
 }
 
-/// Dikey mod (telefon/tablet): OSD ile aynı cam panel — aynı kategorideki canlı kanallar.
-class _PortraitCategoryChannelBar extends StatefulWidget {
-  const _PortraitCategoryChannelBar({required this.controller});
+/// Portrait OSD hız etiketi için: `1.0 → 1`, `2.0 → 2`, `1.5 → 1.5`.
+/// `_PortraitOsdPanelState` içindeki üç OSD branch'i (Better/bp, Better/no-bp,
+/// MediaKit) ortak kullanır.
+String _portraitFmtRate(double rate) {
+  if ((rate - rate.roundToDouble()).abs() < 0.001) {
+    return rate.toStringAsFixed(0);
+  }
+  return rate.toStringAsFixed(1);
+}
+
+/// Dikey mod (telefon/tablet) canlı tv tarayıcısı: video ve OSD'nin altına
+/// yerleşen, kalan dikey alanı dolduran cam panel. Üç sekmeli yapı:
+///
+/// 1. **Kategoriler** — `liveChannelStripCategoryTapes()` üzerinden canlı
+///    kanalları olan tüm kategoriler + kanal sayısı.
+/// 2. **Kanallar** — seçilen kategorinin canlı kanalları; tıklayınca `zapTo`.
+/// 3. **EPG** — o an açılan kanal için gün boyu program listesi;
+///    `EpgService.getFullDayProgrammesForLiveChannel`. Şu an yayında olan
+///    program "DEVAM EDİYOR" rozetiyle vurgulanır.
+///
+/// Tasarım: glass tema (popup gradient + border + gölge) — `GlassAppearance`
+/// üzerinden tema rengini takip eder. Sekme altı çubuk seçili tab için
+/// `colorScheme.primary` rengindedir.
+// ============================================================================
+// VOD / Series — Dikey panel (OSD altı)
+// ============================================================================
+
+/// Sentinel kategori anahtarları — film/dizi panelinde "Tümü" ve
+/// "Son İzlenenler" sanal satırları için negatif ID'ler. Geçerli VOD/series
+/// kategorileri pozitif ID kullandığı için çakışma riski yok.
+const int _kVodPanelAllCategoryId = -100001;
+const int _kVodPanelRecentlyWatchedCategoryId = -100002;
+
+// ============================================================================
+// Series — Dikey panel (OSD altı) — Dizi izlerken
+// ============================================================================
+//
+// İki sekmeli yapı:
+//  1. **Dizi** — başlık, poster, IMDb puanı, yıl/tür/süre, özet, oyuncular.
+//     Veri OmdbService.getMovieInfo(isSeries: true) ile arka planda yüklenir;
+//     PlayerController.seriesPanelData (RxN<SeriesPlayerPanelData>) dinlenir.
+//  2. **Bölümler** — _episodeBrowseTape üzerinden sezon-bölüm sıralı liste.
+//     Şu an oynayan bölüm "OYNATILIYOR" rozetiyle vurgulanır; satıra dokununca
+//     `controller.zapTo(opt.channel)` ile aynı oturumda bölüm değiştirilir.
+//
+// EPG sekmesi *yok*: Bu panel canlı TV ile karıştırılmasın diye yapım gereği
+// yalnızca "Dizi" + "Bölümler" sekmelerini barındırır.
+
+enum _PortraitSeriesTab { info, episodes }
+
+class _PortraitSeriesPanel extends StatefulWidget {
+  const _PortraitSeriesPanel({required this.controller});
 
   final PlayerController controller;
 
   @override
-  State<_PortraitCategoryChannelBar> createState() =>
-      _PortraitCategoryChannelBarState();
+  State<_PortraitSeriesPanel> createState() => _PortraitSeriesPanelState();
 }
 
-class _PortraitCategoryChannelBarState
-    extends State<_PortraitCategoryChannelBar> {
-  final ScrollController _scrollController = ScrollController();
-  final GlobalKey _selectedChannelKey = GlobalKey();
+class _PortraitSeriesPanelState extends State<_PortraitSeriesPanel> {
+  _PortraitSeriesTab _tab = _PortraitSeriesTab.info;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(18),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: const Color(0xE60B0F14),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.16),
+            ),
+          ),
+          child: Column(
+            children: [
+              _buildTabBar(context),
+              const Divider(
+                height: 1,
+                thickness: 0.6,
+                color: Color(0x22FFFFFF),
+              ),
+              Expanded(child: _buildTabBody(context)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTabBar(BuildContext context) {
+    final primary = Theme.of(context).colorScheme.primary;
+    final tabs = <(_PortraitSeriesTab, String)>[
+      (_PortraitSeriesTab.info, 'portraitSeriesPanel.tab.info'.tr),
+      (_PortraitSeriesTab.episodes, 'portraitSeriesPanel.tab.episodes'.tr),
+    ];
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 6, 8, 0),
+      child: Row(
+        children: [
+          for (final t in tabs)
+            Expanded(
+              child: _TabButton(
+                label: t.$2,
+                active: _tab == t.$1,
+                primary: primary,
+                onTap: () => setState(() => _tab = t.$1),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTabBody(BuildContext context) {
+    switch (_tab) {
+      case _PortraitSeriesTab.info:
+        return _buildInfoTab(context);
+      case _PortraitSeriesTab.episodes:
+        return _buildEpisodesTab(context);
+    }
+  }
+
+  // --------------------------------- Dizi ---------------------------------
+
+  Widget _buildInfoTab(BuildContext context) {
+    return Obx(() {
+      final data = widget.controller.seriesPanelData.value;
+      if (data == null) {
+        return _EmptyState(
+          icon: Icons.local_movies_outlined,
+          message: 'portraitSeriesPanel.loading'.tr,
+        );
+      }
+
+      final actors = data.actors;
+      return ListView(
+        padding: const EdgeInsets.fromLTRB(14, 14, 14, 18),
+        children: [
+          _buildHero(context, data),
+          if (data.plot != null && data.plot!.trim().isNotEmpty) ...[
+            const SizedBox(height: 16),
+            _SectionTitle('portraitSeriesPanel.synopsis'.tr),
+            const SizedBox(height: 6),
+            Text(
+              data.plot!.trim(),
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.85),
+                fontSize: 13.5,
+                height: 1.45,
+              ),
+            ),
+          ],
+          if (data.director != null && data.director!.trim().isNotEmpty) ...[
+            const SizedBox(height: 14),
+            _MetaLine(
+              label: 'portraitSeriesPanel.director'.tr,
+              value: data.director!.trim(),
+            ),
+          ],
+          if (actors.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            _SectionTitle('portraitSeriesPanel.cast'.tr),
+            const SizedBox(height: 8),
+            _CastRow(actors: actors),
+          ],
+          if (!data.hasAnyDetail) ...[
+            const SizedBox(height: 14),
+            Padding(
+              padding: const EdgeInsets.symmetric(vertical: 6),
+              child: Text(
+                'portraitSeriesPanel.empty.info'.tr,
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.6),
+                  fontSize: 12.5,
+                ),
+              ),
+            ),
+          ],
+        ],
+      );
+    });
+  }
+
+  Widget _buildHero(BuildContext context, SeriesPlayerPanelData data) {
+    final dpr = MediaQuery.of(context).devicePixelRatio;
+    final posterUrl = data.posterUrl;
+    final posterPx = (90 * dpr).round().clamp(120, 480);
+
+    final chips = <Widget>[];
+    final imdb = data.imdbRating;
+    if (imdb != null && imdb.trim().isNotEmpty) {
+      chips.add(_InfoChip(
+        icon: Icons.star_rounded,
+        label: 'IMDb ${imdb.trim()}',
+        emphasize: true,
+      ));
+    }
+    final year = data.year;
+    if (year != null && year.trim().isNotEmpty) {
+      chips.add(_InfoChip(
+        icon: Icons.calendar_today_rounded,
+        label: year.trim(),
+      ));
+    }
+    final runtime = data.runtime;
+    if (runtime != null && runtime.trim().isNotEmpty) {
+      chips.add(_InfoChip(
+        icon: Icons.schedule_rounded,
+        label: runtime.trim(),
+      ));
+    }
+    final genre = data.genre;
+    if (genre != null && genre.trim().isNotEmpty) {
+      chips.add(_InfoChip(
+        icon: Icons.local_offer_outlined,
+        label: genre.trim(),
+      ));
+    }
+
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        ClipRRect(
+          borderRadius: BorderRadius.circular(10),
+          child: SizedBox(
+            width: 90,
+            height: 130,
+            child: posterUrl != null && posterUrl.trim().isNotEmpty
+                ? IptvChannelLogo(
+                    imageUrl: posterUrl,
+                    width: 90,
+                    height: 130,
+                    memCacheWidth: posterPx,
+                  )
+                : Container(
+                    color: Colors.white.withValues(alpha: 0.06),
+                    alignment: Alignment.center,
+                    child: Icon(
+                      Icons.local_movies_outlined,
+                      size: 32,
+                      color: Colors.white.withValues(alpha: 0.45),
+                    ),
+                  ),
+          ),
+        ),
+        const SizedBox(width: 14),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                data.title,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w800,
+                  height: 1.2,
+                  letterSpacing: 0.1,
+                ),
+              ),
+              if (chips.isNotEmpty) ...[
+                const SizedBox(height: 8),
+                Wrap(
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: chips,
+                ),
+              ],
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  // ------------------------------- Bölümler -------------------------------
+
+  Widget _buildEpisodesTab(BuildContext context) {
+    final tape = widget.controller.seriesEpisodeBrowseTape;
+    if (tape.isEmpty) {
+      return _EmptyState(
+        icon: Icons.list_alt_rounded,
+        message: 'portraitSeriesPanel.empty.episodes'.tr,
+      );
+    }
+
+    return Obx(() {
+      // Reactive: bölüm değişince "şu an oynayan" rozetini yenilensin.
+      widget.controller.channel.value;
+      final current = widget.controller.currentSeriesEpisodeOption;
+      return ListView.separated(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+        itemCount: tape.length,
+        separatorBuilder: (_, __) => const SizedBox(height: 6),
+        itemBuilder: (ctx, i) {
+          final opt = tape[i];
+          final isPlaying = current != null &&
+              opt.channel.id == current.channel.id &&
+              opt.season == current.season &&
+              opt.episodeNumber == current.episodeNumber;
+          return _SeriesEpisodeRow(
+            option: opt,
+            isPlaying: isPlaying,
+            onTap: () {
+              if (isPlaying) return;
+              widget.controller.zapTo(opt.channel);
+            },
+          );
+        },
+      );
+    });
+  }
+}
+
+class _SectionTitle extends StatelessWidget {
+  const _SectionTitle(this.text);
+  final String text;
+  @override
+  Widget build(BuildContext context) {
+    return Text(
+      text.toUpperCase(),
+      style: TextStyle(
+        color: Colors.white.withValues(alpha: 0.6),
+        fontSize: 11.5,
+        fontWeight: FontWeight.w700,
+        letterSpacing: 0.6,
+      ),
+    );
+  }
+}
+
+class _MetaLine extends StatelessWidget {
+  const _MetaLine({required this.label, required this.value});
+  final String label;
+  final String value;
+  @override
+  Widget build(BuildContext context) {
+    return RichText(
+      text: TextSpan(
+        children: [
+          TextSpan(
+            text: '${label.toUpperCase()}: ',
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.55),
+              fontSize: 11.5,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.5,
+            ),
+          ),
+          TextSpan(
+            text: value,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 13,
+              fontWeight: FontWeight.w600,
+              height: 1.35,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _InfoChip extends StatelessWidget {
+  const _InfoChip({
+    required this.icon,
+    required this.label,
+    this.emphasize = false,
+  });
+
+  final IconData icon;
+  final String label;
+  final bool emphasize;
+
+  @override
+  Widget build(BuildContext context) {
+    final primary = Theme.of(context).colorScheme.primary;
+    final bg = emphasize
+        ? primary.withValues(alpha: 0.18)
+        : Colors.white.withValues(alpha: 0.08);
+    final fg = emphasize ? primary : Colors.white.withValues(alpha: 0.85);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: emphasize
+              ? primary.withValues(alpha: 0.35)
+              : Colors.white.withValues(alpha: 0.12),
+        ),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 13, color: fg),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: TextStyle(
+              color: fg,
+              fontSize: 11.5,
+              fontWeight: FontWeight.w700,
+              letterSpacing: 0.2,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CastRow extends StatelessWidget {
+  const _CastRow({required this.actors});
+  final List<SeriesPlayerCastMember> actors;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 78,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: actors.length,
+        separatorBuilder: (_, __) => const SizedBox(width: 12),
+        itemBuilder: (ctx, i) {
+          final a = actors[i];
+          return SizedBox(
+            width: 70,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                Container(
+                  width: 44,
+                  height: 44,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.white.withValues(alpha: 0.08),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.15),
+                    ),
+                  ),
+                  alignment: Alignment.center,
+                  child: Text(
+                    _initials(a.name),
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w800,
+                      letterSpacing: 0.4,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  a.name,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w600,
+                    height: 1.15,
+                  ),
+                ),
+              ],
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  static String _initials(String name) {
+    final parts =
+        name.trim().split(RegExp(r'\s+')).where((p) => p.isNotEmpty).toList();
+    if (parts.isEmpty) return '?';
+    if (parts.length == 1) return parts.first.characters.first.toUpperCase();
+    final first = parts.first.characters.first;
+    final last = parts.last.characters.first;
+    return '$first$last'.toUpperCase();
+  }
+}
+
+class _SeriesEpisodeRow extends StatelessWidget {
+  const _SeriesEpisodeRow({
+    required this.option,
+    required this.isPlaying,
+    required this.onTap,
+  });
+
+  final SeriesEpisodeOption option;
+  final bool isPlaying;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final primary = Theme.of(context).colorScheme.primary;
+    final bg = isPlaying
+        ? primary.withValues(alpha: 0.16)
+        : Colors.white.withValues(alpha: 0.04);
+    final border = isPlaying
+        ? primary.withValues(alpha: 0.55)
+        : Colors.white.withValues(alpha: 0.08);
+    final epLabel = 'portraitSeriesPanel.episodeLabel'.trParams({
+      's': option.season.toString().padLeft(2, '0'),
+      'e': option.episodeNumber.toString().padLeft(2, '0'),
+    });
+    final dur = option.durationSecs;
+    final durLabel = (dur != null && dur > 0) ? _formatDuration(dur) : null;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+          decoration: BoxDecoration(
+            color: bg,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: border),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Container(
+                width: 50,
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                alignment: Alignment.center,
+                decoration: BoxDecoration(
+                  color: isPlaying
+                      ? primary.withValues(alpha: 0.25)
+                      : Colors.white.withValues(alpha: 0.06),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Text(
+                  epLabel,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    color: isPlaying ? primary : Colors.white,
+                    fontSize: 11.5,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: 0.2,
+                  ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            option.displayTitle,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: isPlaying ? primary : Colors.white,
+                              fontSize: 13.5,
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                        if (isPlaying) ...[
+                          const SizedBox(width: 6),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 2,
+                            ),
+                            decoration: BoxDecoration(
+                              color: primary.withValues(alpha: 0.85),
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              'portraitSeriesPanel.nowPlaying'.tr,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 9.5,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: 0.6,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                    if (durLabel != null ||
+                        (option.plot != null &&
+                            option.plot!.trim().isNotEmpty)) ...[
+                      const SizedBox(height: 3),
+                      Row(
+                        children: [
+                          if (durLabel != null) ...[
+                            Icon(
+                              Icons.schedule_rounded,
+                              size: 11,
+                              color: Colors.white.withValues(alpha: 0.55),
+                            ),
+                            const SizedBox(width: 3),
+                            Text(
+                              durLabel,
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.65),
+                                fontSize: 11,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            if (option.plot != null &&
+                                option.plot!.trim().isNotEmpty)
+                              Text(
+                                '  ·  ',
+                                style: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.4),
+                                  fontSize: 11,
+                                ),
+                              ),
+                          ],
+                          if (option.plot != null &&
+                              option.plot!.trim().isNotEmpty)
+                            Expanded(
+                              child: Text(
+                                option.plot!.trim(),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.6),
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ),
+                        ],
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  static String _formatDuration(int secs) {
+    if (secs <= 0) return '';
+    final h = secs ~/ 3600;
+    final m = (secs % 3600) ~/ 60;
+    if (h > 0) return '${h}h ${m.toString().padLeft(2, '0')}m';
+    return '${m}m';
+  }
+}
+
+/// Dikey moddaki film / dizi izleyicisinde OSD'nin altına yerleşen panel.
+/// Canlı TV'deki [_PortraitLiveTvPanel]'in muadili.
+///
+/// İki sekmeli yapı:
+///  1. **Kategoriler** — "Tümü", varsa "Son İzlenenler" ve aktif kütüphanedeki
+///     gerçek film/dizi kategorileri. İçerik adedini gösterir.
+///  2. **Filmler / Diziler** — seçili kategorinin tam liste görünümü;
+///     tıklanan öğe doğrudan oynatıcıda açılır
+///     ([PlayerController.pickVodBrowseRailMovie]
+///     veya [PlayerController.pickVodBrowseRailSeries]).
+class _PortraitVodPanel extends StatefulWidget {
+  const _PortraitVodPanel({
+    required this.controller,
+    required this.isSeriesMode,
+  });
+
+  final PlayerController controller;
+  final bool isSeriesMode;
+
+  @override
+  State<_PortraitVodPanel> createState() => _PortraitVodPanelState();
+}
+
+enum _PortraitVodTab { categories, items }
+
+class _PortraitVodPanelState extends State<_PortraitVodPanel> {
+  _PortraitVodTab _tab = _PortraitVodTab.items;
+  int? _selectedCategoryId;
   Worker? _channelWorker;
 
   @override
   void initState() {
     super.initState();
-    _channelWorker =
-        ever(widget.controller.channel, (_) => _scrollSelectedToStart());
-    WidgetsBinding.instance
-        .addPostFrameCallback((_) => _scrollSelectedToStart());
+    _syncCategoryWithCurrent();
+    // Aktif içerik değişince kategori seçimini hizala — kullanıcı manuel
+    // "Tümü" / "Son İzlenenler" seçtiğinde tercihi koru.
+    _channelWorker = ever(widget.controller.channel, (_) {
+      _syncCategoryWithCurrent();
+    });
   }
 
   @override
   void dispose() {
     _channelWorker?.dispose();
-    _scrollController.dispose();
     super.dispose();
   }
 
-  void _scrollSelectedToStart() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      final ctx = _selectedChannelKey.currentContext;
-      if (ctx == null) return;
-      Scrollable.ensureVisible(
-        ctx,
-        alignment: 0.0,
-        duration: AppPerformance.uiDuration(
-          const Duration(milliseconds: 260),
-        ),
-        curve: Curves.easeOutCubic,
-      );
-    });
+  void _syncCategoryWithCurrent() {
+    if (!mounted) return;
+    if (_selectedCategoryId == _kVodPanelAllCategoryId) return;
+    if (_selectedCategoryId == _kVodPanelRecentlyWatchedCategoryId) return;
+    if (widget.isSeriesMode) {
+      final ser = widget.controller.playingSeries;
+      if (ser != null && _selectedCategoryId != ser.categoryId) {
+        setState(() => _selectedCategoryId = ser.categoryId);
+      }
+    } else {
+      final cur = widget.controller.channel.value;
+      if (_selectedCategoryId != cur.categoryId) {
+        setState(() => _selectedCategoryId = cur.categoryId);
+      }
+    }
+  }
+
+  M3uResult? _data() {
+    if (!Get.isRegistered<PlaylistCacheService>()) return null;
+    return Get.find<PlaylistCacheService>().result.value;
+  }
+
+  /// Tüm filmler — kategori bazında VodItem listeleri (alfabetik sıralı).
+  /// Boş kategoriler atılır.
+  Map<int, List<VodItem>> _moviesByCategory(M3uResult d) {
+    final out = <int, List<VodItem>>{};
+    for (final v in d.vod) {
+      out.putIfAbsent(v.categoryId, () => []).add(v);
+    }
+    for (final list in out.values) {
+      list.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    }
+    return out;
+  }
+
+  /// Tüm diziler — kategori bazında SeriesItem listeleri (alfabetik sıralı).
+  Map<int, List<SeriesItem>> _seriesByCategory(M3uResult d) {
+    final out = <int, List<SeriesItem>>{};
+    for (final s in d.series) {
+      out.putIfAbsent(s.categoryId, () => []).add(s);
+    }
+    for (final list in out.values) {
+      list.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    }
+    return out;
+  }
+
+  /// Kullanıcının izleme geçmişinden bu mod (film veya dizi) için
+  /// kronolojik sırayla içerik ID listesi (en yeni → en eski). Aynı içerik
+  /// birden fazla kez izlendiyse en yeni kayıt kalır.
+  List<int> _watchedIdsOrdered() {
+    if (!Get.isRegistered<UserHistoryService>()) return const <int>[];
+    final svc = Get.find<UserHistoryService>();
+    final entries = svc.snapshotSync()
+      ..sort((a, b) => b.timestampMs.compareTo(a.timestampMs));
+    final wanted =
+        widget.isSeriesMode ? UserHistoryKind.series : UserHistoryKind.vod;
+    final seen = <int>{};
+    final out = <int>[];
+    for (final e in entries) {
+      if (e.kind != wanted) continue;
+      if (!seen.add(e.contentId)) continue;
+      out.add(e.contentId);
+    }
+    return out;
+  }
+
+  List<VodItem> _recentlyWatchedMovies(M3uResult d) {
+    final ids = _watchedIdsOrdered();
+    if (ids.isEmpty) return const <VodItem>[];
+    final byId = <int, VodItem>{
+      for (final v in d.vod) v.id: v,
+    };
+    return [
+      for (final id in ids)
+        if (byId[id] != null) byId[id]!,
+    ];
+  }
+
+  List<SeriesItem> _recentlyWatchedSeries(M3uResult d) {
+    final ids = _watchedIdsOrdered();
+    if (ids.isEmpty) return const <SeriesItem>[];
+    final byId = <int, SeriesItem>{
+      for (final s in d.series) s.id: s,
+    };
+    return [
+      for (final id in ids)
+        if (byId[id] != null) byId[id]!,
+    ];
   }
 
   @override
   Widget build(BuildContext context) {
-    return Obx(() {
-      widget.controller.channel.value;
-      final list = widget.controller.liveChannelsInCurrentCategory();
-      if (list.length <= 1) return const SizedBox.shrink();
-
-      final stripInner = Container(
-        height: 100,
-        padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
-        decoration: BoxDecoration(
-          color: Colors.white.withValues(alpha: 0.1),
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: Colors.white.withValues(alpha: 0.2),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(18),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: const Color(0xE60B0F14),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.16),
+            ),
           ),
-        ),
-        child: ListView.separated(
-          controller: _scrollController,
-          scrollDirection: Axis.horizontal,
-          physics: const BouncingScrollPhysics(),
-          itemCount: list.length,
-          separatorBuilder: (_, __) => const SizedBox(width: 8),
-          itemBuilder: (context, i) {
-            final ch = list[i];
-            final sel = ch.id == widget.controller.channel.value.id;
-            final primary = Theme.of(context).colorScheme.primary;
-            final dpr = MediaQuery.devicePixelRatioOf(context);
-            final logoPx = (34 * dpr).round();
-            final logoUrl = ch.logoUrl?.trim();
-            final tile = Material(
-              color: Colors.transparent,
-              child: InkWell(
-                onTap: () => unawaited(widget.controller.zapTo(ch)),
-                borderRadius: BorderRadius.circular(12),
-                child: Container(
-                  constraints: const BoxConstraints(
-                    minWidth: 96,
-                    maxWidth: 172,
-                  ),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
-                      color:
-                          sel ? primary : Colors.white.withValues(alpha: 0.25),
-                      width: sel ? 2 : 1,
-                    ),
-                    color: sel
-                        ? primary.withValues(alpha: 0.22)
-                        : Colors.white.withValues(alpha: 0.06),
-                  ),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        ch.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: sel ? FontWeight.w700 : FontWeight.w500,
-                          fontSize: 12,
-                          height: 1.05,
-                        ),
-                      ),
-                      const SizedBox(height: 5),
-                      SizedBox(
-                        width: 34,
-                        height: 34,
-                        child: logoUrl != null && logoUrl.isNotEmpty
-                            ? ClipRRect(
-                                borderRadius: BorderRadius.circular(6),
-                                child: IptvChannelLogo(
-                                  imageUrl: logoUrl,
-                                  width: 34,
-                                  height: 34,
-                                  fit: BoxFit.contain,
-                                  memCacheWidth: logoPx,
-                                  memCacheHeight: logoPx,
-                                  showProgressIndicator: true,
-                                  progressIndicatorColor: Colors.white24,
-                                  errorWidget: Icon(
-                                    Icons.live_tv_rounded,
-                                    color: Colors.white.withValues(alpha: 0.75),
-                                    size: 26,
-                                  ),
-                                ),
-                              )
-                            : Icon(
-                                Icons.live_tv_rounded,
-                                color: Colors.white.withValues(alpha: 0.75),
-                                size: 26,
-                              ),
-                      ),
-                    ],
-                  ),
-                ),
+          child: Column(
+            children: [
+              _buildTabBar(context),
+              const Divider(
+                height: 1,
+                thickness: 0.6,
+                color: Color(0x22FFFFFF),
               ),
-            );
-            return Align(
-              key: sel ? _selectedChannelKey : ValueKey<int>(ch.id),
-              child: tile,
-            );
-          },
-        ),
-      );
-
-      return Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8),
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(16),
-          child: BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-            child: stripInner,
+              Expanded(child: _buildTabBody(context)),
+            ],
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildTabBar(BuildContext context) {
+    final primary = Theme.of(context).colorScheme.primary;
+    final itemsLabel = widget.isSeriesMode
+        ? 'portraitVodPanel.tab.series'.tr
+        : 'portraitVodPanel.tab.films'.tr;
+    final tabs = <(_PortraitVodTab, String)>[
+      (_PortraitVodTab.categories, 'channels.tab.categories'.tr),
+      (_PortraitVodTab.items, itemsLabel),
+    ];
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 6, 8, 0),
+      child: Row(
+        children: [
+          for (final t in tabs)
+            Expanded(
+              child: _TabButton(
+                label: t.$2,
+                active: _tab == t.$1,
+                primary: primary,
+                onTap: () => setState(() => _tab = t.$1),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTabBody(BuildContext context) {
+    switch (_tab) {
+      case _PortraitVodTab.categories:
+        return _buildCategoriesList(context);
+      case _PortraitVodTab.items:
+        return _buildItemsList(context);
+    }
+  }
+
+  // ------------------------------ Kategoriler ------------------------------
+
+  Widget _buildCategoriesList(BuildContext context) {
+    return Obx(() {
+      // Reactive bağlantılar — playlist veri değişimi + history.
+      if (Get.isRegistered<PlaylistCacheService>()) {
+        Get.find<PlaylistCacheService>().result.value;
+      }
+      if (Get.isRegistered<UserHistoryService>()) {
+        Get.find<UserHistoryService>().revision.value;
+      }
+      final d = _data();
+      if (d == null) {
+        return _EmptyState(
+          icon: Icons.category_outlined,
+          message: 'portraitPanel.empty.categories'.tr,
+        );
+      }
+
+      final allCount = widget.isSeriesMode ? d.series.length : d.vod.length;
+      final recentCount = widget.isSeriesMode
+          ? _recentlyWatchedSeries(d).length
+          : _recentlyWatchedMovies(d).length;
+      final showRecent = recentCount > 0;
+
+      // Gerçek kategoriler
+      final List<({int id, String name, int count})> realCats =
+          widget.isSeriesMode
+              ? () {
+                  final byCat = _seriesByCategory(d);
+                  return [
+                    for (final c in d.seriesCategories)
+                      if ((byCat[c.id] ?? const <SeriesItem>[]).isNotEmpty)
+                        (
+                          id: c.id,
+                          name: c.name,
+                          count: (byCat[c.id] ?? const <SeriesItem>[]).length,
+                        ),
+                  ];
+                }()
+              : () {
+                  final byCat = _moviesByCategory(d);
+                  return [
+                    for (final c in d.vodCategories)
+                      if ((byCat[c.id] ?? const <VodItem>[]).isNotEmpty)
+                        (
+                          id: c.id,
+                          name: c.name,
+                          count: (byCat[c.id] ?? const <VodItem>[]).length,
+                        ),
+                  ];
+                }();
+
+      if (realCats.isEmpty && allCount == 0) {
+        return _EmptyState(
+          icon: Icons.category_outlined,
+          message: 'portraitPanel.empty.categories'.tr,
+        );
+      }
+
+      final virtualRows = 1 + (showRecent ? 1 : 0);
+      return ListView.separated(
+        physics: AppScrollPhysics.list(),
+        padding: const EdgeInsets.fromLTRB(8, 8, 8, 12),
+        itemCount: realCats.length + virtualRows,
+        separatorBuilder: (_, __) => const SizedBox(height: 6),
+        itemBuilder: (context, i) {
+          if (i == 0) {
+            final selected = _selectedCategoryId == _kVodPanelAllCategoryId;
+            final allLabel = widget.isSeriesMode
+                ? 'portraitVodPanel.allSeries'.tr
+                : 'portraitVodPanel.allFilms'.tr;
+            return _CategoryRow(
+              name: allLabel,
+              count: allCount,
+              selected: selected,
+              isCurrent: false,
+              leadingIcon: Icons.apps_rounded,
+              onTap: () {
+                setState(() {
+                  _selectedCategoryId = _kVodPanelAllCategoryId;
+                  _tab = _PortraitVodTab.items;
+                });
+              },
+            );
+          }
+          if (showRecent && i == 1) {
+            final selected =
+                _selectedCategoryId == _kVodPanelRecentlyWatchedCategoryId;
+            return _CategoryRow(
+              name: 'browse.recentlyWatched'.tr,
+              count: recentCount,
+              selected: selected,
+              isCurrent: false,
+              leadingIcon: Icons.history_rounded,
+              onTap: () {
+                setState(() {
+                  _selectedCategoryId = _kVodPanelRecentlyWatchedCategoryId;
+                  _tab = _PortraitVodTab.items;
+                });
+              },
+            );
+          }
+          final cat = realCats[i - virtualRows];
+          final selected = _selectedCategoryId == cat.id;
+          // Aktif kanalın/dizinin gerçek kategorisi → yıldız işareti.
+          final currentCatId = widget.isSeriesMode
+              ? widget.controller.playingSeries?.categoryId
+              : widget.controller.channel.value.categoryId;
+          final isCurrent = currentCatId == cat.id;
+          return _CategoryRow(
+            name: cat.name,
+            count: cat.count,
+            selected: selected,
+            isCurrent: isCurrent,
+            onTap: () {
+              setState(() {
+                _selectedCategoryId = cat.id;
+                _tab = _PortraitVodTab.items;
+              });
+            },
+          );
+        },
       );
     });
   }
+
+  // ------------------------------ İçerikler ------------------------------
+
+  Widget _buildItemsList(BuildContext context) {
+    return Obx(() {
+      if (Get.isRegistered<PlaylistCacheService>()) {
+        Get.find<PlaylistCacheService>().result.value;
+      }
+      if (Get.isRegistered<UserHistoryService>()) {
+        Get.find<UserHistoryService>().revision.value;
+      }
+      // Aktif içerik değişimini izle ki "şu an oynayan" rozeti yenilensin.
+      widget.controller.channel.value;
+      final d = _data();
+      if (d == null) {
+        return _EmptyState(
+          icon: widget.isSeriesMode
+              ? Icons.theater_comedy_outlined
+              : Icons.movie_outlined,
+          message: 'portraitVodPanel.empty.items'.tr,
+        );
+      }
+
+      final selectedId = _selectedCategoryId;
+      if (widget.isSeriesMode) {
+        final List<SeriesItem> list = _resolveSeriesList(d, selectedId);
+        if (list.isEmpty) {
+          return _EmptyState(
+            icon: Icons.theater_comedy_outlined,
+            message: 'portraitVodPanel.empty.items'.tr,
+          );
+        }
+        final activeId = widget.controller.playingSeries?.id;
+        return ListView.separated(
+          physics: AppScrollPhysics.list(),
+          padding: const EdgeInsets.fromLTRB(8, 8, 8, 12),
+          itemCount: list.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 6),
+          itemBuilder: (context, i) {
+            final s = list[i];
+            return _VodItemRow(
+              title: s.name,
+              posterUrl: s.posterUrl,
+              isCurrent: activeId == s.id,
+              isSeries: true,
+              onTap: () {
+                unawaited(widget.controller.pickVodBrowseRailSeries(s));
+              },
+            );
+          },
+        );
+      } else {
+        final List<VodItem> list = _resolveMovieList(d, selectedId);
+        if (list.isEmpty) {
+          return _EmptyState(
+            icon: Icons.movie_outlined,
+            message: 'portraitVodPanel.empty.items'.tr,
+          );
+        }
+        // Şu an oynayan film için karşılaştırma — id veya streamUrl.
+        final cur = widget.controller.channel.value;
+        return ListView.separated(
+          physics: AppScrollPhysics.list(),
+          padding: const EdgeInsets.fromLTRB(8, 8, 8, 12),
+          itemCount: list.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 6),
+          itemBuilder: (context, i) {
+            final v = list[i];
+            final isCurrent = v.id == cur.id || v.streamUrl == cur.streamUrl;
+            return _VodItemRow(
+              title: v.name,
+              posterUrl: v.posterUrl,
+              isCurrent: isCurrent,
+              isSeries: false,
+              onTap: () {
+                final ch = Channel(
+                  id: v.id,
+                  name: v.name,
+                  streamUrl: v.streamUrl,
+                  categoryId: v.categoryId,
+                  logoUrl: v.posterUrl,
+                );
+                unawaited(widget.controller.pickVodBrowseRailMovie(ch));
+              },
+            );
+          },
+        );
+      }
+    });
+  }
+
+  List<VodItem> _resolveMovieList(M3uResult d, int? selectedId) {
+    if (selectedId == _kVodPanelRecentlyWatchedCategoryId) {
+      return _recentlyWatchedMovies(d);
+    }
+    if (selectedId == _kVodPanelAllCategoryId || selectedId == null) {
+      final all = List<VodItem>.from(d.vod);
+      all.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+      return all;
+    }
+    final byCat = _moviesByCategory(d);
+    return byCat[selectedId] ?? const <VodItem>[];
+  }
+
+  List<SeriesItem> _resolveSeriesList(M3uResult d, int? selectedId) {
+    if (selectedId == _kVodPanelRecentlyWatchedCategoryId) {
+      return _recentlyWatchedSeries(d);
+    }
+    if (selectedId == _kVodPanelAllCategoryId || selectedId == null) {
+      final all = List<SeriesItem>.from(d.series);
+      all.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+      return all;
+    }
+    final byCat = _seriesByCategory(d);
+    return byCat[selectedId] ?? const <SeriesItem>[];
+  }
+}
+
+/// Dikey VOD/Series panelinde tek liste satırı: poster + başlık + "şu an
+/// oynayan" rozeti. Sade ve tıklamaya odaklı; gridler büyük posterler için
+/// browse modülünde zaten mevcut, burada amaç hızlı ön-listeleme.
+class _VodItemRow extends StatelessWidget {
+  const _VodItemRow({
+    required this.title,
+    required this.posterUrl,
+    required this.isCurrent,
+    required this.isSeries,
+    required this.onTap,
+  });
+
+  final String title;
+  final String? posterUrl;
+  final bool isCurrent;
+  final bool isSeries;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final primary = Theme.of(context).colorScheme.primary;
+    final dpr = MediaQuery.devicePixelRatioOf(context);
+    final logoPx = (44 * dpr).round();
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            color: isCurrent
+                ? primary.withValues(alpha: 0.18)
+                : Colors.white.withValues(alpha: 0.05),
+            border: Border.all(
+              color: isCurrent
+                  ? primary.withValues(alpha: 0.55)
+                  : Colors.white.withValues(alpha: 0.08),
+              width: isCurrent ? 1.2 : 1,
+            ),
+          ),
+          child: Row(
+            children: [
+              SizedBox(
+                width: 40,
+                height: 56,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(6),
+                  child: (posterUrl != null && posterUrl!.trim().isNotEmpty)
+                      ? IptvChannelLogo(
+                          imageUrl: posterUrl!,
+                          width: 40,
+                          height: 56,
+                          fit: BoxFit.cover,
+                          memCacheWidth: logoPx,
+                        )
+                      : Container(
+                          color: Colors.white.withValues(alpha: 0.06),
+                          child: Center(
+                            child: Icon(
+                              isSeries
+                                  ? Icons.theater_comedy_outlined
+                                  : Icons.movie_outlined,
+                              size: 18,
+                              color: Colors.white.withValues(alpha: 0.55),
+                            ),
+                          ),
+                        ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      title,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 13.5,
+                        fontWeight:
+                            isCurrent ? FontWeight.w700 : FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      children: [
+                        Icon(
+                          isSeries
+                              ? Icons.theater_comedy_outlined
+                              : Icons.movie_outlined,
+                          size: 13,
+                          color: Colors.white.withValues(alpha: 0.55),
+                        ),
+                        const SizedBox(width: 4),
+                        Text(
+                          isSeries ? 'browse.series'.tr : 'browse.films'.tr,
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.55),
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        if (isCurrent) ...[
+                          const SizedBox(width: 8),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 6, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: primary.withValues(alpha: 0.22),
+                              borderRadius: BorderRadius.circular(6),
+                              border: Border.all(
+                                color: primary.withValues(alpha: 0.55),
+                                width: 0.8,
+                              ),
+                            ),
+                            child: Text(
+                              'portraitVodPanel.nowPlaying'.tr,
+                              style: TextStyle(
+                                color: primary,
+                                fontSize: 10,
+                                fontWeight: FontWeight.w700,
+                                letterSpacing: 0.4,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              Icon(
+                Icons.play_arrow_rounded,
+                size: 22,
+                color: Colors.white.withValues(alpha: 0.7),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _PortraitLiveTvPanel extends StatefulWidget {
+  const _PortraitLiveTvPanel({required this.controller});
+
+  final PlayerController controller;
+
+  @override
+  State<_PortraitLiveTvPanel> createState() => _PortraitLiveTvPanelState();
+}
+
+enum _PortraitLiveTab { categories, channels, epg }
+
+class _PortraitLiveTvPanelState extends State<_PortraitLiveTvPanel> {
+  _PortraitLiveTab _tab = _PortraitLiveTab.channels;
+  int? _selectedCategoryId;
+  Worker? _channelWorker;
+  Timer? _epgTicker;
+
+  @override
+  void initState() {
+    super.initState();
+    _syncCategoryWithCurrentChannel();
+    // Aktif kanal değişince kategori seçimini güncel kanala hizala.
+    _channelWorker = ever(widget.controller.channel, (_) {
+      _syncCategoryWithCurrentChannel();
+    });
+    // EPG sekmesinde "DEVAM EDİYOR" rozetinin saat geçişinde tazelenmesi için
+    // dakikada bir tetikleme. (Sekme EPG değilse ucuz `setState`.)
+    _epgTicker = Timer.periodic(const Duration(seconds: 30), (_) {
+      if (!mounted) return;
+      if (_tab != _PortraitLiveTab.epg) return;
+      setState(() {});
+    });
+  }
+
+  @override
+  void dispose() {
+    _channelWorker?.dispose();
+    _epgTicker?.cancel();
+    super.dispose();
+  }
+
+  void _syncCategoryWithCurrentChannel() {
+    if (!mounted) return;
+    // Favoriler / Son İzlenenler sanal kategorileri seçili iken kullanıcının
+    // tercihi korunsun; aktif kanalın gerçek kategorisi olsa da otomatik
+    // geri dönmeyelim.
+    if (_selectedCategoryId == kFavoritesVirtualCategoryId) return;
+    if (_selectedCategoryId == kRecentlyWatchedVirtualCategoryId) return;
+    final cur = widget.controller.channel.value;
+    if (_selectedCategoryId != cur.categoryId) {
+      setState(() => _selectedCategoryId = cur.categoryId);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(18),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            // Oynatıcı sahnesi: tema fark etmeksizin koyu opak panel.
+            // Frosted Glass / Mina Glass / Glass Gri sentetik camda
+            // popupGradientColors beyaz alpha; player'da görüntüyü
+            // örtüyordu.
+            color: const Color(0xE60B0F14),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.16),
+            ),
+          ),
+          child: Column(
+            children: [
+              _buildTabBar(context),
+              const Divider(
+                height: 1,
+                thickness: 0.6,
+                color: Color(0x22FFFFFF),
+              ),
+              Expanded(child: _buildTabBody(context)),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTabBar(BuildContext context) {
+    final primary = Theme.of(context).colorScheme.primary;
+    final tabs = <(_PortraitLiveTab, String)>[
+      (_PortraitLiveTab.categories, 'channels.tab.categories'.tr),
+      (_PortraitLiveTab.channels, 'channels.tab.channels'.tr),
+      (_PortraitLiveTab.epg, 'channels.tab.epgTimeline'.tr),
+    ];
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(8, 6, 8, 0),
+      child: Row(
+        children: [
+          for (final t in tabs)
+            Expanded(
+              child: _TabButton(
+                label: t.$2,
+                active: _tab == t.$1,
+                primary: primary,
+                onTap: () => setState(() => _tab = t.$1),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildTabBody(BuildContext context) {
+    switch (_tab) {
+      case _PortraitLiveTab.categories:
+        return _buildCategoriesList(context);
+      case _PortraitLiveTab.channels:
+        return _buildChannelsList(context);
+      case _PortraitLiveTab.epg:
+        return _buildEpgList(context);
+    }
+  }
+
+  // ------------------------------ Kategoriler ------------------------------
+
+  Widget _buildCategoriesList(BuildContext context) {
+    return Obx(() {
+      widget.controller.channel.value;
+      if (Get.isRegistered<PlaylistCacheService>()) {
+        Get.find<PlaylistCacheService>().result.value;
+      }
+      // Favori RxList değişimini dinle (favorite sayısı + seçili sekme).
+      final favs = Get.find<FavoritesService>();
+      favs.channelIds.length;
+      // UserHistory revision'ı dinle — yeni izleme kaydı eklenince
+      // "Son İzlenenler" satırı/sayacı anında yenilensin.
+      if (Get.isRegistered<UserHistoryService>()) {
+        Get.find<UserHistoryService>().revision.value;
+      }
+      final tapes = widget.controller.liveChannelStripCategoryTapes();
+      if (tapes.isEmpty) {
+        return _EmptyState(
+          icon: Icons.category_outlined,
+          message: 'portraitPanel.empty.categories'.tr,
+        );
+      }
+      final curCatId = widget.controller.channel.value.categoryId;
+      final favCount = _favoriteLiveChannels().length;
+      final recentList = _recentlyWatchedLiveChannels();
+      final showRecent = recentList.isNotEmpty;
+      // Üst sanal satırlar: Favoriler (her zaman), Son İzlenenler (kayıt
+      // varsa). İkisinin altına gerçek kategoriler. Toplam satır =
+      // 1 + (showRecent ? 1 : 0) + tapes.length.
+      final virtualRows = 1 + (showRecent ? 1 : 0);
+      return ListView.separated(
+        physics: AppScrollPhysics.list(),
+        padding: const EdgeInsets.fromLTRB(8, 8, 8, 12),
+        itemCount: tapes.length + virtualRows,
+        separatorBuilder: (_, __) => const SizedBox(height: 6),
+        itemBuilder: (context, i) {
+          if (i == 0) {
+            final selected = _selectedCategoryId == kFavoritesVirtualCategoryId;
+            return _CategoryRow(
+              name: 'channels.favoritesCategory'.tr,
+              count: favCount,
+              selected: selected,
+              isCurrent: false,
+              leadingIcon: Icons.favorite_rounded,
+              onTap: () {
+                setState(() {
+                  _selectedCategoryId = kFavoritesVirtualCategoryId;
+                  _tab = _PortraitLiveTab.channels;
+                });
+              },
+            );
+          }
+          if (showRecent && i == 1) {
+            final selected =
+                _selectedCategoryId == kRecentlyWatchedVirtualCategoryId;
+            return _CategoryRow(
+              name: 'channels.recentlyWatchedCategory'.tr,
+              count: recentList.length,
+              selected: selected,
+              isCurrent: false,
+              leadingIcon: Icons.history_rounded,
+              onTap: () {
+                setState(() {
+                  _selectedCategoryId = kRecentlyWatchedVirtualCategoryId;
+                  _tab = _PortraitLiveTab.channels;
+                });
+              },
+            );
+          }
+          final t = tapes[i - virtualRows];
+          final selected = (_selectedCategoryId != null &&
+                  _selectedCategoryId != kFavoritesVirtualCategoryId &&
+                  _selectedCategoryId != kRecentlyWatchedVirtualCategoryId &&
+                  _selectedCategoryId == t.categoryId) ||
+              (_selectedCategoryId == null && curCatId == t.categoryId);
+          return _CategoryRow(
+            name: t.name,
+            count: t.items.length,
+            selected: selected,
+            isCurrent: curCatId == t.categoryId,
+            onTap: () {
+              setState(() {
+                _selectedCategoryId = t.categoryId;
+                _tab = _PortraitLiveTab.channels;
+              });
+            },
+          );
+        },
+      );
+    });
+  }
+
+  /// Canlı kanallar arasında favoride olanlar (`liveChannelStripCategoryTapes`
+  /// içindeki kanal akışı ile aynı sıralamayı korur).
+  List<Channel> _favoriteLiveChannels() {
+    final favs = Get.find<FavoritesService>();
+    if (favs.channelIds.isEmpty) return const [];
+    final out = <Channel>[];
+    final seen = <int>{};
+    for (final tape in widget.controller.liveChannelStripCategoryTapes()) {
+      for (final ch in tape.items) {
+        if (!seen.add(ch.id)) continue;
+        if (favs.hasChannel(ch.id)) out.add(ch);
+      }
+    }
+    return out;
+  }
+
+  /// **Son İzlenenler** sanal kategorisi için kanal listesi —
+  /// `UserHistoryService` snapshot'ından `kind == live` kayıtları timestamp
+  /// sırasıyla işler; her contentId tek kez (en yeni izleme) liste başına
+  /// gelir; toplam [kRecentlyWatchedLiveLimit] sınırı uygulanır.
+  ///
+  /// Her zaman gerçek `liveChannelStripCategoryTapes` üzerinden kanal
+  /// nesnelerine map eder; playlist'te artık olmayan veya gizli kategoride
+  /// kalan kanallar listede gösterilmez.
+  List<Channel> _recentlyWatchedLiveChannels() {
+    if (!Get.isRegistered<UserHistoryService>()) return const [];
+    final history = Get.find<UserHistoryService>().snapshotSync();
+    if (history.isEmpty) return const [];
+    final entries = history
+        .where((e) => e.kind == UserHistoryKind.live)
+        .toList(growable: false)
+      ..sort((a, b) => b.timestampMs.compareTo(a.timestampMs));
+    if (entries.isEmpty) return const [];
+    final byId = <int, Channel>{};
+    for (final tape in widget.controller.liveChannelStripCategoryTapes()) {
+      for (final ch in tape.items) {
+        byId.putIfAbsent(ch.id, () => ch);
+      }
+    }
+    final out = <Channel>[];
+    final seen = <int>{};
+    for (final e in entries) {
+      if (seen.contains(e.contentId)) continue;
+      final ch = byId[e.contentId];
+      if (ch == null) continue;
+      seen.add(e.contentId);
+      out.add(ch);
+      if (out.length >= kRecentlyWatchedLiveLimit) break;
+    }
+    return out;
+  }
+
+  // ------------------------------ Kanallar ------------------------------
+
+  Widget _buildChannelsList(BuildContext context) {
+    return Obx(() {
+      widget.controller.channel.value;
+      if (Get.isRegistered<PlaylistCacheService>()) {
+        Get.find<PlaylistCacheService>().result.value;
+      }
+      // Favori RxList değişimi sanal "Favoriler" kanal listesini ve normal
+      // listedeki kalp ikonlarını anında tazelesin.
+      Get.find<FavoritesService>().channelIds.length;
+      // UserHistory revision: Son İzlenenler seçili iken yeni izleme kaydı
+      // eklendiğinde liste anında güncellensin.
+      if (Get.isRegistered<UserHistoryService>()) {
+        Get.find<UserHistoryService>().revision.value;
+      }
+      final tapes = widget.controller.liveChannelStripCategoryTapes();
+      if (tapes.isEmpty) {
+        return _EmptyState(
+          icon: Icons.live_tv_outlined,
+          message: 'portraitPanel.empty.channels'.tr,
+        );
+      }
+      // Favoriler sanal kategorisi seçili — favori canlı kanalları göster.
+      if (_selectedCategoryId == kFavoritesVirtualCategoryId) {
+        final favList = _favoriteLiveChannels();
+        if (favList.isEmpty) {
+          return Column(
+            children: [
+              _CategoryHeader(
+                name: 'channels.favoritesCategory'.tr,
+                count: 0,
+                onChangeTap: () =>
+                    setState(() => _tab = _PortraitLiveTab.categories),
+                icon: Icons.favorite_rounded,
+              ),
+              Expanded(
+                child: _EmptyState(
+                  icon: Icons.favorite_border_rounded,
+                  message: 'channels.favoritesCategoryEmpty'.tr,
+                ),
+              ),
+            ],
+          );
+        }
+        final currentId = widget.controller.channel.value.id;
+        return Column(
+          children: [
+            _CategoryHeader(
+              name: 'channels.favoritesCategory'.tr,
+              count: favList.length,
+              onChangeTap: () =>
+                  setState(() => _tab = _PortraitLiveTab.categories),
+              icon: Icons.favorite_rounded,
+            ),
+            Expanded(
+              child: ListView.separated(
+                physics: AppScrollPhysics.list(),
+                padding: const EdgeInsets.fromLTRB(8, 4, 8, 12),
+                itemCount: favList.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 6),
+                itemBuilder: (context, i) {
+                  final ch = favList[i];
+                  final isCurrent = ch.id == currentId;
+                  return _ChannelRow(
+                    channel: ch,
+                    isCurrent: isCurrent,
+                    onTap: () => unawaited(widget.controller.zapTo(ch)),
+                  );
+                },
+              ),
+            ),
+          ],
+        );
+      }
+      // Son İzlenenler sanal kategorisi seçili — UserHistory'den son 20
+      // canlı kanalı kronolojik olarak göster.
+      if (_selectedCategoryId == kRecentlyWatchedVirtualCategoryId) {
+        final recent = _recentlyWatchedLiveChannels();
+        final currentId = widget.controller.channel.value.id;
+        if (recent.isEmpty) {
+          return Column(
+            children: [
+              _CategoryHeader(
+                name: 'channels.recentlyWatchedCategory'.tr,
+                count: 0,
+                onChangeTap: () =>
+                    setState(() => _tab = _PortraitLiveTab.categories),
+                icon: Icons.history_rounded,
+              ),
+              Expanded(
+                child: _EmptyState(
+                  icon: Icons.history_toggle_off_rounded,
+                  message: 'portraitPanel.empty.channels'.tr,
+                ),
+              ),
+            ],
+          );
+        }
+        return Column(
+          children: [
+            _CategoryHeader(
+              name: 'channels.recentlyWatchedCategory'.tr,
+              count: recent.length,
+              onChangeTap: () =>
+                  setState(() => _tab = _PortraitLiveTab.categories),
+              icon: Icons.history_rounded,
+            ),
+            Expanded(
+              child: ListView.separated(
+                physics: AppScrollPhysics.list(),
+                padding: const EdgeInsets.fromLTRB(8, 4, 8, 12),
+                itemCount: recent.length,
+                separatorBuilder: (_, __) => const SizedBox(height: 6),
+                itemBuilder: (context, i) {
+                  final ch = recent[i];
+                  final isCurrent = ch.id == currentId;
+                  return _ChannelRow(
+                    channel: ch,
+                    isCurrent: isCurrent,
+                    onTap: () => unawaited(widget.controller.zapTo(ch)),
+                  );
+                },
+              ),
+            ),
+          ],
+        );
+      }
+      final catId =
+          _selectedCategoryId ?? widget.controller.channel.value.categoryId;
+      List<Channel> list = const [];
+      String? catName;
+      for (final t in tapes) {
+        if (t.categoryId == catId) {
+          list = t.items;
+          catName = t.name;
+          break;
+        }
+      }
+      // Eğer seçili kategori kanal listesinde yoksa (örn. boşaldı) ilk kategoriye düş.
+      if (list.isEmpty) {
+        list = tapes.first.items;
+        catName = tapes.first.name;
+      }
+      final currentId = widget.controller.channel.value.id;
+      return Column(
+        children: [
+          if (catName != null)
+            _CategoryHeader(
+              name: catName,
+              count: list.length,
+              onChangeTap: () =>
+                  setState(() => _tab = _PortraitLiveTab.categories),
+            ),
+          Expanded(
+            child: ListView.separated(
+              physics: AppScrollPhysics.list(),
+              padding: const EdgeInsets.fromLTRB(8, 4, 8, 12),
+              itemCount: list.length,
+              separatorBuilder: (_, __) => const SizedBox(height: 6),
+              itemBuilder: (context, i) {
+                final ch = list[i];
+                final isCurrent = ch.id == currentId;
+                return _ChannelRow(
+                  channel: ch,
+                  isCurrent: isCurrent,
+                  onTap: () => unawaited(widget.controller.zapTo(ch)),
+                );
+              },
+            ),
+          ),
+        ],
+      );
+    });
+  }
+
+  // ------------------------------ EPG ------------------------------
+
+  Widget _buildEpgList(BuildContext context) {
+    return Obx(() {
+      final ch = widget.controller.channel.value;
+      if (Get.isRegistered<PlaylistCacheService>()) {
+        Get.find<PlaylistCacheService>().result.value;
+      }
+      final epg =
+          Get.isRegistered<EpgService>() ? Get.find<EpgService>() : null;
+      if (epg == null) {
+        return _EmptyState(
+          icon: Icons.schedule_outlined,
+          message: 'portraitPanel.empty.epg'.tr,
+        );
+      }
+      // EPG yüklendiğinde / yenilendiğinde panel otomatik tazelensin.
+      epg.loadGeneration.value;
+      final progs = epg.getFullDayProgrammesForLiveChannel(ch);
+      if (progs.isEmpty) {
+        return _EmptyState(
+          icon: Icons.schedule_outlined,
+          message: 'portraitPanel.empty.epg'.tr,
+        );
+      }
+      final now = DateTime.now();
+      var liveIdx = -1;
+      for (var i = 0; i < progs.length; i++) {
+        if (now.isAfter(progs[i].start) && now.isBefore(progs[i].end)) {
+          liveIdx = i;
+          break;
+        }
+      }
+      return ListView.separated(
+        physics: AppScrollPhysics.list(),
+        padding: const EdgeInsets.fromLTRB(8, 8, 8, 12),
+        itemCount: progs.length,
+        separatorBuilder: (_, __) => const SizedBox(height: 6),
+        itemBuilder: (context, i) {
+          return _EpgRow(programme: progs[i], isLive: i == liveIdx);
+        },
+      );
+    });
+  }
+}
+
+class _TabButton extends StatelessWidget {
+  const _TabButton({
+    required this.label,
+    required this.active,
+    required this.primary,
+    required this.onTap,
+  });
+
+  final String label;
+  final bool active;
+  final Color primary;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(10),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          decoration: BoxDecoration(
+            border: Border(
+              bottom: BorderSide(
+                color: active ? primary : Colors.transparent,
+                width: 2.5,
+              ),
+            ),
+          ),
+          alignment: Alignment.center,
+          child: Text(
+            label,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+              color: active ? primary : Colors.white.withValues(alpha: 0.78),
+              fontWeight: active ? FontWeight.w700 : FontWeight.w600,
+              fontSize: 14,
+              letterSpacing: 0.1,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _CategoryHeader extends StatelessWidget {
+  const _CategoryHeader({
+    required this.name,
+    required this.count,
+    required this.onChangeTap,
+    this.icon = Icons.category_outlined,
+  });
+
+  final String name;
+  final int count;
+  final VoidCallback onChangeTap;
+  final IconData icon;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 10, 8, 6),
+      child: Row(
+        children: [
+          Icon(
+            icon,
+            size: 16,
+            color: Colors.white.withValues(alpha: 0.7),
+          ),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              name,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.85),
+                fontWeight: FontWeight.w700,
+                fontSize: 13,
+                letterSpacing: 0.15,
+              ),
+            ),
+          ),
+          Text(
+            'portraitPanel.channelCount'.trParams({'n': count.toString()}),
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.55),
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+          const SizedBox(width: 6),
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: onChangeTap,
+              borderRadius: BorderRadius.circular(8),
+              child: Padding(
+                padding: const EdgeInsets.all(6),
+                child: Icon(
+                  Icons.swap_horiz_rounded,
+                  size: 18,
+                  color: Colors.white.withValues(alpha: 0.85),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _CategoryRow extends StatelessWidget {
+  const _CategoryRow({
+    required this.name,
+    required this.count,
+    required this.selected,
+    required this.isCurrent,
+    required this.onTap,
+    this.leadingIcon,
+  });
+
+  final String name;
+  final int count;
+  final bool selected;
+  final bool isCurrent;
+  final VoidCallback onTap;
+  final IconData? leadingIcon;
+
+  @override
+  Widget build(BuildContext context) {
+    final primary = Theme.of(context).colorScheme.primary;
+    final iconData =
+        leadingIcon ?? (isCurrent ? Icons.live_tv_rounded : Icons.tv_outlined);
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            color: selected
+                ? primary.withValues(alpha: 0.18)
+                : Colors.white.withValues(alpha: 0.05),
+            border: Border.all(
+              color: selected
+                  ? primary.withValues(alpha: 0.55)
+                  : Colors.white.withValues(alpha: 0.08),
+              width: selected ? 1.2 : 1,
+            ),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                iconData,
+                size: 20,
+                color: isCurrent || leadingIcon != null
+                    ? primary
+                    : Colors.white.withValues(alpha: 0.72),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  name,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: 14,
+                    fontWeight: selected ? FontWeight.w700 : FontWeight.w600,
+                  ),
+                ),
+              ),
+              Text(
+                'portraitPanel.channelCount'.trParams({'n': count.toString()}),
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.65),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(width: 6),
+              Icon(
+                Icons.chevron_right_rounded,
+                size: 18,
+                color: Colors.white.withValues(alpha: 0.55),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _ChannelRow extends StatelessWidget {
+  const _ChannelRow({
+    required this.channel,
+    required this.isCurrent,
+    required this.onTap,
+  });
+
+  final Channel channel;
+  final bool isCurrent;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final primary = Theme.of(context).colorScheme.primary;
+    final dpr = MediaQuery.devicePixelRatioOf(context);
+    final logoPx = (44 * dpr).round();
+    final logoUrl = channel.logoUrl?.trim();
+    final epg = Get.isRegistered<EpgService>() ? Get.find<EpgService>() : null;
+    final cur = epg?.getCurrentProgrammeForLiveChannel(channel);
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(12),
+            color: isCurrent
+                ? primary.withValues(alpha: 0.18)
+                : Colors.white.withValues(alpha: 0.05),
+            border: Border.all(
+              color: isCurrent
+                  ? primary.withValues(alpha: 0.55)
+                  : Colors.white.withValues(alpha: 0.08),
+              width: isCurrent ? 1.2 : 1,
+            ),
+          ),
+          child: Row(
+            children: [
+              SizedBox(
+                width: 44,
+                height: 44,
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: logoUrl != null && logoUrl.isNotEmpty
+                      ? IptvChannelLogo(
+                          imageUrl: logoUrl,
+                          width: 44,
+                          height: 44,
+                          fit: BoxFit.contain,
+                          memCacheWidth: logoPx,
+                          memCacheHeight: logoPx,
+                          showProgressIndicator: true,
+                          progressIndicatorColor: Colors.white24,
+                          errorWidget: Icon(
+                            Icons.live_tv_rounded,
+                            color: Colors.white.withValues(alpha: 0.75),
+                            size: 28,
+                          ),
+                        )
+                      : Container(
+                          color: Colors.white.withValues(alpha: 0.06),
+                          alignment: Alignment.center,
+                          child: Icon(
+                            Icons.live_tv_rounded,
+                            color: Colors.white.withValues(alpha: 0.75),
+                            size: 26,
+                          ),
+                        ),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      channel.name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    // EPG bilgisi gelmemişse "program mevcut değil" yazısı yerine
+                    // cam stilli, üzeri çapraz çizili EPG rozeti göster.
+                    if (cur != null)
+                      Text(
+                        _formatEpgLineForRow(cur),
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.72),
+                          fontSize: 12,
+                        ),
+                      )
+                    else
+                      const _NoEpgGlassBadge(),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 6),
+              Icon(
+                isCurrent
+                    ? Icons.play_arrow_rounded
+                    : Icons.chevron_right_rounded,
+                size: isCurrent ? 22 : 18,
+                color:
+                    isCurrent ? primary : Colors.white.withValues(alpha: 0.55),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// EPG verisi gelmemiş kanallar için, "program mevcut değil" yazısı yerine
+/// gösterilen cam stilli rozet: EPG simgesi ([Icons.view_timeline_rounded] —
+/// uygulamadaki EPG butonuyla aynı) üzerine çapraz "çarpı" çizgisi.
+class _NoEpgGlassBadge extends StatelessWidget {
+  const _NoEpgGlassBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    final iconColor = Colors.white.withValues(alpha: 0.5);
+    return Container(
+      width: 24,
+      height: 24,
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(7),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.14),
+        ),
+      ),
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Icon(
+            Icons.view_timeline_rounded,
+            size: 14,
+            color: iconColor,
+          ),
+          // Üzerine çapraz çizgi (çarpı): altta koyu kontur, üstte açık çizgi.
+          Transform.rotate(
+            angle: -0.7853981633974483, // -45°
+            child: Container(
+              width: 20,
+              height: 3,
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.55),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+          Transform.rotate(
+            angle: -0.7853981633974483,
+            child: Container(
+              width: 20,
+              height: 1.6,
+              decoration: BoxDecoration(
+                color: Colors.white.withValues(alpha: 0.78),
+                borderRadius: BorderRadius.circular(2),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _EpgRow extends StatelessWidget {
+  const _EpgRow({
+    required this.programme,
+    required this.isLive,
+  });
+
+  final EpgProgramme programme;
+  final bool isLive;
+
+  @override
+  Widget build(BuildContext context) {
+    final primary = Theme.of(context).colorScheme.primary;
+    final s = _fmtHm(programme.start);
+    final e = _fmtHm(programme.end);
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        color: isLive
+            ? primary.withValues(alpha: 0.16)
+            : Colors.white.withValues(alpha: 0.05),
+        border: Border.all(
+          color: isLive
+              ? primary.withValues(alpha: 0.55)
+              : Colors.white.withValues(alpha: 0.08),
+          width: isLive ? 1.2 : 1,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '$s - $e',
+                  style: TextStyle(
+                    color:
+                        isLive ? primary : Colors.white.withValues(alpha: 0.85),
+                    fontSize: 13,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.2,
+                  ),
+                ),
+              ),
+              if (isLive)
+                Container(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(6),
+                    color: primary.withValues(alpha: 0.22),
+                    border: Border.all(
+                      color: primary.withValues(alpha: 0.55),
+                      width: 1,
+                    ),
+                  ),
+                  child: Text(
+                    'portraitPanel.live'.tr,
+                    style: TextStyle(
+                      color: primary,
+                      fontWeight: FontWeight.w800,
+                      fontSize: 10,
+                      letterSpacing: 0.6,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 4),
+          Text(
+            programme.title.trim().isEmpty
+                ? 'portraitPanel.noProgramme'.tr
+                : programme.title,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+              height: 1.2,
+            ),
+          ),
+          if ((programme.description ?? '').trim().isNotEmpty) ...[
+            const SizedBox(height: 4),
+            Text(
+              programme.description!.trim(),
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.65),
+                fontSize: 12,
+                height: 1.25,
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _EmptyState extends StatelessWidget {
+  const _EmptyState({required this.icon, required this.message});
+
+  final IconData icon;
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              icon,
+              size: 36,
+              color: Colors.white.withValues(alpha: 0.5),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              message,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.7),
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+String _formatEpgLineForRow(EpgProgramme p) {
+  final s = _fmtHm(p.start);
+  final e = _fmtHm(p.end);
+  final t = p.title.trim();
+  if (t.isEmpty) return '$s - $e';
+  return '$t · $s - $e';
+}
+
+String _fmtHm(DateTime d) {
+  final h = d.hour.toString().padLeft(2, '0');
+  final m = d.minute.toString().padLeft(2, '0');
+  return '$h:$m';
 }
 
 /// TV kumandası: OK / Enter ile `onTap`, odak çerçevesi ile görünürlük.
@@ -2786,10 +5764,15 @@ class _BetterPlayerValueBuilderState extends State<_BetterPlayerValueBuilder> {
 }
 
 class _VideoProgressBar extends StatelessWidget {
-  const _VideoProgressBar({required this.bp, required this.value});
+  const _VideoProgressBar({
+    required this.bp,
+    required this.value,
+    this.onScrub,
+  });
 
   final BetterPlayerController bp;
   final VideoPlayerValue value;
+  final ValueChanged<bool>? onScrub;
 
   @override
   Widget build(BuildContext context) {
@@ -2797,20 +5780,13 @@ class _VideoProgressBar extends StatelessWidget {
     final dur = value.duration ?? Duration.zero;
     return Column(
       children: [
-        SliderTheme(
-          data: SliderTheme.of(context).copyWith(
-            trackHeight: 3,
-            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-            overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
-          ),
-          child: Slider(
-            value: cur.inMilliseconds
-                .toDouble()
-                .clamp(0, dur.inMilliseconds.toDouble()),
-            max: dur.inMilliseconds.toDouble() > 0
-                ? dur.inMilliseconds.toDouble()
-                : 1.0,
-            onChanged: (v) => bp.seekTo(Duration(milliseconds: v.toInt())),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          child: VodSeekBar(
+            position: cur,
+            duration: dur,
+            onSeek: (d) => bp.seekTo(d),
+            onScrubChanged: onScrub,
           ),
         ),
         Padding(
@@ -2990,11 +5966,13 @@ class _MkPortraitProgressBar extends StatelessWidget {
     required this.position,
     required this.duration,
     required this.onSeek,
+    this.onScrub,
   });
 
   final Duration position;
   final Duration duration;
   final void Function(Duration) onSeek;
+  final ValueChanged<bool>? onScrub;
 
   static String _fmtDur(Duration d) {
     final h = d.inHours;
@@ -3010,21 +5988,15 @@ class _MkPortraitProgressBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final cur = position;
     final dur = duration;
-    final totalMs = dur.inMilliseconds;
     return Column(
       children: [
-        SliderTheme(
-          data: SliderTheme.of(context).copyWith(
-            trackHeight: 3,
-            thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
-            overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
-          ),
-          child: Slider(
-            value: cur.inMilliseconds
-                .toDouble()
-                .clamp(0, totalMs > 0 ? totalMs.toDouble() : 1.0),
-            max: totalMs > 0 ? totalMs.toDouble() : 1.0,
-            onChanged: (v) => onSeek(Duration(milliseconds: v.toInt())),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          child: VodSeekBar(
+            position: cur,
+            duration: dur,
+            onSeek: onSeek,
+            onScrubChanged: onScrub,
           ),
         ),
         Padding(

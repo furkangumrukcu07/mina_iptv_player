@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:get/get.dart';
 
-import 'continue_watching_service.dart';
 import 'watch_progress_service.dart';
 
 class PlaybackProgressWriteTask {
@@ -12,15 +11,21 @@ class PlaybackProgressWriteTask {
     required this.coverUrl,
     required this.positionMs,
     required this.durationMs,
+    this.seriesId,
+    this.seriesTitle,
+    this.seriesCoverUrl,
   }) : clearOnly = false;
 
   const PlaybackProgressWriteTask.clear({
     required this.vodId,
+    this.seriesId,
   })  : clearOnly = true,
         title = null,
         coverUrl = null,
         positionMs = 0,
-        durationMs = 0;
+        durationMs = 0,
+        seriesTitle = null,
+        seriesCoverUrl = null;
 
   final int vodId;
   final bool clearOnly;
@@ -28,9 +33,14 @@ class PlaybackProgressWriteTask {
   final String? coverUrl;
   final int positionMs;
   final int durationMs;
+
+  /// Bölüm bir diziye aitse, dizi seviyesinde de ilerleme kaydedilir.
+  final int? seriesId;
+  final String? seriesTitle;
+  final String? seriesCoverUrl;
 }
 
-/// Watch progress + continue watching yazımlarını tek kuyruğa toplar.
+/// Watch progress yazımlarını tek kuyruğa toplar.
 class PlaybackProgressWriteQueueService extends GetxService {
   static const Duration _flushDebounce = Duration(milliseconds: 900);
   final Map<int, PlaybackProgressWriteTask> _pendingByVodId =
@@ -44,6 +54,9 @@ class PlaybackProgressWriteQueueService extends GetxService {
     required String? coverUrl,
     required int positionMs,
     required int durationMs,
+    int? seriesId,
+    String? seriesTitle,
+    String? seriesCoverUrl,
     bool flushNow = false,
   }) {
     _pendingByVodId[vodId] = PlaybackProgressWriteTask.save(
@@ -52,6 +65,9 @@ class PlaybackProgressWriteQueueService extends GetxService {
       coverUrl: coverUrl,
       positionMs: positionMs,
       durationMs: durationMs,
+      seriesId: seriesId,
+      seriesTitle: seriesTitle,
+      seriesCoverUrl: seriesCoverUrl,
     );
     if (flushNow) {
       return flushPendingAndWait();
@@ -61,8 +77,15 @@ class PlaybackProgressWriteQueueService extends GetxService {
     return Future<void>.value();
   }
 
-  Future<void> clearVodProgress(int vodId, {bool flushNow = false}) {
-    _pendingByVodId[vodId] = PlaybackProgressWriteTask.clear(vodId: vodId);
+  Future<void> clearVodProgress(
+    int vodId, {
+    int? seriesId,
+    bool flushNow = false,
+  }) {
+    _pendingByVodId[vodId] = PlaybackProgressWriteTask.clear(
+      vodId: vodId,
+      seriesId: seriesId,
+    );
     if (flushNow) {
       return flushPendingAndWait();
     } else {
@@ -93,26 +116,33 @@ class PlaybackProgressWriteQueueService extends GetxService {
     }
 
     final watch = Get.find<WatchProgressService>();
-    final continueWatching = Get.isRegistered<ContinueWatchingService>()
-        ? Get.find<ContinueWatchingService>()
-        : null;
     final tasks = _pendingByVodId.values.toList(growable: false);
     _pendingByVodId.clear();
 
     for (final task in tasks) {
       if (task.clearOnly) {
         await watch.clear(task.vodId);
-        continueWatching?.removeItem(task.vodId);
+        if (task.seriesId != null) {
+          await watch.clearSeries(task.seriesId!);
+        }
         continue;
       }
-      await watch.saveProgress(task.vodId, task.positionMs, task.durationMs);
-      continueWatching?.saveProgress(
-        vodId: task.vodId,
-        title: task.title ?? '',
+      await watch.saveProgress(
+        task.vodId,
+        task.positionMs,
+        task.durationMs,
+        title: task.title,
         coverUrl: task.coverUrl,
-        positionMs: task.positionMs,
-        durationMs: task.durationMs,
       );
+      if (task.seriesId != null) {
+        await watch.saveSeriesProgress(
+          seriesId: task.seriesId!,
+          title: task.seriesTitle ?? task.title ?? '',
+          coverUrl: task.seriesCoverUrl ?? task.coverUrl,
+          positionMs: task.positionMs,
+          durationMs: task.durationMs,
+        );
+      }
     }
     completer.complete();
     _activeFlush = null;

@@ -1,50 +1,62 @@
+import 'dart:async' show unawaited;
 import 'dart:io';
+import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
+import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/home/home_card_swipe_effect.dart';
+import '../../core/home/home_category_card_id.dart';
+import '../../core/i18n/localized_short_date.dart';
 import '../../core/layout/app_layout_mode.dart';
 import '../../core/services/app_settings_service.dart';
+import '../../core/services/playlist_cache_service.dart';
+import '../../core/theme/app_scroll_physics.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/glass_appearance.dart';
 import 'home_controller.dart';
-import '../../ui/glass_tv_shell.dart';
-import 'widgets/glass_category_card.dart';
+import 'widgets/home_category_card_slot.dart';
+import 'widgets/ai_recommendations_strip.dart';
 import 'widgets/continue_watching_strip.dart';
+import 'widgets/mixed_live_tv_strip.dart';
+import 'widgets/upcoming_matches_strip.dart';
 import 'widgets/weekly_marquee.dart';
 
 const _kHomeIconAsset = 'assets/images/new_logo.png';
+
+/// Mobil / tablet ana ekranındaki başlık çerçevesinden açılan resmi Telegram
+/// kanalı. Aynı URL ayarlar > yardım menüsündeki kısayolla birebir aynıdır;
+/// tek noktada güncellenebilmesi için burada sabit tutuluyor.
+const String _kMinaTelegramUrl = 'https://t.me/minaiptvplayerpro';
+
+Future<void> _launchMinaTelegram() async {
+  final uri = Uri.parse(_kMinaTelegramUrl);
+  await launchUrl(uri, mode: LaunchMode.externalApplication);
+}
+
+/// Kullanıcının seçtiği [HomeFilmDiziMode]'a göre `films`/`series` veya
+/// `recommendedFilms` kartları gizlenebilir; ayrıca düzen editöründen
+/// manuel olarak gizlenmiş kartlar [AppSettingsService.homeCategoryCardHidden]
+/// üzerinden tamamen çıkarılır.
+List<HomeCategoryCardId> _homeCategoryCardsForLayout(AppLayoutMode mode) {
+  final app = Get.find<AppSettingsService>();
+  final order = app.homeCategoryCardOrder;
+  return HomeCategoryCardId.orderForLayout(
+    order,
+    mode,
+    filmDiziMode: app.homeFilmDiziMode.value,
+    hidden: app.homeCategoryCardHidden.toSet(),
+  );
+}
 
 String _homeFmtClock(DateTime d) {
   final h = d.hour.toString().padLeft(2, '0');
   final m = d.minute.toString().padLeft(2, '0');
   return '$h:$m';
-}
-
-/// Referans: "Sal 31 Mar"
-String _homeFmtDateRef(DateTime d) {
-  const days = ['Pzt', 'Sal', 'Çar', 'Per', 'Cum', 'Cmt', 'Paz'];
-  const months = [
-    '',
-    'Oca',
-    'Şub',
-    'Mar',
-    'Nis',
-    'May',
-    'Haz',
-    'Tem',
-    'Ağu',
-    'Eyl',
-    'Eki',
-    'Kas',
-    'Ara',
-  ];
-  final w = days[d.weekday - 1];
-  final mon = months[d.month];
-  return '$w ${d.day} $mon';
 }
 
 class HomeView extends GetView<HomeController> {
@@ -81,12 +93,13 @@ class HomeView extends GetView<HomeController> {
           fit: StackFit.expand,
           children: [
             Obx(() {
+              // Build içinde tek seferlik servis kullanımı — controller'ın
+              // ömrü boyunca aynı instance.
               final settings = Get.find<AppSettingsService>();
               final themeLabel = settings.themeLabel.value;
               final reduce = settings.reduceBlur.value;
               final tv = settings.layoutMode.value == AppLayoutMode.tv;
-              final sigma =
-                  tv ? 0.0 : (reduce ? 2.0 : 3.0); // Blur 3.0 ile sınırlı
+              final sigma = tv ? 0.0 : (reduce ? 2.0 : 3.0);
               final decodeParams = AppTheme.homeBackgroundImageDecodeParams(
                 context,
                 themeLabel,
@@ -107,7 +120,12 @@ class HomeView extends GetView<HomeController> {
                   cacheHeight: decodeParams.cacheHeight,
                 ),
               );
-              if (reduce || tv) return scaled;
+              if (reduce ||
+                  tv ||
+                  GlassAppearance.fromLabel(themeLabel)
+                      .usesSyntheticGlassSurface) {
+                return scaled;
+              }
               return ImageFiltered(
                 imageFilter: ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
                 child: scaled,
@@ -155,24 +173,39 @@ class _HomeMainColumnState extends State<_HomeMainColumn> {
   late final FocusNode _searchFocus = FocusNode(debugLabel: 'homeSearch');
   late final FocusNode _settingsFocus = FocusNode(debugLabel: 'homeSettings');
   late final ScrollController _scrollController = ScrollController();
-  late final FocusNode _liveFocus = FocusNode(debugLabel: 'homeLive');
-  late final FocusNode _favoritesFocus = FocusNode(debugLabel: 'homeFavorites');
-  late final FocusNode _continueWatchingSectionFocus =
-      FocusNode(debugLabel: 'continueWatchingSection');
-  late final FocusNode _continueWatchingFirstItemFocus =
+  late final Map<HomeCategoryCardId, FocusNode> _cardFocus;
+  late final FocusNode _upcomingMatchesFirstFocus =
+      FocusNode(debugLabel: 'upcomingMatchesFirstItem');
+  late final FocusNode _aiFirstFocus =
+      FocusNode(debugLabel: 'aiRecommendationsFirstItem');
+  late final FocusNode _continueFirstFocus =
       FocusNode(debugLabel: 'continueWatchingFirstItem');
-  bool _continueWatchingExpanded = true;
+
+  // Build hot-path: Get.find çağrısını bir kez yap, build ağacında tekrar etme.
+  late final AppSettingsService _settings = Get.find<AppSettingsService>();
 
   @override
   void initState() {
     super.initState();
+    _cardFocus = {
+      for (final id in HomeCategoryCardId.values)
+        id: FocusNode(debugLabel: 'homeCard_${id.storageKey}'),
+    };
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final tv =
           Get.find<AppSettingsService>().layoutMode.value == AppLayoutMode.tv;
       if (!tv) return;
-      _liveFocus.requestFocus();
+      _focusForFirstCard().requestFocus();
     });
+  }
+
+  FocusNode _focusFor(HomeCategoryCardId id) => _cardFocus[id]!;
+
+  FocusNode _focusForFirstCard() {
+    final mode = _settings.layoutMode.value;
+    final order = _homeCategoryCardsForLayout(mode);
+    return _focusFor(order.first);
   }
 
   @override
@@ -180,10 +213,12 @@ class _HomeMainColumnState extends State<_HomeMainColumn> {
     _searchFocus.dispose();
     _settingsFocus.dispose();
     _scrollController.dispose();
-    _liveFocus.dispose();
-    _favoritesFocus.dispose();
-    _continueWatchingSectionFocus.dispose();
-    _continueWatchingFirstItemFocus.dispose();
+    for (final n in _cardFocus.values) {
+      n.dispose();
+    }
+    _upcomingMatchesFirstFocus.dispose();
+    _aiFirstFocus.dispose();
+    _continueFirstFocus.dispose();
     super.dispose();
   }
 
@@ -191,10 +226,20 @@ class _HomeMainColumnState extends State<_HomeMainColumn> {
   Widget build(BuildContext context) {
     final c = widget.controller;
     final screenSize = MediaQuery.sizeOf(context);
+    final primary = Theme.of(context).colorScheme.primary;
+    final tv = _settings.layoutMode.value == AppLayoutMode.tv;
 
-    return SingleChildScrollView(
+    // TV modunda pull-to-refresh kullanılmaz (DPAD ile down scroll yapılır);
+    // sadece dokunmatik (telefon/tablet) layout için aktif. RefreshIndicator
+    // her zaman scrollable bir liste ister; `AlwaysScrollableScrollPhysics`
+    // ile sarmalayıp `bouncing` davranışı koruyoruz.
+    final list = SingleChildScrollView(
       controller: _scrollController,
-      physics: const BouncingScrollPhysics(),
+      physics: tv
+          ? AppScrollPhysics.list()
+          : const AlwaysScrollableScrollPhysics(
+              parent: BouncingScrollPhysics(),
+            ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 16),
         child: Column(
@@ -202,64 +247,109 @@ class _HomeMainColumnState extends State<_HomeMainColumn> {
           children: [
             const SizedBox(height: 4),
             Obx(() {
-              final tv = Get.find<AppSettingsService>().layoutMode.value ==
-                  AppLayoutMode.tv;
-              if (tv) return const SizedBox.shrink();
+              if (_settings.layoutMode.value == AppLayoutMode.tv) {
+                return const SizedBox.shrink();
+              }
               // Android telefon: sahte pil/WiFi yok; sistem durum çubuğu görünsün (iOS'a dokunulmaz).
               if (Platform.isAndroid) return const SizedBox.shrink();
               return const _StatusBarRow();
             }),
             const SizedBox(height: 12),
+            // Cam header satırı düşük dpi / dar ekranlarda (≤ 360dp) sol
+            // marka kapsülü + sağ saat/ayarlar kapsülünün toplam intrinsic
+            // genişliği ekran genişliğini aştığında taşıyordu (Spacer flex
+            // overflow → clip). Çözüm: her iki kapsülü `Flexible` ile sar,
+            // `FittedBox(scaleDown)` ile çocuğun **intrinsic boyutu**
+            // gerekirse orantılı küçültülsün. Geniş ekranlarda FittedBox
+            // büyütme yapmadığından mevcut görünüm korunur.
             Row(
               crossAxisAlignment: CrossAxisAlignment.center,
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                const _BrandGlassCapsule(iconAsset: _kHomeIconAsset),
-                const Spacer(),
-                Builder(builder: (context) {
-                  final tv = Get.find<AppSettingsService>().layoutMode.value ==
-                      AppLayoutMode.tv;
-                  return _CombinedGlassClockSettings(
-                    onSearch: () => c.showGlobalSearch(context),
-                    clockBuilder: () => Obx(() {
-                      final n = c.now.value;
-                      return Column(
-                        crossAxisAlignment: CrossAxisAlignment.end,
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Text(
-                            _homeFmtClock(n),
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 20,
-                              fontWeight: FontWeight.w700,
-                              height: 1,
-                            ),
-                          ),
-                          const SizedBox(height: 4),
-                          Text(
-                            _homeFmtDateRef(n),
-                            style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.88),
-                              fontSize: 12,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ],
-                      );
-                    }),
-                    onSettings: c.openSettings,
-                    tvDpadNavigation: tv,
-                    searchFocusNode: tv ? _searchFocus : null,
-                    settingsFocusNode: tv ? _settingsFocus : null,
-                  );
-                }),
+                Flexible(
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerLeft,
+                      child:
+                          const _BrandGlassCapsule(iconAsset: _kHomeIconAsset),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Flexible(
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.centerRight,
+                      child: Builder(builder: (context) {
+                        final tv =
+                            _settings.layoutMode.value == AppLayoutMode.tv;
+                        return _CombinedGlassClockSettings(
+                          onSearch: () => c.showGlobalSearch(context),
+                          clockBuilder: () => Obx(() {
+                            final n = c.now.value;
+                            final lang = _settings.languageCode.value;
+                            return Column(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  _homeFmtClock(n),
+                                  style: const TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 20,
+                                    fontWeight: FontWeight.w700,
+                                    height: 1,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  formatAppShortDateLine(n, lang),
+                                  style: TextStyle(
+                                    color:
+                                        Colors.white.withValues(alpha: 0.88),
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w500,
+                                  ),
+                                ),
+                              ],
+                            );
+                          }),
+                          onSettings: c.openSettings,
+                          tvDpadNavigation: tv,
+                          searchFocusNode: tv ? _searchFocus : null,
+                          settingsFocusNode: tv ? _settingsFocus : null,
+                        );
+                      }),
+                    ),
+                  ),
+                ),
               ],
             ),
-            const SizedBox(height: 20),
-            // Haftalık Kayan Yazı
-            const WeeklyMarquee(),
-            const SizedBox(height: 16), // Eklenen mesafe
-            SizedBox(height: screenSize.height * 0.02),
+            // Günün Sözü (Haftalık Kayan Yazı) — Ayarlar'dan kapatıldığında
+            // şerit ve çevresindeki tüm dikey boşluk tamamen kaldırılır,
+            // böylece üst başlık ile alttaki kategori kartları arasındaki
+            // ekran alanı doğal olarak doldurulur.
+            Obx(() {
+              if (!_settings.dailyQuoteEnabled.value) {
+                return const SizedBox.shrink();
+              }
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const SizedBox(height: 20),
+                  const WeeklyMarquee(),
+                  SizedBox(height: widget.isPortrait ? 8 : 16),
+                  SizedBox(
+                    height: screenSize.height *
+                        (widget.isPortrait ? 0.008 : 0.02),
+                  ),
+                ],
+              );
+            }),
             // Ana Kategori Kartları (Görünür Alan)
             FocusTraversalGroup(
               policy: ReadingOrderTraversalPolicy(),
@@ -272,141 +362,160 @@ class _HomeMainColumnState extends State<_HomeMainColumn> {
                     );
                   }
 
-                  // MediaQuery ile optimize edilmiş kart boyutları
                   final availableWidth =
                       screenSize.width - 32; // horizontal padding
-                  final cardWidth =
-                      (availableWidth / 4) - 15; // 4 kart, gap hesabı
-                  final cardHeight = cardWidth * 0.85; // Aspect ratio
                   const gap = 16.0;
 
                   return Obx(() {
-                    final tv =
-                        Get.find<AppSettingsService>().layoutMode.value ==
-                            AppLayoutMode.tv;
-                    return Row(
+                    final app = Get.find<AppSettingsService>();
+                    final layoutMode = app.layoutMode.value;
+                    final tv = layoutMode == AppLayoutMode.tv;
+                    app.homeCategoryCardOrderRevision.value;
+                    // Liste değişiminde kart önizlemeleri/sayıları tazelensin.
+                    widget.controller.playlistRevision.value;
+                    final order = _homeCategoryCardsForLayout(layoutMode);
+                    final cardCount =
+                        order.isEmpty ? 1.0 : order.length.toDouble();
+                    // Kullanıcı isteği — kart ebatları default %15 küçültüldü
+                    // (en + boy lineer 0.85x). Aspect oranı (0.85) korunur,
+                    // kartlar arasındaki boşluk doğal artar. Ek olarak
+                    // `homeCardScale` global ölçek (0.80-1.20) ayarlardan
+                    // gelir; küçült/büyüt tek noktadan kontrol edilir.
+                    final scale = app.homeCardScale.value;
+                    final baseCardWidth = (availableWidth / cardCount) - 15;
+                    final cardWidth = baseCardWidth * 0.85 * scale;
+                    final cardHeight = cardWidth * 0.85;
+                    final children = <Widget>[];
+                    for (var i = 0; i < order.length; i++) {
+                      final id = order[i];
+                      if (i > 0) children.add(const SizedBox(width: gap));
+                      children.add(
+                        _TvGlassCard(
+                          width: cardWidth,
+                          height: cardHeight,
+                          focusNode: _focusFor(id),
+                          autofocus: i == 0,
+                          onActivate: homeCategoryActivate(c, id),
+                          buildCard: (focused) => HomeCategoryCardSlot(
+                            id: id,
+                            controller: c,
+                            focused: focused,
+                          ),
+                        ),
+                      );
+                    }
+                    final row = Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisSize: MainAxisSize.min,
-                      children: [
-                        _TvGlassCard(
-                          width: cardWidth,
-                          height: cardHeight,
-                          order: 0,
-                          focusNode: _liveFocus,
-                          autofocus: true,
-                          focusOnArrowDown:
-                              tv ? _continueWatchingFirstItemFocus : null,
-                          onActivate: c.openLiveTv,
-                          scrollController: _scrollController,
-                          buildCard: (focused) => GlassCategoryCard(
-                            primaryLabel: 'home.live'.tr,
-                            secondaryLabel: 'home.live.subtitle'.tr,
-                            icon: Icons.live_tv_rounded,
-                            focused: focused,
-                            onTap: c.openLiveTv,
-                            previewImageUrl: c.getLivePreview(),
-                          ),
-                        ),
-                        const SizedBox(width: gap),
-                        _TvGlassCard(
-                          width: cardWidth,
-                          height: cardHeight,
-                          order: 1,
-                          focusOnArrowDown:
-                              tv ? _continueWatchingFirstItemFocus : null,
-                          onActivate: c.openFilms,
-                          scrollController: _scrollController,
-                          buildCard: (focused) => GlassCategoryCard(
-                            primaryLabel: 'home.films'.tr,
-                            secondaryLabel: 'home.films.subtitle'.tr,
-                            icon: Icons.movie_filter_rounded,
-                            focused: focused,
-                            onTap: c.openFilms,
-                            previewImageUrl: c.getFilmsPreview(),
-                          ),
-                        ),
-                        const SizedBox(width: gap),
-                        _TvGlassCard(
-                          width: cardWidth,
-                          height: cardHeight,
-                          order: 2,
-                          focusOnArrowDown:
-                              tv ? _continueWatchingFirstItemFocus : null,
-                          onActivate: c.openSeries,
-                          scrollController: _scrollController,
-                          buildCard: (focused) => GlassCategoryCard(
-                            primaryLabel: 'home.series'.tr,
-                            secondaryLabel: 'home.series.subtitle'.tr,
-                            icon: Icons.theater_comedy_rounded,
-                            focused: focused,
-                            onTap: c.openSeries,
-                            previewImageUrl: c.getSeriesPreview(),
-                          ),
-                        ),
-                        const SizedBox(width: gap),
-                        _TvGlassCard(
-                          width: cardWidth,
-                          height: cardHeight,
-                          order: 3,
-                          focusNode: _favoritesFocus,
-                          focusOnArrowUp: tv ? _searchFocus : null,
-                          focusOnArrowDown:
-                              tv ? _continueWatchingFirstItemFocus : null,
-                          onActivate: c.openFavorites,
-                          scrollController: _scrollController,
-                          buildCard: (focused) => GlassCategoryCard(
-                            primaryLabel: 'home.favorites'.tr,
-                            secondaryLabel: 'Favoriler',
-                            icon: Icons.favorite_rounded,
-                            focused: focused,
-                            onTap: c.openFavorites,
-                            previewImageUrl: c.getFavoritesPreview(),
-                          ),
-                        ),
-                      ],
+                      children: children,
+                    );
+                    if (tv) {
+                      return row;
+                    }
+                    return SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      physics: AppScrollPhysics.list(),
+                      child: row,
                     );
                   });
                 },
               ),
             ),
             const SizedBox(height: 12),
-            // İzlemeye Devam Et Şeridi (Kaydırınca Görünen)
+            // İzlemeye Devam Et şeridi: yarıda kalmış film ve diziler, en son
+            // izlenenden başlayarak. Ayarlar → Ana Ekran Ayarları anahtarı ile
+            // kapatılabilir. Liste boşsa şerit kendini gizler.
             if (widget.controller.data != null)
-              Focus(
-                focusNode: _continueWatchingSectionFocus,
-                onFocusChange: (hasFocus) {
-                  setState(() {
-                    _continueWatchingExpanded = hasFocus;
-                  });
-                },
-                onKeyEvent: (node, event) {
-                  final tv = Get.find<AppSettingsService>().layoutMode.value ==
-                      AppLayoutMode.tv;
-                  if (!tv) return KeyEventResult.ignored;
-
-                  if (event.logicalKey == LogicalKeyboardKey.arrowUp) {
-                    _liveFocus.requestFocus();
-                    _scrollController.animateTo(
-                      0,
-                      duration: const Duration(milliseconds: 300),
-                      curve: Curves.easeInOut,
-                    );
-                    return KeyEventResult.handled;
-                  }
-                  return KeyEventResult.ignored;
-                },
-                child: ContinueWatchingStrip(
-                  data: widget.controller.data!,
-                  maxItems: 10,
-                  initiallyExpanded: _continueWatchingExpanded,
-                  tvFirstItemFocusNode: _continueWatchingFirstItemFocus,
-                  tvFocusOnArrowUp: _liveFocus,
-                ),
-              ),
+              Obx(() {
+                widget.controller.playlistRevision.value;
+                if (!_settings.continueWatchingEnabled.value) {
+                  return const SizedBox.shrink();
+                }
+                final data = widget.controller.data;
+                if (data == null) return const SizedBox.shrink();
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const SizedBox(height: 20),
+                    ContinueWatchingStrip(
+                      data: data,
+                      tvFirstItemFocusNode: _continueFirstFocus,
+                    ),
+                  ],
+                );
+              }),
+            // Mina AI — Senin İçin Önerilenler şeridi: kullanıcı geçmiş
+            // izleme alışkanlığını analiz eden yerel AI motoru, 10 karma
+            // canlı/film/dizi içeriği önerir. Ayarlar → Ana Ekran Ayarları
+            // anahtarı ile kapatılabilir.
+            if (widget.controller.data != null)
+              Obx(() {
+                widget.controller.playlistRevision.value;
+                if (!_settings.isAiRecommendationEnabled.value) {
+                  return const SizedBox.shrink();
+                }
+                final data = widget.controller.data;
+                if (data == null) return const SizedBox.shrink();
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const SizedBox(height: 20),
+                    AiRecommendationsStrip(
+                      data: data,
+                      tvFirstItemFocusNode: _aiFirstFocus,
+                    ),
+                  ],
+                );
+              }),
+            Obx(() {
+              final mode = _settings.layoutMode.value;
+              final upcomingOn = _settings.upcomingMatchesEnabled.value;
+              final mixedOn = _settings.mixedLiveTvEnabled.value;
+              if (mode == AppLayoutMode.tv) {
+                if (!upcomingOn) return const SizedBox.shrink();
+                return Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const SizedBox(height: 20),
+                    UpcomingMatchesStrip(
+                      tvFirstItemFocusNode: _upcomingMatchesFirstFocus,
+                    ),
+                  ],
+                );
+              }
+              final strips = <Widget>[];
+              if (mixedOn) {
+                strips.addAll([
+                  const SizedBox(height: 20),
+                  const MixedLiveTvStrip(),
+                ]);
+              }
+              if (upcomingOn) {
+                if (strips.isNotEmpty) strips.add(const SizedBox(height: 20));
+                strips.add(const UpcomingMatchesStrip());
+              }
+              if (strips.isEmpty) return const SizedBox.shrink();
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: strips,
+              );
+            }),
             const SizedBox(height: 24),
           ],
         ),
       ),
+    );
+
+    if (tv) return list;
+
+    return RefreshIndicator.adaptive(
+      onRefresh: c.refreshPlaylist,
+      color: Colors.white,
+      backgroundColor: primary.withValues(alpha: 0.92),
+      displacement: 36,
+      edgeOffset: 8,
+      strokeWidth: 2.4,
+      child: list,
     );
   }
 }
@@ -590,9 +699,15 @@ class _CombinedGlassClockSettings extends StatelessWidget {
       final tv = settings.layoutMode.value == AppLayoutMode.tv;
       final sigma = tv ? 0.0 : 3.0; // Blur 3.0 ile sınırlı
       final ga = GlassAppearance.fromLabel(settings.themeLabel.value);
+      // Mobil ve tabletteki Telegram kısayolu için sol kenarı biraz daha
+      // nefes aldıracak şekilde genişletiyoruz; TV modunda Telegram ikonu
+      // gizlendiği için eski daha dar padding'i koruyoruz.
+      final EdgeInsetsGeometry decoratedPadding = tv
+          ? const EdgeInsets.fromLTRB(4, 8, 4, 8)
+          : const EdgeInsets.fromLTRB(8, 8, 4, 8);
       final decorated = Container(
         height: _kHomeHeaderGlassHeight,
-        padding: const EdgeInsets.fromLTRB(4, 8, 4, 8),
+        padding: decoratedPadding,
         decoration: ga.homeHeaderDecoration(radius: _kHomeHeaderGlassRadius),
         child: FocusTraversalGroup(
           policy: tvDpadNavigation
@@ -601,6 +716,35 @@ class _CombinedGlassClockSettings extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
+              if (!tv) ...[
+                // Resmi Mina Telegram kanalına tek dokunuşla açılış. TV
+                // modunda gizleniyor çünkü TV kumanda akışında ek bir
+                // odak hedefi gereksiz yere navigasyonu uzatır ve kullanıcı
+                // TV'de URL açmıyor.
+                Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: () => unawaited(_launchMinaTelegram()),
+                    borderRadius: BorderRadius.circular(12),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 8, vertical: 6),
+                      child: Icon(
+                        Icons.telegram,
+                        color: Colors.white.withValues(alpha: 0.95),
+                        size: 22,
+                        semanticLabel: 'home.header.telegram'.tr,
+                      ),
+                    ),
+                  ),
+                ),
+                Container(
+                  width: 1,
+                  height: 36,
+                  color: Colors.white.withValues(alpha: 0.25),
+                ),
+                const SizedBox(width: 4),
+              ],
               FocusTraversalOrder(
                 order: const NumericFocusOrder(0),
                 child: Focus(
@@ -772,13 +916,12 @@ class _PortraitHomeCarousel extends StatefulWidget {
 
 class _PortraitHomeCarouselState extends State<_PortraitHomeCarousel> {
   late final PageController _pageController;
-  int _currentPage = 0;
 
   @override
   void initState() {
     super.initState();
     _pageController = PageController(
-      viewportFraction: 0.75,
+      viewportFraction: 0.83,
       initialPage: 0,
     );
   }
@@ -789,110 +932,253 @@ class _PortraitHomeCarouselState extends State<_PortraitHomeCarousel> {
     super.dispose();
   }
 
+  /// PageView henüz bağlanmadan [page] erişilemez; sürüklerken kesintisiz derinlik için kesirli sayfa.
+  double _carouselPage() {
+    final c = _pageController;
+    if (!c.hasClients) return c.initialPage.toDouble();
+    try {
+      return c.page ?? c.initialPage.toDouble();
+    } catch (_) {
+      return c.initialPage.toDouble();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final cardW = widget.constraints.maxWidth * 0.72;
-    final cardH = cardW * 1.15;
+    return Obx(() {
+      final app = Get.find<AppSettingsService>();
+      app.homeCategoryCardOrderRevision.value;
+      // Liste değişiminde portrait kart önizlemeleri/sayıları tazelensin.
+      widget.controller.playlistRevision.value;
+      // Kullanıcı isteği — portrait kategori kartları default %15 küçültüldü
+      // (0.75 → 0.6375). `cardH = cardW * 1.15` oranı korunur. Ek olarak
+      // `homeCardScale` global ölçek ayarlardan gelir (0.80-1.20).
+      final scale = app.homeCardScale.value;
+      final cardW = widget.constraints.maxWidth * 0.6375 * scale;
+      final cardH = cardW * 1.15;
+      final order = _homeCategoryCardsForLayout(app.layoutMode.value);
+      final itemCount = order.length;
+      final effect = app.homeCardSwipeEffect.value;
+      // rubberBand efektinde elastik snap-back için BouncingScrollPhysics;
+      // diğer tüm efektlerde projenin default `AppScrollPhysics.list()` davranışı.
+      final scrollPhysics = effect == HomeCardSwipeEffect.rubberBand
+          ? const BouncingScrollPhysics(
+              decelerationRate: ScrollDecelerationRate.normal,
+            )
+          : AppScrollPhysics.list();
+      final primary = Theme.of(context).colorScheme.primary;
 
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center, // Ortalamayı sağla
-      children: [
-        SizedBox(
-          height: cardH + 60,
-          child: PageView.builder(
-            controller: _pageController,
-            physics: const BouncingScrollPhysics(),
-            dragStartBehavior: DragStartBehavior.down,
-            onPageChanged: (page) => setState(() => _currentPage = page),
-            itemCount: 4,
-            clipBehavior: Clip.none,
-            itemBuilder: (context, index) {
-              final focused = _currentPage == index;
-              final scale = focused ? 1.0 : 0.82;
-              final opacity = focused ? 1.0 : 0.5;
-
-              return Center(
-                child: AnimatedScale(
-                  duration: const Duration(milliseconds: 300),
-                  scale: scale,
-                  curve: Curves.easeOutCubic,
-                  child: AnimatedOpacity(
-                    duration: const Duration(milliseconds: 300),
-                    opacity: opacity,
+      return Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          SizedBox(
+            height: cardH + 40,
+            child: PageView.builder(
+              key: ValueKey(order.map((e) => e.storageKey).join(',')),
+              controller: _pageController,
+              physics: scrollPhysics,
+              clipBehavior: Clip.none,
+              itemCount: itemCount,
+              itemBuilder: (context, index) {
+                final cardId = order[index];
+                return AnimatedBuilder(
+                  animation: _pageController,
+                  builder: (context, child) {
+                    final page = _carouselPage();
+                    final delta = page - index;
+                    final dist = delta.abs().clamp(0.0, 1.0);
+                    return _SwipeEffectFrame(
+                      effect: effect,
+                      delta: delta,
+                      dist: dist,
+                      primary: primary,
+                      child: child!,
+                    );
+                  },
+                  child: _PortraitCarouselPage(
                     child: SizedBox(
                       width: cardW,
                       height: cardH,
-                      child: _buildCardByIndex(index, focused),
+                      child: HomeCategoryCardSlot(
+                        id: cardId,
+                        controller: widget.controller,
+                        focused: false,
+                      ),
                     ),
                   ),
-                ),
+                );
+              },
+            ),
+          ),
+          const SizedBox(height: 20),
+          AnimatedBuilder(
+            animation: _pageController,
+            builder: (context, _) {
+              double page = 0.0;
+              try {
+                page = _pageController.page ?? 0.0;
+              } catch (_) {}
+              return Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: List.generate(itemCount, (index) {
+                  final active = (page - index).abs() < 0.5;
+                  return AnimatedContainer(
+                    duration: const Duration(milliseconds: 250),
+                    margin: const EdgeInsets.symmetric(horizontal: 4),
+                    width: active ? 22 : 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      color: active
+                          ? Theme.of(context).colorScheme.primary
+                          : Colors.white12,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                  );
+                }),
               );
             },
           ),
+        ],
+      );
+    });
+  }
+}
+
+/// Portrait carousel item'larına seçili [HomeCardSwipeEffect]'e göre
+/// transform/decoration uygulayan sarmalayıcı. `delta` = (page - index)
+/// işaretli mesafe (negatif → kart soluda kalıyor); `dist` = |delta|
+/// 0..1 arası.
+///
+/// Tüm efektler aynı sahnede mutually exclusive çalışır; ortak baz olarak
+/// her zaman scale/opacity/translate uygulanır, üzerine efekt özel
+/// dekorasyon eklenir.
+class _SwipeEffectFrame extends StatelessWidget {
+  const _SwipeEffectFrame({
+    required this.effect,
+    required this.delta,
+    required this.dist,
+    required this.primary,
+    required this.child,
+  });
+
+  final HomeCardSwipeEffect effect;
+  final double delta;
+  final double dist;
+  final Color primary;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final rawFocus = 1.0 - dist;
+    final focus = Curves.easeOutCubic.transform(rawFocus);
+
+    // rubberBand efektinde aktif kart hafif overshoot yapar; diğerlerinde
+    // 0.91..1.0 lineer ölçek baz davranıştır.
+    final double baseScale;
+    if (effect == HomeCardSwipeEffect.rubberBand) {
+      final overshoot = math.sin(rawFocus * math.pi) * 0.05;
+      baseScale = lerpDouble(0.91, 1.0, focus)! + overshoot * focus;
+    } else {
+      baseScale = lerpDouble(0.91, 1.0, focus)!;
+    }
+    final baseOpacity = lerpDouble(0.70, 1.0, focus)!.clamp(0.0, 1.0);
+    final dy = lerpDouble(8.0, 0.0, focus)!;
+    final dx = lerpDouble(0.0, delta * 6.0, 1.0 - focus)!;
+
+    Widget content = child;
+
+    // Overlay efektleri (kart yüzeyinin üzerine bir Stack ile bindirilir).
+    final overlay = _buildOverlay(effect);
+    if (overlay != null) {
+      content = Stack(
+        fit: StackFit.passthrough,
+        children: [
+          content,
+          Positioned.fill(
+            child: IgnorePointer(child: overlay),
+          ),
+        ],
+      );
+    }
+
+    // Blur efektinde kartın kendisi bulanır (ImageFilter); ortadaki net.
+    if (effect == HomeCardSwipeEffect.blur && dist > 0.001) {
+      final sigma = dist * 18.0;
+      content = ImageFiltered(
+        imageFilter: ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
+        child: content,
+      );
+    }
+
+    return Center(
+      child: Opacity(
+        opacity: baseOpacity,
+        child: Transform.translate(
+          offset: Offset(dx, dy),
+          child: Transform.scale(
+            scale: baseScale,
+            alignment: Alignment.center,
+            child: content,
+          ),
         ),
-        const SizedBox(height: 20),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: List.generate(4, (index) {
-            final active = _currentPage == index;
-            return AnimatedContainer(
-              duration: const Duration(milliseconds: 300),
-              margin: const EdgeInsets.symmetric(horizontal: 4),
-              width: active ? 24 : 8,
-              height: 8,
-              decoration: BoxDecoration(
-                color: active
-                    ? Theme.of(context).colorScheme.primary
-                    : Colors.white24,
-                borderRadius: BorderRadius.circular(4),
-              ),
-            );
-          }),
-        ),
-      ],
+      ),
     );
   }
 
-  Widget _buildCardByIndex(int index, bool focused) {
-    switch (index) {
-      case 0:
-        return GlassCategoryCard(
-          primaryLabel: 'home.live'.tr,
-          secondaryLabel: 'home.live.subtitle'.tr,
-          icon: Icons.live_tv_rounded,
-          focused: focused,
-          onTap: widget.controller.openLiveTv,
-          previewImageUrl: widget.controller.getLivePreview(),
-        );
-      case 1:
-        return GlassCategoryCard(
-          primaryLabel: 'home.films'.tr,
-          secondaryLabel: 'home.films.subtitle'.tr,
-          icon: Icons.movie_filter_rounded,
-          focused: focused,
-          onTap: widget.controller.openFilms,
-          previewImageUrl: widget.controller.getFilmsPreview(),
-        );
-      case 2:
-        return GlassCategoryCard(
-          primaryLabel: 'home.series'.tr,
-          secondaryLabel: 'home.series.subtitle'.tr,
-          icon: Icons.theater_comedy_rounded,
-          focused: focused,
-          onTap: widget.controller.openSeries,
-          previewImageUrl: widget.controller.getSeriesPreview(),
-        );
-      case 3:
-      default:
-        return GlassCategoryCard(
-          primaryLabel: 'home.favorites'.tr,
-          secondaryLabel: 'Favoriler',
-          icon: Icons.favorite_rounded,
-          focused: focused,
-          onTap: widget.controller.openFavorites,
-          previewImageUrl: widget.controller.getFavoritesPreview(),
+  /// Kartın yüzeyine bindirilecek overlay (varsa). `null` dönerse base
+  /// transform dışı ek bir katman uygulanmaz.
+  Widget? _buildOverlay(HomeCardSwipeEffect effect) {
+    switch (effect) {
+      case HomeCardSwipeEffect.defaultStack:
+      case HomeCardSwipeEffect.blur:
+      case HomeCardSwipeEffect.rubberBand:
+        return null;
+      case HomeCardSwipeEffect.tintSweep:
+        // Theme primary renkli diagonal gradient — yan kartların üzerinden
+        // sürükleme yönüne göre kayar; aktif kart şeffaf.
+        if (dist < 0.02) return null;
+        final progress = delta.clamp(-1.0, 1.0);
+        return ClipRRect(
+          borderRadius: BorderRadius.circular(18),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment(-1.0 + progress * 1.4, -1.0),
+                end: Alignment(1.0 + progress * 1.4, 1.0),
+                colors: [
+                  primary.withValues(alpha: 0.0),
+                  primary.withValues(alpha: 0.45 * dist),
+                  primary.withValues(alpha: 0.0),
+                ],
+                stops: const [0.0, 0.5, 1.0],
+              ),
+            ),
+            child: const SizedBox.expand(),
+          ),
         );
     }
+  }
+}
+
+/// PageView sayfası: görüntü önbelleği + izole repaint (kaydırma sırasında daha akıcı).
+class _PortraitCarouselPage extends StatefulWidget {
+  const _PortraitCarouselPage({required this.child});
+
+  final Widget child;
+
+  @override
+  State<_PortraitCarouselPage> createState() => _PortraitCarouselPageState();
+}
+
+class _PortraitCarouselPageState extends State<_PortraitCarouselPage>
+    with AutomaticKeepAliveClientMixin {
+  @override
+  bool get wantKeepAlive => true;
+
+  @override
+  Widget build(BuildContext context) {
+    super.build(context);
+    return RepaintBoundary(child: widget.child);
   }
 }
 
@@ -900,58 +1186,34 @@ class _TvGlassCard extends StatelessWidget {
   const _TvGlassCard({
     required this.width,
     required this.height,
-    required this.order,
     required this.buildCard,
     this.autofocus = false,
     this.onActivate,
-    this.focusOnArrowUp,
-    this.focusOnArrowDown,
     this.focusNode,
-    this.scrollController,
   });
 
   final double width;
   final double height;
-  final int order;
   final Widget Function(bool focused) buildCard;
   final bool autofocus;
   final VoidCallback? onActivate;
-  final FocusNode? focusOnArrowUp;
-  final FocusNode? focusOnArrowDown;
   final FocusNode? focusNode;
-  final ScrollController? scrollController;
 
   @override
   Widget build(BuildContext context) {
     return Focus(
       focusNode: focusNode,
       autofocus: autofocus,
+      // Yön tuşları kasıtlı olarak BURADA tüketilmez; Flutter'ın yönsel odak
+      // gezinimi (geometri tabanlı + otomatik kaydırma) devreye girer. Böylece
+      // kullanıcı tüm kartlara/şeritlere stabil ve mantıklı şekilde gidebilir.
       onKeyEvent: (node, event) {
         if (event is! KeyDownEvent) return KeyEventResult.ignored;
-        final up = focusOnArrowUp;
-        final down = focusOnArrowDown;
-        if (up != null && event.logicalKey == LogicalKeyboardKey.arrowUp) {
-          up.requestFocus();
-          return KeyEventResult.handled;
-        }
-        if (down != null && event.logicalKey == LogicalKeyboardKey.arrowDown) {
-          down.requestFocus();
-          // Smooth scroll to Continue Watching section (center it)
-          if (scrollController != null && scrollController!.hasClients) {
-            final screenHeight = MediaQuery.of(context).size.height;
-            final targetPosition = scrollController!.position.maxScrollExtent -
-                (screenHeight * 0.3);
-            scrollController!.animateTo(
-              targetPosition.clamp(
-                  0.0, scrollController!.position.maxScrollExtent),
-              duration: const Duration(milliseconds: 300),
-              curve: Curves.easeInOut,
-            );
-          }
-          return KeyEventResult.handled;
-        }
-        if (event.logicalKey == LogicalKeyboardKey.select ||
-            event.logicalKey == LogicalKeyboardKey.enter) {
+        final k = event.logicalKey;
+        if (k == LogicalKeyboardKey.select ||
+            k == LogicalKeyboardKey.enter ||
+            k == LogicalKeyboardKey.numpadEnter ||
+            k == LogicalKeyboardKey.gameButtonSelect) {
           onActivate?.call();
           return KeyEventResult.handled;
         }
@@ -969,9 +1231,7 @@ class _TvGlassCard extends StatelessWidget {
               curve: Curves.easeOutCubic,
               width: width,
               height: height,
-              child: GlassTvSheet(
-                child: buildCard(focused),
-              ),
+              child: buildCard(focused),
             ),
           );
         },

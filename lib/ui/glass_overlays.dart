@@ -4,12 +4,85 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
+import '../core/haptics/adaptive_haptics_service.dart';
 import '../core/layout/app_layout_mode.dart';
 import '../core/services/app_settings_service.dart';
 import '../core/theme/app_performance.dart';
+import '../core/theme/app_scroll_physics.dart';
 import '../core/theme/glass_appearance.dart';
 
 import '../core/services/toast_service.dart';
+
+/// [GlassAlertDialog] içinde liste öğelerinde daha koyu zemin ve net kenarlık.
+class GlassDialogScope extends InheritedWidget {
+  const GlassDialogScope({
+    super.key,
+    required this.elevatedListContrast,
+    required super.child,
+  });
+
+  final bool elevatedListContrast;
+
+  static GlassDialogScope? maybeOf(BuildContext context) {
+    return context.dependOnInheritedWidgetOfExactType<GlassDialogScope>();
+  }
+
+  @override
+  bool updateShouldNotify(GlassDialogScope oldWidget) =>
+      elevatedListContrast != oldWidget.elevatedListContrast;
+}
+
+/// Seçenek listeleri: koyu panel üzerinde yazı kontrastı artar.
+class GlassDialogListPanel extends StatelessWidget {
+  const GlassDialogListPanel({super.key, required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.42),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.14)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.35),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+        child: child,
+      ),
+    );
+  }
+}
+
+/// Cam seçim diyalogları: sağ altta İptal + Kaydet.
+List<Widget> glassDialogPickerActions(
+  BuildContext context, {
+  required VoidCallback onCancel,
+  required VoidCallback onApply,
+  String? applyLabel,
+  bool onDarkSurface = false,
+}) {
+  return [
+    GlassDialogActionButton(
+      label: 'common.cancel'.tr,
+      onPressed: onCancel,
+      onDarkSurface: onDarkSurface,
+    ),
+    GlassDialogActionButton(
+      label: applyLabel ?? 'common.save'.tr,
+      primary: true,
+      onPressed: onApply,
+      onDarkSurface: onDarkSurface,
+    ),
+  ];
+}
 
 /// TV/Mobil uyumlu cam temalı liste öğesi.
 /// Odaklandığında (kumanda ile) kenarlık ve arka plan ile kendini belli eder.
@@ -18,6 +91,7 @@ class GlassListTile extends StatefulWidget {
     super.key,
     required this.title,
     this.subtitle,
+    this.leading,
     this.trailing,
     this.onTap,
     this.selected = false,
@@ -27,6 +101,7 @@ class GlassListTile extends StatefulWidget {
 
   final Widget title;
   final Widget? subtitle;
+  final Widget? leading;
   final Widget? trailing;
   final VoidCallback? onTap;
   final bool selected;
@@ -45,25 +120,39 @@ class _GlassListTileState extends State<GlassListTile> {
     final theme = Theme.of(context);
     final settings = Get.find<AppSettingsService>();
     final ga = GlassAppearance.fromLabel(settings.themeLabel.value);
+    final isTvAndroid = AppPerformance.isTvAndroidLayout(settings);
     final primary = theme.colorScheme.primary;
+    final inDialog =
+        GlassDialogScope.maybeOf(context)?.elevatedListContrast ?? false;
 
     // TV/Kumanda odaklandığında beyaz kenarlık ile belirginlik artırılır.
     final bgAlpha = ga.listTileBackgroundAlpha(_focused, widget.selected);
 
+    final tileFill = (_focused || widget.selected)
+        ? (_focused
+            ? Colors.white.withValues(alpha: inDialog ? 0.22 : 0.18)
+            : primary.withValues(alpha: inDialog ? 0.32 : 0.12))
+        : inDialog
+            ? Colors.black.withValues(alpha: 0.55)
+            : Colors.white.withValues(alpha: bgAlpha);
+
+    final tileBorder = _focused
+        ? Colors.white
+        : (widget.selected
+            ? primary
+            : inDialog
+                ? Colors.white.withValues(alpha: 0.22)
+                : ga.listTileBorder(false));
+
     return AnimatedContainer(
-      duration: const Duration(milliseconds: 150),
+      duration:
+          isTvAndroid ? Duration.zero : const Duration(milliseconds: 150),
       margin: const EdgeInsets.symmetric(vertical: 2, horizontal: 4),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(12),
-        color: (_focused || widget.selected)
-            ? (_focused
-                ? Colors.white.withValues(alpha: 0.18)
-                : primary.withValues(alpha: 0.12))
-            : Colors.white.withValues(alpha: bgAlpha),
+        color: tileFill,
         border: Border.all(
-          color: _focused
-              ? Colors.white
-              : (widget.selected ? primary : ga.listTileBorder(false)),
+          color: tileBorder,
           width: _focused ? 2.2 : 1.2,
         ),
         boxShadow: _focused
@@ -80,7 +169,9 @@ class _GlassListTileState extends State<GlassListTile> {
         color: Colors.transparent,
         child: InkWell(
           onFocusChange: (v) => setState(() => _focused = v),
-          onTap: widget.onTap,
+          onTap: Get.isRegistered<AdaptiveHapticsService>()
+              ? Get.find<AdaptiveHapticsService>().wrapTap(widget.onTap)
+              : widget.onTap,
           autofocus: widget.autofocus,
           borderRadius: BorderRadius.circular(12),
           child: Padding(
@@ -90,6 +181,10 @@ class _GlassListTileState extends State<GlassListTile> {
             ),
             child: Row(
               children: [
+                if (widget.leading != null) ...[
+                  widget.leading!,
+                  const SizedBox(width: 12),
+                ],
                 Expanded(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
@@ -106,9 +201,11 @@ class _GlassListTileState extends State<GlassListTile> {
                       ),
                       if (widget.subtitle != null) ...[
                         const SizedBox(height: 2),
-                        DefaultTextStyle(
-                          style: theme.textTheme.bodySmall!.copyWith(
-                            color: Colors.white70,
+                      DefaultTextStyle(
+                        style: theme.textTheme.bodySmall!.copyWith(
+                            color: inDialog
+                                ? Colors.white.withValues(alpha: 0.78)
+                                : Colors.white70,
                           ),
                           child: widget.subtitle!,
                         ),
@@ -129,6 +226,94 @@ class _GlassListTileState extends State<GlassListTile> {
   }
 }
 
+/// Cam diyaloglarda [TextButton]/[FilledButton] yerine: koyu çerçeve + kumanda odağı.
+class GlassDialogActionButton extends StatefulWidget {
+  const GlassDialogActionButton({
+    super.key,
+    required this.label,
+    this.onPressed,
+    this.primary = false,
+    this.autofocus = false,
+    this.focusNode,
+    /// TV OSD / koyu başlık metni — ikincil düğümde açık renk kullanılır.
+    this.onDarkSurface = false,
+  });
+
+  final String label;
+  final VoidCallback? onPressed;
+  final bool primary;
+  final bool autofocus;
+  final FocusNode? focusNode;
+  final bool onDarkSurface;
+
+  @override
+  State<GlassDialogActionButton> createState() =>
+      _GlassDialogActionButtonState();
+}
+
+class _GlassDialogActionButtonState extends State<GlassDialogActionButton> {
+  bool _focused = false;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final primaryAccent = theme.colorScheme.primary;
+
+    final bg = widget.primary
+        ? (_focused
+            ? primaryAccent.withValues(alpha: 0.45)
+            : primaryAccent.withValues(alpha: 0.3))
+        : (_focused
+            ? Colors.white.withValues(alpha: 0.14)
+            : Colors.black.withValues(alpha: 0.42));
+
+    final borderColor = _focused
+        ? primaryAccent
+        : Colors.white.withValues(alpha: widget.primary ? 0.38 : 0.26);
+
+    final secondaryText = widget.onDarkSurface
+        ? (_focused
+            ? Colors.white
+            : Colors.white.withValues(alpha: 0.88))
+        : (_focused
+            ? Colors.white
+            : primaryAccent);
+
+    final textColor = widget.primary ? Colors.white : secondaryText;
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 150),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(10),
+        color: bg,
+        border: Border.all(color: borderColor, width: _focused ? 2.2 : 1.2),
+      ),
+      child: Material(
+        type: MaterialType.transparency,
+        child: InkWell(
+          onTap: widget.onPressed,
+          onFocusChange: (v) => setState(() => _focused = v),
+          autofocus: widget.autofocus,
+          focusNode: widget.focusNode,
+          canRequestFocus: true,
+          borderRadius: BorderRadius.circular(10),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            child: Text(
+              widget.label,
+              style: TextStyle(
+                color: textColor,
+                fontWeight: FontWeight.w600,
+                fontSize: 15,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// Ortak cam çerçeve: diyaloglar, alt sayfalar ve snackbar kartları.
 class GlassPopupPanel extends StatelessWidget {
   const GlassPopupPanel({
@@ -137,12 +322,17 @@ class GlassPopupPanel extends StatelessWidget {
     this.padding = const EdgeInsets.all(16),
     this.borderRadius = 20,
     this.topCornersOnly = false,
+    /// Her degrade rengini siyaha doğru karıştırır (0–1); diyalog okunabilirliği.
+    this.gradientBlendTowardBlack,
   });
 
   final Widget child;
   final EdgeInsetsGeometry padding;
   final double borderRadius;
   final bool topCornersOnly;
+
+  /// null: tema varsayılanı; örn. 0.22 ile üst üste hafif koyu katman.
+  final double? gradientBlendTowardBlack;
 
   @override
   Widget build(BuildContext context) {
@@ -157,9 +347,17 @@ class GlassPopupPanel extends StatelessWidget {
       child: Obx(() {
         final settings = Get.find<AppSettingsService>();
         final ga = GlassAppearance.fromLabel(settings.themeLabel.value);
+        final t = gradientBlendTowardBlack;
+        final gradientColors = (t != null && t > 0)
+            ? ga.popupGradientColors
+                .map((c) => Color.lerp(c, Colors.black, t.clamp(0.0, 0.85))!)
+                .toList()
+            : ga.popupGradientColors;
         final tv = settings.layoutMode.value == AppLayoutMode.tv;
         final tl = settings.themeLabel.value;
-        final isGm = tl == GlassThemeLabels.glassmorphism;
+        final isGm = tl == GlassThemeLabels.glassmorphism ||
+            tl == GlassThemeLabels.minaGlass ||
+            tl == GlassThemeLabels.flyUi;
         final isDf = GlassThemeLabels.isDarkFlatFamily(tl);
         final isGg = tl == GlassThemeLabels.glassGri;
         final sigma = AppPerformance.glassSigma(
@@ -177,7 +375,7 @@ class GlassPopupPanel extends StatelessWidget {
             gradient: LinearGradient(
               begin: Alignment.topLeft,
               end: Alignment.bottomRight,
-              colors: ga.popupGradientColors,
+              colors: gradientColors,
             ),
             boxShadow: [
               BoxShadow(
@@ -220,10 +418,10 @@ class GlassAlertDialog extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final mq = MediaQuery.of(context);
-    final onSurface = tvOsdStyle ? Colors.white : theme.colorScheme.onSurface;
+    final onSurface = Colors.white;
     final onSurfaceMuted = tvOsdStyle
-        ? Colors.white.withValues(alpha: 0.75)
-        : theme.colorScheme.onSurface.withValues(alpha: 0.88);
+        ? Colors.white.withValues(alpha: 0.82)
+        : Colors.white.withValues(alpha: 0.9);
 
     final body = DefaultTextStyle(
       style: theme.textTheme.bodyMedium!.copyWith(
@@ -250,42 +448,40 @@ class GlassAlertDialog extends StatelessWidget {
             ],
           );
 
-    final actionsBlock = (actions == null || actions!.isEmpty)
-        ? const SizedBox.shrink()
-        : Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const SizedBox(height: 12),
-              if (tvOsdStyle && actions!.length > 1)
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    for (var i = 0; i < actions!.length; i++) ...[
-                      if (i > 0) const SizedBox(height: 10),
-                      actions![i],
-                    ],
-                  ],
-                )
-              else
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.end,
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    for (var i = 0; i < actions!.length; i++) ...[
-                      if (i > 0) const SizedBox(width: 8),
-                      actions![i],
-                    ],
-                  ],
-                ),
-            ],
-          );
-
-    /// Başlık + içerik + aksiyonlar toplamı ekranı aşmasın; içerik kayar, [actions] sabit kalır.
+    /// Başlık + içerik + aksiyonlar toplamı ekranı aşmasın; kısa içerikte panel yüksekliği içeriğe göre küçülür.
     final maxPanelH = math.min(
       mq.size.height * 0.88,
       mq.size.height - mq.padding.vertical - 32,
+    );
+    final maxBodyScroll = math.max(120.0, maxPanelH - 210);
+    final hasActions = actions != null && actions!.isNotEmpty;
+
+    final column = FocusTraversalGroup(
+      policy: WidgetOrderTraversalPolicy(),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          titleBlock,
+          if (scrollable)
+            ConstrainedBox(
+              constraints: BoxConstraints(maxHeight: maxBodyScroll),
+              child: ListView(
+                shrinkWrap: true,
+                physics: AppScrollPhysics.list(context: context),
+                padding: EdgeInsets.zero,
+                children: [body],
+              ),
+            )
+          else
+            body,
+          if (hasActions)
+            _GlassDialogActionsFooter(
+              tvOsdStyle: tvOsdStyle,
+              actions: actions!,
+            ),
+        ],
+      ),
     );
 
     return Dialog(
@@ -301,40 +497,72 @@ class GlassAlertDialog extends StatelessWidget {
               maxHeight: maxPanelH,
               maxWidth: math.min(mq.size.width - 44, 560),
             ),
-            child: GlassPopupPanel(
-              padding: const EdgeInsets.fromLTRB(20, 18, 14, 18),
-              child: scrollable
-                  ? Column(
-                      mainAxisSize: MainAxisSize.max,
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        titleBlock,
-                        Expanded(
-                          child: FocusTraversalGroup(
-                            policy: WidgetOrderTraversalPolicy(),
-                            child: SingleChildScrollView(
-                              physics: const ClampingScrollPhysics(),
-                              child: body,
-                            ),
-                          ),
-                        ),
-                        actionsBlock,
-                      ],
-                    )
-                  : FocusTraversalGroup(
-                      policy: WidgetOrderTraversalPolicy(),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          titleBlock,
-                          body,
-                          actionsBlock,
-                        ],
-                      ),
-                    ),
+            child: GlassDialogScope(
+              elevatedListContrast: true,
+              child: GlassPopupPanel(
+                gradientBlendTowardBlack: 0.38,
+                padding: const EdgeInsets.fromLTRB(20, 18, 14, 18),
+                child: column,
+              ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Cam diyalog: alt satır düğmeleri daha koyu şeritte (okunurluk + cam çizgisi).
+class _GlassDialogActionsFooter extends StatelessWidget {
+  const _GlassDialogActionsFooter({
+    required this.tvOsdStyle,
+    required this.actions,
+  });
+
+  final bool tvOsdStyle;
+  final List<Widget> actions;
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(top: 14),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: tvOsdStyle ? 0.54 : 0.47),
+          borderRadius: BorderRadius.circular(14),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.11)),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: 0.38),
+              blurRadius: 14,
+              offset: const Offset(0, 5),
+            ),
+          ],
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          child: tvOsdStyle && actions.length > 1
+              ? Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    for (var i = 0; i < actions.length; i++) ...[
+                      if (i > 0) const SizedBox(height: 10),
+                      actions[i],
+                    ],
+                  ],
+                )
+              // Mobil/tablet: butonları sağa hizalı `Wrap` ile diz. Uzun
+              // (yerelleştirilmiş) etiketler tek satıra sığmazsa taşma yerine
+              // alt satıra iner — RenderFlex overflow oluşmaz.
+              : Wrap(
+                  alignment: WrapAlignment.end,
+                  runAlignment: WrapAlignment.end,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  spacing: 8,
+                  runSpacing: 10,
+                  children: actions,
+                ),
         ),
       ),
     );

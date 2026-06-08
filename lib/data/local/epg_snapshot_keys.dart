@@ -12,10 +12,10 @@ abstract final class EpgSnapshotKeys {
     switch (source) {
       case XtreamSource():
         final xk = AppSettingsService.xtreamPreferenceKey(source);
-        final skip = app.xtreamSkipPanelXmltvEpg.value ? 1 : 0;
-        return 'v1|xtream|$xk|$skip';
+        // v3: `get_all_live_epg` (stream_id) + panel `xmltv.php` (epg_channel_id).
+        return 'v3|xtream|$xk';
       case M3uSource():
-        final u = app.xmltvUrl.value.trim();
+        final u = app.effectiveM3uXmltvUrl.trim();
         if (u.isEmpty) return null;
         final h = md5.convert(utf8.encode(u)).toString();
         return 'v1|m3u|$h';

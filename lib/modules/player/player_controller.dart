@@ -4,12 +4,10 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:better_player_plus/better_player_plus.dart';
-import 'package:dio/dio.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:get/get.dart' hide Response;
-import 'package:path_provider/path_provider.dart';
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../core/player/better_player_iptv_config.dart';
@@ -17,16 +15,29 @@ import '../../core/player/media_kit_mpv_low_power_display.dart';
 import '../../core/player/media_kit_subtitle_font.dart';
 import '../../core/player/subtitle_font_family.dart';
 import '../../core/player/exo_native_track_option.dart';
+import '../../core/player/vod_subtitle_discovery.dart';
 import '../../core/player/iptv_playback_defaults.dart';
 import '../../core/layout/app_layout_mode.dart';
+import '../../core/player/playback_orientation_manager.dart';
 import '../../core/platform/android_playback_soc_hints.dart';
 import '../../core/services/app_settings_service.dart';
+import '../../core/services/equalizer_service.dart';
+import '../../core/services/external_player_service.dart';
+import '../../core/services/favorites_service.dart';
+import '../../core/services/mina_analytics_service.dart';
+import '../../core/services/mina_stream_cutter_service.dart';
+import '../../core/home/recommended_films_catalog.dart';
+import '../../core/home/series_name_grouping.dart';
+import '../../core/services/movie_service.dart';
 import '../../core/services/playback_progress_write_queue_service.dart';
+import '../../core/utils/turkish_title_utils.dart';
+import '../../domain/entities/movie_model.dart';
 import '../../core/services/playlist_cache_service.dart';
 import '../../core/services/playlist_category_hide.dart';
 import '../../core/services/system_volume_service.dart';
 import '../../core/services/toast_service.dart';
 import '../../core/services/watch_progress_service.dart';
+import '../../services/user_history_service.dart';
 import '../../domain/entities/channel.dart';
 import '../../domain/entities/series.dart';
 import '../../domain/entities/series_episode_option.dart';
@@ -34,6 +45,7 @@ import '../../domain/repositories/playlist_repository.dart';
 import '../browse/browse_controller.dart';
 import '../channels/channels_controller.dart';
 import 'player_route_args.dart';
+import 'series_player_panel_data.dart';
 import 'widgets/tv_better_player_controls.dart';
 import 'widgets/vod_resume_dialog.dart';
 
@@ -95,8 +107,56 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
 
   bool get isMovie => _movieBrowseTape != null;
   bool get isSeries =>
-      _seriesBrowseTape != null || _playingSeriesInTape != null;
+      _seriesBrowseTape != null ||
+      _playingSeriesInTape != null ||
+      _episodeBrowseTape != null;
   SeriesItem? get playingSeries => _playingSeriesInTape;
+
+  /// O an oynayan içeriğin favori durumu — canlı kanal / film (VOD) / dizi.
+  /// OSD'deki kalp ikonu bu getter ile çizilir; [FavoritesService] reaktif
+  /// listelerini okuduğundan `Obx` içinde çağrılmalı.
+  bool get isCurrentMediaFavorite {
+    if (!Get.isRegistered<FavoritesService>()) return false;
+    final favs = Get.find<FavoritesService>();
+    if (isSeries) {
+      final sid = _playingSeriesInTape?.id;
+      if (sid == null) return false;
+      return favs.hasSeries(sid);
+    }
+    if (isMovie) return favs.hasVod(channel.value.id);
+    return favs.hasChannel(channel.value.id);
+  }
+
+  /// OSD kalp ikonu: o an oynayan içeriği favorilere ekler/çıkarır.
+  void toggleCurrentMediaFavorite() {
+    if (!Get.isRegistered<FavoritesService>()) return;
+    final favs = Get.find<FavoritesService>();
+    if (isSeries) {
+      final sid = _playingSeriesInTape?.id;
+      if (sid == null) return;
+      favs.toggleSeries(sid);
+    } else if (isMovie) {
+      favs.toggleVod(channel.value.id);
+    } else {
+      favs.toggleChannel(channel.value.id);
+    }
+  }
+
+  /// Dikey modda OSD'nin altında gösterilen "Dizi" sekmesi için
+  /// OMDB/TMDB üzerinden zenginleştirilmiş dizi metası (özet, IMDb,
+  /// oyuncular...). Async yüklenir; null iken sekme iskelet gösterir.
+  final Rxn<SeriesPlayerPanelData> seriesPanelData =
+      Rxn<SeriesPlayerPanelData>();
+  bool _seriesPanelDataLoaded = false;
+
+  /// Dikey panelde "Bölümler" sekmesi için kullanılacak sıralı bölüm listesi
+  /// (sezon → bölüm). Browse'tan gelen `_episodeBrowseTape` üzerinden türetilir.
+  List<SeriesEpisodeOption> get seriesEpisodeBrowseTape =>
+      List.unmodifiable(_episodeBrowseTape ?? const <SeriesEpisodeOption>[]);
+
+  /// Şu anda oynayan bölümü `_episodeBrowseTape` içinde tespit eder.
+  SeriesEpisodeOption? get currentSeriesEpisodeOption =>
+      _currentEpisodeOption();
 
   /// Dizi oturumunda [xtream_api] URL’leri (container_extension / get.php) olduğu gibi kalır.
   String _normalizePlaybackStreamUrl(String raw) =>
@@ -238,11 +298,18 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
   }
 
   final _settings = Get.find<AppSettingsService>();
-  final _dio = Dio();
 
-  /// libmpv `volume` / `volume-max` üst sınırı. Varsayılan 100 ile ExoPlayer’a göre daha düşük
-  /// algılanan ses için üst sınırı yükseltiyoruz; UI hâlâ 0–1 arası.
-  static const double _kMediaKitVolumePropertyMax = 130.0;
+  /// libmpv `volume` / `volume-max` üst sınırı. 100 = sistem 100% (boost
+  /// yok). Üst sınır 200 → kullanıcı Ayarlar > Oynatma Ayarları > Ses
+  /// Yükseltici ile %200'e kadar açabilir. Düşük kazanç algılayan
+  /// dinleyiciler için varsayılan logical 1.0 = mpv 130 (hafif boost ile
+  /// ExoPlayer'a yakın algılanan ses) korunur.
+  static const double _kMediaKitVolumePropertyMax = 200.0;
+
+  /// Logical volume = 1.0 iken libmpv `volume` özelliği için temel kazanç.
+  /// 130 değerini koruyoruz: önceki sürümlerle aynı algılanan ses; boost
+  /// kapalıyken (maxPercent = 100) davranış değişmez.
+  static const double _kMediaKitVolumeBaseAt1x = 130.0;
 
   BetterPlayerController? better;
 
@@ -316,8 +383,12 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
   /// 1.0 = tam parlak; sistem parlaklığı değil — yalnızca video üstü karartma katmanı.
   final inAppPlaybackBrightness = 1.0.obs;
 
-  /// Dikey sürüklemeye göre hassasiyet (~yarım ekran kaydırma ≈ uçtan uca ses/parlaklık).
-  static const double verticalPlaybackGestureGain = 2.5;
+  /// Dikey sürükleme hassasiyeti. Mutlak model: seviye = başlangıç +
+  /// (-Δy / ekran yüksekliği) × gain. Standart oynatıcı davranışına yakın —
+  /// ekranın ~%75'i kadar kaydırma ≈ uçtan uca parlaklık/ses. Eskiden 2.5 idi
+  /// (ekranın ~%40'ı = tam aralık); küçük parmak titremesi bile büyük
+  /// değişime yol açıp dengesiz/aşırı hassas hissettiriyordu.
+  static const double verticalPlaybackGestureGain = 1.3;
 
   /// Better yüzeyi yok + hata yok + meşgul değil: en fazla bu kadar otomatik [_boot].
   static const int maxOrphanBetterSurfaceRetries = 2;
@@ -343,6 +414,10 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
   /// TV cam OSD görünür mü; kanal değişiminde `isBusy` iken üst üste korunur.
   final RxBool tvOsdVisible = true.obs;
 
+  /// VOD sarma çubuğu sürükleniyor mu? Sürükleme sürerken OSD/kontroller
+  /// otomatik gizlenmemeli (zaman baloncuğu ve çubuk görünür kalmalı).
+  final RxBool vodScrubbing = false.obs;
+
   /// TV: hızlı kanal şeridi açıkken OSD kapansa bile ana oynatıcı odağı şeridi ele geçirmesin.
   final RxBool liveChannelStripOverlayOpen = false.obs;
 
@@ -363,6 +438,38 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
 
   void requestOpenLiveChannelStripFromTvOsd() {
     onRequestLiveChannelStripFromTvOsd?.call();
+  }
+
+  /// Hızlı kanal şeridinden bir kanal seçildikten sonra, kullanıcı işlem
+  /// yapmazsa şerit bu süre sonunda otomatik kapanır.
+  static const Duration _liveStripAutoCloseDelay = Duration(seconds: 3);
+
+  Timer? _liveStripAutoCloseTimer;
+
+  /// Şeridi kapatma isteği; [PlayerView] atar (OSD/kapanış mantığı orada).
+  void Function()? onRequestCloseLiveChannelStrip;
+
+  /// Kanal seçildikten sonra otomatik kapanma sayacını başlatır/sıfırlar.
+  void scheduleLiveStripAutoClose() {
+    _liveStripAutoCloseTimer?.cancel();
+    if (!liveChannelStripOverlayOpen.value) return;
+    _liveStripAutoCloseTimer = Timer(_liveStripAutoCloseDelay, () {
+      _liveStripAutoCloseTimer = null;
+      if (!liveChannelStripOverlayOpen.value) return;
+      onRequestCloseLiveChannelStrip?.call();
+    });
+  }
+
+  /// Yalnızca sayaç etkinse (bir seçim yapıldıysa) süreyi sıfırlar; etkileşim
+  /// devam ettikçe şerit açık kalır.
+  void bumpLiveStripAutoCloseIfActive() {
+    if (_liveStripAutoCloseTimer == null) return;
+    scheduleLiveStripAutoClose();
+  }
+
+  void cancelLiveStripAutoClose() {
+    _liveStripAutoCloseTimer?.cancel();
+    _liveStripAutoCloseTimer = null;
   }
 
   /// TV OSD: uzun OK ile VOD kategori rayı; [PlayerView] atar.
@@ -638,6 +745,15 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
   Timer? _zapRelativeDebounceTimer;
   int _zapRelativePendingDelta = 0;
 
+  /// Kumandadan sayı tuşları (0–9) ile doğrudan kanal numarasına geçiş:
+  /// kullanıcı yazdıkça biriken rakamlar; boşsa giriş kutusu gizli. Numara,
+  /// canlı kanallar ekranındaki gibi geçerli kategorideki **1 tabanlı** sıra.
+  final RxString tvChannelNumberEntry = ''.obs;
+  Timer? _channelNumberCommitTimer;
+  static const int _channelNumberMaxDigits = 4;
+  static const Duration _channelNumberCommitDelay =
+      Duration(milliseconds: 2200);
+
   static const Duration _zapDebounceLive = Duration(milliseconds: 200);
   static const Duration _zapDebounceDefault = Duration(milliseconds: 500);
 
@@ -691,6 +807,17 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
   static const Duration _watchProgressSaveInterval = Duration(seconds: 12);
   static const int _watchProgressMinDeltaMs = 15000;
 
+  // AI öneri motoru için izleme alışkanlığı kayıtları (UserHistoryService).
+  // Aynı tick ile sayım yapılır; playback aktifse her [_historyTickSecs] s
+  // birikir, 120 sn eşik aşıldığında bir kez kayıt edilir, sonrasında
+  // periyodik olarak güncellenir.
+  Timer? _userHistoryTickTimer;
+  static const int _historyTickSecs = 15;
+  int _userHistoryWatchedSec = 0;
+  bool _userHistoryRecorded = false;
+  int _userHistoryLastReportedSec = 0;
+  String? _userHistorySig;
+
   Timer? _vodEndAutoplayMonitor;
   Timer? _vodAutoplayCountdownTimer;
 
@@ -704,6 +831,25 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
   int? _vodAutoplaySuppressChannelId;
 
   static const Duration _tvOsdHideAfterPlayback = Duration(seconds: 4);
+
+  /// [PlayerView] dikey modda OSD zamanlayıcısı için (el/tablet dikey).
+  bool _playbackPortraitForAutoHide = false;
+
+  /// Dikey oynatıcı yüzeyi açık/kapalı — OSD otomatik gizleme için.
+  void setPlaybackPortraitForAutoHide(bool portrait) {
+    final was = _playbackPortraitForAutoHide;
+    _playbackPortraitForAutoHide = portrait;
+    if (was && !portrait) {
+      _cancelTvOsdAutoHideTimer();
+      if (!_usesRemoteOsdChrome) {
+        tvOsdVisible.value = true;
+      }
+      return;
+    }
+    if (!was && portrait && !_usesRemoteOsdChrome) {
+      scheduleTvOsdAutoHide();
+    }
+  }
 
   /// Ağ kesintisi / geçici kaynak hatalarında aynı yayına yeniden bağlanma.
   Timer? _networkAutoResumeTimer;
@@ -795,6 +941,11 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
   /// MediaKit (mpv) `Failed to open` + get.php yedeği de başarısız → Exo bir kez dene.
   bool _vodAutoTriedBetterAfterMpvFail = false;
 
+  /// Bu yayın için motorlar arası **otomatik** geçiş (Better↔MediaKit) bir kez
+  /// yapıldı mı? Ping-pong'u (Better→MK→Better…) engeller; kanal değişiminde
+  /// (zapTo) sıfırlanır.
+  bool _autoEngineSwitchUsed = false;
+
   /// MediaCodec hatasında MPEG-TS yerine HLS (m3u8) bir kez dene.
   bool _decoderTriedTsToM3u8Swap = false;
 
@@ -803,6 +954,15 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
 
   /// Tek seferlik retry için oynatma URL'sini override eder.
   String? _playUrlOverride;
+
+  /// Harici Oynatıcı modunda dahili player UI'ı yerine kısa bir handoff
+  /// ekranı (logo + ilerleme göstergesi) gösterilir. Akış başarıyla
+  /// fırlatıldığında [Get.back] çağrılır; başarısızsa fallback olarak
+  /// dahili player'a düşülür.
+  final externalPlayerHandoffActive = false.obs;
+
+  /// Internal alias — dış API kirletmeden harici handoff state'ini değiştirir.
+  RxBool get _externalPlayerHandoffActive => externalPlayerHandoffActive;
 
   /// [_boot] başarılı: OSD / watch progress / VOD devam — yalnızca bir kez ([_applyBootSuccessSideEffects]).
   bool _bootSuccessHooksApplied = false;
@@ -814,13 +974,6 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
   VideoPlayerController? _busyHoldVideoController;
   VoidCallback? _busyHoldVideoTick;
   final List<StreamSubscription<dynamic>> _mediaKitBusyDimsSubs = [];
-
-  // Kayıt özellikleri
-  final isRecording = false.obs;
-  final recordDuration = 0.obs;
-  Timer? _recordTimer;
-  CancelToken? _recordCancelToken;
-  String? _lastRecordPath;
 
   List<BetterPlayerAsmsTrack> get availableTracks =>
       better?.betterPlayerAsmsTracks ?? [];
@@ -980,6 +1133,59 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
     } catch (_) {
       return ExoNativeTracksBundle.empty;
     }
+  }
+
+  /// VOD CC menüsü: parçalar demuxer/Exo/MediaKit hazır olana kadar kısa süre bekler.
+  Future<VodSubtitleDiscoveryResult> discoverVodSubtitleOptions() async {
+    if (_currentStreamIsLive) {
+      return VodSubtitleDiscoveryResult(
+        betterSources: availableSubtitleSources,
+        exoTextTracks: const [],
+        mediaKitTracks: const {},
+      );
+    }
+
+    final useMk = effectiveUseMediaKit;
+    final maxAttempts = useMk ? 12 : 8;
+
+    var better = availableSubtitleSources;
+    var exo = const <ExoNativeTrackOption>[];
+    var mk = const <String, String>{};
+
+    for (var i = 0; i < maxAttempts; i++) {
+      better = availableSubtitleSources;
+      final hasBetter =
+          better.any((s) => s.type != BetterPlayerSubtitlesSourceType.none);
+
+      if (!useMk && canQueryExoNativeTracks) {
+        exo = (await loadExoNativeTracks()).text;
+      }
+      if (useMk) {
+        mk = mediaKitSubtitleTrackLabels();
+      }
+
+      final hasMk = mk.keys.any((k) => k != 'no' && k != 'auto');
+      if (hasBetter || exo.isNotEmpty || hasMk) {
+        break;
+      }
+      // MediaKit HLS: parçalar manifest açıldıktan sonra gelir; kısa aralıklarla yokla.
+      await Future<void>.delayed(
+        Duration(milliseconds: useMk ? 120 + i * 55 : 180 + i * 70),
+      );
+    }
+
+    debugPrint(
+      'mina_iptv: VOD subtitle discovery → useMk=$useMk '
+      'mkPlayer=${_mediaKitPlayer != null} '
+      'mkRaw=${_mediaKitPlayer?.state.tracks.subtitle.length} '
+      'mkLabels=${mk.length} better=${better.length} exo=${exo.length}',
+    );
+
+    return VodSubtitleDiscoveryResult(
+      betterSources: better,
+      exoTextTracks: exo,
+      mediaKitTracks: mk,
+    );
   }
 
   Future<void> selectExoNativeAudioTrack(ExoNativeTrackOption opt) async {
@@ -1246,12 +1452,33 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
   /// [betterOsdOverride]: OSD’den veya mpv açılamayınca zorunlu Exo.
   bool get effectiveUseMediaKit {
     if (betterOsdOverride.value) return false;
-    // Canlı yayınlarda da MediaKit seçimi geçerli olsun
-    // if (_currentStreamIsLive) {
-    //   return mediaKitFallbackSession.value;
-    // }
-    if (_settings.useMediaKit.value) return true;
+    // Uzantısız "web manifest / embed" akışları (ör. aggregator film
+    // listelerindeki `/vs/tt…/` HLS adresleri) ExoPlayer'da container tespit
+    // edilemediği için açılmaz; mpv sniff ile sorunsuz açar → doğrudan MediaKit.
+    if (_forceMediaKitForCurrentUrl) return true;
+    // Kullanıcının içerik tipine göre seçtiği motor: canlı → liveUseMediaKit,
+    // film/dizi → useMediaKit. Seçim MediaKit ise birincil motor mpv olur.
+    if (_userPrefersMediaKitForCurrentType) return true;
+    // Birincil Better iken hata olursa bu oturum için mpv'ye düşülmüş olabilir.
     return mediaKitFallbackSession.value;
+  }
+
+  /// Kullanıcının geçerli içerik tipi (canlı / VOD) için seçtiği motor MediaKit mi?
+  bool get _userPrefersMediaKitForCurrentType => _currentStreamIsLive
+      ? _settings.liveUseMediaKit.value
+      : _settings.useMediaKit.value;
+
+  /// Geçerli akış URL'si uzantısız "web manifest / embed" mi (mpv'ye yönlendir).
+  /// [_boot] ve kanal değişiminde güncellenir; [effectiveUseMediaKit] içinde okunur.
+  bool _forceMediaKitForCurrentUrl = false;
+
+  void _refreshForceMediaKitForCurrentUrl() {
+    final raw =
+        (_lastPlaybackUrl != null && _lastPlaybackUrl!.trim().isNotEmpty)
+            ? _lastPlaybackUrl!
+            : channel.value.streamUrl;
+    _forceMediaKitForCurrentUrl =
+        IptvPlaybackDefaults.isExtensionlessWebManifestUrl(raw);
   }
 
   /// [UniversalVideoPlayer] / mpv ile [_boot] içindeki Better kaynağı aynı normalleştirilmiş URL’yi kullanır.
@@ -1321,7 +1548,11 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
       await plat.setProperty('demuxer-max-bytes', '786432');
       await plat.setProperty('demuxer-max-back-bytes', '262144');
       await plat.setProperty('hr-seek', 'yes');
-      for (final name in <String>['stream-open-timeout', 'http-timeout', 'network-timeout']) {
+      for (final name in <String>[
+        'stream-open-timeout',
+        'http-timeout',
+        'network-timeout'
+      ]) {
         try {
           await plat.setProperty(name, '5');
         } catch (_) {}
@@ -1363,6 +1594,7 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
         await plat.setProperty(key, value);
       } catch (_) {}
     }
+
     try {
       await setMpvOpt(
         'volume-max',
@@ -1372,6 +1604,30 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
       await setMpvOpt('video-output-levels', 'full');
       await setMpvOpt('colormatrix', 'auto');
 
+      // Gizlenmiş HLS desteği: bazı kaynaklar (örn. vidmody.com/vs/ttXXXX/)
+      // HLS segment/alt-playlist'lerini `.gif` / `.jpg` uzantısıyla servis eder
+      // (engelleme/cache bypass hilesi; içerik gerçek m3u8 / MPEG-TS'dir).
+      // ffmpeg HLS demuxer varsayılan olarak segment uzantılarını bir beyaz
+      // listeyle sınırlar; `.gif`/`.jpg` listede olmadığından "blocked for
+      // security reasons" ile reddedilir ve oynatma başlamaz. `ALL` ile bu
+      // kısıt kaldırılır; normal listelerdeki standart segmentleri etkilemez.
+      //
+      // «SSL/TLS doğrulamasını yoksay» (IPTV'de meşhur seçenek) açıkken:
+      //  * mpv stream katmanı için `tls-verify=no`,
+      //  * HLS segment/manifest'lerini çeken lavf protokolü için demuxer
+      //    seçeneklerine `tls_verify=0` eklenir.
+      // Geçersiz/self-signed sertifikalı panellerde "certificate verify failed"
+      // hatasını giderir.
+      final ignoreSsl = _settings.ignoreSslCertificate.value;
+      final lavfOpts = ignoreSsl
+          ? 'allowed_extensions=ALL,tls_verify=0'
+          : 'allowed_extensions=ALL';
+      await setMpvOpt('demuxer-lavf-o', lavfOpts);
+      if (ignoreSsl) {
+        await setMpvOpt('tls-verify', 'no');
+        await setMpvOpt('stream-lavf-o', 'tls_verify=0');
+      }
+
       final cores = Platform.numberOfProcessors;
       final lavcThreadsGeneric =
           cores > 0 ? math.min(4, math.max(1, cores)) : 4;
@@ -1380,6 +1636,7 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
         await AndroidPlaybackSocHints.ensureLoaded();
         final weak = AndroidPlaybackSocHints.weakMpvDevice;
         final aml = AndroidPlaybackSocHints.amlogicLike;
+        final challengedTv = AndroidPlaybackSocHints.playbackChallengedTv;
         final swPurpleFix = _settings.mediaKitLowPowerHwdec.value ||
             AndroidPlaybackSocHints.isSamsungSmT530;
 
@@ -1390,6 +1647,7 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
         } else {
           final hwdec = _settings.resolveMediaKitHwdecMpvValue(
             amlogicLike: aml,
+            playbackChallengedTv: challengedTv,
           );
           await setMpvOpt('hwdec', hwdec);
           hwdecLog = hwdec;
@@ -1440,7 +1698,8 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
 
         debugPrint(
           'mina_iptv: MediaKit mpv hwdec=$hwdecLog framedrop=${weak ? "yes" : "vo"} '
-          'weak=$weak aml=$aml swPurpleFix=$swPurpleFix model=${AndroidPlaybackSocHints.buildModel}',
+          'weak=$weak aml=$aml challengedTv=$challengedTv swPurpleFix=$swPurpleFix '
+          'model=${AndroidPlaybackSocHints.buildModel}',
         );
       } else {
         await setMpvOpt('hwdec', 'auto-safe');
@@ -1517,8 +1776,10 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
       void wakelockBump([dynamic _]) => _syncPlaybackWakelock();
       _mediaKitWakelockSubs.add(p.stream.playing.listen(wakelockBump));
 
+      // Boot anında mevcut logical seviyeyi yeni MediaKit instance'ına uygula
+      // (boost açıkken yeni player'a da geçer; kapalıyken eski 130 kazanç).
       unawaited(
-        p.setVolume(_kMediaKitVolumePropertyMax).catchError((_, __) {}),
+        p.setVolume(_mediaKitVolumeFor(currentVolume)).catchError((_, __) {}),
       );
 
       final holdGen = _busyHoldBootGen;
@@ -1545,12 +1806,21 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
       }
 
       unawaited(
-        applyMediaKitSubtitleFontPt(
+        applyMediaKitSubtitleAppearance(
           p,
-          _settings.subtitleFontPt.value,
+          pt: _settings.subtitleFontPt.value,
           fontFamilyKey: _settings.subtitleFontFamilyKey.value,
+          fontColor: _settings.subtitleFontColor,
+          outlineEnabled: _settings.subtitleOutlineEnabled.value,
         ),
       );
+      // Equalizer (af=lavfi=…) yeni player'a uygulanır. Servisi
+      // önceden yüklemediysek `applyToMediaKit` no-op gibi davranır
+      // (default flat değerleri); ayarlar dialog'tan değiştirildiğinde
+      // [_equalizerWorker] reaktif olarak yeniden uygular.
+      if (Get.isRegistered<EqualizerService>()) {
+        unawaited(EqualizerService.to.applyToMediaKit(p));
+      }
       if (_currentStreamIsLive) {
         unawaited(_tryLiveZapAbrRampsMediaKit(p));
       }
@@ -1730,11 +2000,42 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
     );
   }
 
-  double get currentVolume {
-    if (Get.isRegistered<SystemVolumeService>()) {
-      return SystemVolumeService.to.currentVolume;
+  /// Logical playback boost — sistem 100%'ünün üzerine kazanç (0.0 = boost
+  /// yok). Sistem ses 1.0'a vurmadıkça boost 0 kalır; gesture sistem
+  /// 1.0'a ulaşınca boost artırmaya başlar.
+  final RxDouble _playbackBoostExtra = 0.0.obs;
+
+  /// UI'ın okuyacağı maksimum logical volume (1.0..2.0). Ayarlardaki
+  /// `volumeBoostMaxPercent` 100..200 değerine göre türetilir.
+  double get maxPlaybackVolume {
+    final raw = _settings.volumeBoostMaxPercent.value;
+    final normalized = AppSettingsService.normalizeVolumeBoostMaxPercent(raw);
+    return normalized / 100.0;
+  }
+
+  /// `value01` (= logical 0..maxPlaybackVolume) için libmpv `volume` özelliği.
+  /// Logical 1.0 → 130 (önceki davranışla aynı). Logical 2.0 → 200. Aradaki
+  /// değerler lineer enterpolasyon.
+  double _mediaKitVolumeFor(double logical) {
+    final cap = maxPlaybackVolume;
+    final clamped = logical.clamp(0.0, cap);
+    if (clamped <= 1.0) {
+      // Sistem ses 0..100% bölgesinde mpv kazancı sabit (eskisi gibi 130).
+      return _kMediaKitVolumeBaseAt1x;
     }
-    // Fallback to internal volume if service not available
+    final extra = clamped - 1.0; // 0..1
+    final mpv = _kMediaKitVolumeBaseAt1x +
+        extra * (_kMediaKitVolumePropertyMax - _kMediaKitVolumeBaseAt1x);
+    return mpv.clamp(0.0, _kMediaKitVolumePropertyMax);
+  }
+
+  double get currentVolume {
+    // Sistem ses (0..1) + ek boost (0..maxBoost-1). Logical 0..maxBoost.
+    if (Get.isRegistered<SystemVolumeService>()) {
+      final sys = SystemVolumeService.to.currentVolume;
+      final logical = sys + _playbackBoostExtra.value;
+      return logical.clamp(0.0, maxPlaybackVolume);
+    }
     final mk = _mediaKitPlayer;
     if (mk != null) {
       return (mk.state.volume.clamp(0.0, _kMediaKitVolumePropertyMax)) /
@@ -1818,12 +2119,336 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
   }
 
   void seekTo(Duration position) {
+    final beforeSec = currentPosition.inSeconds;
+    _learnIntroFromUserSeek(beforeSec, position.inSeconds);
     final mk = _mediaKitPlayer;
     if (mk != null) {
       unawaited(mk.seek(position).catchError((_, __) {}));
       return;
     }
     better?.seekTo(position);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Akıllı Jenerik Atlatıcı entegrasyonu (Smart Stream Cutter).
+  // ---------------------------------------------------------------------------
+
+  /// Mevcut bölüm için kayıtlı intro bitiş süresi (sn). 0 ise buton gizli.
+  /// `Obx` ile dinlenir; bölüm değişince [_refreshIntroDurationForCurrent]
+  /// güncellemesini yapar.
+  final introSkipTargetSec = 0.obs;
+
+  String? _lastIntroSeriesId;
+
+  /// Kullanıcının manuel ileri seek'ini servise iletir (öğrenme).
+  /// Dizi olmayan veya 1./2. bölüm dışı içeriklerde no-op'a yakın çalışır;
+  /// servis kuralları (ilk 5 dk + 30+ sn delta) kabulü doğrular.
+  void _learnIntroFromUserSeek(int beforeSec, int afterSec) {
+    if (!_settings.smartStreamCutterEnabled.value) return;
+    if (!isSeries) return;
+    if (afterSec <= beforeSec) return;
+    final ep = _currentEpisodeOption();
+    if (ep == null) return;
+    final seriesId = _seriesIdForLearning();
+    if (seriesId.isEmpty) return;
+    if (!Get.isRegistered<MinaStreamCutterService>()) return;
+    final svc = Get.find<MinaStreamCutterService>();
+    unawaited(
+      svc
+          .recordSeek(
+            seriesId: seriesId,
+            episodeNumber: ep.episodeNumber,
+            fromSec: beforeSec,
+            toSec: afterSec,
+          )
+          .then((_) => refreshIntroDurationForCurrent()),
+    );
+  }
+
+  /// Mevcut çalan bölümün öğrenme/gösterme anahtarı.
+  /// Xtream `series_id` varsa onu, yoksa dizi adının normalize hali.
+  String _seriesIdForLearning() {
+    final ser = playingSeries;
+    if (ser != null) {
+      if (ser.id > 0) return 'xt:${ser.id}';
+      return _normalizeNameKey(ser.name);
+    }
+    return '';
+  }
+
+  String _normalizeNameKey(String s) {
+    final t = s.trim().toLowerCase();
+    return t.replaceAll(RegExp(r'\s+'), ' ');
+  }
+
+  SeriesEpisodeOption? _currentEpisodeOption() {
+    final tape = _episodeBrowseTape;
+    if (tape == null || tape.isEmpty) return null;
+    final idx = _episodeTapeIndexOfCurrent();
+    if (idx < 0 || idx >= tape.length) return null;
+    return tape[idx];
+  }
+
+  static bool _seriesMetaUsable(String? v) {
+    if (v == null) return false;
+    final t = v.trim();
+    return t.isNotEmpty && t.toUpperCase() != 'N/A';
+  }
+
+  /// Oynatıcıya `playingSeriesInTape` verilmemişse playlist'ten eşleşen dizi.
+  SeriesItem? _resolveSeriesForPanel() {
+    if (_playingSeriesInTape != null) return _playingSeriesInTape;
+    final data = Get.find<PlaylistCacheService>().result.value;
+    if (data == null || data.series.isEmpty) return null;
+
+    var searchTitle = '';
+    final tape = _episodeBrowseTape;
+    if (tape != null && tape.isNotEmpty) {
+      final disp = tape.first.displayTitle.trim();
+      if (disp.isNotEmpty) {
+        final dash = disp.split(RegExp(r'\s[-–—]\s'));
+        searchTitle = dash.first.trim();
+      }
+    }
+    if (searchTitle.isEmpty) {
+      var raw = channel.value.name.trim();
+      if (raw.isNotEmpty) {
+        raw = raw.replaceAll(RegExp(r'[\[\(].*?[\]\)]'), ' ');
+        raw = raw.replaceAll(
+          RegExp(r'\bS\d{1,2}\s?E\d{1,3}\b', caseSensitive: false),
+          ' ',
+        );
+        raw = raw.replaceAll(RegExp(r'\s{2,}'), ' ').trim();
+        final dash = raw.split(RegExp(r'\s[-–—]\s'));
+        searchTitle = dash.first.trim().isNotEmpty ? dash.first.trim() : raw;
+      }
+    }
+    if (searchTitle.isEmpty) return null;
+
+    final key = SeriesNameGrouping.canonicalKey(searchTitle);
+    if (key.isEmpty) return null;
+    for (final s in data.series) {
+      final sk = SeriesNameGrouping.canonicalKey(
+        SeriesNameGrouping.displayTitleFromName(s.name),
+      );
+      if (sk == key) return s;
+    }
+    return null;
+  }
+
+  /// "Bling Empire S01-E03" gibi başlıklardan dizinin gerçek adını ayıklar.
+  /// Detay sayfasıyla aynı: [SeriesNameGrouping.displayTitleFromName].
+  String _deriveSeriesDisplayTitle() {
+    final ser = _resolveSeriesForPanel();
+    if (ser != null) {
+      return SeriesNameGrouping.displayTitleFromName(ser.name);
+    }
+
+    final tape = _episodeBrowseTape;
+    if (tape != null && tape.isNotEmpty) {
+      final first = tape.first;
+      final disp = first.displayTitle.trim();
+      if (disp.isNotEmpty) {
+        final dash = disp.split(RegExp(r'\s[-–—]\s'));
+        if (dash.first.trim().isNotEmpty) return dash.first.trim();
+      }
+    }
+
+    final raw = channel.value.name.trim();
+    if (raw.isEmpty) return '';
+    var t = raw;
+    t = t.replaceAll(RegExp(r'[\[\(].*?[\]\)]'), ' ');
+    t = t.replaceAll(
+        RegExp(r'\bS\d{1,2}\s?E\d{1,3}\b', caseSensitive: false), ' ');
+    t = t.replaceAll(RegExp(r'\b(19|20)\d{2}\b'), ' ');
+    t = t.replaceAll(RegExp(r'\s{2,}'), ' ').trim();
+    final dash = t.split(RegExp(r'\s[-–—]\s'));
+    if (dash.first.trim().isNotEmpty) return dash.first.trim();
+    return t;
+  }
+
+  String? _deriveSeriesPosterUrl() {
+    final ser = _resolveSeriesForPanel();
+    final p = ser?.posterUrl;
+    if (p != null && p.trim().isNotEmpty) return p.trim();
+    final tape = _episodeBrowseTape;
+    if (tape != null && tape.isNotEmpty) {
+      final logo = tape.first.channel.logoUrl;
+      if (logo != null && logo.trim().isNotEmpty) return logo.trim();
+    }
+    final logo = channel.value.logoUrl;
+    if (logo != null && logo.trim().isNotEmpty) return logo.trim();
+    return null;
+  }
+
+  String? _deriveSeriesPlotFallback() {
+    final ser = _resolveSeriesForPanel();
+    final p = ser?.plot;
+    if (_seriesMetaUsable(p)) return p!.trim();
+    return null;
+  }
+
+  List<SeriesPlayerCastMember> _castFromMovieModel(MovieModel? m) {
+    final list = m?.cast;
+    if (list == null || list.isEmpty) return const <SeriesPlayerCastMember>[];
+    return [
+      for (final c in list)
+        if (c.name.trim().isNotEmpty)
+          SeriesPlayerCastMember(
+            name: c.name.trim(),
+            character: c.character?.trim(),
+            profileUrl: c.profilePath?.trim(),
+          ),
+    ];
+  }
+
+  /// Detay sayfasıyla aynı kaynaklar: Xtream özet/puan + [MovieService] TMDB/OMDb.
+  Future<void> _loadSeriesPanelDataAsync() async {
+    if (_seriesPanelDataLoaded) return;
+    _seriesPanelDataLoaded = true;
+
+    final series = _resolveSeriesForPanel();
+    final displayTitle = _deriveSeriesDisplayTitle();
+    if (displayTitle.isEmpty) return;
+
+    final posterFallback = _deriveSeriesPosterUrl();
+    final plotFallback = _deriveSeriesPlotFallback();
+    seriesPanelData.value = SeriesPlayerPanelData(
+      title: displayTitle,
+      posterUrl: posterFallback,
+      plot: plotFallback,
+    );
+
+    XtreamSeriesBrowseDetail? xtream;
+    if (series != null && Get.isRegistered<PlaylistRepository>()) {
+      try {
+        xtream =
+            await Get.find<PlaylistRepository>().resolveXtreamSeriesEpisodes(
+          seriesId: series.id,
+          seriesName: series.name,
+          posterUrl: series.posterUrl,
+          categoryId: series.categoryId,
+        );
+      } catch (_) {
+        xtream = null;
+      }
+    }
+    if (isClosed) return;
+
+    String? plot = plotFallback;
+    String? poster = posterFallback;
+    String? imdb;
+    String? year;
+    String? genre;
+
+    if (xtream != null) {
+      if (_seriesMetaUsable(xtream.seriesPlot))
+        plot = xtream.seriesPlot!.trim();
+      if (_seriesMetaUsable(xtream.coverUrl)) poster = xtream.coverUrl!.trim();
+      if (_seriesMetaUsable(xtream.imdbRating)) {
+        imdb = xtream.imdbRating!.trim();
+      }
+      if (_seriesMetaUsable(xtream.genre)) genre = xtream.genre!.trim();
+      final rd = xtream.releaseDate?.trim();
+      if (_seriesMetaUsable(rd)) {
+        final ym = RegExp(r'\b(19|20)\d{2}\b').firstMatch(rd!);
+        year = ym?.group(0) ?? (rd.length <= 14 ? rd : null);
+      }
+    }
+
+    if (!Get.isRegistered<MovieService>()) return;
+
+    final ms = Get.find<MovieService>();
+    final cleaned = RecommendedFilmsCatalog.cleanTitleAndYear(displayTitle);
+    final localPlot = series != null
+        ? (SeriesNameGrouping.bestPlotFromCluster([series]) ?? series.plot)
+        : plotFallback;
+
+    var movieMeta = await ms.getMovieWithFallback(
+      name: displayTitle,
+      localPlot: localPlot,
+      localPoster: series?.posterUrl ?? posterFallback,
+      year: cleaned.$2,
+      isSeries: true,
+    );
+    if (!_seriesMetaUsable(movieMeta.plot) && !_seriesMetaUsable(localPlot)) {
+      final alt = TurkishTitleUtils.cleanTitleForSearch(displayTitle);
+      if (alt.isNotEmpty && alt.toLowerCase() != displayTitle.toLowerCase()) {
+        final retry = await ms.getMovieWithFallback(
+          name: alt,
+          localPlot: localPlot,
+          localPoster: series?.posterUrl ?? posterFallback,
+          year: cleaned.$2,
+          isSeries: true,
+        );
+        if (_seriesMetaUsable(retry.plot)) movieMeta = retry;
+      }
+    }
+    if (isClosed) return;
+
+    if (_seriesMetaUsable(movieMeta.plot)) plot = movieMeta.plot!.trim();
+    if (_seriesMetaUsable(movieMeta.poster)) poster = movieMeta.poster!.trim();
+    if (_seriesMetaUsable(movieMeta.imdbRating)) {
+      imdb = movieMeta.imdbRating!.trim();
+    }
+    if (_seriesMetaUsable(movieMeta.genre)) genre = movieMeta.genre!.trim();
+    if (!_seriesMetaUsable(year) && _seriesMetaUsable(movieMeta.year)) {
+      final y = movieMeta.year!.trim();
+      final ym = RegExp(r'\b(19|20)\d{2}\b').firstMatch(y);
+      year = ym?.group(0) ?? y;
+    }
+
+    final actors = _castFromMovieModel(movieMeta);
+    final runtime =
+        _seriesMetaUsable(movieMeta.runtime) ? movieMeta.runtime!.trim() : null;
+
+    seriesPanelData.value = SeriesPlayerPanelData(
+      title: _seriesMetaUsable(movieMeta.title)
+          ? movieMeta.title!.trim()
+          : displayTitle,
+      posterUrl: poster,
+      plot: plot,
+      imdbRating: imdb,
+      year: year,
+      runtime: runtime,
+      genre: genre,
+      actors: actors,
+    );
+  }
+
+  /// Dizi/bölüm değişince UI'ya yeni intro hedef saniyesini yansıt.
+  /// `player_view`'daki overlay bu RxInt'i dinler.
+  void refreshIntroDurationForCurrent() {
+    if (!_settings.smartStreamCutterEnabled.value) {
+      if (introSkipTargetSec.value != 0) introSkipTargetSec.value = 0;
+      _lastIntroSeriesId = null;
+      return;
+    }
+    if (!isSeries) {
+      if (introSkipTargetSec.value != 0) introSkipTargetSec.value = 0;
+      _lastIntroSeriesId = null;
+      return;
+    }
+    final seriesId = _seriesIdForLearning();
+    if (seriesId.isEmpty) {
+      if (introSkipTargetSec.value != 0) introSkipTargetSec.value = 0;
+      _lastIntroSeriesId = null;
+      return;
+    }
+    if (!Get.isRegistered<MinaStreamCutterService>()) return;
+    final svc = Get.find<MinaStreamCutterService>();
+    final t = svc.introDurationSecFor(seriesId) ?? 0;
+    if (_lastIntroSeriesId != seriesId || introSkipTargetSec.value != t) {
+      _lastIntroSeriesId = seriesId;
+      introSkipTargetSec.value = t;
+    }
+  }
+
+  /// "Jeneriği Atla" butonuna basıldığında çağrılır.
+  void skipIntroNow() {
+    final t = introSkipTargetSec.value;
+    if (t <= 0) return;
+    seekTo(Duration(seconds: t));
   }
 
   /// VOD devam diyaloğu sonrası: [PlayerController.play] yerine doğrudan motor (seek beklenir).
@@ -1853,27 +2478,38 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
     }
   }
 
-  // TV için son ses seviyesini hatýrla
+  // TV için son ses seviyesini hatýrla (logical 0..maxBoost)
   static double _lastVolumeLevel = 1.0;
 
+  /// Logical 0..maxPlaybackVolume aralığında ses seviyesini uygular.
+  ///
+  /// * 0..1.0 → sistem ses seviyesi; oynatıcı (mpv) kazancı sabit (130).
+  /// * 1.0..maxPlaybackVolume → sistem 100%, mpv kazancı 130 → 200.
+  ///
+  /// BetterPlayer motoru aktifken boost desteklenmez; sistem ses üzerinden
+  /// 0..1 etkili olur, > 1.0 görsel olarak gösterilse de işitsel etkisi
+  /// yoktur.
   void setVolume(double value01) {
-    // Son ses seviyesini hatýrla
-    _lastVolumeLevel = value01;
+    final cap = maxPlaybackVolume;
+    final clamped = value01.clamp(0.0, cap);
+    _lastVolumeLevel = clamped;
+
+    final systemPart = math.min(1.0, clamped);
+    final boostPart = math.max(0.0, clamped - 1.0);
+    _playbackBoostExtra.value = boostPart;
 
     if (Get.isRegistered<SystemVolumeService>()) {
-      // Sadece sistem sesini kullan, iç sesleri 100% sabitle
-      unawaited(SystemVolumeService.to.setVolume(value01.clamp(0.0, 1.0)));
-      return;
+      unawaited(SystemVolumeService.to.setVolume(systemPart));
     }
-    // Fallback - iç sesleri 100% sabitle
+
     final mk = _mediaKitPlayer;
     if (mk != null) {
       unawaited(
-        mk.setVolume(_kMediaKitVolumePropertyMax).catchError((_, __) {}),
+        mk.setVolume(_mediaKitVolumeFor(clamped)).catchError((_, __) {}),
       );
-      return;
     }
-    better?.setVolume(1.0);
+    // BetterPlayer 0..1 destekler; boost yok sayılır.
+    better?.setVolume(systemPart);
   }
 
   /// Son hatýrlanan ses seviyesini geri yükle
@@ -1896,6 +2532,7 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
 
   /// Playback speed'i tamamen resetle (1.0x)
   void resetPlaybackSpeed() {
+    playbackRate.value = 1.0;
     final mk = _mediaKitPlayer;
     if (mk != null) {
       unawaited(mk.setRate(1.0).catchError((_, __) {}));
@@ -1967,6 +2604,50 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
 
   void setSpeed(double value) {
     better?.setSpeed(value);
+  }
+
+  /// OSD hız butonu için döngü değerleri (1x → 1.25x → 1.5x → 2x → 1x).
+  /// Daha önce 2/3/5/10x mevcuttu fakat günlük VOD izleme için çok yüksekti;
+  /// kullanıcı isteği üzerine konfor aralığına çekildi. Varsayılan (başlangıç)
+  /// değeri `1.0` — `playbackRate` her zaman bu değerle başlar.
+  static const List<double> playbackRateCycle = <double>[
+    1.0,
+    1.25,
+    1.5,
+    2.0,
+  ];
+
+  /// Aktif oynatma hızı (1.0 = normal). OSD butonu bunu izler.
+  final playbackRate = 1.0.obs;
+
+  /// OSD üzerindeki hızlı oynatma butonu için bir sonraki hıza geçer.
+  /// 1x → 1.25x → 1.5x → 2x → 1x.
+  void cyclePlaybackRate() {
+    final current = playbackRate.value;
+    var nextIndex = 0;
+    for (var i = 0; i < playbackRateCycle.length; i++) {
+      if ((playbackRateCycle[i] - current).abs() < 0.001) {
+        nextIndex = (i + 1) % playbackRateCycle.length;
+        break;
+      }
+    }
+    setPlaybackRate(playbackRateCycle[nextIndex]);
+  }
+
+  /// OSD / kısayollarla hızı doğrudan ayarlamak için.
+  ///
+  /// MediaKit ve BetterPlayer'ı birlikte günceller, [playbackRate] Rx
+  /// değerini yayımlar.
+  void setPlaybackRate(double rate) {
+    if (rate.isNaN || rate.isInfinite) return;
+    final clamped = rate.clamp(0.25, 16.0);
+    playbackRate.value = clamped;
+    final mk = _mediaKitPlayer;
+    if (mk != null) {
+      unawaited(mk.setRate(clamped).catchError((_, __) {}));
+      return;
+    }
+    better?.setSpeed(clamped);
   }
 
   /// Aynı native Exo örneği ve [VideoPlayerController] ile yeni URL yüklenirken
@@ -2223,9 +2904,8 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
       }
       best ??= list.isNotEmpty
           ? list.reduce(
-              (a, b) => _mediaKitTrackPixels(a) >= _mediaKitTrackPixels(b)
-                  ? a
-                  : b,
+              (a, b) =>
+                  _mediaKitTrackPixels(a) >= _mediaKitTrackPixels(b) ? a : b,
             )
           : null;
       if (best == null) return;
@@ -2273,6 +2953,73 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
     });
   }
 
+  /// Sayı tuşundan gelen bir rakamı (0–9) giriş tamponuna ekler ve commit
+  /// zamanlayıcısını yeniler. Yalnızca canlı yayında anlamlıdır.
+  void pushChannelNumberDigit(int digit) {
+    if (digit < 0 || digit > 9) return;
+    if (isMovie || isSeries) return;
+    if (!_currentStreamIsLive && !isLiveChannelCurrent) return;
+    final buf = tvChannelNumberEntry.value;
+    // İlk rakam 0 ise (numara 0 olamaz) yok say; baştaki sıfırları engelle.
+    if (buf.isEmpty && digit == 0) return;
+    if (buf.length >= _channelNumberMaxDigits) return;
+    tvChannelNumberEntry.value = '$buf$digit';
+    _channelNumberCommitTimer?.cancel();
+    _channelNumberCommitTimer =
+        Timer(_channelNumberCommitDelay, commitChannelNumberEntry);
+  }
+
+  /// Geçerli kanalın canlı olup olmadığını url'den hızlı kontrol.
+  bool get isLiveChannelCurrent {
+    if (isMovie || isSeries) return false;
+    final u = channel.value.streamUrl.toLowerCase();
+    if (u.contains('/movie/') || u.contains('/series/')) return false;
+    final norm =
+        IptvPlaybackDefaults.normalizeStreamUrl(channel.value.streamUrl);
+    return IptvPlaybackDefaults.isLikelyLiveStream(norm);
+  }
+
+  /// Girilen numarayı uygula: geçerli kategorideki 1 tabanlı sıraya karşılık
+  /// gelen kanala geçer. Aralık dışındaysa veya aynı kanalsa giriş temizlenir.
+  void commitChannelNumberEntry() {
+    _channelNumberCommitTimer?.cancel();
+    _channelNumberCommitTimer = null;
+    final buf = tvChannelNumberEntry.value;
+    tvChannelNumberEntry.value = '';
+    if (buf.isEmpty) return;
+    final n = int.tryParse(buf);
+    if (n == null || n <= 0) return;
+    final list = liveChannelsInCurrentCategory();
+    if (list.isEmpty) return;
+    if (n > list.length) {
+      _showChannelNumberOutOfRange(n, list.length);
+      return;
+    }
+    final target = list[n - 1];
+    if (_isSameChannelRow(target, channel.value)) return;
+    unawaited(zapTo(target));
+  }
+
+  void _showChannelNumberOutOfRange(int n, int total) {
+    if (!Get.isRegistered<ToastService>()) return;
+    Get.find<ToastService>().show(
+      'player.channelNumberOutOfRange'.trParams({
+        'n': '$n',
+        'total': '$total',
+      }),
+      isError: true,
+    );
+  }
+
+  /// Giriş kutusunu iptal et (Geri tuşu vb.).
+  void cancelChannelNumberEntry() {
+    _channelNumberCommitTimer?.cancel();
+    _channelNumberCommitTimer = null;
+    if (tvChannelNumberEntry.value.isNotEmpty) {
+      tvChannelNumberEntry.value = '';
+    }
+  }
+
   void _cancelTvOsdAutoHideTimer() {
     _tvOsdAutoHideAt = null;
   }
@@ -2294,25 +3041,48 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
   bool get _usesRemoteOsdChrome =>
       _settings.layoutMode.value.usesRemoteNavigationStyle;
 
-  /// TV / tablet kumanda: OSD’yi bir süre sonra gizle; tekrar etkileşimde yeniden başlat.
-  /// Yalnızca canlı yayında 5 sn; film/dizi (VOD) 4 sn.
+  /// Kumanda OSD + dikey el modu: bir süre sonra gizle; tekrar etkileşimde yeniden başlat.
+  /// TV/tablet kumanda: canlıda ayar süresi; VOD 4 sn.
+  /// Dikey mod (telefon/tablet): canlı ve VOD’da ayar süresi.
   void scheduleTvOsdAutoHide() {
-    if (!_usesRemoteOsdChrome) return;
     // Kanal değişimi sırasında OSD'yi gizleme
     if (_isChangingChannel) return;
+    final remote = _usesRemoteOsdChrome;
+    if (!remote && !_playbackPortraitForAutoHide) return;
     final url = _normalizePlaybackStreamUrl(channel.value.streamUrl);
     final live = IptvPlaybackDefaults.isLikelyLiveStream(url);
-    // Settings'den özel süreyi oku
-    final customDuration =
-        Duration(seconds: _settings.tvOsdAutoHideDuration.value);
-    final delay = live ? customDuration : _tvOsdHideAfterPlayback;
+    final sec = AppSettingsService.normalizeTvOsdAutoHideSeconds(
+      _settings.tvOsdAutoHideDuration.value,
+    );
+    final customDuration = Duration(seconds: sec);
+    final delay = remote
+        ? (live ? customDuration : _tvOsdHideAfterPlayback)
+        : customDuration;
     _tvOsdAutoHideAt = DateTime.now().add(delay);
     _startUnifiedUiTimer();
   }
 
+  /// VOD sarma çubuğu sürüklenmeye başladı: OSD'yi açık tut ve otomatik
+  /// gizleme zamanlayıcısını durdur (portrait + TV-remote). Mobil-yatayda
+  /// yerel kontrol zamanlayıcısı [vodScrubbing] bayrağını okur.
+  void beginVodScrub() {
+    vodScrubbing.value = true;
+    _cancelTvOsdAutoHideTimer();
+    if (_usesRemoteOsdChrome || _playbackPortraitForAutoHide) {
+      tvOsdVisible.value = true;
+    }
+  }
+
+  /// VOD sarma bitti/iptal: otomatik gizlemeyi yeniden başlat.
+  void endVodScrub() {
+    if (!vodScrubbing.value) return;
+    vodScrubbing.value = false;
+    scheduleTvOsdAutoHide();
+  }
+
   /// Kanal şeridi vb. için cam OSD’yi hemen gizle.
   void hideTvOsdNow() {
-    if (!_usesRemoteOsdChrome) return;
+    if (!_usesRemoteOsdChrome && !_playbackPortraitForAutoHide) return;
     _tvOsdAutoHideAt = null;
     tvOsdVisible.value = false;
   }
@@ -2327,8 +3097,10 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
       final now = DateTime.now();
       bool hasActiveTask = false;
 
-      // OSD Auto Hide kontrolü
-      if (_tvOsdAutoHideAt != null && now.isAfter(_tvOsdAutoHideAt!)) {
+      // OSD Auto Hide kontrolü — sürükleme sürerken gizleme.
+      if (vodScrubbing.value) {
+        hasActiveTask = true;
+      } else if (_tvOsdAutoHideAt != null && now.isAfter(_tvOsdAutoHideAt!)) {
         _tvOsdAutoHideAt = null;
         tvOsdVisible.value = false;
       } else if (_tvOsdAutoHideAt != null) {
@@ -2444,8 +3216,7 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
         if (v == null || !v.isBuffering) return;
         final now = DateTime.now();
         final last = _lastBetterBufferingRecoveryAt;
-        if (last != null &&
-            now.difference(last) < const Duration(seconds: 5)) {
+        if (last != null && now.difference(last) < const Duration(seconds: 5)) {
           return;
         }
         _lastBetterBufferingRecoveryAt = now;
@@ -2535,64 +3306,20 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
         return;
       }
       debugPrint(
-        'mina_iptv: Canlı ${_liveAutoNextAfterUnhealthy.inSeconds}s oynatılamadı → aynı yayın yeniden açılıyor',
+        'mina_iptv: Canlı ${_liveAutoNextAfterUnhealthy.inSeconds}s oynatılamadı → kategoride bir sonraki kanal',
       );
       _cancelLiveAutoNextWatchdog();
       unawaited(_reopenCurrentLiveStreamAfterUnhealthyWatchdog());
     });
   }
 
-  /// [ _syncLiveAutoNextWatchdog ] süresi dolduğunda kanal değiştirmeden taze [ _boot ] (Better; MediaKit otomatik yok).
+  /// Uzun süre sağlıksız oynatma sonrası aynı URL’yi tekrar denemek yerine listede **sonraki** canlıya geç.
   Future<void> _reopenCurrentLiveStreamAfterUnhealthyWatchdog() async {
     if (isClosed) return;
     if (!_currentStreamIsLive || isMovie || isSeries || _userPausedLive) {
       return;
     }
-
-    final bootGen = _bumpPlaybackGeneration();
-    _cancelLiveStallWatchdog();
-    _cancelLiveTvStartupWatchdog();
-    _resetNetworkRecoveryState();
-    _liveTvStallRecoveryAttempts = 0;
-
-    betterOsdOverride.value = false;
-    mediaKitFallbackSession.value = false;
-    decoderFallbackStep.value = 0;
-    _forceSoftwareVideoDecoder = false;
-    _lastBootUsedSoftwareVideoDecoder = false;
-    _exoSoftwareDecoderRetryPending = false;
-    _xtreamTriedLiveUrlFormat = false;
-    _xtreamTriedGetPhpFallback = false;
-    _xtreamTriedSeriesMoviePathToGetPhp = false;
-    _xtreamTriedGetPhpToVodPathFallback = false;
-    _xtreamTriedVodMkvToTsSwap = false;
-    _vodAutoTriedBetterAfterMpvFail = false;
-    _decoderTriedTsToM3u8Swap = false;
-    _lastPlaybackUrl = null;
-    _playUrlOverride = null;
-    error.value = null;
-
-    try {
-      final old = better;
-      _setBetterPlayer(null);
-      if (old != null) {
-        old.videoPlayerController?.removeListener(_onVideoPlayerChanged);
-        await old.pause();
-        old.dispose(forceDispose: true);
-      }
-    } catch (_) {}
-
-    mediaKitAttachEpoch.value++;
-    if (!_isPlaybackGenerationCurrent(bootGen)) {
-      return;
-    }
-    await _boot(
-      preferredMaxHeight: null,
-      disableAsms: false,
-      reuseSameBetterPlayer: false,
-      suppressNetworkRecoverySchedule: false,
-      playbackGeneration: bootGen,
-    );
+    await _zapToNextLiveInCategoryOrRestart();
   }
 
   void _resetNetworkRecoveryState() {
@@ -2645,7 +3372,7 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
       if (_scheduleXtreamGetPhpToVodPathRetry()) {
         return;
       }
-      if (_maybeSwitchToBetterAfterMediaKitFailedToOpen(msg)) {
+      if (_maybeSwitchToBetterAfterMediaKitVodFailure(msg)) {
         return;
       }
       if (_isLikelyNetworkOrTransientError(msg)) {
@@ -2668,23 +3395,45 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
     }
   }
 
-  /// mpv aynı yayını (get.php dahil) açamadığında ExoPlayer/Media3 bazen açar; bir kez dener.
-  bool _maybeSwitchToBetterAfterMediaKitFailedToOpen(String msg) {
+  /// mpv / yüzey açılamadığında ExoPlayer (yazılım kod çözücü) ile bir kez dener.
+  ///
+  /// Hem **canlı** hem **VOD** için geçerli: kullanıcı motoru MediaKit seçse
+  /// (ya da bir nedenle mpv'ye düşülmüş olsa) bile mpv açamazsa yalnız o yayın
+  /// için Better/Exo'ya geçilir. Ping-pong'u [_autoEngineSwitchUsed] engeller.
+  bool _maybeSwitchToBetterAfterMediaKitVodFailure(String msg) {
     if (_vodAutoTriedBetterAfterMpvFail) return false;
+    if (_autoEngineSwitchUsed) return false;
     if (!effectiveUseMediaKit) return false;
-    if (_currentStreamIsLive) return false;
-    final l = msg.toLowerCase();
-    if (!l.contains('failed to open')) return false;
     final last = _lastPlaybackUrl?.trim() ?? '';
     if (last.isEmpty) return false;
 
+    final l = msg.toLowerCase();
+    final challengedTv =
+        Platform.isAndroid && AndroidPlaybackSocHints.playbackChallengedTv;
+    final matches = l.contains('failed to open') ||
+        l.contains('video controller init') ||
+        l.contains('first frame timeout') ||
+        (challengedTv &&
+            (_isPlaybackDecoderFailure(msg) ||
+                l.contains('hwdec') ||
+                l.contains('mediacodec') ||
+                l.contains('decoder') ||
+                l.contains('surface')));
+    if (!matches) return false;
+
     _vodAutoTriedBetterAfterMpvFail = true;
+    _autoEngineSwitchUsed = true;
     betterOsdOverride.value = true;
     mediaKitFallbackSession.value = false;
+    if (challengedTv) {
+      _forceSoftwareVideoDecoder = true;
+    }
     _playUrlOverride = last;
     error.value = null;
+    _showEngineFallbackToast(toMediaKit: false);
     debugPrint(
-      'mina_iptv: MediaKit Failed to open → Better (Exo) deneniyor: $last',
+      'mina_iptv: MediaKit hatası → Better (Exo) deneniyor'
+      '${challengedTv ? " (yazılım kod çözücü)" : ""}: $last — $msg',
     );
     unawaited(
       _boot(
@@ -2695,6 +3444,29 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
       ),
     );
     return true;
+  }
+
+  /// [UniversalVideoPlayer] VideoController kurulumu başarısız (TCL/Google TV vb.).
+  Future<void> handleMediaKitSurfaceInitFailed(Object e) async {
+    if (isClosed) return;
+    await AndroidPlaybackSocHints.ensureLoaded();
+    final msg = e.toString();
+    if (_maybeSwitchToBetterAfterMediaKitVodFailure(
+      'VideoController init failed: $msg',
+    )) {
+      return;
+    }
+    final gen = _busyHoldBootGen;
+    if (gen != null && _isPlaybackGenerationCurrent(gen)) {
+      _finishBootBusyHold(gen, _busyHoldVodSession);
+    }
+    _emitPlaybackErrorForRecovery(msg);
+  }
+
+  /// [UniversalVideoPlayer] `player.open` hatası.
+  void onMediaKitOpenFailed(Object e) {
+    if (isClosed) return;
+    _emitPlaybackErrorForRecovery(e.toString());
   }
 
   /// Xtream `/movie/.../id.ext` veya `/series/.../id.ext` → `get.php?stream_id=...&output=...`
@@ -2836,7 +3608,18 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
           (_currentStreamIsLive && !_isNotFoundStyleError(err));
       if (canRetry) {
         _networkResumeAttempt = (_networkResumeAttempt + 1).clamp(0, 8);
-        _scheduleNetworkAutoResumeIfNeeded(err);
+        // Canlı: art arda aynı yayına _boot yinelemesi bazen yanlış/varyant URL’lere sapıyor;
+        // birkaç denemeden sonra kategoride sıradaki kanala geç (OSD [zapTo] ile güncellenir).
+        if (_currentStreamIsLive &&
+            !isMovie &&
+            !isSeries &&
+            _networkResumeAttempt >= 3) {
+          _networkResumeAttempt = 0;
+          error.value = null;
+          unawaited(_zapToNextLiveInCategoryOrRestart());
+        } else {
+          _scheduleNetworkAutoResumeIfNeeded(err);
+        }
       } else {
         _networkResumeAttempt = 0;
       }
@@ -2870,6 +3653,35 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
     });
   }
 
+  /// Sessiz takılma (siyah ekran, hata event'i yok) durumunda canlı yayını
+  /// diğer taşıma biçimiyle (HLS ↔ MPEG-TS) yeniden açmayı dener. Yalnızca
+  /// canlı, MediaKit dışı ve bu oturumda henüz denenmemişken çalışır.
+  /// Başarıyla bir swap planlandıysa `true` döner.
+  bool _tryLiveTransportFormatSwapRecovery(String normalizedUrl) {
+    if (effectiveUseMediaKit || _decoderTriedTsToM3u8Swap) return false;
+    if (!_currentStreamIsLive) return false;
+    final basis = (_lastPlaybackUrl?.trim().isNotEmpty ?? false)
+        ? _lastPlaybackUrl!.trim()
+        : normalizedUrl;
+    final swapped = _trySwapLiveTsM3u8Url(basis, live: true);
+    if (swapped == null || swapped == basis) return false;
+    _decoderTriedTsToM3u8Swap = true;
+    _playUrlOverride = swapped;
+    error.value = null;
+    debugPrint(
+      'mina_iptv: Canlı sessiz takılma → taşıma biçimi değişimi: $swapped',
+    );
+    unawaited(
+      _boot(
+        preferredMaxHeight: null,
+        disableAsms: false,
+        reuseSameBetterPlayer: false,
+        suppressNetworkRecoverySchedule: true,
+      ),
+    );
+    return true;
+  }
+
   Future<void> _handleLiveTvStallRecovery() async {
     if (isClosed) return;
     if (_settings.layoutMode.value != AppLayoutMode.tv) return;
@@ -2877,11 +3689,22 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
     final norm = _normalizePlaybackStreamUrl(channel.value.streamUrl);
     if (!IptvPlaybackDefaults.isLikelyLiveStream(norm)) return;
 
+    // HLS yayını hata event'i ÜRETMEDEN sessizce açılmazsa (LG/webOS gibi bazı
+    // panellerde siyah ekran) önce taşıma biçimini değiştir: HLS → MPEG-TS
+    // (veya tersi). Yalnızca bir kez; başarısız olursa normal yeniden bağlanma
+    // / sonraki kanal akışına devam edilir.
+    if (_tryLiveTransportFormatSwapRecovery(norm)) return;
+
     _liveTvStallRecoveryAttempts++;
     debugPrint(
-      'mina_iptv: TV live takılma → aynı yayına yeniden bağlan ($_liveTvStallRecoveryAttempts. deneme)',
+      'mina_iptv: TV live takılma ($_liveTvStallRecoveryAttempts.) → ${_liveTvStallRecoveryAttempts >= 2 ? 'sonraki kanal' : 'yeniden bağlan'}',
     );
     _resetNetworkRecoveryState();
+    if (_liveTvStallRecoveryAttempts >= 2) {
+      _liveTvStallRecoveryAttempts = 0;
+      await _zapToNextLiveInCategoryOrRestart();
+      return;
+    }
     await _performNetworkResume();
   }
 
@@ -2959,6 +3782,8 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
     final data = Get.find<PlaylistCacheService>().result.value;
     if (data == null) return const [];
 
+    // [data.channels] sırası kanallar ekranındaki (kategori + düzen) ile aynı; sortOrder
+    // ile yeniden sıralamak listedeki «bir sonraki» ile hata sonrası otomatik geçişi ayırıyordu.
     final out = <Channel>[];
     for (final c in data.channels) {
       if (c.categoryId != cur.categoryId) continue;
@@ -2968,8 +3793,46 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
       if (!IptvPlaybackDefaults.isLikelyLiveStream(cn)) continue;
       out.add(c);
     }
-    out.sort((a, b) => a.sortOrder.compareTo(b.sortOrder));
     return out;
+  }
+
+  /// Otomatik kurtarma: yanlış/rasgele yayın varyantına sapmak yerine aynı kategoride **listede bir sonraki**
+  /// canlı kanala geçer ([zapTo] — OSD ve [channel] güncellenir). Tek kanal / VOD ise aynı yayını yeniler.
+  Future<void> _zapToNextLiveInCategoryOrRestart() async {
+    if (isClosed) return;
+    if (!_currentStreamIsLive || isMovie || isSeries || _userPausedLive) {
+      await restartCurrentStream();
+      return;
+    }
+
+    final list = liveChannelsInCurrentCategory();
+    if (list.length < 2) {
+      await restartCurrentStream();
+      return;
+    }
+
+    final cur = channel.value;
+    var idx = list.indexWhere((c) => c.id == cur.id);
+    if (idx < 0) {
+      final curNorm = _normalizePlaybackStreamUrl(cur.streamUrl);
+      idx = list.indexWhere(
+        (c) => _normalizePlaybackStreamUrl(c.streamUrl) == curNorm,
+      );
+    }
+    if (idx < 0) {
+      idx = list.indexWhere((c) => _isSameChannelRow(c, cur));
+    }
+    if (idx < 0) {
+      await restartCurrentStream();
+      return;
+    }
+
+    final target = list[(idx + 1) % list.length];
+    if (_isSameChannelRow(target, cur)) {
+      await restartCurrentStream();
+      return;
+    }
+    await zapTo(target);
   }
 
   Future<void> _zapToBrowseTapeSeries(SeriesItem nextSer) async {
@@ -3054,15 +3917,18 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
     final list = liveChannelsInCurrentCategory();
     if (list.length < 2) return;
 
-    final curNorm = _normalizePlaybackStreamUrl(cur.streamUrl);
-    var idx = list.indexWhere(
-      (c) => _normalizePlaybackStreamUrl(c.streamUrl) == curNorm,
-    );
+    // Önce id ile hizala: aynı normalize URL'ye sahip yinelenen satırlarda indexWhere(url)
+    // her zaman ilk eşleşmeyi verir; oynatılan satır aşağıdaysa yanlış hedefe (bazen yine
+    // aynı yayına) zıplanıyordu.
+    var idx = list.indexWhere((c) => c.id == cur.id);
     if (idx < 0) {
-      idx = list.indexWhere((c) => _isSameChannelRow(c, cur));
+      final curNorm = _normalizePlaybackStreamUrl(cur.streamUrl);
+      idx = list.indexWhere(
+        (c) => _normalizePlaybackStreamUrl(c.streamUrl) == curNorm,
+      );
     }
     if (idx < 0) {
-      idx = list.indexWhere((c) => c.id == cur.id);
+      idx = list.indexWhere((c) => _isSameChannelRow(c, cur));
     }
     if (idx < 0) return;
 
@@ -3076,6 +3942,7 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
 
   Worker? _mediaKitSettingsWorker;
   Worker? _playbackWakelockLayoutWorker;
+  Worker? _equalizerWorker;
   final List<StreamSubscription<dynamic>> _mediaKitWakelockSubs = [];
 
   void _cancelMediaKitWakelockSubs() {
@@ -3111,17 +3978,52 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
   void onInit() {
     super.onInit();
     WidgetsBinding.instance.addObserver(this);
+    // Harici Oynatıcı modu: kullanıcı VLC/MX Player vb. seçtiyse dahili
+    // oynatıcıyı hiç başlatmadan stream URL'sini harici uygulamaya gönder,
+    // sonra route'tan geri dön. _boot() çağrılmaz → MediaKit/BetterPlayer
+    // hiç ayağa kalkmaz; saniyelik gecikme yok.
+    if (_settings.externalPlayerEnabled.value &&
+        Get.isRegistered<ExternalPlayerService>() &&
+        Get.find<ExternalPlayerService>().isPlatformSupported) {
+      _externalPlayerHandoffActive.value = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (isClosed) return;
+        unawaited(_handoffToExternalPlayer());
+      });
+      return;
+    }
     decoderFallbackStep.value = 0;
+    _refreshForceMediaKitForCurrentUrl();
     _playbackWakelockLayoutWorker =
         ever(_settings.layoutMode, (_) => _syncPlaybackWakelock());
     _syncPlaybackWakelock();
-    _mediaKitSettingsWorker = ever(_settings.useMediaKit, (_) {
-      betterOsdOverride.value = false;
-      unawaited(zapTo(channel.value));
-    });
+    _mediaKitSettingsWorker = everAll(
+      [_settings.useMediaKit, _settings.liveUseMediaKit],
+      (_) {
+        betterOsdOverride.value = false;
+        mediaKitFallbackSession.value = false;
+        _autoEngineSwitchUsed = false;
+        unawaited(zapTo(channel.value));
+      },
+    );
     _pipAutoEnterWorker = ever(_settings.miniPlayerOnHome, (_) {
       unawaited(_syncAndroidPipAutoEnterEligible());
     });
+    // Ses Equalizer (lavfi=…) kapsam değişikliğini reaktif izle ve mevcut
+    // MediaKit player'ına gerçek zamanlı uygula. Servis kayıtlı değilse
+    // (test / lite build) atla.
+    if (Get.isRegistered<EqualizerService>()) {
+      _equalizerWorker = ever<int>(EqualizerService.to.revision, (_) {
+        final mk = _mediaKitPlayer;
+        if (mk == null) return;
+        unawaited(EqualizerService.to.applyToMediaKit(mk));
+      });
+    }
+    // Akıllı Jenerik Atlatıcı: bölüm/dizi değişince intro süresini yenile.
+    ever<Channel>(channel, (_) => refreshIntroDurationForCurrent());
+    ever<bool>(_settings.smartStreamCutterEnabled,
+        (_) => refreshIntroDurationForCurrent());
+    refreshIntroDurationForCurrent();
     _settings.onSubtitleFontPtApplied = applySubtitleFontFromSettings;
     // İlk kare öncesi ana iş parçacığı sıkışıksa (eski tablet / ağır splash) hemen _boot,
     // bazen yüzey/orphan yollarıyla üst üste ikinci Exo yaratımına yol açabiliyor.
@@ -3129,6 +4031,79 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
       if (isClosed) return;
       unawaited(_boot());
     });
+    if (isSeries) {
+      unawaited(_loadSeriesPanelDataAsync());
+    }
+  }
+
+  /// Harici Oynatıcı modunda dahili player'ı tamamen atlayan handoff akışı.
+  ///
+  /// * Mevcut kanaldan en doğru stream URL'sini ([effectivePlayUrl]) çıkar.
+  /// * [ExternalPlayerService.launch] ile sistemin video viewer'ına gönder.
+  /// * Başarılıysa route'tan çık (kullanıcı kaldığı yere geri döner).
+  /// * Başarısızsa kullanıcıya toast bilgisi ver ve **fallback olarak**
+  ///   dahili oynatıcıyı başlat — kullanıcı kanalı izleyebilmeli.
+  Future<void> _handoffToExternalPlayer() async {
+    final svc = Get.isRegistered<ExternalPlayerService>()
+        ? Get.find<ExternalPlayerService>()
+        : null;
+    if (svc == null) {
+      _externalPlayerHandoffActive.value = false;
+      decoderFallbackStep.value = 0;
+      await _boot();
+      return;
+    }
+    final url = _externalLaunchUrl();
+    if (url.isEmpty) {
+      _externalPlayerHandoffActive.value = false;
+      decoderFallbackStep.value = 0;
+      if (Get.isRegistered<ToastService>()) {
+        Get.find<ToastService>()
+            .show('externalPlayer.error.noStream'.tr, isError: true);
+      }
+      await _boot();
+      return;
+    }
+    final title = channel.value.name.trim().isEmpty ? null : channel.value.name;
+    bool ok = false;
+    try {
+      ok = await svc.launch(
+        url,
+        appId: _settings.externalPlayerId.value,
+        title: title,
+      );
+    } catch (e) {
+      debugPrint('mina_iptv: external player handoff failed: $e');
+      ok = false;
+    }
+    if (ok) {
+      // Kısa gecikme: harici uygulama açılması Android'de bazen onPause/onResume
+      // sırasını tetikliyor; route'tan çıkmadan önce bir mikro tick bekle.
+      await Future<void>.delayed(const Duration(milliseconds: 80));
+      if (!isClosed) {
+        Get.back<void>();
+      }
+      return;
+    }
+    // Harici oynatıcı çalışmadı — kullanıcıya bilgi ver ve dahili oynatıcıya düş.
+    if (Get.isRegistered<ToastService>()) {
+      Get.find<ToastService>().show(
+        'externalPlayer.error.launchFailed'.tr,
+        isError: true,
+      );
+    }
+    _externalPlayerHandoffActive.value = false;
+    decoderFallbackStep.value = 0;
+    if (isClosed) return;
+    await _boot();
+  }
+
+  /// Harici oynatıcıya gönderilecek nihai URL — eğer player_controller başka
+  /// bir override (catch-up, ts/m3u8 dönüştürme) hesapladıysa onu kullanır.
+  String _externalLaunchUrl() {
+    final override = _playUrlOverride?.trim();
+    if (override != null && override.isNotEmpty) return override;
+    return channel.value.streamUrl.trim();
   }
 
   /// Ayarlardan altyazı punto değişince (kayıt + anında uygulama).
@@ -3137,10 +4112,12 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
     final mk = _mediaKitPlayer;
     if (mk != null) {
       unawaited(
-        applyMediaKitSubtitleFontPt(
+        applyMediaKitSubtitleAppearance(
           mk,
-          _settings.subtitleFontPt.value,
+          pt: _settings.subtitleFontPt.value,
           fontFamilyKey: _settings.subtitleFontFamilyKey.value,
+          fontColor: _settings.subtitleFontColor,
+          outlineEnabled: _settings.subtitleOutlineEnabled.value,
         ),
       );
     }
@@ -3153,8 +4130,12 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
   BetterPlayerSubtitlesConfiguration _betterSubtitleConfiguration() {
     return BetterPlayerSubtitlesConfiguration(
       fontSize: _settings.subtitleFontPt.value,
-      fontFamily:
-          betterPlayerSubtitleFontFamilyFor(_settings.subtitleFontFamilyKey.value),
+      fontColor: _settings.subtitleFontColor,
+      outlineEnabled: _settings.subtitleOutlineEnabled.value,
+      outlineColor: const Color(0xFF000000),
+      outlineSize: 2.0,
+      fontFamily: betterPlayerSubtitleFontFamilyFor(
+          _settings.subtitleFontFamilyKey.value),
     );
   }
 
@@ -3267,94 +4248,100 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
 
     // Kanal deðiþimi baþlat - OSD gizlemeyi engelle
     _isChangingChannel = true;
-
-    if (remoteLiveZap) {
-      tvOsdVisible.value = true;
-      // Kanal degiiminde OSD 5 saniye sonra gizlensin
-      scheduleTvOsdAutoHide();
-    }
-
-    _silenceCurrentPlaybackImmediately();
-
-    // Canlı kanal değişimi: TV ve telefonda fade yok (VOD'da kısa kararma kalır).
-    if (newLive) {
-      isFading.value = false;
-      await Future.delayed(Duration.zero);
-    } else {
-      isFading.value = true;
-      await Future.delayed(const Duration(milliseconds: 500));
-    }
-
-    // TV'de kanal değişiminde sıkışmayı önlemek için fade state'ini hemen sıfırla
-    if (_settings.layoutMode.value.usesRemoteNavigationStyle) {
-      isFading.value = false;
-    }
-    if (!_isPlaybackGenerationCurrent(bootGen)) {
-      return;
-    }
-
-    // TV’de de aynı Better örneği + setupDataSource: OSD ağacı kopmaz, hızlı zap’ta
-    // yalnız kanal metni/logosu güncellenir (ayrı TvLiveBusyOsd şeridine düşülmez).
-    final reuseBetter = _shouldReuseBetterOnChannelChange(newChannel);
-    if (!_isPlaybackGenerationCurrent(bootGen)) {
-      return;
-    }
-
-    var disposedBetter = false;
+    var zapUiFinalize = false;
     try {
-      if (!reuseBetter) {
-        final old = better;
-        _setBetterPlayer(null);
-        if (old != null) {
-          disposedBetter = true;
-          old.videoPlayerController?.removeListener(_onVideoPlayerChanged);
-          await old.pause();
-          old.dispose(forceDispose: true);
-        }
-      }
-    } catch (_) {}
-
-    if (disposedBetter) {
-      _syncPlaybackWakelock();
-      await Future.delayed(const Duration(milliseconds: 100));
-    }
-
-    if (!_isPlaybackGenerationCurrent(bootGen)) {
-      return;
-    }
-
-    channel.value = newChannel;
-    betterOsdOverride.value = false;
-    mediaKitFallbackSession.value = false;
-    decoderFallbackStep.value = 0;
-    _forceSoftwareVideoDecoder = false;
-    _lastBootUsedSoftwareVideoDecoder = false;
-    _exoSoftwareDecoderRetryPending = false;
-    _xtreamTriedLiveUrlFormat = false;
-    _xtreamTriedGetPhpFallback = false;
-    _xtreamTriedSeriesMoviePathToGetPhp = false;
-    _xtreamTriedGetPhpToVodPathFallback = false;
-    _xtreamTriedVodMkvToTsSwap = false;
-    _vodAutoTriedBetterAfterMpvFail = false;
-    _decoderTriedTsToM3u8Swap = false;
-    _lastPlaybackUrl = null;
-    _playUrlOverride = null;
-    _lastOsdQualitySignature = -1;
-    osdQualityStamp.value++;
-    await _boot(
-      reuseSameBetterPlayer: reuseBetter,
-      playbackGeneration: bootGen,
-    );
-
-    // Yeni kanal açıldığında aydınlat (yalnızca bu zap hâlâ geçerliyse)
-    if (_isPlaybackGenerationCurrent(bootGen)) {
-      isFading.value = false;
-      // Kanal deðiþimi tamamlandý - bayraðý sýfýrla
-      _isChangingChannel = false;
-      // Kanal deðiþimi baþarýlý olduðunda OSD otomatik gizlenmeyi baþlat
       if (remoteLiveZap) {
-        scheduleTvOsdAutoHide();
+        tvOsdVisible.value = true;
       }
+
+      _silenceCurrentPlaybackImmediately();
+
+      // Canlı kanal değişimi: TV ve telefonda fade yok (VOD'da kısa kararma kalır).
+      if (newLive) {
+        isFading.value = false;
+        await Future.delayed(Duration.zero);
+      } else {
+        isFading.value = true;
+        await Future.delayed(const Duration(milliseconds: 500));
+      }
+
+      // TV'de kanal değişiminde sıkışmayı önlemek için fade state'ini hemen sıfırla
+      if (_settings.layoutMode.value.usesRemoteNavigationStyle) {
+        isFading.value = false;
+      }
+      if (!_isPlaybackGenerationCurrent(bootGen)) {
+        return;
+      }
+
+      // TV’de de aynı Better örneği + setupDataSource: OSD ağacı kopmaz, hızlı zap’ta
+      // yalnız kanal metni/logosu güncellenir (ayrı TvLiveBusyOsd şeridine düşülmez).
+      final reuseBetter = _shouldReuseBetterOnChannelChange(newChannel);
+      if (!_isPlaybackGenerationCurrent(bootGen)) {
+        return;
+      }
+
+      var disposedBetter = false;
+      try {
+        if (!reuseBetter) {
+          final old = better;
+          _setBetterPlayer(null);
+          if (old != null) {
+            disposedBetter = true;
+            old.videoPlayerController?.removeListener(_onVideoPlayerChanged);
+            await old.pause();
+            old.dispose(forceDispose: true);
+          }
+        }
+      } catch (_) {}
+
+      if (disposedBetter) {
+        _syncPlaybackWakelock();
+        await Future.delayed(const Duration(milliseconds: 100));
+      }
+
+      if (!_isPlaybackGenerationCurrent(bootGen)) {
+        return;
+      }
+
+      channel.value = newChannel;
+      channel.refresh();
+      betterOsdOverride.value = false;
+      mediaKitFallbackSession.value = false;
+      decoderFallbackStep.value = 0;
+      _forceSoftwareVideoDecoder = false;
+      _lastBootUsedSoftwareVideoDecoder = false;
+      _exoSoftwareDecoderRetryPending = false;
+      _xtreamTriedLiveUrlFormat = false;
+      _xtreamTriedGetPhpFallback = false;
+      _xtreamTriedSeriesMoviePathToGetPhp = false;
+      _xtreamTriedGetPhpToVodPathFallback = false;
+      _xtreamTriedVodMkvToTsSwap = false;
+      _vodAutoTriedBetterAfterMpvFail = false;
+      _autoEngineSwitchUsed = false;
+      _decoderTriedTsToM3u8Swap = false;
+      _lastPlaybackUrl = null;
+      _playUrlOverride = null;
+      _lastOsdQualitySignature = -1;
+      osdQualityStamp.value++;
+      await _boot(
+        reuseSameBetterPlayer: reuseBetter,
+        playbackGeneration: bootGen,
+      );
+
+      // Yeni kanal açıldığında aydınlat (yalnızca bu zap hâlâ geçerliyse)
+      if (_isPlaybackGenerationCurrent(bootGen)) {
+        isFading.value = false;
+        if (newLive) {
+          prepareLiveChannelStrip();
+        }
+        update(['osd']);
+        zapUiFinalize = true;
+      }
+    } finally {
+      _isChangingChannel = false;
+    }
+    if (zapUiFinalize && remoteLiveZap) {
+      scheduleTvOsdAutoHide();
     }
   }
 
@@ -3397,6 +4384,14 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
       if (_scheduleXtreamVodMkvToTsRetry()) {
         return;
       }
+      if (effectiveUseMediaKit &&
+          !_currentStreamIsLive &&
+          AndroidPlaybackSocHints.playbackChallengedTv &&
+          _maybeSwitchToBetterAfterMediaKitVodFailure(
+            'MediaKit first frame timeout',
+          )) {
+        return;
+      }
       debugPrint('mina_iptv: boot busy hold timeout (gen $gen)');
       _finishBootBusyHold(gen, vodSession);
     });
@@ -3410,9 +4405,10 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
     if (!_currentStreamIsLive) {
       _startWatchProgressSaver();
     }
+    _startUserHistoryTracker();
     // get.php vb. URL’ler [isLikelyLiveStream] ile yanlışlıkla «canlı» sayılabiliyor; gerçek tür [_currentStreamIsLive].
     unawaited(_maybeOfferVodResume());
-    if (_usesRemoteOsdChrome) {
+    if (_usesRemoteOsdChrome || _playbackPortraitForAutoHide) {
       scheduleTvOsdAutoHide();
     }
     if (Platform.isAndroid) {
@@ -3439,6 +4435,7 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
     _mediaKitBusyDimsSubs.clear();
     if (!_isPlaybackGenerationCurrent(gen)) return;
     isBusy.value = false;
+    isFading.value = false;
     suppressLiveZapLoadingUi.value = false;
     _applyBootSuccessSideEffects(gen, vodSession);
     if (_currentStreamIsLive) {
@@ -3492,6 +4489,7 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
       return;
     }
     _watchProgressTimer?.cancel();
+    _flushUserHistory();
     _stopVodEndAutoplayMonitor();
     cancelVodAutoplayCountdown();
     final vodSession = ++_vodResumeSession;
@@ -3516,15 +4514,34 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
 
       final cur = channel.value;
       final normalizedUrl = _normalizePlaybackStreamUrl(cur.streamUrl);
+      // Uzantısız web manifest/embed (ör. `/vs/tt…/`) → mpv'ye yönlendir.
+      // Motor seçiminden ÖNCE belirlenmeli ki [effectiveUseMediaKit] doğru olsun.
+      _forceMediaKitForCurrentUrl =
+          IptvPlaybackDefaults.isExtensionlessWebManifestUrl(normalizedUrl);
       final live = IptvPlaybackDefaults.isLikelyLiveStream(normalizedUrl);
 
       final override = _playUrlOverride;
       _playUrlOverride = null;
 
-      final playUrl = override ??
+      var playUrl = override ??
           (_xtreamTriedLiveUrlFormat
               ? _tryConvertXtreamGetPhpToLiveUrl(normalizedUrl) ?? normalizedUrl
               : normalizedUrl);
+
+      // Ayarlar > Oynatıcı > "Yayın Formatı": canlı yayında kullanıcının seçtiği
+      // taşıma biçimini (HLS m3u8 / MPEG-TS .ts) ilk URL'ye uygula. Yalnızca
+      // hiçbir yedek/override denemesi yokken; aksi halde otomatik ts↔m3u8
+      // kurtarma zinciriyle çakışıp uyumsuz panelde döngü oluştururdu.
+      if (override == null &&
+          live &&
+          !_xtreamTriedLiveUrlFormat &&
+          !_xtreamTriedGetPhpFallback &&
+          !_decoderTriedTsToM3u8Swap) {
+        final preferred = _applyPreferredLiveStreamFormat(playUrl);
+        if (preferred != null && preferred.isNotEmpty) {
+          playUrl = preferred;
+        }
+      }
 
       if (playUrl.isNotEmpty) {
         _lastPlaybackUrl = playUrl;
@@ -3545,9 +4562,19 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
       }
 
       // Android TV / Xiaomi'de çökmelere yol açtığı için disk önbelleği tamamen devre dışı.
+      await AndroidPlaybackSocHints.ensureLoaded();
+      final vodChallengedTv = !live &&
+          Platform.isAndroid &&
+          AndroidPlaybackSocHints.playbackChallengedTv;
+      if (vodChallengedTv && !_forceSoftwareVideoDecoder) {
+        debugPrint(
+          'mina_iptv: TCL/MediaTek TV VOD → Exo yazılım kod çözücü (ilk deneme)',
+        );
+      }
       final useSoftwareVideoDecoder = _forceSoftwareVideoDecoder ||
           (live ? _settings.preferSoftwareVideoDecoder.value : false) ||
-          tsLiveAndroid;
+          tsLiveAndroid ||
+          vodChallengedTv;
 
       if (effectiveUseMediaKit) {
         _lastBootUsedSoftwareVideoDecoder = false;
@@ -3630,7 +4657,8 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
         if (Platform.isAndroid && !live) {
           _scheduleAndroidVodAudioFix(ctrl, expectedGen);
         }
-        unawaited(_applyVodSubtitleDefaultOrPreferenceForBetter(ctrl, expectedGen));
+        unawaited(
+            _applyVodSubtitleDefaultOrPreferenceForBetter(ctrl, expectedGen));
         _startBetterBusyHoldFirstFrame(ctrl, expectedGen, vodSession);
         return;
       }
@@ -3657,14 +4685,20 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
       }
 
       final controls = IptvBetterPlayerConfig.tvControls(
-        customControlsBuilder: (c, onVisibilityChanged, config) =>
-            TvBetterPlayerControls(
-          controller: c,
-          onPlayerVisibilityChanged: (v) {
-            syncTvOsdVisibilityFromControls(v);
-            onVisibilityChanged(v);
-          },
-        ),
+        customControlsBuilder: (c, onVisibilityChanged, config) {
+          return Obx(() {
+            final pc = Get.find<PlayerController>();
+            final osdChId = pc.channel.value.id;
+            return TvBetterPlayerControls(
+              key: ValueKey<int>(osdChId),
+              controller: c,
+              onPlayerVisibilityChanged: (v) {
+                pc.syncTvOsdVisibilityFromControls(v);
+                onVisibilityChanged(v);
+              },
+            );
+          });
+        },
       );
 
       final useTextureView = Platform.isAndroid &&
@@ -3673,7 +4707,11 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
       final cfg = IptvBetterPlayerConfig.playerConfiguration(
         controls: controls,
         eventListener: _onBetterPlayerEvent,
-        handleLifecycle: true,
+        // Arka planda oynat açıkken better_player'ın kendi yaşam döngüsü
+        // gözlemcisi devreye girmemeli; yoksa ana ekrana dönünce yayını
+        // otomatik duraklatıp sesi kesiyor. Duraklatmayı tamamen
+        // didChangeAppLifecycleState üzerinden yönetiyoruz.
+        handleLifecycle: !_settings.backgroundPlayback.value,
         autoDispose: false,
         handleAudioInterruption: true,
         useTextureView: useTextureView,
@@ -3745,7 +4783,8 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
       if (Platform.isAndroid && !live) {
         _scheduleAndroidVodAudioFix(ctrl, expectedGen);
       }
-      unawaited(_applyVodSubtitleDefaultOrPreferenceForBetter(ctrl, expectedGen));
+      unawaited(
+          _applyVodSubtitleDefaultOrPreferenceForBetter(ctrl, expectedGen));
       _startBetterBusyHoldFirstFrame(ctrl, expectedGen, vodSession);
     } catch (e) {
       if (!_isPlaybackGenerationCurrent(expectedGen)) {
@@ -3799,8 +4838,135 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
   void _startWatchProgressSaver() {
     _watchProgressTimer?.cancel();
     if (_currentStreamIsLive) return;
-    _watchProgressTimer =
-        Timer.periodic(_watchProgressSaveInterval, (_) => _persistWatchProgressTick());
+    _watchProgressTimer = Timer.periodic(
+        _watchProgressSaveInterval, (_) => _persistWatchProgressTick());
+  }
+
+  /// Şu anki oturum için AI öneri motoruna sinyal — 2dk+ izlemelerde tetiklenir.
+  String _currentHistorySig() {
+    final UserHistoryKind kind = isSeries
+        ? UserHistoryKind.series
+        : (isMovie ? UserHistoryKind.vod : UserHistoryKind.live);
+    return '${kind.index}|${channel.value.id}|${channel.value.streamUrl}';
+  }
+
+  void _startUserHistoryTracker() {
+    final sig = _currentHistorySig();
+    // Aynı içerik için zaten çalışıyorsa yeniden başlatma; ölçü kaybolmasın.
+    if (_userHistorySig == sig && _userHistoryTickTimer != null) return;
+    _flushUserHistory(force: true);
+    _userHistorySig = sig;
+    _userHistoryWatchedSec = 0;
+    _userHistoryRecorded = false;
+    _userHistoryLastReportedSec = 0;
+    _userHistoryTickTimer?.cancel();
+    _userHistoryTickTimer = Timer.periodic(
+      const Duration(seconds: _historyTickSecs),
+      (_) => _onUserHistoryTick(),
+    );
+  }
+
+  /// Tick anında player gerçekten oynatma yapıyor mu — çoğu motor sorgusu
+  /// (MediaKit / Better) eşit şekilde kapsanır.
+  bool _isCurrentlyPlayingForHistory() {
+    final err = (error.value ?? '').trim();
+    if (err.isNotEmpty) return false;
+    if (effectiveUseMediaKit) {
+      final mk = _mediaKitPlayer;
+      if (mk == null) return false;
+      return mk.state.playing;
+    }
+    final v = better?.videoPlayerController?.value;
+    if (v == null) return false;
+    if (!v.initialized || v.hasError) return false;
+    return v.isPlaying;
+  }
+
+  void _onUserHistoryTick() {
+    if (isClosed) return;
+    // Sadece gerçekten oynatılıyorsa biriktir.
+    if (!_isCurrentlyPlayingForHistory()) return;
+    _userHistoryWatchedSec += _historyTickSecs;
+    _emitMinaAnalyticsTick();
+    // 120 sn eşik aşıldığında ilk kez kaydet.
+    if (!_userHistoryRecorded && _userHistoryWatchedSec >= 120) {
+      _userHistoryRecorded = true;
+      _userHistoryLastReportedSec = _userHistoryWatchedSec;
+      _writeUserHistoryEntry();
+      return;
+    }
+    // İlk kayıttan sonra her ~60 sn'de bir güncelle (toplam süre).
+    if (_userHistoryRecorded &&
+        _userHistoryWatchedSec - _userHistoryLastReportedSec >= 60) {
+      _userHistoryLastReportedSec = _userHistoryWatchedSec;
+      _writeUserHistoryEntry();
+    }
+  }
+
+  /// Mina Wrapped analytics tick'i — 15 saniyelik izleme penceresi.
+  /// Düşük güçlü cihazlarda yan etki yapmasın diye servis çağrısı
+  /// in-memory'de toplanır, 5 saniyede bir tek SharedPreferences yazımıyla
+  /// kalıcılaşır.
+  void _emitMinaAnalyticsTick() {
+    if (!Get.isRegistered<MinaAnalyticsService>()) return;
+    final svc = Get.find<MinaAnalyticsService>();
+    final kind = isSeries
+        ? MinaMediaKind.series
+        : (isMovie ? MinaMediaKind.movie : MinaMediaKind.live);
+    final ch = channel.value;
+    // Kategori adı için ChannelsController kayıtlıysa kısa lookup yap;
+    // yoksa numeric kategori id boş geçilir (kategori istatistikleri
+    // o oturumda toplanmaz ama kind + kanal yine kayıtlı olur).
+    String catName = '';
+    try {
+      if (Get.isRegistered<ChannelsController>()) {
+        final cc = Get.find<ChannelsController>();
+        final cat = cc.categories.firstWhereOrNull(
+          (c) => c.id == ch.categoryId,
+        );
+        catName = cat?.name ?? '';
+      }
+    } catch (_) {}
+    svc.recordTick(
+      kind: kind,
+      channelName: ch.name,
+      channelLogo: ch.logoUrl ?? '',
+      category: catName,
+      tick: const Duration(seconds: _historyTickSecs),
+    );
+  }
+
+  void _writeUserHistoryEntry() {
+    if (!Get.isRegistered<UserHistoryService>()) return;
+    final UserHistoryKind kind = isSeries
+        ? UserHistoryKind.series
+        : (isMovie ? UserHistoryKind.vod : UserHistoryKind.live);
+    final ch = channel.value;
+    final svc = Get.find<UserHistoryService>();
+    unawaited(svc.record(
+      kind: kind,
+      contentId: ch.id,
+      name: ch.name,
+      categoryId: ch.categoryId.toString(),
+      posterUrl: ch.logoUrl,
+      watchedSeconds: _userHistoryWatchedSec,
+    ));
+  }
+
+  void _flushUserHistory({bool force = false}) {
+    final t = _userHistoryTickTimer;
+    if (t == null && !force) return;
+    t?.cancel();
+    _userHistoryTickTimer = null;
+    if (_userHistoryRecorded && _userHistoryWatchedSec > 0) {
+      // Son güncellemeyi yaz; içerik değişmiş olabilir, sig hâlâ doğru.
+      _userHistoryLastReportedSec = _userHistoryWatchedSec;
+      _writeUserHistoryEntry();
+    }
+    _userHistoryWatchedSec = 0;
+    _userHistoryRecorded = false;
+    _userHistoryLastReportedSec = 0;
+    _userHistorySig = null;
   }
 
   void _persistWatchProgressTick({bool force = false}) {
@@ -3821,8 +4987,13 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
         return;
       }
     }
+    final series = playingSeries;
     if (posMs >= dur.inMilliseconds * 0.95) {
-      unawaited(queue.clearVodProgress(id, flushNow: force));
+      unawaited(queue.clearVodProgress(
+        id,
+        seriesId: series?.id,
+        flushNow: force,
+      ));
       _lastWatchProgressSavedChannelId = null;
       _lastWatchProgressSavedPosMs = null;
       _lastWatchProgressSavedDurationMs = null;
@@ -3837,6 +5008,9 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
       coverUrl: channel.value.logoUrl,
       positionMs: posMs,
       durationMs: dur.inMilliseconds,
+      seriesId: series?.id,
+      seriesTitle: series?.name,
+      seriesCoverUrl: series?.posterUrl,
       flushNow: force,
     ));
   }
@@ -4103,8 +5277,7 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
     _stopVodEndAutoplayMonitor();
     if (!_vodHasNextInBrowseTape()) return;
     if (_currentStreamIsLive) return;
-    _vodEndAutoplayMonitor =
-        Timer.periodic(const Duration(seconds: 1), (_) {
+    _vodEndAutoplayMonitor = Timer.periodic(const Duration(seconds: 1), (_) {
       if (isClosed) return;
       if (!_settings.backgroundPlayback.value &&
           WidgetsBinding.instance.lifecycleState != AppLifecycleState.resumed) {
@@ -4258,6 +5431,10 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
   }
 
   void handleBack() {
+    unawaited(_handleBackAsync());
+  }
+
+  Future<void> _handleBackAsync() async {
     // Tam ekran overlay (doğrudan handleBack çağrıları).
     if (liveSingleChannelEpgOpen.value) {
       closeLiveSingleChannelEpgOverlay(showOsdAfter: true);
@@ -4268,6 +5445,7 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
       return;
     }
     if (liveChannelStripOverlayOpen.value) {
+      cancelLiveStripAutoClose();
       liveChannelStripOverlayOpen.value = false;
       if (_usesRemoteOsdChrome) {
         tvOsdVisible.value = true;
@@ -4289,7 +5467,16 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
       cancelVodAutoplayCountdown(cancelledByUser: true);
       return;
     }
-    Get.back();
+
+    await _prepareLeavePlayerRoute();
+
+    final nav = Get.key.currentState;
+    if (nav != null && nav.canPop()) {
+      nav.pop();
+    } else {
+      Get.back<void>();
+    }
+
     if (openedFromBrowse) {
       if (Get.isRegistered<BrowseController>()) {
         Get.find<BrowseController>().restoreBrowseListFocusAfterPlayerPop();
@@ -4299,6 +5486,27 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
         Get.find<ChannelsController>().restoreChannelListFocusAfterPlayerPop();
       }
     }
+  }
+
+  /// Yatay tam ekrandan çıkış: Better dahili tam ekran route'u, yön kilidi ve
+  /// immersive modu sıfırla; ardından [Navigator.pop] güvenle çalışsın.
+  Future<void> _prepareLeavePlayerRoute() async {
+    try {
+      final bp = better;
+      if (bp != null && bp.isFullScreen) {
+        bp.exitFullScreen();
+      }
+    } catch (_) {}
+
+    final lm = _settings.layoutMode.value;
+    if (lm == AppLayoutMode.mobile || lm == AppLayoutMode.tablet) {
+      await _settings.clearMobilePlaybackPortraitLockForLeavingPlayer();
+      if (lm == AppLayoutMode.mobile) {
+        await PlaybackOrientationManager.releaseToSensorMobilePlayback();
+      }
+    }
+
+    _silenceCurrentPlaybackImmediately();
   }
 
   /// Ağ / geçici kaynak kopması: tam [_boot] öncesi Exo aynı URL’yi [retryDataSource] ile yeniler.
@@ -4343,8 +5551,10 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
           debugPrint(
             'mina_iptv: BetterPlayer exception → MediaKit yedek: $msg',
           );
+          _autoEngineSwitchUsed = true;
           betterOsdOverride.value = false;
           mediaKitFallbackSession.value = true;
+          _showEngineFallbackToast(toMediaKit: true);
           unawaited(_performMediaKitFallbackBoot());
           return;
         }
@@ -4448,16 +5658,35 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
     update(['osd']);
   }
 
-  /// ExoPlayer / donanım kod çözücü hatalarında otomatik MediaKit’e düş (**yalnız VOD**; canlıda yok).
+  /// Motor değişiminde kullanıcıya ekranda kaybolan (3 sn) bilgi yazısı göster:
+  /// "Yayın MediaKit/Better Player ile tekrar deneniyor".
+  void _showEngineFallbackToast({required bool toMediaKit}) {
+    if (!Get.isRegistered<ToastService>()) return;
+    Get.find<ToastService>().show(
+      (toMediaKit
+              ? 'player.engineFallback.toMediaKit'
+              : 'player.engineFallback.toBetter')
+          .tr,
+    );
+  }
+
+  /// Better/Exo birincil iken hata olunca otomatik MediaKit'e düş.
+  ///
+  /// Kod çözücü/codec hataları hem **canlı** hem **VOD**'da motor değiştirir.
+  /// Genel Exo/Source hataları yalnız **VOD**'da — canlıda bunlar çoğunlukla
+  /// geçici ağ sorunudur, ağ kurtarma devrede kalsın. Zaten MediaKit'teysek
+  /// veya bu yayın için bir kez otomatik geçiş yapıldıysa tetiklenmez.
   bool _shouldAutoFallbackToMediaKit(String msg) {
-    if (_currentStreamIsLive) return false;
     if (msg.isEmpty) return false;
+    if (effectiveUseMediaKit) return false;
     if (mediaKitFallbackSession.value) return false;
-    if (!_currentStreamIsLive && _settings.useMediaKit.value) return false;
+    if (_autoEngineSwitchUsed) return false;
     if (_isPlaybackDecoderFailure(msg)) return true;
     final l = msg.toLowerCase();
-    if (l.contains('exoplaybackexception')) return true;
-    if (l.contains('media3') && l.contains('error')) return true;
+    if (!_currentStreamIsLive) {
+      if (l.contains('exoplaybackexception')) return true;
+      if (l.contains('media3') && l.contains('error')) return true;
+    }
     if (l.contains('codec') &&
         (l.contains('unsupported') ||
             l.contains('not supported') ||
@@ -4501,8 +5730,10 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
       debugPrint(
         'mina_iptv: VOD Exo sessiz/riskli ses codec → MediaKit yedek ($reason)',
       );
+      _autoEngineSwitchUsed = true;
       betterOsdOverride.value = false;
       mediaKitFallbackSession.value = true;
+      _showEngineFallbackToast(toMediaKit: true);
       await _performMediaKitFallbackBoot();
     } finally {
       _vodSilentAudioMediaKitFallbackInFlight = false;
@@ -4634,8 +5865,10 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
         }
         if (_shouldAutoFallbackToMediaKit(msg)) {
           debugPrint('mina_iptv: VideoPlayer error → MediaKit yedek');
+          _autoEngineSwitchUsed = true;
           betterOsdOverride.value = false;
           mediaKitFallbackSession.value = true;
+          _showEngineFallbackToast(toMediaKit: true);
           unawaited(_performMediaKitFallbackBoot());
           return;
         }
@@ -4709,6 +5942,54 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
         unawaited(_syncAndroidPipAutoEnterEligible());
       }
     }
+  }
+
+  /// Ayarlar > Oynatıcı > "Yayın Formatı" tercihini canlı Xtream URL'sine
+  /// uygular. `ts` → MPEG-TS (`/live/*.ts` veya `get.php&output=ts`),
+  /// `hls` → m3u8. URL zaten istenen biçimdeyse veya Xtream canlı kalıbına
+  /// uymuyorsa `null` döner (URL değiştirilmez). M3U'dan gelen jenerik `.ts`
+  /// adresleri `/live/` içermiyorsa dokunulmaz; uyumsuz panelde mevcut
+  /// [_trySwapLiveTsM3u8Url] yedek zinciri diğer biçime geçirir.
+  String? _applyPreferredLiveStreamFormat(String url) {
+    final wantTs = _settings.prefersTsLiveStreamFormat;
+    final u = url.trim();
+    if (u.isEmpty) return null;
+    final uri = Uri.tryParse(u);
+    if (uri == null) return null;
+    final path = uri.path.toLowerCase();
+    final lower = u.toLowerCase();
+
+    if (path.contains('/live/')) {
+      if (wantTs && lower.endsWith('.m3u8')) {
+        final np = '${uri.path.substring(0, uri.path.length - 6)}.ts';
+        return uri.replace(path: np).toString();
+      }
+      if (!wantTs && lower.endsWith('.ts')) {
+        final np = '${uri.path.substring(0, uri.path.length - 3)}.m3u8';
+        return uri.replace(path: np).toString();
+      }
+      return null;
+    }
+
+    if (path.endsWith('get.php')) {
+      final q = uri.queryParameters;
+      if ((q['stream_id'] ?? '').isEmpty) return null;
+      final out = (q['output'] ?? '').toLowerCase().trim();
+      if (wantTs) {
+        if (out == 'm3u8' || out == 'm3u' || out == 'hls') {
+          return _tryConvertXtreamGetPhpOutput(u, 'ts');
+        }
+      } else {
+        if (out == 'ts' ||
+            out == 'mpegts' ||
+            out == 'mpeg-ts' ||
+            out == 'm2ts') {
+          return _tryConvertXtreamGetPhpOutput(u, 'm3u8');
+        }
+      }
+    }
+
+    return null;
   }
 
   /// Xtream: `/live/.../*.ts` ↔ `*.m3u8`; canlı `get.php` için `output=ts` ↔ `m3u8` (tersi).
@@ -4849,11 +6130,14 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
     _orphanBetterBootRev++;
     onRequestLiveChannelStripFromTvOsd = null;
     onRequestVodBrowseRailFromTvOsd = null;
+    onRequestCloseLiveChannelStrip = null;
+    cancelLiveStripAutoClose();
     cancelVodAutoplayCountdown();
     _stopVodEndAutoplayMonitor();
     _watchProgressTimer?.cancel();
     _watchProgressTimer = null;
     _persistWatchProgressTick(force: true);
+    _flushUserHistory(force: true);
     _androidPipFallbackPauseTimer?.cancel();
     _pipAutoEnterWorker?.dispose();
     _settings.onSubtitleFontPtApplied = null;
@@ -4867,6 +6151,7 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
       );
     }
     _mediaKitSettingsWorker?.dispose();
+    _equalizerWorker?.dispose();
     _cancelMediaKitWakelockSubs();
     _cancelZapRelativeDebounce();
     _cancelLiveZapAbrQualityRamp();
@@ -4884,7 +6169,6 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
 
     unawaited(WakelockPlus.disable());
     WidgetsBinding.instance.removeObserver(this);
-    _stopRecording();
     try {
       final mk = _mediaKitPlayer;
       if (mk != null) {
@@ -4918,6 +6202,10 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
     _zapRelativeDebounceTimer?.cancel();
     _zapRelativeDebounceTimer = null;
 
+    // Cancel channel-number direct entry commit timer
+    _channelNumberCommitTimer?.cancel();
+    _channelNumberCommitTimer = null;
+
     // Cancel Android PiP fallback pause timer
     _androidPipFallbackPauseTimer?.cancel();
     _androidPipFallbackPauseTimer = null;
@@ -4925,6 +6213,8 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
     // Cancel watch progress timer
     _watchProgressTimer?.cancel();
     _watchProgressTimer = null;
+    _userHistoryTickTimer?.cancel();
+    _userHistoryTickTimer = null;
 
     // Cancel VOD autoplay timers
     _vodEndAutoplayMonitor?.cancel();
@@ -4951,85 +6241,6 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
 
     _mediaKitPlayer = null;
     super.onClose();
-  }
-
-  Future<void> toggleRecording() async {
-    if (isRecording.value) {
-      await _stopRecording();
-      Get.find<ToastService>().show(
-        'Video kaydedildi: $_lastRecordPath',
-      );
-    } else {
-      final started = await _startRecording();
-      if (started) {
-        Get.find<ToastService>().show(
-          'Yayın telefon hafızasına kaydediliyor...',
-        );
-      }
-    }
-  }
-
-  Future<bool> _startRecording() async {
-    try {
-      final streamUrl = _normalizePlaybackStreamUrl(channel.value.streamUrl);
-      if (streamUrl.isEmpty) return false;
-
-      final dir = await getExternalStorageDirectory() ??
-          await getApplicationDocumentsDirectory();
-      final downloadsDir = Directory('${dir.path}/Recordings');
-      if (!await downloadsDir.exists()) {
-        await downloadsDir.create(recursive: true);
-      }
-
-      final fileName =
-          'REC_${channel.value.name}_${DateTime.now().millisecondsSinceEpoch}.ts';
-      final savePath = '${downloadsDir.path}/$fileName';
-      _lastRecordPath = savePath;
-
-      _recordCancelToken = CancelToken();
-      isRecording.value = true;
-      recordDuration.value = 0;
-
-      _recordTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
-        recordDuration.value++;
-      });
-
-      // Arka planda indirmeyi başlat
-      unawaited(_dio
-          .download(
-        streamUrl,
-        savePath,
-        cancelToken: _recordCancelToken,
-        options: Options(
-          headers: IptvPlaybackDefaults.headersForStreamUrl(streamUrl),
-        ),
-      )
-          .catchError((e) {
-        if (isRecording.value) {
-          _stopRecording();
-          debugPrint('mina_iptv: Recording error: $e');
-        }
-        // Analyzer: catchError callback dönüş değeri istemektedir.
-        return Response<dynamic>(
-          data: null,
-          statusCode: 0,
-          requestOptions: RequestOptions(path: savePath),
-        );
-      }));
-
-      return true;
-    } catch (e) {
-      debugPrint('mina_iptv: Could not start recording: $e');
-      return false;
-    }
-  }
-
-  Future<void> _stopRecording() async {
-    isRecording.value = false;
-    _recordTimer?.cancel();
-    _recordTimer = null;
-    _recordCancelToken?.cancel();
-    _recordCancelToken = null;
   }
 }
 

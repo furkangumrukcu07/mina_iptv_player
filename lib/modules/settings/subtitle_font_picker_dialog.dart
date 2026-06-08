@@ -297,23 +297,7 @@ class _SubtitleFontPickerDialogState extends State<SubtitleFontPickerDialog> {
     );
   }
 
-  Widget _actionButtons(BuildContext context, {required bool tv}) {
-    if (!tv) {
-      return Row(
-        mainAxisAlignment: MainAxisAlignment.end,
-        children: [
-          TextButton(
-            onPressed: widget.onCancel,
-            child: Text('common.cancel'.tr),
-          ),
-          const SizedBox(width: 8),
-          FilledButton(
-            onPressed: () => unawaited(_save()),
-            child: Text('common.save'.tr),
-          ),
-        ],
-      );
-    }
+  Widget _tvActionButtonsColumn(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     final glass = widget.tvOsdStyle;
     final cancelColor =
@@ -341,12 +325,12 @@ class _SubtitleFontPickerDialogState extends State<SubtitleFontPickerDialog> {
               border: Border.all(
                 color: _focusId == _cancelFocusId
                     ? Colors.white
-                    : Colors.transparent,
-                width: _focusId == _cancelFocusId ? 2.5 : 0,
+                    : Colors.white.withValues(alpha: 0.28),
+                width: _focusId == _cancelFocusId ? 2.5 : 1.2,
               ),
               color: _focusId == _cancelFocusId
                   ? Colors.white.withValues(alpha: 0.12)
-                  : Colors.transparent,
+                  : Colors.black.withValues(alpha: 0.38),
             ),
             child: Material(
               color: Colors.transparent,
@@ -390,12 +374,12 @@ class _SubtitleFontPickerDialogState extends State<SubtitleFontPickerDialog> {
               border: Border.all(
                 color: _focusId == _saveFocusId
                     ? Colors.white
-                    : Colors.transparent,
-                width: _focusId == _saveFocusId ? 2.5 : 0,
+                    : Colors.white.withValues(alpha: 0.28),
+                width: _focusId == _saveFocusId ? 2.5 : 1.2,
               ),
               color: _focusId == _saveFocusId
                   ? Colors.white.withValues(alpha: 0.12)
-                  : Colors.transparent,
+                  : Colors.black.withValues(alpha: 0.38),
             ),
             child: Material(
               color: Colors.transparent,
@@ -465,7 +449,7 @@ class _SubtitleFontPickerDialogState extends State<SubtitleFontPickerDialog> {
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             presetColumn,
-            _actionButtons(context, tv: true),
+            _tvActionButtonsColumn(context),
           ],
         ),
         actions: null,
@@ -481,13 +465,16 @@ class _SubtitleFontPickerDialogState extends State<SubtitleFontPickerDialog> {
         child: presetColumn,
       ),
       actions: [
-        TextButton(
+        GlassDialogActionButton(
+          label: 'common.cancel'.tr,
           onPressed: widget.onCancel,
-          child: Text('common.cancel'.tr),
+          onDarkSurface: widget.tvOsdStyle,
         ),
-        FilledButton(
+        GlassDialogActionButton(
+          label: 'common.save'.tr,
+          primary: true,
           onPressed: () => unawaited(_save()),
-          child: Text('common.save'.tr),
+          onDarkSurface: widget.tvOsdStyle,
         ),
       ],
     );

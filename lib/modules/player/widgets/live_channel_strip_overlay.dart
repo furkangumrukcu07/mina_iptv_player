@@ -286,10 +286,11 @@ class LiveChannelStripOverlayState extends State<LiveChannelStripOverlay> {
   Widget build(BuildContext context) {
     final portrait =
         MediaQuery.orientationOf(context) == Orientation.portrait;
-    final railW = portrait ? 0.58 : 0.4;
+    final railW = portrait ? 0.58 : 0.52;
+    // Yatay modda hızlı kanal menüsü ekranın SOLUNA hizalanır; dikeyde sağda.
     final railPad = portrait
         ? const EdgeInsets.fromLTRB(0, 24, 12, 24)
-        : const EdgeInsets.fromLTRB(0, 28, 18, 28);
+        : const EdgeInsets.fromLTRB(18, 28, 0, 28);
     final catPad = portrait
         ? const EdgeInsets.fromLTRB(10, 10, 10, 6)
         : const EdgeInsets.fromLTRB(10, 10, 10, 6);
@@ -314,15 +315,16 @@ class LiveChannelStripOverlayState extends State<LiveChannelStripOverlay> {
               child: Container(color: Colors.black.withValues(alpha: 0.45)),
             ),
             Align(
-              alignment: Alignment.centerRight,
+              alignment:
+                  portrait ? Alignment.centerRight : Alignment.centerLeft,
               child: Padding(
                 padding: railPad,
                 child: FractionallySizedBox(
                   widthFactor: railW,
                   child: ConstrainedBox(
                     constraints: BoxConstraints(
-                      maxWidth: portrait ? 320 : 360,
-                      minWidth: portrait ? 200 : 260,
+                      maxWidth: portrait ? 320 : 460,
+                      minWidth: portrait ? 200 : 320,
                     ),
                     child: Obx(() {
                       final settings = Get.find<AppSettingsService>();
@@ -354,7 +356,7 @@ class LiveChannelStripOverlayState extends State<LiveChannelStripOverlay> {
                             BoxShadow(
                               color: ga.popupShadowColor,
                               blurRadius: 28,
-                              offset: const Offset(-6, 8),
+                              offset: Offset(portrait ? -6 : 6, 8),
                             ),
                           ],
                         ),
@@ -408,7 +410,8 @@ class LiveChannelStripOverlayState extends State<LiveChannelStripOverlay> {
                         ),
                       );
 
-                      if (sigma <= 0) {
+                      if (sigma <= 0 ||
+                          !AppPerformance.usePlayerOsdBackdropBlur(settings)) {
                         return panel;
                       }
                       return ClipRRect(

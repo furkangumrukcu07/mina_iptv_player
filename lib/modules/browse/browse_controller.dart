@@ -6,24 +6,31 @@ import 'package:get/get.dart';
 
 import '../../core/error/app_exception.dart';
 import '../../core/layout/app_layout_mode.dart';
+import '../../core/perf/browse_catalog_index.dart';
+import '../../core/perf/browse_films_filter_isolate.dart';
 import '../../core/routes/app_routes.dart';
 import '../../core/services/app_settings_service.dart';
 import '../../core/services/favorites_service.dart';
 import '../../core/services/iptv_precache_service.dart';
 import '../../core/services/playlist_cache_service.dart';
 import '../../core/services/playlist_category_hide.dart';
+import '../../core/utils/adult_content_filter.dart';
 import '../../core/services/movie_service.dart';
+import '../../core/utils/imdb_from_url.dart';
+import '../../domain/entities/playlist_source.dart';
 import '../../domain/entities/movie_model.dart';
 import 'package:better_player_plus/better_player_plus.dart';
 import '../../core/player/better_player_iptv_config.dart';
 import '../../core/player/iptv_playback_defaults.dart';
 import '../../domain/entities/channel.dart';
 import '../../domain/repositories/playlist_repository.dart';
+import '../../ui/glass_tv_shell.dart';
 import '../../domain/entities/m3u_result.dart';
+import '../../domain/entities/vod.dart';
 import '../../domain/entities/series.dart';
 import '../../domain/entities/series_episode_option.dart';
-import '../../domain/entities/vod.dart';
 import '../../data/local/vod_xtream_info_cache_store.dart';
+import '../../services/user_history_service.dart';
 import 'browse_mode.dart';
 import '../player/player_route_args.dart';
 import '../../ui/glass_overlays.dart';
@@ -31,6 +38,20 @@ import '../../ui/glass_overlays.dart';
 const int kAllCategories = -7999;
 const int kRecentVodCategory = -7998;
 const int kRecentSeriesCategory = -7997;
+
+/// Kullanıcının izleme geçmişinden derlenen, ana ekrandaki Filmler kartının
+/// içinde "Tümü"nün hemen altında listelenen sanal kategori. Geçmişte film
+/// (VOD) varsa görünür; aksi hâlde gizlenir.
+const int kWatchedVodCategory = -7996;
+
+/// Aynı yapı diziler için.
+const int kWatchedSeriesCategory = -7995;
+
+/// Browse (Filmler/Diziler) içinde "Favoriler" sanal kategorisi: kullanıcının
+/// favorilerine eklediği film/diziler. "Son eklenenler"in hemen altında görünür;
+/// favori yoksa gizlenir.
+const int kFavVodCategory = -7994;
+const int kFavSeriesCategory = -7993;
 
 const int kFavAll = -8000;
 const int kFavChannels = -8001;
@@ -175,7 +196,7 @@ List<SeriesEpisodeOption> _buildM3uSeriesEpisodeOptions(
 
 /// Liste gruplama anahtarı: bölüm sonekleri silinir, Türkçe karakterler eşlenir.
 String _seriesCanonicalNameKey(String rawName) {
-  var t = _collapseSeriesTitleSpaces(rawName);
+  var t = rawName.replaceAll(RegExp(r'\s+'), ' ').trim();
   if (t.isEmpty) return '';
   t = _stripTrailingSeriesEpisodeMarkers(t);
   if (t.isEmpty) return '';
@@ -191,6 +212,30 @@ String _seriesCanonicalNameKey(String rawName) {
       .replaceAll('î', 'i')
       .replaceAll('û', 'u');
   return k;
+}
+
+/// Isolate üzerinde çalışacak ağır gruplama işlemi.
+Future<List<List<SeriesItem>>> _isolateGroupSeries(List<SeriesItem> items) async {
+  return compute((List<SeriesItem> list) {
+    final map = <String, List<SeriesItem>>{};
+    for (final s in list) {
+      var key = _seriesCanonicalNameKey(s.name);
+      if (key.isEmpty) {
+        key = '__id_${s.id}';
+      }
+      map.putIfAbsent(key, () => []).add(s);
+    }
+    final groups = map.values.toList();
+    for (final g in groups) {
+      g.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    }
+    groups.sort(
+      (a, b) => _seriesGroupListTitle(a)
+          .toLowerCase()
+          .compareTo(_seriesGroupListTitle(b).toLowerCase()),
+    );
+    return groups;
+  }, items);
 }
 
 String _seriesGroupListTitle(List<SeriesItem> group) {
@@ -360,11 +405,18 @@ class BrowseController extends GetxController {
   final searchQuery = ''.obs;
   final effectiveSearchQuery = ''.obs;
   final selectedRow = Rxn<BrowseRow>();
+
+  /// "Listeler" barından liste değişince artar — kategori sütunu + ızgara
+  /// `Obx`'lerini yeniden çizmek için.
+  final playlistRevision = 0.obs;
+  Worker? _cacheWorker;
+  Worker? _hideAdultWorker;
   final RxInt selectedTabIndex = 0.obs;
   final Rxn<int> animateToTab = Rxn<int>();
 
   /// Xtream `get_vod_info` ile gelen özet (liste `plot` boşken).
   final vodXtreamInfoPlot = Rxn<String>();
+
   final detailPosterUrl = Rxn<String>();
   static const String _vodXtreamInfoCachePrefix = 'g4|';
   final Map<String, String> _vodXtreamSynopsisCache = <String, String>{};
@@ -383,9 +435,17 @@ class BrowseController extends GetxController {
   final searchController = TextEditingController();
 
   final categoryFocusNode = FocusNode();
+
+  /// TV / yatay: "Listeler" barı odak düğümü (kategorilerin üstünde).
+  final listsBarFocusNode = FocusNode();
   final listFocusNode = FocusNode();
 
-  /// TV üst çubuk: kumanda ile arama / ayarlar odakları.
+  ScrollController? _tvBrowseListScroll;
+  int? _lastTvBrowseNudgeMs;
+
+  /// TV üst çubuk: kumanda ile liste / arama / ayarlar odakları.
+  final browseBarPlaylistFocusNode =
+      FocusNode(debugLabel: 'browseBarPlaylist');
   final browseBarSearchFocusNode = FocusNode(debugLabel: 'browseBarSearch');
   final browseBarSettingsFocusNode = FocusNode(debugLabel: 'browseBarSettings');
 
@@ -409,6 +469,9 @@ class BrowseController extends GetxController {
   BetterPlayerController? previewController;
   final isPreviewLoading = false.obs;
 
+  final allPreGroupedSeries = <List<SeriesItem>>[].obs;
+  final isGroupingSeries = false.obs;
+
   final seriesEpisodesLoading = false.obs;
   final seriesEpisodesError = ''.obs;
   final seriesEpisodeOptions = <SeriesEpisodeOption>[].obs;
@@ -430,7 +493,123 @@ class BrowseController extends GetxController {
   // Debounce için cache değişkenleri
   List<BrowseRow>? _filteredRowsCache;
   int? _filteredRowsCacheHash;
+
+  // [leftCategories] memoizasyonu. Kategori sayaçları tüm katalogu tarar
+  // (her öğe için gizli/+18 filtresi). Kategori paneli Obx'i, kategori
+  // seçildiğinde (selectedCategoryKey değişimi) yeniden çalıştığı için bu
+  // tarama her geçişte tekrarlanıyordu → 2 sn'lik ana-thread kilitlenmesi.
+  // Sonuç yalnızca veri / gizleme / geçmiş / favori / dil değişince değişir;
+  // o yüzden bu imzaya göre önbelleğe alınır.
+  M3uResult? _leftCategoriesData;
+  int? _leftCategoriesSig;
+  List<({int key, String name, int count, IconData? icon})>?
+      _leftCategoriesCache;
   Worker? _searchDebounceWorker;
+  final filmsFilterRevision = 0.obs;
+  final isFilteringFilms = false.obs;
+  int _filmsFilterJobId = 0;
+  int? _pendingFilmsFilterHash;
+
+  Set<int> _hiddenVodCategoryIds(M3uResult d) {
+    return {
+      for (final c in d.vodCategories)
+        if (_vodCategoryHidden(c.id)) c.id,
+    };
+  }
+
+  // Film filtre isolate'ine gönderilen düz diziler (id / küçük-harf ad /
+  // kategori). Eskiden `_runFilmsFilterAsync` her çağrıda (liste geçişi,
+  // kategori değişimi, her arama tuşu) bunları ana thread'de `toLowerCase()`
+  // ile yeniden kuruyordu — büyük film kataloğunda kasmanın ana kaynağı.
+  // Artık veri seti (M3uResult) kimliğine göre, weak-key Expando ile bir kez
+  // kurulup önbelleğe alınır; iki liste arasında ileri-geri geçişte her iki
+  // listenin projeksiyonu da korunur (yeniden hesaplanmaz).
+  static final Expando<_VodFilterProjection> _vodProjectionCache =
+      Expando<_VodFilterProjection>('browseVodFilterProjection');
+
+  _VodFilterProjection _ensureVodProjection(M3uResult d) {
+    final cached = _vodProjectionCache[d];
+    if (cached != null) return cached;
+    final n = d.vod.length;
+    final ids = List<int>.filled(n, 0);
+    final names = List<String>.filled(n, '');
+    final cats = List<int>.filled(n, 0);
+    for (var i = 0; i < n; i++) {
+      final v = d.vod[i];
+      ids[i] = v.id;
+      names[i] = v.name.toLowerCase();
+      cats[i] = v.categoryId;
+    }
+    final proj = _VodFilterProjection(ids: ids, namesLower: names, categoryIds: cats);
+    _vodProjectionCache[d] = proj;
+    return proj;
+  }
+
+  List<BrowseRow> _numberBrowseRows(List<BrowseRow> raw) => [
+        for (var i = 0; i < raw.length; i++)
+          BrowseRow(
+            listIndex: i + 1,
+            title: raw[i].title,
+            channel: raw[i].channel,
+            vod: raw[i].vod,
+            series: raw[i].series,
+            seriesCluster: raw[i].seriesCluster,
+          ),
+      ];
+
+  Future<void> _runFilmsFilterAsync(
+    int cacheHash,
+    M3uResult d,
+    String q,
+    int key,
+    BrowseCatalogIndex idx,
+  ) async {
+    final jobId = ++_filmsFilterJobId;
+    isFilteringFilms.value = true;
+    try {
+      final proj = _ensureVodProjection(d);
+      final input = BrowseFilmsFilterInput(
+        vodIds: proj.ids,
+        vodNamesLower: proj.namesLower,
+        vodCategoryIds: proj.categoryIds,
+        categoryKey: key,
+        searchQueryLower: q,
+        recentVodIds: d.recentVodIds,
+        watchedVodIds: _watchedVodIdsOrdered(),
+        hiddenCategoryIds: _hiddenVodCategoryIds(d),
+        filterAdultItems: _app.effectiveHideAdultContent,
+        adultTokens: AdultContentFilter.lowerTokens,
+        isAllCategories: key == kAllCategories,
+        isRecentCategory: key == kRecentVodCategory,
+        isWatchedCategory: key == kWatchedVodCategory,
+      );
+      final ids = await browseFilmsFilterAsync(input);
+      if (jobId != _filmsFilterJobId || !identical(_data, d)) return;
+
+      var list = [
+        for (final id in ids)
+          if (idx.vodById[id] != null) idx.vodById[id]!,
+      ];
+      if (key == kRecentVodCategory && q.isEmpty && list.isEmpty) {
+        final recent = d.recentVodIds.toSet();
+        list = d.vod.where((v) => recent.contains(v.id)).toList();
+      }
+      list = list.where((v) => !_vodItemHidden(v)).toList();
+
+      final result = _numberBrowseRows([
+        for (final v in list) BrowseRow(listIndex: 0, title: v.name, vod: v),
+      ]);
+      _filteredRowsCache = result;
+      _filteredRowsCacheHash = cacheHash;
+      _pendingFilmsFilterHash = null;
+      filmsFilterRevision.value++;
+      _ensureSelection();
+    } finally {
+      if (jobId == _filmsFilterJobId) {
+        isFilteringFilms.value = false;
+      }
+    }
+  }
 
   void loadMoreSeries() {
     if (!seriesHasMore.value || mode != BrowseMode.series) return;
@@ -459,26 +638,44 @@ class BrowseController extends GetxController {
         d.series.fold<int>(0, (sum, s) => sum + s.name.length);
     final isCacheHit = _seriesNameCacheDataHash == dataHash;
 
-    // DEBUG: Cache hit/miss izleme (sadece debug modda)
-    if (kDebugMode) {
-      debugPrint(
-          'BrowseController._buildSeriesNameCacheIfNeeded: cache ${isCacheHit ? "HIT" : "MISS"} (hash: $dataHash, cached: $_seriesNameCacheDataHash, items: ${d.series.length})');
-    }
-
     if (isCacheHit) return;
 
-    if (kDebugMode) {
-      debugPrint(
-          'BrowseController._buildSeriesNameCacheIfNeeded: Rebuilding cache for ${d.series.length} series...');
-    }
     _seriesNameNormalizationCache.clear();
     for (final s in d.series) {
       _seriesNameNormalizationCache[s.name] = _seriesCanonicalNameKey(s.name);
     }
     _seriesNameCacheDataHash = dataHash;
-    if (kDebugMode) {
-      debugPrint(
-          'BrowseController._buildSeriesNameCacheIfNeeded: Cache built with ${_seriesNameNormalizationCache.length} entries');
+  }
+
+  Future<void> _preGroupSeries() async {
+    final d = _data;
+    if (d == null || d.series.isEmpty) return;
+    if (allPreGroupedSeries.isNotEmpty && _seriesNameCacheDataHash != null) {
+      // Check if data changed
+      final dataHash = d.series.length * 17 +
+          d.series.fold<int>(0, (sum, s) => sum + s.name.length);
+      if (_seriesNameCacheDataHash == dataHash) return;
+    }
+
+    isGroupingSeries.value = true;
+    try {
+      if (kDebugMode) {
+        debugPrint(
+            'BrowseController: Starting isolate grouping for ${d.series.length} items...');
+      }
+      final result = await _isolateGroupSeries(d.series);
+      allPreGroupedSeries.assignAll(result);
+      if (kDebugMode) {
+        debugPrint(
+            'BrowseController: Isolate grouping finished. ${result.length} groups created.');
+      }
+    } catch (e) {
+      debugPrint('[BrowseController] Grouping error: $e');
+    } finally {
+      isGroupingSeries.value = false;
+      _filteredRowsCache = null;
+      _filteredRowsCacheHash = null;
+      update();
     }
   }
 
@@ -514,9 +711,21 @@ class BrowseController extends GetxController {
   /// Xtream `get_series_info` dizi özeti (bölüm özeti yoksa gösterilir).
   final seriesDetailSynopsis = ''.obs;
 
+  /// Xtream `get_series_info` — puan, tarih, tür, kapak (M3U’da OMDB kullanılır).
+  final seriesXtreamDetailMeta = Rxn<XtreamSeriesBrowseDetail>();
+
   /// OMDb'den gelen film/dizi detayları
   final omdbMovieDetail = Rxn<MovieModel>();
   final isOmdbLoading = false.obs;
+
+  bool? _playlistIsXtreamCache;
+
+  Future<bool> isXtreamPlaylist() async {
+    if (_playlistIsXtreamCache != null) return _playlistIsXtreamCache!;
+    final src = await _playlist.readSource();
+    _playlistIsXtreamCache = src is XtreamSource;
+    return _playlistIsXtreamCache!;
+  }
 
   void _fetchOmdbInfo(BrowseRow? row) {
     omdbMovieDetail.value = null;
@@ -529,13 +738,20 @@ class BrowseController extends GetxController {
 
     unawaited(() async {
       try {
+        if (row?.series != null && await isXtreamPlaylist()) {
+          isOmdbLoading.value = false;
+          return;
+        }
         final service = Get.find<MovieService>();
         final isSeries = row?.series != null;
+        final streamUrl =
+            row?.vod?.streamUrl ?? row?.series?.streamUrl ?? '';
         final result = await service.getMovieWithFallback(
           name: name,
           localPlot: row?.vod?.plot ?? row?.series?.plot,
           localPoster: row?.vod?.posterUrl ?? row?.series?.posterUrl,
           isSeries: isSeries,
+          imdbIdHint: imdbIdFromStreamUrl(streamUrl),
         );
         if (selectedRow.value?.vod?.id == row?.vod?.id &&
             selectedRow.value?.series?.id == row?.series?.id) {
@@ -681,6 +897,15 @@ class BrowseController extends GetxController {
       return;
     }
     _data = value;
+    BrowseCatalogIndex.invalidate();
+    // "Listeler" barından liste değişince önbellek güncellenir.
+    _cacheWorker = ever<M3uResult?>(_cache.result, _onActivePlaylistChanged);
+    _hideAdultWorker = ever<int>(_app.xtreamHideRevision, (_) {
+      _filteredRowsCache = null;
+      _filteredRowsCacheHash = null;
+      _pendingFilmsFilterHash = null;
+      playlistRevision.value++;
+    });
     effectiveSearchQuery.value = searchQuery.value;
     _searchDebounceWorker = debounce<String>(
       searchQuery,
@@ -693,8 +918,13 @@ class BrowseController extends GetxController {
       time: const Duration(milliseconds: 180),
     );
 
-    // Build series name normalization cache for better performance
-    _buildSeriesNameCacheIfNeeded();
+    // Dizi adı normalizasyon önbelleği yalnızca dizi/favori modunda gerekir.
+    // Filmler moduna girerken tüm dizileri regex ile normalize etmek boşuna
+    // senkron maliyet (giriş gecikmesi) oluşturuyordu — bu modda atla.
+    if (mode == BrowseMode.series || mode == BrowseMode.favorites) {
+      _buildSeriesNameCacheIfNeeded();
+      unawaited(_preGroupSeries());
+    }
 
     listFocusNode.addListener(_onBrowseListFocusChanged);
 
@@ -714,6 +944,11 @@ class BrowseController extends GetxController {
 
     if (mode == BrowseMode.favorites) {
       selectedCategoryKey.value = kFavAll;
+      // Ana ekrandan «Favoriler» kartı tıklandığında kullanıcı önce
+      // boş bir kategori listesi görmek yerine doğrudan favori öğeleri
+      // görsün. Geri tuşu / sola kaydırma ile «Kategori» sekmesine
+      // dönebilir; PopScope tab 1 → tab 0 → çıkış akışını korur.
+      selectedTabIndex.value = 1;
     } else if (mode == BrowseMode.series) {
       // Select 2nd category (index 1) from sorted categories for Series to reduce initial load
       final sortedCats = sortedSeriesCategories;
@@ -749,6 +984,32 @@ class BrowseController extends GetxController {
     });
   }
 
+  /// Aktif playlist (gösterilen liste) değiştiğinde — önbellek yeni slot'un
+  /// içeriğiyle güncellenir. `_data`'yı tazele, seçili kategori yeni listede
+  /// yoksa "Tümü"ne dön, kategori/ızgara panellerini yeniden çiz.
+  void _onActivePlaylistChanged(M3uResult? value) {
+    if (value == null) return;
+    if (identical(value, _data)) return;
+    _data = value;
+    BrowseCatalogIndex.invalidate();
+    _buildSeriesNameCacheIfNeeded();
+    if (mode == BrowseMode.series || mode == BrowseMode.favorites) {
+      unawaited(_preGroupSeries());
+    }
+    // Seçili kategori yeni listede yoksa "Tümü"ne dön.
+    final key = selectedCategoryKey.value;
+    final isVirtual = key < 0; // kAllCategories / kFav* gibi sanal anahtarlar
+    final List<int> catIds = mode == BrowseMode.series
+        ? (_data?.seriesCategories.map((c) => c.id).toList() ?? const <int>[])
+        : (_data?.vodCategories.map((c) => c.id).toList() ?? const <int>[]);
+    final stillExists = isVirtual || catIds.contains(key);
+    if (!stillExists) {
+      selectedCategoryKey.value = kAllCategories;
+    }
+    playlistRevision.value++;
+    _ensureSelection();
+  }
+
   void _onBrowseListFocusChanged() {
     if (!listFocusNode.hasFocus) return;
     if (!_effectiveRemoteNav()) return;
@@ -774,7 +1035,6 @@ class BrowseController extends GetxController {
     final v = row?.vod;
     if (v == null) return;
 
-    // Check if plot is already in VodItem (M3U data)
     if (v.plot != null && v.plot!.isNotEmpty) {
       vodXtreamInfoPlot.value = v.plot!;
       return;
@@ -801,13 +1061,15 @@ class BrowseController extends GetxController {
       try {
         final fields = await _playlist.loadXtreamVodInfoFields(v.id);
         if (selectedRow.value?.vod?.id != v.id) return;
-        if (fields == null || fields.isEmpty) return;
-        final t = _composeVodDetailFromXtreamFields(fields).trim();
-        if (t.isEmpty) return;
-        _vodXtreamSynopsisCache[cacheKey] = t;
-        vodXtreamInfoPlot.value = t;
-        if (accountKey.isNotEmpty) {
-          unawaited(VodXtreamInfoCacheStore.writeText(accountKey, v.id, t));
+        if (fields != null && fields.isNotEmpty) {
+          final t = _composeVodDetailFromXtreamFields(fields).trim();
+          if (t.isNotEmpty) {
+            _vodXtreamSynopsisCache[cacheKey] = t;
+            vodXtreamInfoPlot.value = t;
+            if (accountKey.isNotEmpty) {
+              unawaited(VodXtreamInfoCacheStore.writeText(accountKey, v.id, t));
+            }
+          }
         }
       } catch (_) {}
     }());
@@ -889,11 +1151,15 @@ class BrowseController extends GetxController {
     _detailPosterDebounce?.cancel();
     _seriesEpisodesLoadDebounce?.cancel();
     _searchDebounceWorker?.dispose();
+    _cacheWorker?.dispose();
+    _hideAdultWorker?.dispose();
     _seriesEpisodesLoadToken++;
     searchController.dispose();
     listFocusNode.removeListener(_onBrowseListFocusChanged);
     categoryFocusNode.dispose();
+    listsBarFocusNode.dispose();
     listFocusNode.dispose();
+    browseBarPlaylistFocusNode.dispose();
     browseBarSearchFocusNode.dispose();
     browseBarSettingsFocusNode.dispose();
     browseStaticDetailFocusNode.dispose();
@@ -930,18 +1196,157 @@ class BrowseController extends GetxController {
     );
   }
 
-  int _visibleVodCount(M3uResult d) {
-    return d.vod.where((v) => !_vodCategoryHidden(v.categoryId)).length;
+  bool _vodItemHidden(VodItem v) {
+    final d = _data;
+    if (d == null) return false;
+    return PlaylistCategoryHide.vodItemHidden(_app, _cache, d, v);
   }
 
-  int _visibleSeriesCount(M3uResult d) {
-    return d.series.where((s) => !_seriesCategoryHidden(s.categoryId)).length;
+  bool _seriesItemHidden(SeriesItem s) {
+    final d = _data;
+    if (d == null) return false;
+    return PlaylistCategoryHide.seriesItemHidden(_app, _cache, d, s);
+  }
+
+  bool _channelHidden(Channel c) {
+    final d = _data;
+    if (d == null) return false;
+    return PlaylistCategoryHide.channelHiddenInLive(_app, _cache, d, c);
+  }
+
+  /// Kullanıcının izleme geçmişine reactive erişim — `Obx` içinde
+  /// [leftCategories] çağrıldığında `revision.value` okunarak değişimler
+  /// kategorilere ve görsel listelere otomatik yansır.
+  int _userHistoryRevisionSafe() {
+    if (!Get.isRegistered<UserHistoryService>()) return 0;
+    return Get.find<UserHistoryService>().revision.value;
+  }
+
+  /// Geçmişten **kronolojik** sırada (en yeni → en eski) film ID listesi.
+  /// Aynı içerik birden fazla kez izlendiyse yalnızca en yeni kayıt kalır.
+  List<int> _watchedVodIdsOrdered() {
+    if (!Get.isRegistered<UserHistoryService>()) return const <int>[];
+    final svc = Get.find<UserHistoryService>();
+    final entries = svc.snapshotSync()
+      ..sort((a, b) => b.timestampMs.compareTo(a.timestampMs));
+    final seen = <int>{};
+    final out = <int>[];
+    for (final e in entries) {
+      if (e.kind != UserHistoryKind.vod) continue;
+      if (!seen.add(e.contentId)) continue;
+      out.add(e.contentId);
+    }
+    return out;
+  }
+
+  /// Aynı yapı dizi geçmişi için.
+  List<int> _watchedSeriesIdsOrdered() {
+    if (!Get.isRegistered<UserHistoryService>()) return const <int>[];
+    final svc = Get.find<UserHistoryService>();
+    final entries = svc.snapshotSync()
+      ..sort((a, b) => b.timestampMs.compareTo(a.timestampMs));
+    final seen = <int>{};
+    final out = <int>[];
+    for (final e in entries) {
+      if (e.kind != UserHistoryKind.series) continue;
+      if (!seen.add(e.contentId)) continue;
+      out.add(e.contentId);
+    }
+    return out;
+  }
+
+  int _visibleVodCount(M3uResult d, BrowseCatalogIndex idx) {
+    var n = 0;
+    for (final v in d.vod) {
+      if (!_vodItemHidden(v)) n++;
+    }
+    return n;
+  }
+
+  int _visibleSeriesCount(M3uResult d, BrowseCatalogIndex idx) {
+    var n = 0;
+    for (final s in d.series) {
+      if (!_seriesItemHidden(s)) n++;
+    }
+    return n;
+  }
+
+  int _watchedVodVisibleCount(M3uResult d, BrowseCatalogIndex idx) {
+    final ids = _watchedVodIdsOrdered();
+    if (ids.isEmpty) return 0;
+    var n = 0;
+    for (final id in ids) {
+      final v = idx.vodById[id];
+      if (v != null && !_vodItemHidden(v)) n++;
+    }
+    return n;
+  }
+
+  int _watchedSeriesVisibleCount(M3uResult d, BrowseCatalogIndex idx) {
+    final ids = _watchedSeriesIdsOrdered();
+    if (ids.isEmpty) return 0;
+    var n = 0;
+    for (final id in ids) {
+      final s = idx.seriesById[id];
+      if (s != null && !_seriesItemHidden(s)) n++;
+    }
+    return n;
+  }
+
+  /// Mevcut katalogda görünür (gizli olmayan) favori film sayısı.
+  int _favVodVisibleCount(M3uResult d, BrowseCatalogIndex idx) {
+    var n = 0;
+    for (final id in _fav.vodIds) {
+      final v = idx.vodById[id];
+      if (v != null && !_vodItemHidden(v)) n++;
+    }
+    return n;
+  }
+
+  /// Mevcut katalogda görünür (gizli olmayan) favori dizi sayısı.
+  int _favSeriesVisibleCount(M3uResult d, BrowseCatalogIndex idx) {
+    var n = 0;
+    for (final id in _fav.seriesIds) {
+      final s = idx.seriesById[id];
+      if (s != null && !_seriesItemHidden(s)) n++;
+    }
+    return n;
   }
 
   List<({int key, String name, int count, IconData? icon})> get leftCategories {
     final d = _data!;
+    // Reaktif okumalar burada yapılır → bu getter'ı saran Obx, veri/gizleme/
+    // geçmiş/favori değişimlerine abone kalır. Sonuç bu imzaya göre önbelleğe
+    // alınır; yalnızca selectedCategoryKey değiştiğinde (kategori seçimi) tüm
+    // katalog yeniden TARANMAZ.
+    final hideRev = _app.xtreamHideRevision.value;
+    final histRev = _userHistoryRevisionSafe();
+    final favSig = Object.hash(
+      Object.hashAll(_fav.vodIds),
+      Object.hashAll(_fav.seriesIds),
+      _fav.channelIds.length,
+    );
+    final locale = Get.locale?.toString() ?? '';
+    final sig = Object.hash(mode, hideRev, histRev, favSig, locale);
+    if (identical(_leftCategoriesData, d) &&
+        sig == _leftCategoriesSig &&
+        _leftCategoriesCache != null) {
+      return _leftCategoriesCache!;
+    }
+    final result = _computeLeftCategories(d);
+    _leftCategoriesData = d;
+    _leftCategoriesSig = sig;
+    _leftCategoriesCache = result;
+    return result;
+  }
+
+  List<({int key, String name, int count, IconData? icon})>
+      _computeLeftCategories(M3uResult d) {
+    final idx = BrowseCatalogIndex.of(d);
     return switch (mode) {
-      BrowseMode.films => [
+      BrowseMode.films => () {
+          final watchedCount = _watchedVodVisibleCount(d, idx);
+          return [
           if (d.recentVodIds.isNotEmpty)
             (
               key: kRecentVodCategory,
@@ -949,22 +1354,45 @@ class BrowseController extends GetxController {
               count: d.recentVodIds.length,
               icon: Icons.new_releases_rounded,
             ),
+          if (_favVodVisibleCount(d, idx) > 0)
+            (
+              key: kFavVodCategory,
+              name: 'browse.favorites'.tr,
+              count: _favVodVisibleCount(d, idx),
+              icon: Icons.bookmark_rounded,
+            ),
           (
             key: kAllCategories,
             name: 'Tüm filmler',
-            count: _visibleVodCount(d),
+            count: _visibleVodCount(d, idx),
             icon: null,
           ),
-          ...d.vodCategories.where((c) => !_vodCategoryHidden(c.id)).map(
+          if (watchedCount > 0)
+            (
+              key: kWatchedVodCategory,
+              name: 'browse.recentlyWatched'.tr,
+              count: watchedCount,
+              icon: Icons.history_rounded,
+            ),
+          ...PlaylistCategoryHide.orderVodCategories(
+            _app,
+            _cache,
+            d.vodCategories.where((c) => !_vodCategoryHidden(c.id)).toList(),
+          ).map(
                 (c) => (
                   key: c.id,
                   name: c.name,
-                  count: d.vod.where((v) => v.categoryId == c.id).length,
+                  count: (idx.vodByCategory[c.id] ?? const [])
+                      .where((v) => !_vodItemHidden(v))
+                      .length,
                   icon: null,
                 ),
               ),
-        ],
-      BrowseMode.series => [
+        ];
+        }(),
+      BrowseMode.series => () {
+          final watchedCount = _watchedSeriesVisibleCount(d, idx);
+          return [
           if (d.recentSeriesIds.isNotEmpty)
             (
               key: kRecentSeriesCategory,
@@ -972,21 +1400,44 @@ class BrowseController extends GetxController {
               count: d.recentSeriesIds.length,
               icon: Icons.new_releases_rounded,
             ),
+          if (_favSeriesVisibleCount(d, idx) > 0)
+            (
+              key: kFavSeriesCategory,
+              name: 'browse.favorites'.tr,
+              count: _favSeriesVisibleCount(d, idx),
+              icon: Icons.bookmark_rounded,
+            ),
           (
             key: kAllCategories,
             name: 'Tüm diziler',
-            count: _visibleSeriesCount(d),
+            count: _visibleSeriesCount(d, idx),
             icon: null,
           ),
-          ...d.seriesCategories.where((c) => !_seriesCategoryHidden(c.id)).map(
+          if (watchedCount > 0)
+            (
+              key: kWatchedSeriesCategory,
+              name: 'browse.recentlyWatched'.tr,
+              count: watchedCount,
+              icon: Icons.history_rounded,
+            ),
+          ...PlaylistCategoryHide.orderSeriesCategories(
+            _app,
+            _cache,
+            d.seriesCategories
+                .where((c) => !_seriesCategoryHidden(c.id))
+                .toList(),
+          ).map(
                 (c) => (
                   key: c.id,
                   name: c.name,
-                  count: d.series.where((s) => s.categoryId == c.id).length,
+                  count: (idx.seriesByCategory[c.id] ?? const [])
+                      .where((s) => !_seriesItemHidden(s))
+                      .length,
                   icon: null,
                 ),
               ),
-        ],
+        ];
+        }(),
       BrowseMode.favorites => [
           (key: kFavAll, name: 'Tümü', count: _fav.totalCount, icon: null),
           (
@@ -995,8 +1446,18 @@ class BrowseController extends GetxController {
             count: _fav.channelIds.length,
             icon: null
           ),
-          (key: kFavFilms, name: 'Filmler', count: _fav.vodIds.length, icon: null),
-          (key: kFavSeries, name: 'Diziler', count: _fav.seriesIds.length, icon: null),
+          (
+            key: kFavFilms,
+            name: 'Filmler',
+            count: _fav.vodIds.length,
+            icon: null
+          ),
+          (
+            key: kFavSeries,
+            name: 'Diziler',
+            count: _fav.seriesIds.length,
+            icon: null
+          ),
         ],
     };
   }
@@ -1066,9 +1527,11 @@ class BrowseController extends GetxController {
       }
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (categoryFocusNode.canRequestFocus) {
-        categoryFocusNode.requestFocus();
-      }
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (categoryFocusNode.canRequestFocus) {
+          categoryFocusNode.requestFocus();
+        }
+      });
     });
   }
 
@@ -1126,10 +1589,30 @@ class BrowseController extends GetxController {
     unlockBrowseDetailColumn();
   }
 
+  void attachTvBrowseListScroll(ScrollController controller) {
+    _tvBrowseListScroll = controller;
+  }
+
+  void detachTvBrowseListScroll(ScrollController controller) {
+    if (_tvBrowseListScroll == controller) {
+      _tvBrowseListScroll = null;
+    }
+  }
+
+  bool _throttleTvBrowseNudge() {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (_lastTvBrowseNudgeMs != null && now - _lastTvBrowseNudgeMs! < 90) {
+      return true;
+    }
+    _lastTvBrowseNudgeMs = now;
+    return false;
+  }
+
   /// TV Bölge B: orta liste içinde yalnızca dikey gezinme.
   void tvNudgeBrowseListRow(int delta) {
     if (!_effectiveRemoteNav()) return;
     if (delta == 0) return;
+    if (_throttleTvBrowseNudge()) return;
     final list = filteredRows;
     if (list.isEmpty) return;
     final cur = selectedRow.value;
@@ -1141,48 +1624,26 @@ class BrowseController extends GetxController {
     final next = (i + delta).clamp(0, list.length - 1);
     if (next == i) return;
     focusBrowseRow(list[next]);
-    _scheduleScrollBrowseListToFocusedRow();
   }
-
-  static const _tvBrowseVerticalHoldPauseBeforeRepeat =
-      Duration(milliseconds: 320); // Daha hızlı tepki
 
   Timer? _tvBrowseListVerticalHoldInitial;
   Timer? _tvBrowseListVerticalHoldPeriodic;
-  int _tvVerticalHoldCounter = 0;
 
-  /// TV: basılı tutma — ilk [tvNudgeBrowseListRow] zaten tuş inişinde; tekrarlar
-  /// yalnızca kısa gecikmeden sonra başlar (tek tıkta iki satır önlenir).
+  /// TV: basılı tutma — tuş inişinde bir satır; sonra ivmesiz ±1 adımlar.
   void beginBrowseListVerticalHold(int delta, Duration interval) {
     if (!_effectiveRemoteNav()) return;
     if (delta == 0) return;
     stopBrowseListVerticalHold();
-
-    _tvVerticalHoldCounter = 0;
     _tvBrowseListVerticalHoldInitial =
-        Timer(_tvBrowseVerticalHoldPauseBeforeRepeat, () {
+        Timer(kTvListVerticalHoldPauseBeforeRepeat, () {
       _tvBrowseListVerticalHoldInitial = null;
       if (isClosed) return;
-      _tvBrowseListVerticalHoldPeriodic =
-          Timer.periodic(const Duration(milliseconds: 50), (_) {
+      _tvBrowseListVerticalHoldPeriodic = Timer.periodic(interval, (_) {
         if (isClosed) {
           stopBrowseListVerticalHold();
           return;
         }
-
-        _tvVerticalHoldCounter++;
-
-        // İvmelenme (Acceleration) Mantığı
-        int jump = delta;
-        if (_tvVerticalHoldCounter > 25) {
-          jump = delta * 8;
-        } else if (_tvVerticalHoldCounter > 15) {
-          jump = delta * 5;
-        } else if (_tvVerticalHoldCounter > 8) {
-          jump = delta * 3;
-        }
-
-        tvNudgeBrowseListRow(jump);
+        tvNudgeBrowseListRow(delta);
       });
     });
   }
@@ -1262,13 +1723,18 @@ class BrowseController extends GetxController {
           'BrowseController.filteredRows: call #$_filteredRowsCallCount (mode: $mode, search: "$q", page: ${seriesCurrentPage.value})');
     }
 
-    // Cache key: tüm girdileri birleştir (data, search, page, category)
+    // Cache key: tüm girdileri birleştir (data, search, page, category, history)
     final cacheHash = Object.hash(
       d.hashCode,
       q.hashCode,
       selectedCategoryKey.value.hashCode,
       seriesCurrentPage.value,
       mode.hashCode,
+      _userHistoryRevisionSafe(),
+      _app.xtreamHideRevision.value,
+      // Favori değişince "Favoriler" kategorisi anında tazelensin.
+      Object.hashAll(_fav.vodIds),
+      Object.hashAll(_fav.seriesIds),
     );
 
     // Cache hit kontrolü
@@ -1285,31 +1751,81 @@ class BrowseController extends GetxController {
           'BrowseController.filteredRows: CACHE MISS - Computing... (hash: $cacheHash)');
     }
 
-    List<BrowseRow> numberRows(List<BrowseRow> raw) => [
-          for (var i = 0; i < raw.length; i++)
-            BrowseRow(
-              listIndex: i + 1,
-              title: raw[i].title,
-              channel: raw[i].channel,
-              vod: raw[i].vod,
-              series: raw[i].series,
-              seriesCluster: raw[i].seriesCluster,
-            ),
-        ];
+    List<BrowseRow> numberRows(List<BrowseRow> raw) => _numberBrowseRows(raw);
 
     if (mode == BrowseMode.films) {
       final key = selectedCategoryKey.value;
+      final idx = BrowseCatalogIndex.of(d);
+
+      // Favoriler sanal kategorisi: kategori indeksinde olmadığından (büyük
+      // katalog async yolundan önce) doğrudan favori listesinden kur.
+      if (key == kFavVodCategory) {
+        final favIds = _fav.vodIds.toSet();
+        var list = [
+          for (final v in d.vod)
+            if (favIds.contains(v.id) && !_vodItemHidden(v)) v,
+        ];
+        if (q.isNotEmpty) {
+          list = list.where((v) => v.name.toLowerCase().contains(q)).toList();
+        }
+        final result = numberRows([
+          for (final v in list) BrowseRow(listIndex: 0, title: v.name, vod: v),
+        ]);
+        _filteredRowsCache = result;
+        _filteredRowsCacheHash = cacheHash;
+        return result;
+      }
+
+      if (d.vod.length >= 2500) {
+        if (_pendingFilmsFilterHash != cacheHash) {
+          _pendingFilmsFilterHash = cacheHash;
+          unawaited(_runFilmsFilterAsync(cacheHash, d, q, key, idx));
+        }
+        if (_filteredRowsCacheHash == cacheHash && _filteredRowsCache != null) {
+          return _filteredRowsCache!;
+        }
+        // Tek kategori seçiliyken indeks zaten küçük — anında göster.
+        if (q.isEmpty &&
+            key != kAllCategories &&
+            key != kRecentVodCategory &&
+            key != kWatchedVodCategory) {
+          final list = List<VodItem>.from(idx.vodByCategory[key] ?? const [])
+              .where((v) => !_vodItemHidden(v))
+              .toList();
+          return numberRows([
+            for (final v in list) BrowseRow(listIndex: 0, title: v.name, vod: v),
+          ]);
+        }
+        return _filteredRowsCache ?? const <BrowseRow>[];
+      }
+
       // Arama varken yalnızca seçili kategoride aramak sonuçları kaçırır; tüm kütüphanede ara.
-      var list = (key == kAllCategories || q.isNotEmpty)
-          ? List<VodItem>.from(d.vod)
-          : d.vod.where((v) => v.categoryId == key).toList();
-      if (key == kRecentVodCategory && q.isEmpty) {
+      List<VodItem> list;
+      if (key == kAllCategories || q.isNotEmpty) {
+        list = List<VodItem>.from(d.vod);
+      } else if (key == kRecentVodCategory && q.isEmpty) {
+        final ids = d.recentVodIds.toSet();
+        list = d.vod.where((v) => ids.contains(v.id)).toList();
+      } else if (key == kWatchedVodCategory && q.isEmpty) {
+        final orderedIds = _watchedVodIdsOrdered();
+        if (orderedIds.isEmpty) {
+          list = const <VodItem>[];
+        } else {
+          list = [
+            for (final id in orderedIds)
+              if (idx.vodById[id] != null &&
+                  !_vodItemHidden(idx.vodById[id]!))
+                idx.vodById[id]!,
+          ];
+        }
+      } else {
+        list = List<VodItem>.from(idx.vodByCategory[key] ?? const []);
+      }
+      if (key == kRecentVodCategory && q.isEmpty && list.isEmpty) {
         final ids = d.recentVodIds.toSet();
         list = d.vod.where((v) => ids.contains(v.id)).toList();
       }
-      if (q.isEmpty && key == kAllCategories) {
-        list = list.where((v) => !_vodCategoryHidden(v.categoryId)).toList();
-      }
+      list = list.where((v) => !_vodItemHidden(v)).toList();
       if (q.isNotEmpty) {
         list = list.where((v) => v.name.toLowerCase().contains(q)).toList();
       }
@@ -1323,59 +1839,72 @@ class BrowseController extends GetxController {
 
     if (mode == BrowseMode.series) {
       final key = selectedCategoryKey.value;
+      List<List<SeriesItem>> groups;
 
-      // OPTIMIZASYON: Önce filtrele, sonra grupla (Filter-then-Group)
-      // Bu yaklaşım 15,895 öğe yerine sadece seçili kategorideki 300-500 öğeyi gruplar
-      List<SeriesItem> list;
+      // Son İzlenenler — kullanıcının izleme geçmişinden diziler. Kronolojik
+      // sırayı korumak için pre-grouped listeyi atlayıp doğrudan history
+      // sırasıyla kuruyoruz.
+      if (key == kWatchedSeriesCategory && q.isEmpty) {
+        final orderedIds = _watchedSeriesIdsOrdered();
+        if (orderedIds.isEmpty) {
+          groups = const <List<SeriesItem>>[];
+        } else {
+          final idx = BrowseCatalogIndex.of(d);
+          groups = [
+            for (final id in orderedIds)
+              if (idx.seriesById[id] != null &&
+                  !_seriesItemHidden(idx.seriesById[id]!))
+                <SeriesItem>[idx.seriesById[id]!],
+          ];
+        }
+      } else if (allPreGroupedSeries.isNotEmpty) {
+        // ✅ EN HIZLI YOL: Önceden gruplanmış listeyi filtrele
+        final recentSet = key == kRecentSeriesCategory ? d.recentSeriesIds.toSet() : null;
+        final favSet =
+            key == kFavSeriesCategory ? _fav.seriesIds.toSet() : null;
+        groups = allPreGroupedSeries.where((g) {
+          final visible = g.where((s) => !_seriesItemHidden(s)).toList();
+          if (visible.isEmpty) return false;
+          final matchesCategory = key == kAllCategories ||
+              (recentSet != null
+                  ? visible.any((s) => recentSet.contains(s.id))
+                  : favSet != null
+                      ? visible.any((s) => favSet.contains(s.id))
+                      : visible.any((s) => s.categoryId == key));
+          if (!matchesCategory) return false;
 
-      if (q.isNotEmpty) {
-        if (key == kRecentSeriesCategory) {
+          if (q.isEmpty) return true;
+          return visible.any((s) => s.name.toLowerCase().contains(q));
+        }).map((g) => g.where((s) => !_seriesItemHidden(s)).toList()).toList();
+      } else {
+        // Gruplama henüz bitmedi veya boş; eski yavaş yönteme fallback (veya boş liste)
+        List<SeriesItem> list;
+        if (q.isNotEmpty) {
+          list = d.series.where((s) => s.name.toLowerCase().contains(q)).toList();
+        } else if (key == kRecentSeriesCategory) {
           final idSet = d.recentSeriesIds.toSet();
+          list = d.series.where((s) => idSet.contains(s.id)).toList();
+        } else if (key == kFavSeriesCategory) {
+          final favSet = _fav.seriesIds.toSet();
           list = d.series
-              .where((s) =>
-                  idSet.contains(s.id) && s.name.toLowerCase().contains(q))
+              .where((s) => favSet.contains(s.id) && !_seriesItemHidden(s))
               .toList();
-        } else if (key != kAllCategories) {
-          list = d.series
-              .where((s) =>
-                  s.categoryId == key && s.name.toLowerCase().contains(q))
-              .toList();
+        } else if (key == kAllCategories) {
+          list = d.series.where((s) => !_seriesItemHidden(s)).toList();
         } else {
           list = d.series
-              .where((s) =>
-                  !_seriesCategoryHidden(s.categoryId) &&
-                  s.name.toLowerCase().contains(q))
+              .where((s) => s.categoryId == key && !_seriesItemHidden(s))
               .toList();
         }
-      } else if (key == kRecentSeriesCategory) {
-        final byId = {for (final s in d.series) s.id: s};
-        list = <SeriesItem>[
-          for (final id in d.recentSeriesIds)
-            if (byId.containsKey(id)) byId[id]!,
-        ].where((s) => !_seriesCategoryHidden(s.categoryId)).toList();
-      } else if (key == kAllCategories) {
-        // "Tümü" seçili ve arama yok: sadece gizli olmayan kategorileri göster
-        // NOT: Tüm dizileri gruplamak pahalı, bu yüzden sayfalama ile kısıtlıyoruz
-        list = d.series
-            .where((s) => !_seriesCategoryHidden(s.categoryId))
-            .toList();
-      } else {
-        // ✅ EN HIZLI YOL: Spesifik kategori seçili, arama yok
-        // Sadece bu kategorideki dizileri al (örn: 300-500 öğe)
-        list = d.series.where((s) => s.categoryId == key).toList();
+        groups = _groupSeriesItemsCached(list);
       }
 
-      // Sadece filtrelenmiş listeyi grupla (15,895 değil, 300-500 öğe!)
-      final groups = _groupSeriesItemsCached(list);
-
       // Pagination: show all items up to current page (infinite scroll)
-      final startIndex = 0;
       final endIndex = seriesCurrentPage.value * seriesPageSize;
       final paginatedGroups = endIndex < groups.length
-          ? groups.sublist(startIndex, endIndex)
+          ? groups.sublist(0, endIndex)
           : groups;
 
-      // Update hasMore flag
       seriesHasMore.value = endIndex < groups.length;
 
       final result = numberRows([
@@ -1400,29 +1929,27 @@ class BrowseController extends GetxController {
 
     final fk = selectedCategoryKey.value;
     final raw = <BrowseRow>[];
+    final idx = BrowseCatalogIndex.of(d);
 
     void tryChannel(int id) {
-      final m = d.channels.where((e) => e.id == id);
-      if (m.isEmpty) return;
-      final c = m.first;
+      final c = idx.channelById[id];
+      if (c == null || _channelHidden(c)) return;
       if (q.isEmpty || c.name.toLowerCase().contains(q)) {
         raw.add(BrowseRow(listIndex: 0, title: c.name, channel: c));
       }
     }
 
     void tryVod(int id) {
-      final m = d.vod.where((e) => e.id == id);
-      if (m.isEmpty) return;
-      final v = m.first;
+      final v = idx.vodById[id];
+      if (v == null || _vodItemHidden(v)) return;
       if (q.isEmpty || v.name.toLowerCase().contains(q)) {
         raw.add(BrowseRow(listIndex: 0, title: v.name, vod: v));
       }
     }
 
     void trySeries(int id) {
-      final m = d.series.where((e) => e.id == id);
-      if (m.isEmpty) return;
-      final s = m.first;
+      final s = idx.seriesById[id];
+      if (s == null || _seriesItemHidden(s)) return;
       if (q.isEmpty || s.name.toLowerCase().contains(q)) {
         raw.add(BrowseRow(listIndex: 0, title: s.name, series: s));
       }
@@ -1594,14 +2121,29 @@ class BrowseController extends GetxController {
 
   void _scheduleScrollBrowseListToFocusedRow() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      final list = filteredRows;
+      final cur = selectedRow.value;
+      if (cur != null) {
+        final i = list.indexWhere((r) => _sameRow(r, cur));
+        final sc = _tvBrowseListScroll;
+        if (i >= 0 && sc != null && sc.hasClients) {
+          final vp = sc.position.viewportDimension;
+          final target = (i * kTvGlassListRowExtent - vp * 0.22)
+              .clamp(0.0, sc.position.maxScrollExtent);
+          if ((sc.offset - target).abs() > 0.5) {
+            sc.jumpTo(target);
+            return;
+          }
+        }
+      }
       final ctx = listFocusNode.context;
       if (ctx == null || !ctx.mounted) return;
       Scrollable.ensureVisible(
         ctx,
-        duration: const Duration(milliseconds: 200),
-        curve: Curves.easeOutCubic,
-        alignment: 0.28,
-        alignmentPolicy: ScrollPositionAlignmentPolicy.explicit,
+        duration: Duration.zero,
+        curve: Curves.linear,
+        alignment: 0.22,
+        alignmentPolicy: ScrollPositionAlignmentPolicy.keepVisibleAtEnd,
       );
     });
   }
@@ -1725,16 +2267,16 @@ class BrowseController extends GetxController {
             actions: [
               FocusTraversalOrder(
                 order: const NumericFocusOrder(1),
-                child: Focus(
+                child: GlassDialogActionButton(
+                  label: 'common.close'.tr,
+                  primary: true,
                   autofocus: true,
-                  child: FilledButton(
-                    onPressed: () {
-                      if (dialogContext.mounted) {
-                        Navigator.of(dialogContext).pop<void>();
-                      }
-                    },
-                    child: Text('common.close'.tr),
-                  ),
+                  onDarkSurface: useTvGlass,
+                  onPressed: () {
+                    if (dialogContext.mounted) {
+                      Navigator.of(dialogContext).pop<void>();
+                    }
+                  },
                 ),
               ),
             ],
@@ -1751,6 +2293,15 @@ class BrowseController extends GetxController {
     selectedSeriesEpisode.value = null;
     seriesEpisodesLoading.value = false;
     seriesDetailSynopsis.value = '';
+    seriesXtreamDetailMeta.value = null;
+  }
+
+  void _applyXtreamSeriesDetailMeta(XtreamSeriesBrowseDetail detail) {
+    seriesXtreamDetailMeta.value = detail;
+    final plot = detail.seriesPlot?.trim();
+    if (plot != null && plot.isNotEmpty) {
+      seriesDetailSynopsis.value = plot;
+    }
   }
 
   Future<void> loadSeriesEpisodesForBrowseRow(
@@ -1798,6 +2349,7 @@ class BrowseController extends GetxController {
           );
 
       final detail = await loadDetail(s.id, s.name);
+      _applyXtreamSeriesDetailMeta(detail);
       var list = List<SeriesEpisodeOption>.from(detail.episodes);
       var syn = detail.seriesPlot?.trim();
       if (syn == null || syn.isEmpty) {
@@ -2014,6 +2566,7 @@ class BrowseController extends GetxController {
       if (isClosed || requestToken != _seriesEpisodesLoadToken) return;
 
       if (firstDetail != null) {
+        _applyXtreamSeriesDetailMeta(firstDetail);
         final p = firstDetail.seriesPlot?.trim();
         if (p != null && p.isNotEmpty) {
           mergedPlot = p;
@@ -2665,7 +3218,7 @@ class BrowseController extends GetxController {
     M3uResult d, {
     required bool favoritesOnly,
   }) {
-    var vods = d.vod.where((v) => !_vodCategoryHidden(v.categoryId));
+    var vods = d.vod.where((v) => !_vodItemHidden(v));
     if (favoritesOnly) {
       final ids = _fav.vodIds.toSet();
       vods = vods.where((v) => ids.contains(v.id));
@@ -2715,7 +3268,7 @@ class BrowseController extends GetxController {
     M3uResult d, {
     required bool favoritesOnly,
   }) {
-    var ser = d.series.where((s) => !_seriesCategoryHidden(s.categoryId));
+    var ser = d.series.where((s) => !_seriesItemHidden(s));
     if (favoritesOnly) {
       final ids = _fav.seriesIds.toSet();
       ser = ser.where((s) => ids.contains(s.id));
@@ -2878,4 +3431,19 @@ class BrowseController extends GetxController {
       goBack();
     }
   }
+}
+
+/// Film filtre isolate'i için veri seti başına bir kez kurulan, küçük-harf
+/// adlar dahil düz projeksiyon. Weak-key Expando ile [M3uResult] kimliğine
+/// bağlanır; liste geçişlerinde her seferinde yeniden hesaplanmaz.
+class _VodFilterProjection {
+  const _VodFilterProjection({
+    required this.ids,
+    required this.namesLower,
+    required this.categoryIds,
+  });
+
+  final List<int> ids;
+  final List<String> namesLower;
+  final List<int> categoryIds;
 }

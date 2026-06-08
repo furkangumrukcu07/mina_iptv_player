@@ -89,10 +89,23 @@ class IntegrityService extends GetxService {
     _integrityVlog(
       'kontrol planlandı (project=${cloudProjectNumber.trim()}, paket sonradan loglanır)',
     );
+    // Play Integrity'nin native `requestIntegrityToken` çağrısı Android platform
+    // ana iş parçacığını birkaç saniye meşgul edebiliyor; splash sırasında
+    // çalışırsa playlist/EPG disk okumalarının (path_provider, secure storage,
+    // shared_preferences — hepsi method channel) yanıtlarını kuyruğa sokup
+    // açılışı uzatıyor. Bu yüzden kontrolü ana ekran tamamen oturduktan SONRAYA
+    // erteliyoruz. Bu yalnızca "mağazadan kurulum öner" amaçlı bir kapı
+    // olduğundan gecikmesinin UX'e etkisi yok.
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      unawaited(_runAndroidReleaseGate(appContext));
+      Future<void>.delayed(_releaseGateStartupDelay, () {
+        unawaited(_runAndroidReleaseGate(appContext));
+      });
     });
   }
+
+  /// Bütünlük kontrolünün açılıştan ne kadar sonra çalışacağı. Splash + ilk
+  /// ana ekran yükünün bitmesini garanti edecek kadar uzun seçildi.
+  static const Duration _releaseGateStartupDelay = Duration(seconds: 12);
 
   Future<void> _runAndroidReleaseGate(BuildContext appContext) async {
     if (_completed) return;

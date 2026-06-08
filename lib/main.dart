@@ -1,5 +1,6 @@
 import 'dart:async' show unawaited;
 
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -14,14 +15,21 @@ import 'core/i18n/app_locale.dart';
 import 'core/i18n/app_translations.dart';
 import 'core/services/app_install_source_service.dart';
 import 'core/services/app_settings_service.dart';
+import 'core/services/firebase_bootstrap.dart';
+import 'core/services/mina_push_service.dart';
+import 'core/services/opensubtitles_service.dart';
 import 'core/services/crash_reporting.dart';
-import 'core/services/continue_watching_service.dart';
 import 'core/services/integrity_service.dart';
 import 'core/services/parental_control_service.dart';
 import 'core/services/system_volume_service.dart';
+import 'core/epg/global_epg_service.dart';
+import 'core/epg/home_epg_catalog_cache.dart';
 import 'core/routes/app_pages.dart';
 import 'core/routes/app_routes.dart';
+import 'core/theme/app_performance.dart';
+import 'core/theme/app_scroll_physics.dart';
 import 'core/theme/app_theme.dart';
+import 'ui/adaptive_haptic_scroll_scope.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -57,16 +65,31 @@ Future<void> main() async {
       );
     }
 
+    // Firebase'i korumalı başlat: yapılandırma yoksa sessizce atlanır,
+    // uygulama normal akışına devam eder (çökmez).
+    await initFirebaseGuarded();
+
+    // FCM arka plan mesaj handler'ı runApp'ten ÖNCE kaydedilmeli. Firebase
+    // hazır değilse atlanır.
+    if (gFirebaseReady) {
+      FirebaseMessaging.onBackgroundMessage(minaFirebaseBackgroundHandler);
+    }
+
     final settings = AppSettingsService();
     await settings.ensureLoaded();
+    // Düşük Donanımlı Cihaz Modu açıksa Flutter image cache limitlerini hemen
+    // düşür (poster/logo decode baskısını azaltır, OOM riskini düşürür).
+    AppPerformance.applyImageCacheLimits(settings.lowEndDeviceMode.value);
     Get.put<AppSettingsService>(settings, permanent: true);
+    Get.put(OpenSubtitlesService(), permanent: true);
     final parental = ParentalControlService();
     Get.put<ParentalControlService>(parental, permanent: true);
     await parental.refreshPinState();
 
     Get.put<SystemVolumeService>(SystemVolumeService(), permanent: true);
 
-    Get.put<ContinueWatchingService>(ContinueWatchingService(), permanent: true);
+    Get.put<GlobalEpgService>(GlobalEpgService(), permanent: true);
+    Get.put<HomeEpgCatalogCache>(HomeEpgCatalogCache(), permanent: true);
     await AndroidPlaybackSocHints.ensureLoaded();
     Get.updateLocale(
       materialLocaleFromLanguageCode(settings.languageCode.value),
@@ -90,6 +113,7 @@ class MinaIptvApp extends StatelessWidget {
       settings.languageCode.value;
       settings.themeLabel.value;
       settings.appFontFamilyKey.value;
+      settings.layoutMode.value;
       return GetMaterialApp(
       title: 'Mina IPTV Player',
       debugShowCheckedModeBanner: false,
@@ -124,6 +148,7 @@ class MinaIptvApp extends StatelessWidget {
         settings.themeLabel.value,
         appFontFamilyKey: settings.appFontFamilyKey.value,
       ),
+      scrollBehavior: const MinaScrollBehavior(),
       initialBinding: InitialBinding(),
       initialRoute: initialRoute,
       getPages: AppPages.routes,
@@ -156,7 +181,7 @@ class MinaIptvApp extends StatelessWidget {
                   child: child!,
                 );
               },
-              child: wrapped,
+              child: AdaptiveHapticScrollScope(child: wrapped),
             );
           },
         );

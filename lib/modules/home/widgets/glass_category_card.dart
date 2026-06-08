@@ -4,11 +4,14 @@ import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
+import '../../../core/home/home_card_frame_style.dart';
 import '../../../core/layout/app_layout_mode.dart';
+import '../../../core/haptics/adaptive_haptics_service.dart';
 import '../../../core/services/app_settings_service.dart';
 import '../../../core/theme/app_performance.dart';
 import '../../../core/theme/glass_appearance.dart';
 import '../../../ui/iptv_channel_logo.dart';
+import '../../../ui/tv_dpad_focus.dart';
 
 /// Dark Flat: çizgi (outline) ikon eşlemesi.
 IconData minaFlatCategoryIcon(IconData icon) {
@@ -20,6 +23,10 @@ IconData minaFlatCategoryIcon(IconData icon) {
     return Icons.theater_comedy_outlined;
   }
   if (icon == Icons.favorite_rounded) return Icons.favorite_border_rounded;
+  if (icon == Icons.view_timeline_rounded) {
+    return Icons.view_timeline_outlined;
+  }
+  if (icon == Icons.forum_rounded) return Icons.forum_outlined;
   return icon;
 }
 
@@ -33,6 +40,13 @@ class GlassCategoryCard extends StatelessWidget {
     required this.onTap,
     this.secondaryLabel,
     this.previewImageUrl,
+    /// Sağ üst köşe; gizli kategori/kanal filtreleri sonrası görünür öğe sayısı.
+    this.itemCount,
+    /// `null` ise varsayılan kart ikon boyutu kullanılır.
+    this.iconSize,
+    /// Önizleme görseli yokken merkezdeki ikonu büyük + belirgin (primary
+    /// renkli) gösterir. Sohbet ve Favoriler kartları için kullanılır.
+    this.prominentPlaceholderIcon = false,
   });
 
   final String primaryLabel;
@@ -41,6 +55,15 @@ class GlassCategoryCard extends StatelessWidget {
   final IconData icon;
   final bool focused;
   final VoidCallback onTap;
+
+  /// `null` veya negatifse rozet çizilmez.
+  final int? itemCount;
+
+  /// Belirli kartlar için ikon boyutu geçersiz kılma (ör. Chat kartı).
+  final double? iconSize;
+
+  /// Önizleme görseli olmayan kartlarda merkez ikonu vurgulu çizer.
+  final bool prominentPlaceholderIcon;
 
   @override
   Widget build(BuildContext context) {
@@ -56,10 +79,18 @@ class GlassCategoryCard extends StatelessWidget {
 
       final reduce = settings.reduceBlur.value;
       final tv = settings.layoutMode.value == AppLayoutMode.tv;
-      final isGm = theme == GlassThemeLabels.glassmorphism;
+      // Android + TV: gölge blur'u (raster geçişi) eski kutularda pahalı; kaldır.
+      final isTvAndroid = AppPerformance.isTvAndroidLayout(settings);
+      final isGm = theme == GlassThemeLabels.glassmorphism ||
+          theme == GlassThemeLabels.minaGlass ||
+          theme == GlassThemeLabels.flyUi;
       final isGg = theme == GlassThemeLabels.glassGri;
       final flat = ga.useFlatHomeCategoryStyle;
-      final sigma = flat || reduce || isPortrait || tv
+      final sigma = flat ||
+              reduce ||
+              isPortrait ||
+              tv ||
+              ga.usesSyntheticGlassSurface
           ? 0.0
           : (isGm || isGg ? 14.0 : 10.0);
 
@@ -90,7 +121,7 @@ class GlassCategoryCard extends StatelessWidget {
             Icon(
               displayIcon,
               color: iconColor,
-              size: flat ? 26 : 24,
+              size: iconSize ?? (flat ? 26 : 24),
               shadows: flat
                   ? const [
                       Shadow(
@@ -158,26 +189,38 @@ class GlassCategoryCard extends StatelessWidget {
                 )
               : inner;
 
-      return GestureDetector(
-        onTap: onTap,
-        child: AnimatedContainer(
-          duration: AppPerformance.uiDuration(
-            const Duration(milliseconds: 180),
-          ),
-          curve: Curves.easeOut,
-          decoration: BoxDecoration(
+      final tap = Get.isRegistered<AdaptiveHapticsService>()
+          ? Get.find<AdaptiveHapticsService>().wrapTap(onTap)
+          : onTap;
+
+      final remote = remoteNavForScreenLayout(
+        context,
+        settings.layoutMode.value,
+      );
+      final frameStyle = settings.homeCardFrameStyle.value;
+      final card = HomeCardFrame(
+          style: frameStyle,
+          radius: cardR,
+          child: AnimatedContainer(
+            duration: AppPerformance.uiDuration(
+              const Duration(milliseconds: 180),
+            ),
+            curve: Curves.easeOut,
+            decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(cardR),
             border: Border.all(
               width: 0.5,
               color: Colors.white.withValues(alpha: 0.28),
             ),
-            boxShadow: [
-              BoxShadow(
-                color: ga.homeCategoryCardNeutralShadow(),
-                blurRadius: flat ? 14 : 10,
-                offset: Offset(0, flat ? 6 : 4),
-              ),
-            ],
+            boxShadow: isTvAndroid
+                ? null
+                : [
+                    BoxShadow(
+                      color: ga.homeCategoryCardNeutralShadow(),
+                      blurRadius: flat ? 14 : 10,
+                      offset: Offset(0, flat ? 6 : 4),
+                    ),
+                  ],
           ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(clipInner),
@@ -192,26 +235,42 @@ class GlassCategoryCard extends StatelessWidget {
                       heightFactor: 0.75,
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(12),
-                        child: LayoutBuilder(
-                          builder: (context, constraints) {
-                            final dpr =
-                                MediaQuery.devicePixelRatioOf(context);
-                            final side = math.max(
-                              1,
-                              (constraints.biggest.shortestSide * dpr)
-                                  .round(),
-                            );
-                            return IptvChannelLogo(
-                              imageUrl: previewImageUrl!,
-                              width: constraints.maxWidth,
-                              height: constraints.maxHeight,
-                              fit: BoxFit.cover,
-                              memCacheWidth: side,
-                              memCacheHeight: side,
-                              errorWidget: _buildPlaceholder(icon),
-                              placeholder: _buildPlaceholder(icon),
-                            );
-                          },
+                        // Önizleme URL'i (canlı kartta periyodik) değiştiğinde
+                        // sert geçiş yerine yumuşak çapraz geçiş.
+                        child: AnimatedSwitcher(
+                          duration: const Duration(milliseconds: 450),
+                          switchInCurve: Curves.easeOut,
+                          switchOutCurve: Curves.easeIn,
+                          layoutBuilder: (current, previous) => Stack(
+                            fit: StackFit.expand,
+                            alignment: Alignment.center,
+                            children: [
+                              ...previous,
+                              if (current != null) current,
+                            ],
+                          ),
+                          child: LayoutBuilder(
+                            key: ValueKey<String>(previewImageUrl!),
+                            builder: (context, constraints) {
+                              final dpr =
+                                  MediaQuery.devicePixelRatioOf(context);
+                              final side = math.max(
+                                1,
+                                (constraints.biggest.shortestSide * dpr)
+                                    .round(),
+                              );
+                              return IptvChannelLogo(
+                                imageUrl: previewImageUrl!,
+                                width: constraints.maxWidth,
+                                height: constraints.maxHeight,
+                                fit: BoxFit.cover,
+                                memCacheWidth: side,
+                                memCacheHeight: side,
+                                errorWidget: _buildPlaceholder(icon),
+                                placeholder: _buildPlaceholder(icon),
+                              );
+                            },
+                          ),
                         ),
                       ),
                     ),
@@ -222,7 +281,11 @@ class GlassCategoryCard extends StatelessWidget {
                     child: FractionallySizedBox(
                       widthFactor: 0.75,
                       heightFactor: 0.75,
-                      child: _buildPlaceholder(icon),
+                      child: _buildPlaceholder(
+                        icon,
+                        prominent: prominentPlaceholderIcon,
+                        tint: primary,
+                      ),
                     ),
                   ),
                 glassLayer,
@@ -272,15 +335,103 @@ class GlassCategoryCard extends StatelessWidget {
                       ),
                     ),
                   ),
+                if (itemCount != null && itemCount! >= 0)
+                  Positioned(
+                    top: 8,
+                    right: 8,
+                    child: IgnorePointer(
+                      child: _HomeCategoryCountBadge(
+                        count: itemCount!,
+                        flat: flat,
+                        glassBorderAlpha: 0.28,
+                        textColor: flat ? cs.onSurface : Colors.white,
+                      ),
+                    ),
+                  ),
               ],
             ),
           ),
         ),
       );
+      if (remote) {
+        final activate = tap ?? onTap;
+        return tvDpadActivateWrap(
+          context,
+          onActivate: activate,
+          borderRadius: cardR,
+          scaleOnFocus: 1.04,
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: activate,
+              borderRadius: BorderRadius.circular(cardR),
+              child: card,
+            ),
+          ),
+        );
+      }
+      return GestureDetector(onTap: tap, child: card);
     });
   }
 
-  Widget _buildPlaceholder(IconData fallbackIcon) {
+  Widget _buildPlaceholder(
+    IconData fallbackIcon, {
+    bool prominent = false,
+    Color? tint,
+  }) {
+    // Vurgulu mod (Sohbet / Favoriler): büyük, belirgin, primary renkli daire
+    // içinde ikon. Normal mod: önceki soluk ikon davranışı korunur.
+    if (prominent) {
+      final accent = tint ?? Colors.white;
+      return LayoutBuilder(
+        builder: (context, constraints) {
+          final shortest = constraints.biggest.shortestSide;
+          final diameter = (shortest * 0.62).clamp(48.0, 120.0);
+          final iconSz = diameter * 0.56;
+          return Center(
+            child: Container(
+              width: diameter,
+              height: diameter,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    accent.withValues(alpha: 0.32),
+                    accent.withValues(alpha: 0.14),
+                  ],
+                ),
+                border: Border.all(
+                  color: accent.withValues(alpha: 0.55),
+                  width: 1.4,
+                ),
+                boxShadow: [
+                  BoxShadow(
+                    color: accent.withValues(alpha: 0.30),
+                    blurRadius: 16,
+                    spreadRadius: 1,
+                  ),
+                ],
+              ),
+              alignment: Alignment.center,
+              child: Icon(
+                fallbackIcon,
+                color: Colors.white,
+                size: iconSz,
+                shadows: const [
+                  Shadow(
+                    color: Color(0x99000000),
+                    blurRadius: 6,
+                    offset: Offset(0, 1),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      );
+    }
     return Container(
       decoration: BoxDecoration(
         color: Colors.white.withValues(alpha: 0.05),
@@ -295,6 +446,73 @@ class GlassCategoryCard extends StatelessWidget {
           fallbackIcon,
           color: Colors.white.withValues(alpha: 0.15),
           size: 48,
+        ),
+      ),
+    );
+  }
+}
+
+/// Ana sayfa kategori kartı sağ üst: dinamik genişleyen sayı rozeti.
+class _HomeCategoryCountBadge extends StatelessWidget {
+  const _HomeCategoryCountBadge({
+    required this.count,
+    required this.flat,
+    required this.glassBorderAlpha,
+    required this.textColor,
+  });
+
+  final int count;
+  final bool flat;
+  final double glassBorderAlpha;
+  final Color textColor;
+
+  @override
+  Widget build(BuildContext context) {
+    final s = count.toString();
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(6),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(
+            width: 0.5,
+            color: flat
+                ? Theme.of(context).colorScheme.outline.withValues(alpha: 0.55)
+                : Colors.white.withValues(alpha: glassBorderAlpha),
+          ),
+          color: flat
+              ? Theme.of(context)
+                  .colorScheme
+                  .surfaceContainerHighest
+                  .withValues(alpha: 0.92)
+              : Colors.black.withValues(alpha: 0.42),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.center,
+            child: Text(
+              s,
+              maxLines: 1,
+              style: TextStyle(
+                color: textColor,
+                fontSize: 12,
+                fontWeight: FontWeight.w900,
+                height: 1,
+                letterSpacing: 0.2,
+                shadows: flat
+                    ? null
+                    : const [
+                        Shadow(
+                          color: Color(0xAA000000),
+                          blurRadius: 4,
+                          offset: Offset(0, 1),
+                        ),
+                      ],
+              ),
+            ),
+          ),
         ),
       ),
     );

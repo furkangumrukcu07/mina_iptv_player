@@ -34,6 +34,11 @@ class UserInfo {
     required this.isTrial,
     required this.activeConnections,
     required this.maxConnections,
+    this.password,
+    this.message,
+    this.auth,
+    this.createdAt,
+    this.allowedOutputFormats = const <String>[],
   });
 
   final String username;
@@ -42,4 +47,66 @@ class UserInfo {
   final bool isTrial;
   final int activeConnections;
   final int maxConnections;
+
+  /// Xtream panelinde tanımlı şifre. UI'da maskelenir.
+  final String? password;
+
+  /// Panel tarafından döndürülen mesaj (ör. "Welcome").
+  final String? message;
+
+  /// `1` = doğrulandı, `0` = doğrulanmadı.
+  final int? auth;
+  final DateTime? createdAt;
+
+  /// `m3u8`, `ts`, `rtmp` vb. panelin desteklediği çıktı formatları.
+  final List<String> allowedOutputFormats;
+}
+
+/// Xtream panelinin döndürdüğü `server_info` bilgileri (sunucu URL'leri,
+/// portlar, saat dilimi, vs.).
+class XtreamServerInfo {
+  const XtreamServerInfo({
+    this.url,
+    this.port,
+    this.httpsPort,
+    this.rtmpPort,
+    this.serverProtocol,
+    this.timezone,
+    this.serverTimeUtc,
+    this.serverTimeLocalLabel,
+    this.process,
+    this.revision,
+  });
+
+  final String? url;
+  final String? port;
+  final String? httpsPort;
+  final String? rtmpPort;
+  final String? serverProtocol;
+  final String? timezone;
+  final DateTime? serverTimeUtc;
+  final String? serverTimeLocalLabel;
+  final bool? process;
+  final String? revision;
+
+  bool get isEmpty =>
+      (url == null || url!.trim().isEmpty) &&
+      (port == null || port!.trim().isEmpty) &&
+      (httpsPort == null || httpsPort!.trim().isEmpty) &&
+      (rtmpPort == null || rtmpPort!.trim().isEmpty) &&
+      (serverProtocol == null || serverProtocol!.trim().isEmpty) &&
+      (timezone == null || timezone!.trim().isEmpty) &&
+      serverTimeUtc == null &&
+      (serverTimeLocalLabel == null || serverTimeLocalLabel!.trim().isEmpty);
+}
+
+/// Ayarlar > Xtream Hesabı ekranı için tek bir paket — `user_info` + `server_info`.
+class XtreamAccountSnapshot {
+  const XtreamAccountSnapshot({
+    required this.user,
+    required this.server,
+  });
+
+  final UserInfo? user;
+  final XtreamServerInfo? server;
 }

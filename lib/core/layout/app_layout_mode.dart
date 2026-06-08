@@ -22,6 +22,11 @@ extension AppLayoutModeRemoteNav on AppLayoutMode {
       this == AppLayoutMode.tv || this == AppLayoutMode.tablet;
 }
 
+extension AppLayoutModeSeriesDetail on AppLayoutMode {
+  /// Kapak + meta + sezon/bölüm listesi: mobil ve tablet (dikey/yatay). TV eski düzen.
+  bool get usesModernSeriesDetailUi => this != AppLayoutMode.tv;
+}
+
 /// Mobil yatay (geniş çok sütun) ekranda da TV/tablet ile aynı kumanda mantığı.
 bool effectiveRemoteNavigationLayout(
   AppLayoutMode mode, {

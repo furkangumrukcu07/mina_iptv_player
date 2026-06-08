@@ -216,6 +216,7 @@ abstract final class IptvBetterPlayerConfig {
   }) {
     return BetterPlayerControlsConfiguration(
       playerTheme: BetterPlayerTheme.custom,
+      backgroundColor: Colors.black,
       controlBarColor: Colors.black.withValues(alpha: 0.82),
       textColor: Colors.white,
       iconsColor: Colors.white,
@@ -227,7 +228,10 @@ abstract final class IptvBetterPlayerConfig {
       controlsHideTime: const Duration(seconds: 6),
       showControlsOnInitialize: true,
       enablePip: false,
-      enableFullscreen: true,
+      // Özel TvBetterPlayerControls kullanıldığı için dahili tam ekran
+      // rotası devre dışı — yatayda ikinci bir route açılıp Geri ile siyah
+      // ekranda kalma sorununa yol açabiliyordu.
+      enableFullscreen: false,
       enableMute: true,
       enablePlayPause: true,
       enableSkips: true,
@@ -285,9 +289,10 @@ abstract final class IptvBetterPlayerConfig {
       autoDispose: autoDispose,
       handleAudioInterruption: handleAudioInterruption,
       useHardwareAcceleration: useHardwareAcceleration,
-      // Tam ekran / görünürlük: Better tarafında otomatik yön ve yerleşim (odak = medya oturumu ile birlikte).
-      autoDetectFullscreenDeviceOrientation: true,
-      autoDetectFullscreenAspectRatio: true,
+      // Yön ve immersive mod uygulama tarafında (SystemChrome / PlaybackOrientationManager)
+      // yönetilir; Better'ın kendi tam ekran route'u ile çakışmasın.
+      autoDetectFullscreenDeviceOrientation: false,
+      autoDetectFullscreenAspectRatio: false,
       eventListener: eventListener,
       showPlaceholderUntilPlay: false,
       subtitlesConfiguration:
@@ -412,16 +417,37 @@ BetterPlayerDataSource iptvBetterPlayerDataSource(
   );
 
   final defaultAsms = !isTs && isAdaptive;
+  // VOD: HLS/DASH manifest altyazılarını her zaman dene (film/dizi).
+  final effectiveAsmsSubtitles = useAsmsSubtitles ??
+      (liveStream ? defaultAsms : !isTs);
 
   final mergedHeaders = Map<String, String>.from(
     headers ?? IptvPlaybackDefaults.headersForStreamUrl(url),
   );
-  mergedHeaders['User-Agent'] = IptvPlaybackDefaults.httpHeaders['User-Agent']!;
+  // Kullanıcı Ayarlar > Oynatma > User Agent menüsünden seçtiği UA'yı her
+  // istek için garanti altına al (override hook).
+  mergedHeaders['User-Agent'] = IptvPlaybackDefaults.effectiveUserAgent;
 
   final mergedCache = cacheConfiguration ??
       (liveStream
           ? null
           : IptvBetterPlayerConfig.iptvPlaybackCacheConfigurationForUrl(url));
+
+  // Lokal dosya tespiti: indirilen film/bölüm `/storage/.../file.mp4`
+  // veya `file://...` formatında gelir. BetterPlayer'da `.file()` factory'si
+  // gerekir; `.network()` lokal path'i kabul etmez.
+  final isLocalFile = _isLocalFilePath(url);
+  if (isLocalFile) {
+    final cleanedPath = url.startsWith('file://')
+        ? url.substring('file://'.length)
+        : url;
+    return BetterPlayerDataSource.file(
+      cleanedPath,
+      useAsmsSubtitles: effectiveAsmsSubtitles,
+      useAsmsTracks: useAsmsTracks ?? defaultAsms,
+      cacheConfiguration: mergedCache,
+    );
+  }
 
   return BetterPlayerDataSource.network(
     url,
@@ -430,8 +456,16 @@ BetterPlayerDataSource iptvBetterPlayerDataSource(
     bufferingConfiguration: buffering,
     cacheConfiguration: mergedCache,
     videoFormat: videoFormat,
-    useAsmsSubtitles: useAsmsSubtitles ?? defaultAsms,
+    useAsmsSubtitles: effectiveAsmsSubtitles,
     useAsmsTracks: useAsmsTracks ?? defaultAsms,
     useAsmsAudioTracks: effectiveUseAsmsAudio,
   );
+}
+
+/// Verilen `url` lokal bir dosya yolu mu? (`/storage/...`, `/data/...`,
+/// `file://...`). Network URI (http/https/rtmp/rtsp) ise `false` döner.
+bool _isLocalFilePath(String url) {
+  if (url.startsWith('file://')) return true;
+  if (url.startsWith('/')) return true;
+  return false;
 }

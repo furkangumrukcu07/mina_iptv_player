@@ -10,17 +10,24 @@ import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 import '../../core/layout/app_layout_mode.dart';
 import '../../core/routes/app_routes.dart';
+import '../../core/theme/app_scroll_physics.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/theme/app_performance.dart';
 import '../../core/theme/glass_appearance.dart';
 import '../../domain/entities/vod.dart';
 import 'browse_mode.dart';
 import '../../core/services/favorites_service.dart';
+import '../../core/services/active_playlist_service.dart';
 import '../../core/services/app_settings_service.dart';
 import '../../core/services/epg_service.dart';
+import '../../core/services/search_history_service.dart';
 import '../../ui/glass_tv_shell.dart';
 import '../../ui/glass_mini_stream_preview.dart';
 import '../../ui/glass_mini_poster_preview.dart';
+import '../../ui/tv_dpad_focus.dart';
+import '../playlist/widgets/playlist_switcher_bar.dart';
 import 'browse_controller.dart';
+import 'series_portrait_detail_view.dart';
 
 String browseFmtShortDate(DateTime d) {
   final loc = Get.locale?.toString() ?? 'en_US';
@@ -51,6 +58,34 @@ String browseFmtDurationCompact(int totalSecs) {
   final m = (totalSecs % 3600) ~/ 60;
   if (h > 0) return '${h}h ${m}m';
   return '${m}m';
+}
+
+String browseLangCodeForDetailPill(String raw) {
+  final t = raw.trim();
+  if (t.isEmpty) return '';
+  final r = t.toLowerCase();
+  if (r.contains('turk') || r == 'tr' || r == 'tur') return 'TR';
+  if (r.contains('engl') || r == 'en' || r.contains('ingiliz')) return 'EN';
+  if (r.contains('span') || r == 'es') return 'ES';
+  if (r.contains('fren') || r.contains('french') || r == 'fr') return 'FR';
+  if (r.contains('arab') || r == 'ar') return 'AR';
+  if (r.contains('germ') || r == 'de' || r.contains('alman')) return 'DE';
+  if (r.contains('ital') || r == 'it') return 'IT';
+  if (t.length <= 4 && RegExp(r'^[A-Za-z]{2,3}$').hasMatch(t)) {
+    return t.toUpperCase();
+  }
+  return t.length >= 2 ? t.substring(0, 2).toUpperCase() : t.toUpperCase();
+}
+
+String? browseFmtOmdbRuntimeForDetail(String? runtime) {
+  if (runtime == null || runtime.trim().isEmpty || runtime == 'N/A') {
+    return null;
+  }
+  final m = RegExp(r'(\d+)').firstMatch(runtime);
+  if (m != null) {
+    return 'browse.duration.minutes'.trParams({'n': m.group(1)!});
+  }
+  return runtime.trim();
 }
 
 String _vodPortraitSynopsis(VodItem v) {
@@ -115,8 +150,6 @@ class _BrowsePortraitFilmVodColumn extends StatelessWidget {
     final poster = v.posterUrl?.trim();
     final rating = v.rating?.trim();
     final durSecs = v.durationSecs;
-    final durLabel =
-        durSecs != null && durSecs > 0 ? browseFmtDurationCompact(durSecs) : '';
 
     final settings = Get.find<AppSettingsService>();
 
@@ -143,6 +176,21 @@ class _BrowsePortraitFilmVodColumn extends StatelessWidget {
           ),
         );
       }
+      final blurPoster = AppPerformance.useRealtimeBackdropBlur(settings);
+      final posterStack = Transform.scale(
+        scale: 1.08,
+        child: CachedNetworkImage(
+          imageUrl: poster,
+          fit: BoxFit.cover,
+          width: width,
+          height: heroH,
+          filterQuality: FilterQuality.high,
+          memCacheWidth:
+              (width * MediaQuery.devicePixelRatioOf(context)).round(),
+          memCacheHeight:
+              (heroH * MediaQuery.devicePixelRatioOf(context)).round(),
+        ),
+      );
       return ClipRRect(
         borderRadius: BorderRadius.circular(14),
         child: SizedBox(
@@ -151,25 +199,14 @@ class _BrowsePortraitFilmVodColumn extends StatelessWidget {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              ImageFiltered(
-                imageFilter: ImageFilter.blur(sigmaX: 26, sigmaY: 26),
-                child: Transform.scale(
-                  scale: 1.08,
-                  child: CachedNetworkImage(
-                    imageUrl: poster,
-                    fit: BoxFit.cover,
-                    width: width,
-                    height: heroH,
-                    filterQuality: FilterQuality.high,
-                    memCacheWidth:
-                        (width * MediaQuery.devicePixelRatioOf(context))
-                            .round(),
-                    memCacheHeight:
-                        (heroH * MediaQuery.devicePixelRatioOf(context))
-                            .round(),
-                  ),
-                ),
-              ),
+              if (blurPoster)
+                ImageFiltered(
+                  imageFilter:
+                      ImageFilter.blur(sigmaX: 26, sigmaY: 26),
+                  child: posterStack,
+                )
+              else
+                posterStack,
               Material(
                 color: Colors.transparent,
                 child: InkWell(
@@ -219,7 +256,7 @@ class _BrowsePortraitFilmVodColumn extends StatelessWidget {
     return SizedBox(
       width: width,
       child: SingleChildScrollView(
-        physics: const BouncingScrollPhysics(),
+        physics: AppScrollPhysics.list(),
         clipBehavior: Clip.none,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -246,64 +283,165 @@ class _BrowsePortraitFilmVodColumn extends StatelessWidget {
                 ),
               ),
             ],
-            if ((rating != null && rating.isNotEmpty) ||
-                durLabel.isNotEmpty) ...[
-              const SizedBox(height: 10),
-              Wrap(
-                crossAxisAlignment: WrapCrossAlignment.center,
-                spacing: 8,
-                runSpacing: 6,
-                children: [
-                  if (rating != null && rating.isNotEmpty) ...[
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 5,
-                        vertical: 2,
-                      ),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFFF5C518),
-                        borderRadius: BorderRadius.circular(3),
-                      ),
-                      child: const Text(
-                        'IMDb',
-                        style: TextStyle(
-                          color: Colors.black,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w900,
-                          height: 1,
-                        ),
+            Obx(() {
+              final omdb = controller.omdbMovieDetail.value;
+              final imdbText = (omdb?.imdbRating != null &&
+                      omdb!.imdbRating != 'N/A')
+                  ? omdb.imdbRating!.trim()
+                  : ((rating != null && rating.isNotEmpty) ? rating : null);
+              final runtimeLabel = browseFmtOmdbRuntimeForDetail(
+                    omdb?.runtime,
+                  ) ??
+                  (durSecs != null && durSecs > 0
+                      ? browseFmtDurationCompact(durSecs)
+                      : null);
+              final yearText = (omdb?.year != null &&
+                      omdb!.year!.trim().isNotEmpty &&
+                      omdb.year!.toUpperCase() != 'N/A')
+                  ? omdb.year!.trim()
+                  : null;
+              final genreText = (omdb?.genre != null &&
+                      omdb!.genre!.trim().isNotEmpty &&
+                      omdb.genre!.toUpperCase() != 'N/A')
+                  ? omdb.genre!.trim()
+                  : null;
+              final ratedRaw = omdb?.rated?.trim();
+              final rated = (ratedRaw != null &&
+                      ratedRaw.isNotEmpty &&
+                      ratedRaw.toUpperCase() != 'N/A')
+                  ? ratedRaw
+                  : null;
+
+              final sep = Text(
+                '•',
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.45),
+                  fontSize: 14,
+                ),
+              );
+
+              final metaChildren = <Widget>[];
+              if (imdbText != null) {
+                metaChildren.addAll([
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 5,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF5C518),
+                      borderRadius: BorderRadius.circular(3),
+                    ),
+                    child: const Text(
+                      'IMDb',
+                      style: TextStyle(
+                        color: Colors.black,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w900,
+                        height: 1,
                       ),
                     ),
-                    Text(
-                      rating,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 15,
+                  ),
+                  Text(
+                    imdbText,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ]);
+              }
+              void addSepThen(Widget w) {
+                if (metaChildren.isNotEmpty) metaChildren.add(sep);
+                metaChildren.add(w);
+              }
+
+              if (yearText != null) {
+                addSepThen(
+                  Text(
+                    yearText,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                );
+              }
+              if (runtimeLabel != null) {
+                addSepThen(
+                  Text(
+                    runtimeLabel,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                );
+              }
+              if (rated != null) {
+                addSepThen(
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(alpha: 0.14),
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(
+                        color: Colors.white.withValues(alpha: 0.28),
+                      ),
+                    ),
+                    child: Text(
+                      rated,
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.92),
+                        fontSize: 12,
                         fontWeight: FontWeight.w700,
                       ),
                     ),
+                  ),
+                );
+              }
+
+              final hasMetaRow = metaChildren.isNotEmpty;
+              final hasGenre = genreText != null;
+
+              if (!hasMetaRow && !hasGenre) {
+                return const SizedBox.shrink();
+              }
+
+              return Padding(
+                padding: const EdgeInsets.only(top: 10),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (hasMetaRow)
+                      Wrap(
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        spacing: 8,
+                        runSpacing: 6,
+                        children: metaChildren,
+                      ),
+                    if (hasGenre) ...[
+                      if (hasMetaRow) const SizedBox(height: 8),
+                      Text(
+                        genreText,
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.62),
+                          fontSize: 13,
+                          fontStyle: FontStyle.italic,
+                          height: 1.35,
+                        ),
+                      ),
+                    ],
                   ],
-                  if ((rating != null && rating.isNotEmpty) &&
-                      durLabel.isNotEmpty)
-                    Text(
-                      '•',
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.45),
-                        fontSize: 14,
-                      ),
-                    ),
-                  if (durLabel.isNotEmpty)
-                    Text(
-                      durLabel,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                ],
-              ),
-            ],
+                ),
+              );
+            }),
             const SizedBox(height: 14),
             Row(
               crossAxisAlignment: CrossAxisAlignment.center,
@@ -715,7 +853,7 @@ class BrowseView extends GetView<BrowseController> {
                                             Expanded(
                                               child: TabBarView(
                                                 physics:
-                                                    const BouncingScrollPhysics(),
+                                                    AppScrollPhysics.list(),
                                                 dragStartBehavior:
                                                     DragStartBehavior.down,
                                                 children: [
@@ -785,11 +923,23 @@ class BrowseView extends GetView<BrowseController> {
                                         .value;
                                     final remoteNav =
                                         remoteNavForScreenLayout(context, mode);
+                                    final hasMultipleLists =
+                                        Get.find<ActivePlaylistService>()
+                                            .hasMultiple;
                                     return GlassLiveTopBar(
                                       searchController:
                                           controller.searchController,
                                       onSearchChanged:
                                           controller.onSearchChanged,
+                                      onPlaylist: hasMultipleLists
+                                          ? () => showPlaylistPickerSheet(
+                                                context,
+                                              )
+                                          : null,
+                                      tvPlaylistFocusNode: remoteNav &&
+                                              hasMultipleLists
+                                          ? controller.browseBarPlaylistFocusNode
+                                          : null,
                                       onBack: remoteNav
                                           ? () {
                                               // TV modunda geri tuşu ile üst menüden listeye dön
@@ -803,6 +953,8 @@ class BrowseView extends GetView<BrowseController> {
                                       onSettings: () =>
                                           Get.toNamed(AppRoutes.settings),
                                       searchHint: controller.searchHint,
+                                      searchHistoryScope:
+                                          SearchHistoryScope.browse,
                                       showBackButton:
                                           mode == AppLayoutMode.mobile,
                                       tvSearchFocusNode: remoteNav
@@ -825,37 +977,44 @@ class BrowseView extends GetView<BrowseController> {
                                               }
                                             }
                                           : null,
-                                      clockBuilder: () => Obx(
-                                        () {
-                                          final n = controller.now.value;
-                                          return Column(
-                                            crossAxisAlignment:
-                                                CrossAxisAlignment.end,
-                                            mainAxisSize: MainAxisSize.min,
-                                            children: [
-                                              Text(
-                                                _fmtClock(n),
-                                                style: const TextStyle(
-                                                  color: Colors.white,
-                                                  fontSize: 17,
-                                                  fontWeight: FontWeight.w700,
-                                                  height: 1,
+                                      clockBuilder: () {
+                                        if (controller.mode ==
+                                            BrowseMode.films) {
+                                          return const SizedBox.shrink();
+                                        }
+                                        return Obx(
+                                          () {
+                                            final n = controller.now.value;
+                                            return Column(
+                                              crossAxisAlignment:
+                                                  CrossAxisAlignment.end,
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                Text(
+                                                  _fmtClock(n),
+                                                  style: const TextStyle(
+                                                    color: Colors.white,
+                                                    fontSize: 17,
+                                                    fontWeight: FontWeight.w700,
+                                                    height: 1,
+                                                  ),
                                                 ),
-                                              ),
-                                              const SizedBox(height: 3),
-                                              Text(
-                                                browseFmtShortDate(n),
-                                                style: TextStyle(
-                                                  color: Colors.white
-                                                      .withValues(alpha: 0.85),
-                                                  fontSize: 11,
-                                                  fontWeight: FontWeight.w500,
+                                                const SizedBox(height: 3),
+                                                Text(
+                                                  browseFmtShortDate(n),
+                                                  style: TextStyle(
+                                                    color: Colors.white
+                                                        .withValues(
+                                                            alpha: 0.85),
+                                                    fontSize: 11,
+                                                    fontWeight: FontWeight.w500,
+                                                  ),
                                                 ),
-                                              ),
-                                            ],
-                                          );
-                                        },
-                                      ),
+                                              ],
+                                            );
+                                          },
+                                        );
+                                      },
                                     );
                                   }),
                                   const SizedBox(height: 12),
@@ -942,6 +1101,11 @@ class _BrowseCategoriesPanel extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              PlaylistSwitcherBar(
+                tvFocusNode: controller.listsBarFocusNode,
+                tvArrowUpTarget: controller.browseBarPlaylistFocusNode,
+                tvArrowDownTarget: controller.categoryFocusNode,
+              ),
               Text(
                 'browse.categoriesHeader'.tr,
                 style: TextStyle(
@@ -953,12 +1117,20 @@ class _BrowseCategoriesPanel extends StatelessWidget {
               const SizedBox(height: 10),
               Expanded(
                 child: Obx(() {
+                  // Liste değişiminde kategori sütununu yeniden çiz.
+                  controller.playlistRevision.value;
                   final cats = controller.leftCategories;
+                  final showListsBar =
+                      Get.find<ActivePlaylistService>().hasMultiple;
                   final mode = Get.find<AppSettingsService>().layoutMode.value;
                   final remoteNav = remoteNavForScreenLayout(context, mode);
                   final moveFocusToBrowseList =
                       remoteNav && mode == AppLayoutMode.tv;
+                  // TV 3 sütun: sağ ok kategorinin 1. film/dizisine geçer.
+                  final enterBrowseListOnRight =
+                      remoteNav && onCategorySelected == null;
                   final trap = controller.tvTrapFocusInBrowseList.value;
+                  final selKey = controller.selectedCategoryKey.value;
                   return FocusTraversalGroup(
                     policy: ReadingOrderTraversalPolicy(),
                     child: ListView.builder(
@@ -979,18 +1151,23 @@ class _BrowseCategoriesPanel extends StatelessWidget {
                                     cats[i].key,
                                   )
                               : null,
-                          tvBlockArrowRight:
-                              remoteNav && onCategorySelected == null,
+                          tvArrowRightEntersChannels: enterBrowseListOnRight,
+                          tvBlockArrowRight: false,
                           onBeforeFocusMoveRight: remoteNav
                               ? () => controller.selectCategoryKey(
                                     cats[i].key,
-                                    moveFocus: false,
+                                    moveFocus: enterBrowseListOnRight,
                                   )
                               : null,
-                          focusNode:
-                              i == 0 ? controller.categoryFocusNode : null,
+                          focusNode: remoteNav && selKey == cats[i].key
+                              ? controller.categoryFocusNode
+                              : null,
                           tvIsFirstRow: remoteNav && i == 0,
-                          tvBlockArrowUp: remoteNav && i == 0,
+                          tvBlockArrowUp:
+                              remoteNav && i == 0 && !showListsBar,
+                          tvArrowUpFocusTarget: (i == 0 && showListsBar)
+                              ? controller.listsBarFocusNode
+                              : null,
                           tvBlockArrowDown: remoteNav && i == cats.length - 1,
                           onTap: () {
                             controller.selectCategoryKey(
@@ -1026,17 +1203,23 @@ class _BrowseListPanel extends StatefulWidget {
   State<_BrowseListPanel> createState() => _BrowseListPanelState();
 }
 
-class _BrowseListPanelState extends State<_BrowseListPanel> {
+class _BrowseListPanelState extends State<_BrowseListPanel>
+    with AutomaticKeepAliveClientMixin {
   late final ScrollController _scrollController = ScrollController();
+
+  @override
+  bool get wantKeepAlive => true;
 
   @override
   void initState() {
     super.initState();
+    widget.controller.attachTvBrowseListScroll(_scrollController);
     _scrollController.addListener(_onScroll);
   }
 
   @override
   void dispose() {
+    widget.controller.detachTvBrowseListScroll(_scrollController);
     _scrollController.dispose();
     super.dispose();
   }
@@ -1052,6 +1235,7 @@ class _BrowseListPanelState extends State<_BrowseListPanel> {
 
   @override
   Widget build(BuildContext context) {
+    super.build(context);
     final controller = widget.controller;
     return GlassTvSheet(
       child: Column(
@@ -1068,12 +1252,21 @@ class _BrowseListPanelState extends State<_BrowseListPanel> {
           const SizedBox(height: 10),
           Expanded(
             child: Obx(() {
+              // Liste değişiminde ızgarayı yeniden çiz.
+              controller.playlistRevision.value;
+              controller.filmsFilterRevision.value;
               final _ = controller.selectedRow.value;
               final epg = Get.find<EpgService>();
               epg.loadGeneration.value;
               final trapList = controller.tvTrapFocusInBrowseList.value;
               final list = controller.filteredRows;
               if (list.isEmpty) {
+                if (controller.mode == BrowseMode.films &&
+                    controller.isFilteringFilms.value) {
+                  return const Center(
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  );
+                }
                 return Center(
                   child: Text(
                     'browse.empty'.tr,
@@ -1111,10 +1304,11 @@ class _BrowseListPanelState extends State<_BrowseListPanel> {
                   thumbVisibility: true,
                   child: ListView.builder(
                     controller: _scrollController,
-                    physics: const BouncingScrollPhysics(),
-                    itemExtent:
-                        52, // Sabit satır yüksekliği performansı artırır
-                    cacheExtent: 1000, // Ekran dışındaki öğeleri önceden yükle
+                    physics: AppScrollPhysics.list(),
+                    itemExtent: remoteNav
+                        ? kTvGlassListRowExtent
+                        : 52,
+                    cacheExtent: 250, // Ekran dışındaki öğeleri önceden yükle (düşürülerek performans artışı)
                     itemCount: list.length,
                     itemBuilder: (context, index) {
                       final row = list[index];
@@ -1295,7 +1489,7 @@ class _BrowseListPanelState extends State<_BrowseListPanel> {
                                 ? controller.tvNudgeBrowseListRow
                                 : null,
                             tvVerticalHoldNudgeInterval: remoteNav && trapList
-                                ? const Duration(milliseconds: 50)
+                                ? kTvListVerticalHoldStepInterval
                                 : null,
                             tvOnVerticalHoldStart: remoteNav && trapList
                                 ? controller.beginBrowseListVerticalHold
@@ -1304,6 +1498,11 @@ class _BrowseListPanelState extends State<_BrowseListPanel> {
                                 ? controller.stopBrowseListVerticalHold
                                 : null,
                             tvBlockArrowLeft: remoteNav && trapList,
+                            tvOnArrowLeft:
+                                remoteNav && widget.onRowSelected == null
+                                    ? () => controller
+                                        .releaseTvBrowseListFocusToCategories()
+                                    : null,
                             // TV modunda sağ ok ile üst menü (arama) butonuna geç
                             tvBlockArrowRight: remoteNav,
                             tvOnArrowRight: remoteNav
@@ -1519,18 +1718,125 @@ class _BrowseSeriesMinimalPreviewPanel extends StatelessWidget {
             MediaQuery.orientationOf(context) == Orientation.portrait;
 
         if (!portrait) {
-          // Yatay Mod: Üçüncü sütun için yeni esnek detay tasarımı
+          final isTvLayout = Get.find<AppSettingsService>().layoutMode.value ==
+              AppLayoutMode.tv;
+          if (isTvLayout) {
+            return Padding(
+              padding: const EdgeInsets.fromLTRB(12, 16, 12, 16),
+              child: SingleChildScrollView(
+                physics: AppScrollPhysics.list(),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Text(
+                      series.name,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w900,
+                        height: 1.2,
+                      ),
+                      maxLines: 4,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 8),
+                    if (catName != null)
+                      Text(
+                        catName,
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.7),
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    const SizedBox(height: 12),
+                    Obx(() {
+                      final omdb = controller.omdbMovieDetail.value;
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          if (omdb?.imdbRating != null &&
+                              omdb!.imdbRating != 'N/A')
+                            Container(
+                              margin: const EdgeInsets.only(bottom: 8),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: Colors.amber,
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(Icons.star_rounded,
+                                      color: Colors.black, size: 16),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    omdb.imdbRating!,
+                                    style: const TextStyle(
+                                        color: Colors.black,
+                                        fontWeight: FontWeight.w900,
+                                        fontSize: 13),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          if (omdb?.year != null)
+                            Text(
+                              omdb!.year!,
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.8),
+                                fontSize: 14,
+                                fontWeight: FontWeight.w500,
+                              ),
+                              textAlign: TextAlign.center,
+                            ),
+                        ],
+                      );
+                    }),
+                    const SizedBox(height: 12),
+                    Obx(() {
+                      final omdb = controller.omdbMovieDetail.value;
+                      final syn = controller.seriesDetailSynopsis.value;
+                      final plot = (omdb?.plot?.trim().isNotEmpty == true)
+                          ? omdb!.plot!.trim()
+                          : (syn.trim().isNotEmpty
+                              ? syn.trim()
+                              : (series.plot ?? '').trim());
+
+                      if (plot.isEmpty) {
+                        return const SizedBox.shrink();
+                      }
+
+                      return Text(
+                        plot,
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.9),
+                          fontSize: 12,
+                          height: 1.4,
+                          fontWeight: FontWeight.w400,
+                        ),
+                        textAlign: TextAlign.center,
+                      );
+                    }),
+                  ],
+                ),
+              ),
+            );
+          }
+          // Yatay (tablet vb.): poster + metin
           final delayedPoster = controller.detailPosterUrl.value ?? '';
           return Padding(
             padding: const EdgeInsets.all(16),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Sol Sütun: Poster (Dinamik Boyutlandırma)
                 SingleChildScrollView(
-                  physics: const BouncingScrollPhysics(),
+                  physics: AppScrollPhysics.list(),
                   child: SizedBox(
-                    width: 90, // Poster boyutunu biraz daha küçülttük
+                    width: 90,
                     child: _buildPolaroidPoster(
                       context,
                       delayedPoster,
@@ -1541,10 +1847,9 @@ class _BrowseSeriesMinimalPreviewPanel extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 16),
-                // Sağ Sütun: Detay Bilgileri ve Özet
                 Expanded(
                   child: SingleChildScrollView(
-                    physics: const BouncingScrollPhysics(),
+                    physics: AppScrollPhysics.list(),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisSize: MainAxisSize.min,
@@ -1571,7 +1876,6 @@ class _BrowseSeriesMinimalPreviewPanel extends StatelessWidget {
                             ),
                           ),
                         const SizedBox(height: 12),
-                        // IMDb ve Diğer Bilgiler
                         Obx(() {
                           final omdb = controller.omdbMovieDetail.value;
                           return Column(
@@ -1617,7 +1921,6 @@ class _BrowseSeriesMinimalPreviewPanel extends StatelessWidget {
                           );
                         }),
                         const SizedBox(height: 12),
-                        // ÖZET METNİ: Dıştaki SingleChildScrollView alanı yönettiği için burada Expanded yok
                         Obx(() {
                           final omdb = controller.omdbMovieDetail.value;
                           final syn = controller.seriesDetailSynopsis.value;
@@ -1673,8 +1976,9 @@ class _BrowseSeriesMinimalPreviewPanel extends StatelessWidget {
                     imageUrl: row.imageUrl ?? '',
                     fit: BoxFit.cover,
                     width: double.infinity,
+                    memCacheWidth: 400, // Bellek cache boyutunu sınırla
+                    fadeInDuration: const Duration(milliseconds: 100), // Daha hızlı fade-in
                     height: portrait ? 200 : 150,
-                    memCacheWidth: 400,
                     memCacheHeight: 600,
                     placeholder: (_, __) => Container(
                       color: Colors.black.withValues(alpha: 0.3),
@@ -2005,18 +2309,139 @@ class _BrowseFilmsMinimalPreviewPanel extends StatelessWidget {
             MediaQuery.orientationOf(context) == Orientation.portrait;
 
         if (!portrait) {
-          // Yatay Mod: Üçüncü sütun için yeni esnek detay tasarımı
+          final isTvLayout = Get.find<AppSettingsService>().layoutMode.value ==
+              AppLayoutMode.tv;
+          if (isTvLayout) {
+            return Padding(
+              padding: const EdgeInsets.fromLTRB(12, 16, 12, 16),
+              child: SingleChildScrollView(
+                physics: AppScrollPhysics.list(),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Text(
+                      vod.name,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w900,
+                        height: 1.2,
+                      ),
+                      maxLines: 4,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 8),
+                    if (catName != null)
+                      Text(
+                        catName,
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.7),
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    const SizedBox(height: 12),
+                    Obx(() {
+                      final omdb = controller.omdbMovieDetail.value;
+                      return Column(
+                        crossAxisAlignment: CrossAxisAlignment.center,
+                        children: [
+                          if (omdb?.imdbRating != null &&
+                              omdb!.imdbRating != 'N/A')
+                            Container(
+                              margin: const EdgeInsets.only(bottom: 8),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 4),
+                              decoration: BoxDecoration(
+                                color: Colors.amber,
+                                borderRadius: BorderRadius.circular(6),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  const Icon(Icons.star_rounded,
+                                      color: Colors.black, size: 16),
+                                  const SizedBox(width: 4),
+                                  Text(
+                                    omdb.imdbRating!,
+                                    style: const TextStyle(
+                                        color: Colors.black,
+                                        fontWeight: FontWeight.w900,
+                                        fontSize: 13),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          if (omdb?.year != null)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 4),
+                              child: Text(
+                                omdb!.year!,
+                                style: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.8),
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                            ),
+                          if (omdb?.genre != null && omdb!.genre != 'N/A')
+                            Text(
+                              omdb.genre!,
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.6),
+                                fontSize: 13,
+                                fontStyle: FontStyle.italic,
+                              ),
+                              maxLines: 3,
+                              overflow: TextOverflow.ellipsis,
+                              textAlign: TextAlign.center,
+                            ),
+                        ],
+                      );
+                    }),
+                    const SizedBox(height: 12),
+                    Obx(() {
+                      final omdb = controller.omdbMovieDetail.value;
+                      final extra = controller.vodXtreamInfoPlot.value;
+                      final plot = (omdb?.plot?.trim().isNotEmpty == true)
+                          ? omdb!.plot!.trim()
+                          : ((extra?.trim().isNotEmpty == true)
+                              ? extra!.trim()
+                              : (vod.plot ?? '').trim());
+
+                      if (plot.isEmpty) {
+                        return const SizedBox.shrink();
+                      }
+
+                      return Text(
+                        plot,
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.9),
+                          fontSize: 12,
+                          height: 1.4,
+                          fontWeight: FontWeight.w400,
+                        ),
+                        textAlign: TextAlign.center,
+                      );
+                    }),
+                  ],
+                ),
+              ),
+            );
+          }
           final delayedPoster = controller.detailPosterUrl.value ?? '';
           return Padding(
             padding: const EdgeInsets.all(16),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Sol Sütun: Poster (Dinamik Boyutlandırma)
                 SingleChildScrollView(
-                  physics: const BouncingScrollPhysics(),
+                  physics: AppScrollPhysics.list(),
                   child: SizedBox(
-                    width: 100, // Poster boyutunu biraz küçülttük
+                    width: 100,
                     child: _buildPolaroidPoster(
                       context,
                       delayedPoster,
@@ -2027,10 +2452,9 @@ class _BrowseFilmsMinimalPreviewPanel extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(width: 16),
-                // Sağ Sütun: Film Bilgileri ve Özet
                 Expanded(
                   child: SingleChildScrollView(
-                    physics: const BouncingScrollPhysics(),
+                    physics: AppScrollPhysics.list(),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisSize: MainAxisSize.min,
@@ -2176,8 +2600,9 @@ class _BrowseFilmsMinimalPreviewPanel extends StatelessWidget {
                       imageUrl: row.imageUrl ?? '',
                       fit: BoxFit.contain,
                       width: 150,
+                      memCacheWidth: 200, // Bellek cache boyutunu sınırla
+                      fadeInDuration: const Duration(milliseconds: 100), // Daha hızlı fade-in
                       height: 200,
-                      memCacheWidth: 400,
                       memCacheHeight: 600,
                       placeholder: (_, __) => Container(
                         width: 150,
@@ -2293,7 +2718,7 @@ class _BrowseFilmsMinimalPreviewPanel extends StatelessWidget {
               // Plot/synopsis (Scrollable)
               Flexible(
                 child: SingleChildScrollView(
-                  physics: const BouncingScrollPhysics(),
+                  physics: AppScrollPhysics.list(),
                   child: Obx(() {
                     if (controller.isOmdbLoading.value) {
                       return const _GlassLoadingPlaceholder();
@@ -2565,377 +2990,809 @@ class _BrowseFilmLandscapeDetailRouteState
               Positioned.fill(
                 child: SafeArea(
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 24, vertical: 16),
-                    child: Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        // Left Column: Poster
-                        Expanded(
-                          flex: 3,
-                          child: Center(
-                            child: Hero(
-                              tag: 'film_poster_${row?.vod?.id}',
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(20),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color:
-                                          Colors.black.withValues(alpha: 0.5),
-                                      blurRadius: 30,
-                                      spreadRadius: 5,
-                                    ),
-                                  ],
-                                ),
-                                child: ClipRRect(
-                                  borderRadius: BorderRadius.circular(20),
-                                  child: CachedNetworkImage(
-                                    imageUrl: bg,
-                                    fit: BoxFit.contain,
-                                    placeholder: (_, __) => const Center(
-                                        child: CircularProgressIndicator()),
-                                    errorWidget: (_, __, ___) => const Icon(
-                                        Icons.movie_outlined,
-                                        size: 100,
-                                        color: Colors.white24),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 32),
-                        // Right Column: Details
-                        Expanded(
-                          flex: 5,
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              // Title
-                              Text(
-                                row?.title ?? '',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 32,
-                                  fontWeight: FontWeight.w900,
-                                  height: 1.1,
-                                ),
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
-                              ),
-                              const SizedBox(height: 12),
-                              // Metadata Row
-                              Row(
+                    padding: const EdgeInsets.fromLTRB(24, 8, 24, 16),
+                    child: Builder(
+                      builder: (context) {
+                        final cs = Theme.of(context).colorScheme;
+                        final genres = omdb?.genre
+                                ?.split(',')
+                                .map((e) => e.trim())
+                                .where((e) =>
+                                    e.isNotEmpty && e.toUpperCase() != 'N/A')
+                                .toList() ??
+                            <String>[];
+                        final runtimeLabel =
+                            browseFmtOmdbRuntimeForDetail(omdb?.runtime) ??
+                                ((row?.vod?.durationSecs ?? 0) > 0
+                                    ? browseFmtDurationCompact(
+                                        row!.vod!.durationSecs!,
+                                      )
+                                    : null);
+                        final ratedRaw = omdb?.rated?.trim();
+                        final rated = (ratedRaw != null &&
+                                ratedRaw.isNotEmpty &&
+                                ratedRaw.toUpperCase() != 'N/A')
+                            ? ratedRaw
+                            : null;
+                        final showAwardStrip = omdb?.imdbRating != null &&
+                            omdb!.imdbRating != 'N/A' &&
+                            (double.tryParse(omdb.imdbRating!) ?? 0) >= 6.5;
+
+                        return Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Expanded(
+                              flex: 3,
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
                                 children: [
-                                  if (omdb?.imdbRating != null &&
-                                      omdb!.imdbRating != 'N/A') ...[
-                                    Container(
-                                      padding: const EdgeInsets.symmetric(
-                                          horizontal: 8, vertical: 4),
-                                      decoration: BoxDecoration(
-                                        color: Colors.amber,
-                                        borderRadius: BorderRadius.circular(6),
+                                  Expanded(
+                                    child: Center(
+                                      child: Hero(
+                                        tag: 'film_poster_${row?.vod?.id}',
+                                        child: Container(
+                                          constraints: const BoxConstraints(
+                                            maxHeight: 420,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            borderRadius:
+                                                BorderRadius.circular(20),
+                                            boxShadow: [
+                                              BoxShadow(
+                                                color: Colors.black
+                                                    .withValues(alpha: 0.55),
+                                                blurRadius: 28,
+                                                spreadRadius: 2,
+                                              ),
+                                            ],
+                                          ),
+                                          child: ClipRRect(
+                                            borderRadius:
+                                                BorderRadius.circular(20),
+                                            child: AspectRatio(
+                                              aspectRatio: 2 / 3,
+                                              child: CachedNetworkImage(
+                                                imageUrl: bg,
+                                                fit: BoxFit.cover,
+                                                placeholder: (_, __) =>
+                                                    const Center(
+                                                  child:
+                                                      CircularProgressIndicator(),
+                                                ),
+                                                errorWidget: (_, __, ___) =>
+                                                    const Icon(
+                                                  Icons.movie_outlined,
+                                                  size: 100,
+                                                  color: Colors.white24,
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                        ),
                                       ),
-                                      child: Row(
-                                        children: [
-                                          const Icon(Icons.star_rounded,
-                                              color: Colors.black, size: 16),
-                                          const SizedBox(width: 4),
-                                          Text(
-                                            omdb.imdbRating!,
-                                            style: const TextStyle(
-                                                color: Colors.black,
-                                                fontWeight: FontWeight.w900,
-                                                fontSize: 14),
+                                    ),
+                                  ),
+                                  if (showAwardStrip) ...[
+                                    const SizedBox(height: 14),
+                                    DecoratedBox(
+                                      decoration: BoxDecoration(
+                                        borderRadius: BorderRadius.circular(12),
+                                        gradient: LinearGradient(
+                                          colors: [
+                                            const Color(0xFFC4A574),
+                                            const Color(0xFF8B6F47),
+                                          ],
+                                        ),
+                                        boxShadow: [
+                                          BoxShadow(
+                                            color: Colors.black
+                                                .withValues(alpha: 0.35),
+                                            blurRadius: 12,
+                                            offset: const Offset(0, 4),
                                           ),
                                         ],
                                       ),
-                                    ),
-                                    const SizedBox(width: 16),
-                                  ],
-                                  if (omdb?.year != null)
-                                    Text(
-                                      omdb!.year!,
-                                      style: TextStyle(
-                                          color: Colors.white
-                                              .withValues(alpha: 0.7),
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.w600),
-                                    ),
-                                  if (omdb?.genre != null) ...[
-                                    const SizedBox(width: 16),
-                                    Expanded(
-                                      child: Text(
-                                        omdb!.genre!,
-                                        style: TextStyle(
-                                            color: Colors.white
-                                                .withValues(alpha: 0.7),
-                                            fontSize: 16,
-                                            fontStyle: FontStyle.italic),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
+                                      child: Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                          horizontal: 14,
+                                          vertical: 10,
+                                        ),
+                                        child: Text(
+                                          '${(row?.title ?? '').toUpperCase()} · IMDb ${omdb.imdbRating}',
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                          textAlign: TextAlign.center,
+                                          style: const TextStyle(
+                                            color: Colors.black87,
+                                            fontSize: 12,
+                                            fontWeight: FontWeight.w900,
+                                            letterSpacing: 0.4,
+                                          ),
+                                        ),
                                       ),
                                     ),
                                   ],
                                 ],
                               ),
-                              const SizedBox(height: 20),
-                              // Plot
-                              Expanded(
-                                child: Focus(
-                                  focusNode: _plotFocusNode,
-                                  onFocusChange: (hasFocus) {
-                                    if (hasFocus) {
-                                      _showPlotScrollbar();
-                                    } else {
-                                      _hidePlotScrollbar();
-                                    }
-                                  },
-                                  onKeyEvent: (node, event) {
-                                    if (event is! KeyDownEvent &&
-                                        event is! KeyRepeatEvent) {
-                                      return KeyEventResult.ignored;
-                                    }
-                                    final k = event.logicalKey;
-                                    if (k == LogicalKeyboardKey.arrowDown) {
-                                      if (_plotScrollController.hasClients &&
-                                          _plotScrollController
-                                                  .position.pixels >=
-                                              _plotScrollController
-                                                  .position.maxScrollExtent) {
-                                        _showPlotScrollbar();
-                                        return KeyEventResult.handled;
-                                      }
-                                      _scrollPlotBy(72);
-                                      return KeyEventResult.handled;
-                                    }
-                                    if (k == LogicalKeyboardKey.arrowUp) {
-                                      if (_plotScrollController.hasClients &&
-                                          _plotScrollController
-                                                  .position.pixels <=
-                                              _plotScrollController
-                                                  .position.minScrollExtent) {
-                                        if (_playFocusNode.canRequestFocus) {
-                                          _playFocusNode.requestFocus();
-                                          return KeyEventResult.handled;
-                                        }
-                                        return KeyEventResult.handled;
-                                      }
-                                      _scrollPlotBy(-72);
-                                      return KeyEventResult.handled;
-                                    }
-                                    if (k == LogicalKeyboardKey.escape ||
-                                        k == LogicalKeyboardKey.gameButtonB) {
-                                      Navigator.of(context).pop();
-                                      return KeyEventResult.handled;
-                                    }
-                                    return KeyEventResult.ignored;
-                                  },
-                                  child: Scrollbar(
-                                    controller: _plotScrollController,
-                                    thumbVisibility: _plotScrollbarVisible,
-                                    child: SingleChildScrollView(
-                                      controller: _plotScrollController,
-                                      physics: const BouncingScrollPhysics(),
-                                      child: Obx(() {
-                                        if (controller.isOmdbLoading.value) {
-                                          return const _GlassLoadingPlaceholder();
-                                        }
-                                        final omdb =
-                                            controller.omdbMovieDetail.value;
-                                        return Column(
-                                          crossAxisAlignment:
-                                              CrossAxisAlignment.start,
-                                          children: [
-                                            if (omdb?.cast != null &&
-                                                omdb!.cast!.isNotEmpty) ...[
-                                              const Text(
-                                                'Oyuncular',
-                                                style: TextStyle(
-                                                    color: Colors.white,
-                                                    fontSize: 18,
-                                                    fontWeight:
-                                                        FontWeight.bold),
-                                              ),
-                                              const SizedBox(height: 12),
-                                              SizedBox(
-                                                height: 100,
-                                                child: ListView.builder(
-                                                  scrollDirection:
-                                                      Axis.horizontal,
-                                                  itemCount: omdb.cast!.length,
-                                                  itemBuilder:
-                                                      (context, index) {
-                                                    final member =
-                                                        omdb.cast![index];
-                                                    return Container(
-                                                      width: 80,
-                                                      margin:
-                                                          const EdgeInsets.only(
-                                                              right: 16),
-                                                      child: Column(
-                                                        children: [
-                                                          Container(
-                                                            width: 60,
-                                                            height: 60,
-                                                            decoration:
-                                                                BoxDecoration(
-                                                              shape: BoxShape
-                                                                  .circle,
-                                                              border: Border.all(
-                                                                  color: Colors
-                                                                      .white24,
-                                                                  width: 2),
-                                                              image: member
-                                                                          .profilePath !=
-                                                                      null
-                                                                  ? DecorationImage(
-                                                                      image: CachedNetworkImageProvider(
-                                                                          member
-                                                                              .profilePath!),
-                                                                      fit: BoxFit
-                                                                          .cover,
-                                                                    )
-                                                                  : null,
-                                                            ),
-                                                            child: member
-                                                                        .profilePath ==
-                                                                    null
-                                                                ? const Icon(
-                                                                    Icons
-                                                                        .person,
-                                                                    color: Colors
-                                                                        .white24,
-                                                                    size: 30)
-                                                                : null,
-                                                          ),
-                                                          const SizedBox(
-                                                              height: 6),
-                                                          Text(
-                                                            member.name,
-                                                            style: const TextStyle(
-                                                                color: Colors
-                                                                    .white70,
-                                                                fontSize: 10),
-                                                            maxLines: 2,
-                                                            textAlign: TextAlign
-                                                                .center,
-                                                            overflow:
-                                                                TextOverflow
-                                                                    .ellipsis,
-                                                          ),
-                                                        ],
+                            ),
+                            const SizedBox(width: 28),
+                            Expanded(
+                              flex: 5,
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(26),
+                                child: BackdropFilter(
+                                  filter: ImageFilter.blur(
+                                    sigmaX: 22,
+                                    sigmaY: 22,
+                                  ),
+                                  child: DecoratedBox(
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(26),
+                                      border: Border.all(
+                                        color: Colors.white
+                                            .withValues(alpha: 0.28),
+                                      ),
+                                      gradient: LinearGradient(
+                                        begin: Alignment.topLeft,
+                                        end: Alignment.bottomRight,
+                                        colors: [
+                                          Colors.white.withValues(alpha: 0.16),
+                                          Colors.white.withValues(alpha: 0.06),
+                                        ],
+                                      ),
+                                    ),
+                                    child: Padding(
+                                      padding: const EdgeInsets.fromLTRB(
+                                        22,
+                                        20,
+                                        20,
+                                        18,
+                                      ),
+                                      child: Column(
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
+                                        children: [
+                                          Text(
+                                            row?.title ?? '',
+                                            style: const TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 28,
+                                              fontWeight: FontWeight.w900,
+                                              height: 1.08,
+                                              letterSpacing: -0.3,
+                                            ),
+                                            maxLines: 3,
+                                            overflow: TextOverflow.ellipsis,
+                                          ),
+                                          const SizedBox(height: 14),
+                                          SingleChildScrollView(
+                                            scrollDirection: Axis.horizontal,
+                                            child: Row(
+                                              children: [
+                                                if (omdb?.imdbRating != null &&
+                                                    omdb!.imdbRating !=
+                                                        'N/A') ...[
+                                                  Container(
+                                                    padding: const EdgeInsets
+                                                        .symmetric(
+                                                      horizontal: 10,
+                                                      vertical: 5,
+                                                    ),
+                                                    decoration: BoxDecoration(
+                                                      color: const Color(
+                                                        0xFFEAB308,
                                                       ),
-                                                    );
-                                                  },
-                                                ),
-                                              ),
-                                              const SizedBox(height: 24),
-                                            ],
-                                            Text(
-                                              omdb?.plot ??
-                                                  row?.vod?.plot ??
-                                                  '',
-                                              style: TextStyle(
-                                                color: Colors.white
-                                                    .withValues(alpha: 0.85),
-                                                fontSize: 15,
-                                                height: 1.5,
-                                              ),
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                        8,
+                                                      ),
+                                                    ),
+                                                    child: Row(
+                                                      children: [
+                                                        const Icon(
+                                                          Icons.star_rounded,
+                                                          color: Colors.black,
+                                                          size: 18,
+                                                        ),
+                                                        const SizedBox(
+                                                          width: 4,
+                                                        ),
+                                                        Text(
+                                                          omdb.imdbRating!,
+                                                          style:
+                                                              const TextStyle(
+                                                            color: Colors.black,
+                                                            fontWeight:
+                                                                FontWeight.w900,
+                                                            fontSize: 15,
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    ),
+                                                  ),
+                                                  const SizedBox(width: 12),
+                                                ],
+                                                if (omdb?.year != null)
+                                                  Padding(
+                                                    padding:
+                                                        const EdgeInsets.only(
+                                                      right: 12,
+                                                    ),
+                                                    child: Text(
+                                                      omdb!.year!,
+                                                      style: TextStyle(
+                                                        color: Colors.white
+                                                            .withValues(
+                                                          alpha: 0.82,
+                                                        ),
+                                                        fontSize: 15,
+                                                        fontWeight:
+                                                            FontWeight.w600,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                if (runtimeLabel != null)
+                                                  Padding(
+                                                    padding:
+                                                        const EdgeInsets.only(
+                                                      right: 12,
+                                                    ),
+                                                    child: Text(
+                                                      runtimeLabel,
+                                                      style: TextStyle(
+                                                        color: Colors.white
+                                                            .withValues(
+                                                          alpha: 0.82,
+                                                        ),
+                                                        fontSize: 15,
+                                                        fontWeight:
+                                                            FontWeight.w600,
+                                                      ),
+                                                    ),
+                                                  ),
+                                                if (rated != null)
+                                                  Container(
+                                                    padding: const EdgeInsets
+                                                        .symmetric(
+                                                      horizontal: 8,
+                                                      vertical: 4,
+                                                    ),
+                                                    decoration: BoxDecoration(
+                                                      color: Colors.black
+                                                          .withValues(
+                                                        alpha: 0.35,
+                                                      ),
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                        6,
+                                                      ),
+                                                      border: Border.all(
+                                                        color: Colors.white
+                                                            .withValues(
+                                                          alpha: 0.35,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                    child: Text(
+                                                      rated,
+                                                      style: const TextStyle(
+                                                        color: Colors.white,
+                                                        fontWeight:
+                                                            FontWeight.w800,
+                                                        fontSize: 13,
+                                                      ),
+                                                    ),
+                                                  ),
+                                              ],
+                                            ),
+                                          ),
+                                          if (genres.isNotEmpty) ...[
+                                            const SizedBox(height: 10),
+                                            Wrap(
+                                              spacing: 8,
+                                              runSpacing: 8,
+                                              children: [
+                                                for (final g in genres)
+                                                  Container(
+                                                    padding: const EdgeInsets
+                                                        .symmetric(
+                                                      horizontal: 10,
+                                                      vertical: 5,
+                                                    ),
+                                                    decoration: BoxDecoration(
+                                                      color: Colors.white
+                                                          .withValues(
+                                                        alpha: 0.1,
+                                                      ),
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                        18,
+                                                      ),
+                                                      border: Border.all(
+                                                        color: Colors.white
+                                                            .withValues(
+                                                          alpha: 0.18,
+                                                        ),
+                                                      ),
+                                                    ),
+                                                    child: Text(
+                                                      g,
+                                                      style: TextStyle(
+                                                        color: Colors.white
+                                                            .withValues(
+                                                          alpha: 0.88,
+                                                        ),
+                                                        fontSize: 12.5,
+                                                        fontWeight:
+                                                            FontWeight.w600,
+                                                      ),
+                                                    ),
+                                                  ),
+                                              ],
                                             ),
                                           ],
-                                        );
-                                      }),
+                                          const SizedBox(height: 12),
+                                          Expanded(
+                                            child: Focus(
+                                              focusNode: _plotFocusNode,
+                                              onFocusChange: (hasFocus) {
+                                                if (hasFocus) {
+                                                  _showPlotScrollbar();
+                                                } else {
+                                                  _hidePlotScrollbar();
+                                                }
+                                              },
+                                              onKeyEvent: (node, event) {
+                                                if (event is! KeyDownEvent &&
+                                                    event is! KeyRepeatEvent) {
+                                                  return KeyEventResult.ignored;
+                                                }
+                                                final k = event.logicalKey;
+                                                if (k ==
+                                                    LogicalKeyboardKey
+                                                        .arrowDown) {
+                                                  if (_plotScrollController
+                                                          .hasClients &&
+                                                      _plotScrollController
+                                                              .position
+                                                              .pixels >=
+                                                          _plotScrollController
+                                                              .position
+                                                              .maxScrollExtent) {
+                                                    _showPlotScrollbar();
+                                                    return KeyEventResult
+                                                        .handled;
+                                                  }
+                                                  _scrollPlotBy(72);
+                                                  return KeyEventResult.handled;
+                                                }
+                                                if (k ==
+                                                    LogicalKeyboardKey
+                                                        .arrowUp) {
+                                                  if (_plotScrollController
+                                                          .hasClients &&
+                                                      _plotScrollController
+                                                              .position
+                                                              .pixels <=
+                                                          _plotScrollController
+                                                              .position
+                                                              .minScrollExtent) {
+                                                    if (_playFocusNode
+                                                        .canRequestFocus) {
+                                                      _playFocusNode
+                                                          .requestFocus();
+                                                      return KeyEventResult
+                                                          .handled;
+                                                    }
+                                                    return KeyEventResult
+                                                        .handled;
+                                                  }
+                                                  _scrollPlotBy(-72);
+                                                  return KeyEventResult.handled;
+                                                }
+                                                if (k ==
+                                                        LogicalKeyboardKey
+                                                            .escape ||
+                                                    k ==
+                                                        LogicalKeyboardKey
+                                                            .gameButtonB) {
+                                                  Navigator.of(context).pop();
+                                                  return KeyEventResult.handled;
+                                                }
+                                                return KeyEventResult.ignored;
+                                              },
+                                              child: Scrollbar(
+                                                controller:
+                                                    _plotScrollController,
+                                                thumbVisibility:
+                                                    _plotScrollbarVisible,
+                                                child: SingleChildScrollView(
+                                                  controller:
+                                                      _plotScrollController,
+                                                  physics:
+                                                      AppScrollPhysics.list(),
+                                                  child: Obx(() {
+                                                    if (controller
+                                                        .isOmdbLoading.value) {
+                                                      return const _GlassLoadingPlaceholder();
+                                                    }
+                                                    final omdbIn = controller
+                                                        .omdbMovieDetail.value;
+                                                    return Column(
+                                                      crossAxisAlignment:
+                                                          CrossAxisAlignment
+                                                              .start,
+                                                      children: [
+                                                        if (omdbIn?.cast !=
+                                                                null &&
+                                                            omdbIn!.cast!
+                                                                .isNotEmpty) ...[
+                                                          Text(
+                                                            'browse.castHeading'
+                                                                .tr,
+                                                            style:
+                                                                const TextStyle(
+                                                              color:
+                                                                  Colors.white,
+                                                              fontSize: 16,
+                                                              fontWeight:
+                                                                  FontWeight
+                                                                      .w800,
+                                                            ),
+                                                          ),
+                                                          const SizedBox(
+                                                            height: 10,
+                                                          ),
+                                                          SizedBox(
+                                                            height: 102,
+                                                            child: ListView
+                                                                .builder(
+                                                              scrollDirection:
+                                                                  Axis.horizontal,
+                                                              itemCount: omdbIn
+                                                                  .cast!.length,
+                                                              itemBuilder:
+                                                                  (context,
+                                                                      index) {
+                                                                final member =
+                                                                    omdbIn.cast![
+                                                                        index];
+                                                                return Container(
+                                                                  width: 76,
+                                                                  margin:
+                                                                      const EdgeInsets
+                                                                          .only(
+                                                                    right: 14,
+                                                                  ),
+                                                                  child: Column(
+                                                                    children: [
+                                                                      Container(
+                                                                        width:
+                                                                            64,
+                                                                        height:
+                                                                            64,
+                                                                        decoration:
+                                                                            BoxDecoration(
+                                                                          shape:
+                                                                              BoxShape.circle,
+                                                                          border:
+                                                                              Border.all(
+                                                                            color:
+                                                                                Colors.white30,
+                                                                            width:
+                                                                                2,
+                                                                          ),
+                                                                          image: member.profilePath != null
+                                                                              ? DecorationImage(
+                                                                                  image: CachedNetworkImageProvider(
+                                                                                    member.profilePath!,
+                                                                                  ),
+                                                                                  fit: BoxFit.cover,
+                                                                                )
+                                                                              : null,
+                                                                        ),
+                                                                        child: member.profilePath ==
+                                                                                null
+                                                                            ? const Icon(
+                                                                                Icons.person,
+                                                                                color: Colors.white24,
+                                                                                size: 30,
+                                                                              )
+                                                                            : null,
+                                                                      ),
+                                                                      const SizedBox(
+                                                                        height:
+                                                                            6,
+                                                                      ),
+                                                                      Text(
+                                                                        member
+                                                                            .name,
+                                                                        style:
+                                                                            TextStyle(
+                                                                          color: Colors
+                                                                              .white
+                                                                              .withValues(alpha: 0.78),
+                                                                          fontSize:
+                                                                              10,
+                                                                          fontWeight:
+                                                                              FontWeight.w600,
+                                                                        ),
+                                                                        maxLines:
+                                                                            2,
+                                                                        textAlign:
+                                                                            TextAlign.center,
+                                                                        overflow:
+                                                                            TextOverflow.ellipsis,
+                                                                      ),
+                                                                    ],
+                                                                  ),
+                                                                );
+                                                              },
+                                                            ),
+                                                          ),
+                                                          const SizedBox(
+                                                            height: 18,
+                                                          ),
+                                                        ],
+                                                        Text(
+                                                          omdbIn?.plot ??
+                                                              row?.vod?.plot ??
+                                                              '',
+                                                          style: TextStyle(
+                                                            color: Colors.white
+                                                                .withValues(
+                                                              alpha: 0.9,
+                                                            ),
+                                                            fontSize: 14.5,
+                                                            height: 1.5,
+                                                          ),
+                                                        ),
+                                                      ],
+                                                    );
+                                                  }),
+                                                ),
+                                              ),
+                                            ),
+                                          ),
+                                          const SizedBox(height: 14),
+                                          Focus(
+                                            focusNode: _playFocusNode,
+                                            autofocus: true,
+                                            onKeyEvent: (node, event) {
+                                              if (event is! KeyDownEvent) {
+                                                return KeyEventResult.ignored;
+                                              }
+                                              final k = event.logicalKey;
+                                              if (k ==
+                                                  LogicalKeyboardKey
+                                                      .arrowDown) {
+                                                if (_plotFocusNode
+                                                    .canRequestFocus) {
+                                                  _plotFocusNode.requestFocus();
+                                                  _showPlotScrollbar();
+                                                  return KeyEventResult.handled;
+                                                }
+                                              }
+                                              if (k ==
+                                                      LogicalKeyboardKey
+                                                          .select ||
+                                                  k ==
+                                                      LogicalKeyboardKey
+                                                          .enter ||
+                                                  k ==
+                                                      LogicalKeyboardKey
+                                                          .numpadEnter ||
+                                                  k ==
+                                                      LogicalKeyboardKey
+                                                          .space ||
+                                                  k ==
+                                                      LogicalKeyboardKey
+                                                          .gameButtonSelect) {
+                                                Navigator.of(context).pop();
+                                                controller.openSelectedPlayer();
+                                                return KeyEventResult.handled;
+                                              }
+                                              if (k ==
+                                                      LogicalKeyboardKey
+                                                          .escape ||
+                                                  k ==
+                                                      LogicalKeyboardKey
+                                                          .gameButtonB) {
+                                                Navigator.of(context).pop();
+                                                return KeyEventResult.handled;
+                                              }
+                                              return KeyEventResult.ignored;
+                                            },
+                                            child: ListenableBuilder(
+                                              listenable: _playFocusNode,
+                                              builder: (context, _) {
+                                                final playFocused =
+                                                    _playFocusNode.hasFocus;
+                                                return AnimatedScale(
+                                                  scale:
+                                                      playFocused ? 1.02 : 1.0,
+                                                  duration: const Duration(
+                                                    milliseconds: 160,
+                                                  ),
+                                                  curve: Curves.easeOutCubic,
+                                                  child: Material(
+                                                    color: Colors.transparent,
+                                                    child: InkWell(
+                                                      onTap: () {
+                                                        Navigator.of(context)
+                                                            .pop();
+                                                        controller
+                                                            .openSelectedPlayer();
+                                                      },
+                                                      borderRadius:
+                                                          BorderRadius.circular(
+                                                        28,
+                                                      ),
+                                                      child: Ink(
+                                                        decoration:
+                                                            BoxDecoration(
+                                                          borderRadius:
+                                                              BorderRadius
+                                                                  .circular(
+                                                            28,
+                                                          ),
+                                                          gradient:
+                                                              LinearGradient(
+                                                            colors: [
+                                                              Colors.white
+                                                                  .withValues(
+                                                                alpha:
+                                                                    playFocused
+                                                                        ? 0.98
+                                                                        : 0.88,
+                                                              ),
+                                                              Colors.white
+                                                                  .withValues(
+                                                                alpha: 0.42,
+                                                              ),
+                                                            ],
+                                                          ),
+                                                          border: Border.all(
+                                                            color: playFocused
+                                                                ? cs.primary
+                                                                : Colors.white
+                                                                    .withValues(
+                                                                    alpha: 0.45,
+                                                                  ),
+                                                            width: playFocused
+                                                                ? 2.2
+                                                                : 1,
+                                                          ),
+                                                          boxShadow: [
+                                                            BoxShadow(
+                                                              color: Colors
+                                                                  .black
+                                                                  .withValues(
+                                                                alpha: 0.35,
+                                                              ),
+                                                              blurRadius: 16,
+                                                              offset:
+                                                                  const Offset(
+                                                                0,
+                                                                6,
+                                                              ),
+                                                            ),
+                                                          ],
+                                                        ),
+                                                        child: Padding(
+                                                          padding:
+                                                              const EdgeInsets
+                                                                  .symmetric(
+                                                            horizontal: 28,
+                                                            vertical: 14,
+                                                          ),
+                                                          child: Row(
+                                                            mainAxisSize:
+                                                                MainAxisSize
+                                                                    .min,
+                                                            children: [
+                                                              Icon(
+                                                                Icons
+                                                                    .play_arrow_rounded,
+                                                                color: Colors
+                                                                    .black87,
+                                                                size: 32,
+                                                              ),
+                                                              const SizedBox(
+                                                                width: 8,
+                                                              ),
+                                                              Text(
+                                                                'common.play'
+                                                                    .tr,
+                                                                style:
+                                                                    const TextStyle(
+                                                                  color: Colors
+                                                                      .black87,
+                                                                  fontSize: 18,
+                                                                  fontWeight:
+                                                                      FontWeight
+                                                                          .w800,
+                                                                ),
+                                                              ),
+                                                            ],
+                                                          ),
+                                                        ),
+                                                      ),
+                                                    ),
+                                                  ),
+                                                );
+                                              },
+                                            ),
+                                          ),
+                                        ],
+                                      ),
                                     ),
                                   ),
                                 ),
                               ),
-                              const SizedBox(height: 20),
-                              // Play Button (TV Focusable)
-                              Focus(
-                                focusNode: _playFocusNode,
-                                autofocus: true,
-                                onKeyEvent: (node, event) {
-                                  if (event is! KeyDownEvent)
-                                    return KeyEventResult.ignored;
-                                  final k = event.logicalKey;
-                                  if (k == LogicalKeyboardKey.arrowDown) {
-                                    if (_plotFocusNode.canRequestFocus) {
-                                      _plotFocusNode.requestFocus();
-                                      _showPlotScrollbar();
-                                      return KeyEventResult.handled;
-                                    }
-                                  }
-                                  if (k == LogicalKeyboardKey.select ||
-                                      k == LogicalKeyboardKey.enter) {
-                                    Navigator.of(context).pop();
-                                    controller.openSelectedPlayer();
-                                    return KeyEventResult.handled;
-                                  }
-                                  if (k == LogicalKeyboardKey.escape ||
-                                      k == LogicalKeyboardKey.gameButtonB) {
-                                    Navigator.of(context).pop();
-                                    return KeyEventResult.handled;
-                                  }
-                                  return KeyEventResult.ignored;
-                                },
-                                child: Builder(
-                                  builder: (context) {
-                                    final focused = Focus.of(context).hasFocus;
-                                    return AnimatedScale(
-                                      scale: focused ? 1.05 : 1.0,
-                                      duration:
-                                          const Duration(milliseconds: 150),
-                                      child: FilledButton.icon(
-                                        onPressed: () {
-                                          Navigator.of(context).pop();
-                                          controller.openSelectedPlayer();
-                                        },
-                                        icon: const Icon(
-                                            Icons.play_arrow_rounded,
-                                            size: 32),
-                                        label: Text('common.play'.tr,
-                                            style: const TextStyle(
-                                                fontSize: 20,
-                                                fontWeight: FontWeight.bold)),
-                                        style: FilledButton.styleFrom(
-                                          backgroundColor: focused
-                                              ? Theme.of(context)
-                                                  .colorScheme
-                                                  .primary
-                                              : Colors.white
-                                                  .withValues(alpha: 0.15),
-                                          foregroundColor: Colors.white,
-                                          padding: const EdgeInsets.symmetric(
-                                              horizontal: 40, vertical: 16),
-                                          shape: RoundedRectangleBorder(
-                                              borderRadius:
-                                                  BorderRadius.circular(16)),
-                                        ),
-                                      ),
-                                    );
-                                  },
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
+                            ),
+                          ],
+                        );
+                      },
                     ),
                   ),
                 ),
               ),
-              // Back Button (Top Left)
               Positioned(
-                top: 24,
-                left: 24,
-                child: IconButton.filled(
-                  onPressed: () => Navigator.of(context).pop(),
-                  icon: const Icon(Icons.arrow_back_rounded),
-                  style: IconButton.styleFrom(
-                    backgroundColor: Colors.black45,
-                    foregroundColor: Colors.white,
+                top: MediaQuery.paddingOf(context).top + 8,
+                left: 20,
+                child: Material(
+                  color: Colors.white,
+                  shape: const CircleBorder(),
+                  clipBehavior: Clip.antiAlias,
+                  child: InkWell(
+                    onTap: () => Navigator.of(context).pop(),
+                    child: const SizedBox(
+                      width: 48,
+                      height: 48,
+                      child: Icon(
+                        Icons.arrow_back_rounded,
+                        color: Colors.black87,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+              Positioned(
+                top: MediaQuery.paddingOf(context).top + 8,
+                right: 20,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 8,
+                  ),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(22),
+                    color: Colors.white.withValues(alpha: 0.14),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.28),
+                    ),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.schedule_rounded,
+                        color: Colors.white.withValues(alpha: 0.88),
+                        size: 20,
+                      ),
+                      const SizedBox(width: 8),
+                      Obx(
+                        () => Text(
+                          DateFormat('HH:mm').format(controller.now.value),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 16,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -2965,6 +3822,22 @@ class _BrowseSeriesTvDetailRoute extends StatelessWidget {
         },
         child: Obx(() {
           final row = controller.selectedRow.value;
+          final layoutMode =
+              Get.find<AppSettingsService>().layoutMode.value;
+          final useModernSeriesDetail =
+              layoutMode.usesModernSeriesDetailUi;
+
+          if (useModernSeriesDetail) {
+            return Scaffold(
+              backgroundColor: Colors.black,
+              body: SeriesPortraitDetailView(
+                controller: controller,
+                onClose: () => Navigator.of(context).pop(),
+                beforePlayEpisode: () => Navigator.of(context).pop(),
+              ),
+            );
+          }
+
           final bg = row?.imageUrl?.trim() ?? '';
           final hasPoster = bg.isNotEmpty;
 
@@ -3136,7 +4009,6 @@ class _BrowseSeriesEpisodePanelState extends State<_BrowseSeriesEpisodePanel> {
   Widget build(BuildContext context) {
     final controller = widget.controller;
     final primary = Theme.of(context).colorScheme.primary;
-
     return GlassTvSheet(
       child: Obx(() {
         final row = controller.selectedRow.value;
@@ -3484,6 +4356,39 @@ class _BrowseSeriesEpisodePanelState extends State<_BrowseSeriesEpisodePanel> {
               ],
               const SizedBox(height: 8),
             ],
+            if (portrait)
+              Obx(() {
+                if (controller.isOmdbLoading.value) {
+                  return const Padding(
+                    padding: EdgeInsets.only(bottom: 10),
+                    child: _GlassLoadingPlaceholder(),
+                  );
+                }
+                final omdb = controller.omdbMovieDetail.value;
+                final omdbPl = omdb?.plot?.trim();
+                final syn = controller.seriesDetailSynopsis.value.trim();
+                final m3uPlot = series.plot?.trim();
+                final body = (omdbPl != null && omdbPl.isNotEmpty)
+                    ? omdbPl
+                    : (syn.isNotEmpty ? syn : (m3uPlot ?? ''));
+                if (body.isEmpty) return const SizedBox.shrink();
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxHeight: 140),
+                    child: SingleChildScrollView(
+                      child: Text(
+                        body,
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.78),
+                          fontSize: 11.5,
+                          height: 1.35,
+                        ),
+                      ),
+                    ),
+                  ),
+                );
+              }),
             Text(
               'browse.season'.tr,
               style: TextStyle(
@@ -3494,7 +4399,7 @@ class _BrowseSeriesEpisodePanelState extends State<_BrowseSeriesEpisodePanel> {
             ),
             const SizedBox(height: 6),
             SizedBox(
-              height: 36,
+              height: 44,
               child: loading
                   ? const Center(
                       child: SizedBox(
@@ -3516,6 +4421,7 @@ class _BrowseSeriesEpisodePanelState extends State<_BrowseSeriesEpisodePanel> {
                         final fn = _getSeasonFocusNode(s);
                         return Focus(
                           focusNode: fn,
+                          descendantsAreFocusable: false,
                           onFocusChange: (_) {
                             if (mounted) setState(() {});
                           },
@@ -3541,8 +4447,9 @@ class _BrowseSeriesEpisodePanelState extends State<_BrowseSeriesEpisodePanel> {
                                 WidgetsBinding.instance
                                     .addPostFrameCallback((_) {
                                   if (!mounted) return;
-                                  if (target.canRequestFocus)
+                                  if (target.canRequestFocus) {
                                     target.requestFocus();
+                                  }
                                 });
                               }
                               return KeyEventResult.handled;
@@ -3584,29 +4491,84 @@ class _BrowseSeriesEpisodePanelState extends State<_BrowseSeriesEpisodePanel> {
                             }
                             return KeyEventResult.ignored;
                           },
-                          child: ChoiceChip(
-                            label: Text('S$s'),
-                            selected: sel,
-                            onSelected: (v) {
-                              if (v) controller.selectSeriesSeason(s);
-                            },
-                            selectedColor: primary.withValues(alpha: 0.45),
-                            labelStyle: TextStyle(
-                              color: Colors.white
-                                  .withValues(alpha: sel ? 0.98 : 0.75),
-                              fontSize: 11,
-                              fontWeight: FontWeight.w600,
+                          child: Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              canRequestFocus: false,
+                              onTap: () {
+                                controller.selectSeriesSeason(s);
+                                final list = controller.seriesEpisodeOptions
+                                    .where((e) => e.season == s)
+                                    .toList();
+                                if (list.isNotEmpty) {
+                                  final target = _getEpisodeFocusNode(
+                                      list.first.channel.id);
+                                  WidgetsBinding.instance
+                                      .addPostFrameCallback((_) {
+                                    if (!mounted) return;
+                                    if (target.canRequestFocus) {
+                                      target.requestFocus();
+                                    }
+                                  });
+                                }
+                              },
+                              borderRadius: BorderRadius.circular(10),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(10),
+                                child: BackdropFilter(
+                                  filter: ImageFilter.blur(
+                                    sigmaX: 12,
+                                    sigmaY: 12,
+                                  ),
+                                  child: DecoratedBox(
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(10),
+                                      border: Border.all(
+                                        color: fn.hasFocus
+                                            ? Colors.white
+                                                .withValues(alpha: 0.92)
+                                            : (sel
+                                                ? primary.withValues(
+                                                    alpha: 0.88)
+                                                : Colors.white
+                                                    .withValues(alpha: 0.24)),
+                                        width: fn.hasFocus ? 2.2 : 1.15,
+                                      ),
+                                      gradient: LinearGradient(
+                                        begin: Alignment.topLeft,
+                                        end: Alignment.bottomRight,
+                                        colors: [
+                                          Colors.white.withValues(
+                                            alpha: sel ? 0.2 : 0.12,
+                                          ),
+                                          Colors.white.withValues(
+                                            alpha: sel ? 0.09 : 0.05,
+                                          ),
+                                        ],
+                                      ),
+                                    ),
+                                    child: Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 16,
+                                        vertical: 9,
+                                      ),
+                                      child: Text(
+                                        'S$s',
+                                        style: TextStyle(
+                                          color: Colors.white.withValues(
+                                            alpha: sel ? 0.98 : 0.84,
+                                          ),
+                                          fontSize: 12,
+                                          fontWeight: sel
+                                              ? FontWeight.w800
+                                              : FontWeight.w600,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
                             ),
-                            side: BorderSide(
-                              color: fn.hasFocus
-                                  ? Colors.white.withValues(alpha: 0.95)
-                                  : (sel
-                                      ? primary.withValues(alpha: 0.9)
-                                      : Colors.white.withValues(alpha: 0.2)),
-                              width: fn.hasFocus ? 2 : 1,
-                            ),
-                            backgroundColor:
-                                Colors.white.withValues(alpha: 0.06),
                           ),
                         );
                       },
@@ -3760,40 +4722,6 @@ class _BrowseSeriesEpisodePanelState extends State<_BrowseSeriesEpisodePanel> {
                           ),
                         ),
             ),
-            if (portrait)
-              Obx(() {
-                if (controller.isOmdbLoading.value) {
-                  return const Padding(
-                    padding: EdgeInsets.only(top: 8, bottom: 10),
-                    child: _GlassLoadingPlaceholder(),
-                  );
-                }
-                final ep = controller.selectedSeriesEpisode.value;
-                final syn = controller.seriesDetailSynopsis.value.trim();
-                final epPl = ep?.plot?.trim();
-                final m3uPlot = series.plot?.trim();
-                final body = (epPl != null && epPl.isNotEmpty)
-                    ? epPl
-                    : (syn.isNotEmpty ? syn : (m3uPlot ?? ''));
-                if (body.isEmpty) return const SizedBox.shrink();
-                return Padding(
-                  padding: const EdgeInsets.only(top: 8, bottom: 10),
-                  child: SizedBox(
-                    height: 100,
-                    child: SingleChildScrollView(
-                      child: Text(
-                        body,
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.78),
-                          fontSize: 11.5,
-                          height: 1.35,
-                        ),
-                      ),
-                    ),
-                  ),
-                );
-              }),
-            if (portrait) const SizedBox(height: 8),
           ],
         );
       }),
@@ -3893,6 +4821,12 @@ class _BrowseStaticDetailPanel extends StatelessWidget {
                         return KeyEventResult.ignored;
                       }
                       final k = event.logicalKey;
+                      // OK/Select: favoriyi aç/kapat (eskiden kumandada OK
+                      // işlevsizdi; yalnızca dokunmatik InkWell çalışıyordu).
+                      if (tvKeyIsActivate(k)) {
+                        controller.toggleFavorite(row);
+                        return KeyEventResult.handled;
+                      }
                       if (k == LogicalKeyboardKey.arrowUp) {
                         if (controller
                             .browseBarSearchFocusNode.canRequestFocus) {
@@ -3900,7 +4834,9 @@ class _BrowseStaticDetailPanel extends StatelessWidget {
                           return KeyEventResult.handled;
                         }
                       }
+                      // Sol ok: detay sütunundan orta listeye dön (çıkmaz fix).
                       if (k == LogicalKeyboardKey.arrowLeft) {
+                        controller.lockBrowseDetailColumn();
                         return KeyEventResult.handled;
                       }
                       if (k == LogicalKeyboardKey.arrowDown) {
@@ -3967,7 +4903,9 @@ class _BrowseStaticDetailPanel extends StatelessWidget {
                   return KeyEventResult.handled;
                 }
               }
+              // Sol ok: önizlemeden orta listeye dön (çıkmaz fix).
               if (k == LogicalKeyboardKey.arrowLeft) {
+                controller.lockBrowseDetailColumn();
                 return KeyEventResult.handled;
               }
               if (k == LogicalKeyboardKey.escape ||
@@ -4481,13 +5419,20 @@ class _PortraitTopBarSearchWrapperState
     extends State<_PortraitTopBarSearchWrapper> {
   @override
   Widget build(BuildContext context) {
-    return GlassLiveTopBar(
-      searchController: widget.controller.searchController,
-      onSearchChanged: widget.controller.onSearchChanged,
-      onBack: widget.onBack,
-      onSettings: () => Get.toNamed(AppRoutes.settings),
-      searchHint: widget.controller.searchHint,
-      showBackButton: true,
+    return Obx(() {
+      final hasMultipleLists =
+          Get.find<ActivePlaylistService>().hasMultiple;
+      return GlassLiveTopBar(
+        searchController: widget.controller.searchController,
+        onSearchChanged: widget.controller.onSearchChanged,
+        onBack: widget.onBack,
+        onSettings: () => Get.toNamed(AppRoutes.settings),
+        onPlaylist: hasMultipleLists
+            ? () => showPlaylistPickerSheet(context)
+            : null,
+        searchHint: widget.controller.searchHint,
+        searchHistoryScope: SearchHistoryScope.browse,
+        showBackButton: true,
       tvSearchFocusNode: widget.controller.browseBarSearchFocusNode,
       tvSettingsFocusNode: widget.controller.browseBarSettingsFocusNode,
       onTvNavigateLeftFromTopBar: () {
@@ -4525,7 +5470,8 @@ class _PortraitTopBarSearchWrapperState
           );
         },
       ),
-    );
+      );
+    });
   }
 }
 

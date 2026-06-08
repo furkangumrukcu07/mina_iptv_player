@@ -1,0 +1,106 @@
+rules_version = '2';
+
+// Mina IPTV Player — Cloud (Firestore) güvenlik kuralları.
+//
+// Veri modeli: AuthService her kullanıcının tüm yedeğini (tema, font, PIN ve
+// 32 slot M3U/Xtream kimlik bilgileri JSON string'i olarak) `users/{uid}`
+// dökümanında saklar. Bu yüzden temel kural basittir: bir kullanıcı YALNIZCA
+// kendi `uid` dökümanını okuyup yazabilir, başkasınınkine asla erişemez.
+//
+// Yayınlamak için:
+//   firebase deploy --only firestore:rules
+// veya Firebase Console → Firestore Database → Rules → buraya yapıştır → Publish.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Kullanıcı yedek dökümanı: sadece sahibi (oturum açmış ve uid eşleşen).
+    // Okuma için sahiplik yeterli; yazmada ayrıca yedek boyutu/tipi doğrulanır.
+    match /users/{userId} {
+      allow read: if isOwner(userId);
+      allow write: if isOwner(userId) && isValidBackup();
+
+      // Alt koleksiyonlara (ileride eklenebilir) da aynı sahiplik kuralı.
+      match /{document=**} {
+        allow read, write: if isOwner(userId);
+      }
+    }
+
+    // Dile göre sohbet odaları: chats/rooms/{lang}/{messageId}
+    // - Okuma: oturum açmış herkes (senkron aktif kullanıcılar).
+    // - Oluşturma: yalnızca kendi adına, geçerli ve makul boyutta mesaj.
+    // - Silme: mesajın sahibi kendi mesajını VEYA admin herhangi bir mesajı.
+    // - Güncelleme: yasak (mesajlar düzenlenemez).
+    match /chats/rooms/{lang}/{messageId} {
+      allow read: if request.auth != null;
+      allow create: if request.auth != null && isValidChatMessage();
+      allow delete: if request.auth != null
+          && (resource.data.senderId == request.auth.uid || isChatAdmin());
+      allow update: if false;
+    }
+
+    // Yöneticiye mesaj (birebir destek): support_threads/{userUid}
+    //   - Thread meta dökümanı: sahibi (userUid) veya admin okuyup yazabilir.
+    //   - messages alt koleksiyonu: aynı görünürlük; oluşturmada gönderen
+    //     kimliği ve boyut doğrulanır; silme sahibi veya admin; güncelleme yok.
+    //   - Admin tüm thread'leri listeleyebilir (isChatAdmin userUid'den bağımsız).
+    match /support_threads/{userId} {
+      allow read: if isOwner(userId) || isChatAdmin();
+      allow create, update: if isOwner(userId) || isChatAdmin();
+      allow delete: if isChatAdmin();
+
+      match /messages/{messageId} {
+        allow read: if isOwner(userId) || isChatAdmin();
+        allow create: if (isOwner(userId) || isChatAdmin())
+            && isValidChatMessage();
+        allow delete: if request.auth != null
+            && (resource.data.senderId == request.auth.uid || isChatAdmin());
+        allow update: if false;
+      }
+    }
+
+    // Yukarıdaki kurallarla eşleşmeyen her şey reddedilir (varsayılan deny).
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
+
+// Yeni bir sohbet mesajının gönderen kimliği, alanları ve boyutu doğru mu?
+function isValidChatMessage() {
+  let d = request.resource.data;
+  return d.senderId == request.auth.uid
+      && d.messageText is string
+      && d.messageText.size() > 0
+      && d.messageText.size() <= 500
+      && d.senderName is string
+      && d.senderName.size() <= 120
+      && d.keys().hasOnly(
+          ['senderId', 'senderName', 'messageText', 'timestamp',
+           'senderPhotoUrl', 'senderRole', 'replyToName', 'replyToText',
+           'statusTag']);
+}
+
+// Sohbet yöneticisi (admin) mi? Herhangi bir mesajı silebilir. Yeni admin
+// eklemek için kişinin UID'sini bu listeye ekleyin (ChatService.adminUids ile
+// aynı tutun).
+function isChatAdmin() {
+  return request.auth != null
+      && request.auth.uid in [
+        'S90HID84FieYC4UBQ6BdoFrYtff2',
+      ];
+}
+
+// İstek sahibi, hedef dökümanın uid'sine sahip oturum açmış kullanıcı mı?
+function isOwner(userId) {
+  return request.auth != null && request.auth.uid == userId;
+}
+
+// Yazılan yedek dökümanının makul sınırlar içinde olduğunu doğrular (yalnızca
+// write'ta çağrılır, dolayısıyla request.resource her zaman tanımlıdır).
+// `data` alanı tüm yedeği tutan JSON string'idir; aşırı büyük yazımları ve
+// beklenmeyen tipleri engelleyerek kötüye kullanımı sınırlar.
+function isValidBackup() {
+  return !('data' in request.resource.data)
+      || (request.resource.data.data is string
+          && request.resource.data.data.size() < 2000000); // ~2 MB üst sınır
+}

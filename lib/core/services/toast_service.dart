@@ -15,20 +15,30 @@ class ToastService extends GetxService {
   /// [message] Gösterilecek mesaj.
   /// [title] Opsiyonel başlık.
   /// [isError] Hata uyarısı mı (Kırmızı tonlu) yoksa bilgi mi.
-  void show(String message, {String? title, bool isError = false}) {
+  /// [force] true ise anti-spam atlanır — kullanıcı eylemi sonrası
+  /// (silme/aktivasyon/devre dışı) her seferinde geri bildirim verilmeli.
+  void show(
+    String message, {
+    String? title,
+    bool isError = false,
+    bool force = false,
+  }) {
     final now = DateTime.now();
 
-    // Anti-spam: Aynı mesaj çok kısa süre içinde tekrar gelirse yoksay (2 saniye)
-    if (_lastMessage == message &&
-        _lastTime != null &&
-        now.difference(_lastTime!) < const Duration(seconds: 2)) {
-      return;
-    }
+    if (!force) {
+      // Anti-spam: Aynı mesaj çok kısa süre içinde tekrar gelirse yoksay (2 sn)
+      if (_lastMessage == message &&
+          _lastTime != null &&
+          now.difference(_lastTime!) < const Duration(seconds: 2)) {
+        return;
+      }
 
-    // Kuyrukta aynısı varsa ekleme
-    if (_queue
-        .any((element) => element.message == message && element.title == title))
-      return;
+      // Kuyrukta aynısı varsa ekleme
+      if (_queue.any(
+          (element) => element.message == message && element.title == title)) {
+        return;
+      }
+    }
 
     _lastMessage = message;
     _lastTime = now;

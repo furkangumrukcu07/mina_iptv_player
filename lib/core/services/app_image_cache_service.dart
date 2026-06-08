@@ -7,13 +7,16 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../domain/entities/m3u_result.dart';
 import '../../domain/entities/vod.dart';
+import 'app_settings_service.dart';
 
 class AppImageCacheService extends GetxService {
   static const Duration cacheStalePeriod = Duration(days: 30);
 
-  // 500 MB hedefi için pratikte yüksek obje limiti.
-  // (flutter_cache_manager byte limiti değil, obje adedi limiti sunuyor.)
-  static const int cacheMaxObjects = 5000;
+  // Poster/görsel önbelleği payı ~80 MB (toplam ~200 MB hedefinin geri kalanı;
+  // logo payı IptvLogoCacheService.maxCacheBytes ile ayrıca sınırlanır).
+  // flutter_cache_manager byte değil obje adedi limiti sunduğundan, ortalama
+  // ~100 KB poster için ~800 obje ≈ 80 MB olarak ayarlanır.
+  static const int cacheMaxObjects = 800;
 
   static const String _urlIndexKey = 'app_image_cache.url_index.v1';
   static const String _etagIndexKey = 'app_image_cache.etag_index.v1';
@@ -68,16 +71,23 @@ class AppImageCacheService extends GetxService {
   }
 
   Future<void> precacheInitialPlaylistImages(M3uResult result) async {
+    // Düşük Donanımlı Cihaz Modu açıkken açılışta ön-yüklenen görsel sayısını
+    // azalt (bellek + ağ baskısını düşürür).
+    final lowEnd = Get.isRegistered<AppSettingsService>() &&
+        Get.find<AppSettingsService>().lowEndDeviceMode.value;
+    final channelLimit = lowEnd ? 15 : 50;
+    final vodLimit = lowEnd ? 8 : 20;
+
     final topChannels = result.channels
         .where((c) => (c.logoUrl ?? '').trim().isNotEmpty)
-        .take(50)
+        .take(channelLimit)
         .toList(growable: false);
 
     final recentMovies = List<VodItem>.from(result.vod)
       ..sort((a, b) => (b.addedUnix ?? 0).compareTo(a.addedUnix ?? 0));
     final topVod = recentMovies
         .where((v) => (v.posterUrl ?? '').trim().isNotEmpty)
-        .take(20)
+        .take(vodLimit)
         .toList(growable: false);
 
     for (final c in topChannels) {
