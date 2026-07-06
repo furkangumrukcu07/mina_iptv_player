@@ -32,8 +32,22 @@ abstract final class GlassThemeLabels {
   /// Meizu Flyme: sade buzlu cam, mavi–camgöbeği vurgu, yumuşak kartlar.
   static const flyUi = 'Fly UI';
 
-  /// Kurulum sihirbazı ve ayarlarla aynı sıra.
+  /// TV Lite: hiç blur yok, siyah yüzeyler, kırmızı vurgu; tek özel fotoğraf
+  /// duvar kağıdı (dikey/yatay). Eski TV box / zayıf cihazlar için sade tema.
+  static const tvLite = 'TV Lite';
+
+  /// iOS 27 "Liquid Glass": çok saydam damla cam panelleri, iOS mavisi vurgu,
+  /// büyük yuvarlatılmış köşeler; akışkan cam damla duvar kağıdı (dikey/yatay).
+  static const ios27 = 'IOS 27';
+
+  /// macOS 26 Tahoe "Mac Tema": Apple koyu cam panelleri, Apple mavisi vurgu,
+  /// 20px köşeler, Tahoe akışkan dalga duvar kağıdı.
+  static const macTema = 'Mac Tema';
+
+  /// Kurulum sihirbazı ve ayarlarla aynı sıra. TV Lite (sade, blur'suz tema)
+  /// ilk sırada — TV box / zayıf cihazlarda önce görünür.
   static const List<String> selectableThemeLabels = [
+    tvLite,
     varsayilan,
     koyuCam,
     amoledBlack,
@@ -44,10 +58,31 @@ abstract final class GlassThemeLabels {
     darkFlat,
     flatBlack,
     glassGri,
+    ios27,
+    macTema,
   ];
 
   static bool isDarkFlatFamily(String? themeLabel) =>
       themeLabel == darkFlat || themeLabel == flatBlack;
+
+  /// TV düzeninde seçilemez / gösterilmez temalar.
+  static const Set<String> tvExcludedThemeLabels = {
+    varsayilan,
+    glassmorphism,
+    minaGlass,
+    flyUi,
+  };
+
+  static bool isThemeAllowedOnTv(String label) =>
+      !tvExcludedThemeLabels.contains(label);
+
+  /// Ayarlar ve kurulum: TV'de [tvExcludedThemeLabels] hariç liste.
+  static List<String> selectableThemesForLayout({required bool tv}) {
+    if (!tv) return selectableThemeLabels;
+    return selectableThemeLabels
+        .where((t) => isThemeAllowedOnTv(t))
+        .toList(growable: false);
+  }
 }
 
 /// Tema etiketine göre pano renkleri ve opaklıkları.
@@ -62,12 +97,31 @@ final class GlassAppearance {
     required this.isMinaGlass,
     required this.isSemc,
     required this.isFlyUi,
+    required this.isTvLite,
+    required this.isIos27,
+    required this.isMacTema,
   });
 
   static const _semcGreen = Color(0xFF00C989);
   static const _semcGreenDim = Color(0xFF00A877);
   static const _flyBlue = Color(0xFF219BF0);
   static const _flyCyan = Color(0xFF1BC9B8);
+
+  /// iOS sistem mavisi vurgu.
+  static const _ios27Blue = Color(0xFF0A84FF);
+
+  /// iOS 27 "Liquid Glass": serin lacivert tonlu, dumanlı saydam cam panel
+  /// renkleri. Üstte daha parlak (specular), altta daha koyu — gerçek
+  /// [BackdropFilter] blur arkasında akışkan cam hissi verir.
+  static const _ios27GlassHi = Color(0x66172A4A);
+  static const _ios27GlassMid = Color(0x4A101F38);
+  static const _ios27GlassLo = Color(0x380A1730);
+
+  /// Camın kenarındaki ışık yakalama (specular) — ince parlak beyaz çerçeve.
+  static const _ios27EdgeColor = Color(0x4DFFFFFF);
+
+  /// TV Lite kırmızı vurgu.
+  static const _tvLiteRed = Color(0xFFE3201C);
 
   /// AMOLED siyah cam panel renkleri — neredeyse opak saf siyah, ince beyaz kenar.
   static const _amoledPanelHi = Color(0xE6050507);
@@ -83,24 +137,33 @@ final class GlassAppearance {
   final bool isMinaGlass;
   final bool isSemc;
   final bool isFlyUi;
+  final bool isTvLite;
+  final bool isIos27;
+  final bool isMacTema;
 
   /// Buzlu beyaz cam ailesi (Flyme / Glassmorphism / Mina Glass).
   bool get _isFrostedGlass => isGlassmorphism || isMinaGlass || isFlyUi;
 
-  /// [darkFlat] ve [flatBlack] ortak düz yüzey / kart dili.
-  bool get isDarkFlatStyle => isDarkFlat || isFlatBlack;
+  /// [darkFlat], [flatBlack] ve [tvLite] ortak düz yüzey / kart dili (blur yok).
+  bool get isDarkFlatStyle => isDarkFlat || isFlatBlack || isTvLite;
 
   /// GPU’da [BackdropFilter] yerine çok katmanlı gradient + kenar + gölge (sahte buzlu cam).
-  /// [Glassmorphism], [Mina Glass] ve [Glass Gri] için gerçek zamanlı arka plan örneklemesi kapatılır.
+  /// [Glassmorphism], [Mina Glass], [Glass Gri], [TV Lite] ve [iOS 27] için gerçek
+  /// zamanlı arka plan örneklemesi (blur) tamamen kapatılır.
   bool get usesSyntheticGlassSurface =>
-      _isFrostedGlass || isGlassGri;
+      _isFrostedGlass || isGlassGri || isTvLite;
 
   factory GlassAppearance.fromLabel(String themeLabel) {
     final amoled = themeLabel == GlassThemeLabels.amoledBlack;
+    final mac = themeLabel == GlassThemeLabels.macTema;
     return GlassAppearance._(
       // AMOLED, koyu cam ailesini miras alır; ek olarak [isAmoledBlack]
       // override'ları ile saf siyah panellere dönüşür.
-      isDarkGlass: themeLabel == GlassThemeLabels.koyuCam || amoled,
+      // iOS 27 da koyu cam dilini taban alır.
+      isDarkGlass: themeLabel == GlassThemeLabels.koyuCam ||
+          amoled ||
+          themeLabel == GlassThemeLabels.ios27 ||
+          mac,
       isAmoledBlack: amoled,
       isGlassmorphism: themeLabel == GlassThemeLabels.glassmorphism,
       isDarkFlat: themeLabel == GlassThemeLabels.darkFlat,
@@ -109,6 +172,9 @@ final class GlassAppearance {
       isMinaGlass: themeLabel == GlassThemeLabels.minaGlass,
       isSemc: themeLabel == GlassThemeLabels.semcTheme,
       isFlyUi: themeLabel == GlassThemeLabels.flyUi,
+      isTvLite: themeLabel == GlassThemeLabels.tvLite,
+      isIos27: themeLabel == GlassThemeLabels.ios27,
+      isMacTema: mac,
     );
   }
 
@@ -124,11 +190,16 @@ final class GlassAppearance {
       isMinaGlass: false,
       isSemc: false,
       isFlyUi: false,
+      isTvLite: false,
+      isIos27: false,
+      isMacTema: false,
     );
   }
 
   /// Ana sayfa kategori kartı köşe yarıçapı.
   double get categoryCardBorderRadius {
+    if (isIos27) return 28;
+    if (isMacTema) return 20;
     if (isMinaGlass) return 26;
     if (isFlyUi) return 20;
     if (isSemc) return 18;
@@ -139,6 +210,12 @@ final class GlassAppearance {
   bool get useFlatHomeCategoryStyle => isDarkFlatStyle;
 
   Color get popupBorderColor {
+    if (isIos27) {
+      return _ios27EdgeColor;
+    }
+    if (isMacTema) {
+      return Colors.white.withValues(alpha: 0.18);
+    }
     if (isAmoledBlack) {
       return Colors.white.withValues(alpha: 0.12);
     }
@@ -161,6 +238,16 @@ final class GlassAppearance {
   }
 
   List<Color> get popupGradientColors {
+    if (isIos27) {
+      return const [_ios27GlassHi, _ios27GlassMid, _ios27GlassLo];
+    }
+    if (isMacTema) {
+      return [
+        const Color(0xFF1E1E2E).withValues(alpha: 0.80),
+        const Color(0xFF181824).withValues(alpha: 0.70),
+        const Color(0xFF101018).withValues(alpha: 0.60),
+      ];
+    }
     if (isAmoledBlack) {
       return const [_amoledPanelHi, _amoledPanelLo];
     }
@@ -198,6 +285,12 @@ final class GlassAppearance {
   }
 
   Color get popupShadowColor {
+    if (isIos27) {
+      return const Color(0xFF030712).withValues(alpha: 0.55);
+    }
+    if (isMacTema) {
+      return const Color(0xFF030712).withValues(alpha: 0.48);
+    }
     if (isSemc) {
       return const Color(0xFF001A10).withValues(alpha: 0.42);
     }
@@ -214,8 +307,51 @@ final class GlassAppearance {
   }
 
   BoxDecoration homeHeaderDecoration({double radius = 14}) {
-    final effRadius =
-        isDarkFlatStyle ? 18.0 : (isSemc ? 18.0 : (isGlassGri ? 16.0 : radius));
+    final effRadius = isIos27
+        ? 24.0
+        : isDarkFlatStyle
+            ? 18.0
+            : (isSemc ? 18.0 : (isGlassGri ? 16.0 : (isMacTema ? 20.0 : radius)));
+    if (isMacTema) {
+      return BoxDecoration(
+        borderRadius: BorderRadius.circular(effRadius),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.20)),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            const Color(0xFF28283E).withValues(alpha: 0.75),
+            const Color(0xFF1C1C2A).withValues(alpha: 0.65),
+            const Color(0xFF12121D).withValues(alpha: 0.55),
+          ],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.35),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      );
+    }
+    if (isIos27) {
+      return BoxDecoration(
+        borderRadius: BorderRadius.circular(effRadius),
+        border: Border.all(color: _ios27EdgeColor),
+        gradient: const LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [_ios27GlassHi, _ios27GlassMid, _ios27GlassLo],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: const Color(0xFF030712).withValues(alpha: 0.42),
+            blurRadius: 24,
+            offset: const Offset(0, 12),
+          ),
+        ],
+      );
+    }
     if (isAmoledBlack) {
       return BoxDecoration(
         borderRadius: BorderRadius.circular(effRadius),
@@ -353,6 +489,12 @@ final class GlassAppearance {
   }
 
   Color get sheetBorder {
+    if (isIos27) {
+      return _ios27EdgeColor;
+    }
+    if (isMacTema) {
+      return Colors.white.withValues(alpha: 0.16);
+    }
     if (isAmoledBlack) {
       return Colors.white.withValues(alpha: 0.10);
     }
@@ -373,6 +515,18 @@ final class GlassAppearance {
 
   /// Film & Dizi yatay liste çerçeveleri (poster şeritleri).
   List<Color> get filmDiziSectionGradientColors {
+    if (isIos27) {
+      return [
+        const Color(0xFF0E1B33).withValues(alpha: 0.62),
+        const Color(0xFF0A1428).withValues(alpha: 0.46),
+      ];
+    }
+    if (isMacTema) {
+      return [
+        const Color(0xFF1C1C2A).withValues(alpha: 0.72),
+        const Color(0xFF12121E).withValues(alpha: 0.54),
+      ];
+    }
     if (isSemc) {
       return [
         const Color(0xA0222E26),
@@ -438,6 +592,9 @@ final class GlassAppearance {
   }
 
   Color get topBarCapsuleBorder {
+    if (isIos27) {
+      return _ios27EdgeColor;
+    }
     if (isAmoledBlack) {
       return Colors.white.withValues(alpha: 0.14);
     }
@@ -457,6 +614,9 @@ final class GlassAppearance {
   }
 
   List<Color> get topBarCapsuleGradientColors {
+    if (isIos27) {
+      return const [_ios27GlassHi, _ios27GlassLo];
+    }
     if (isAmoledBlack) {
       return const [Color(0xCC0A0A0C), Color(0x99050506)];
     }
@@ -491,6 +651,9 @@ final class GlassAppearance {
   }
 
   Color get playerBarBorder {
+    if (isIos27) {
+      return _ios27EdgeColor;
+    }
     if (isAmoledBlack) {
       return Colors.white.withValues(alpha: 0.12);
     }
@@ -510,6 +673,9 @@ final class GlassAppearance {
   }
 
   List<Color> get playerBarGradientColors {
+    if (isIos27) {
+      return const [Color(0xCC0E1B33), Color(0xA60A1428)];
+    }
     if (isAmoledBlack) {
       return const [Color(0xD90A0A0C), Color(0xB3050506)];
     }
@@ -560,6 +726,9 @@ final class GlassAppearance {
   }
 
   List<Color> get playerCenterCardGradientColors {
+    if (isIos27) {
+      return const [_ios27GlassHi, _ios27GlassLo];
+    }
     if (isAmoledBlack) {
       return const [Color(0xD90C0C0E), Color(0xB3060608)];
     }
@@ -607,6 +776,9 @@ final class GlassAppearance {
   }
 
   Color categoryRowBorderIdle() {
+    if (isIos27) {
+      return Colors.white.withValues(alpha: 0.18);
+    }
     if (isAmoledBlack) {
       return Colors.white.withValues(alpha: 0.10);
     }
@@ -629,6 +801,12 @@ final class GlassAppearance {
   }
 
   Color categoryRowFillStrong() {
+    if (isIos27) {
+      return _ios27Blue.withValues(alpha: 0.20);
+    }
+    if (isTvLite) {
+      return _tvLiteRed.withValues(alpha: 0.30);
+    }
     if (isSemc) {
       return _semcGreen.withValues(alpha: 0.14);
     }
@@ -645,6 +823,12 @@ final class GlassAppearance {
   }
 
   Color categoryRowFillFocused() {
+    if (isIos27) {
+      return _ios27Blue.withValues(alpha: 0.14);
+    }
+    if (isTvLite) {
+      return _tvLiteRed.withValues(alpha: 0.22);
+    }
     if (isSemc) {
       return _semcGreen.withValues(alpha: 0.12);
     }
@@ -664,6 +848,12 @@ final class GlassAppearance {
   }
 
   Color categoryRowFillSelected() {
+    if (isIos27) {
+      return _ios27Blue.withValues(alpha: 0.26);
+    }
+    if (isTvLite) {
+      return _tvLiteRed.withValues(alpha: 0.34);
+    }
     if (isAmoledBlack) {
       return _amoledAccent.withValues(alpha: 0.22);
     }
@@ -689,9 +879,13 @@ final class GlassAppearance {
   }
 
   Color categoryRowFillIdle() {
+    if (isIos27) {
+      return const Color(0xFF0B1730).withValues(alpha: 0.34);
+    }
     if (isAmoledBlack) {
       return const Color(0xFF050507).withValues(alpha: 0.72);
     }
+
     if (isSemc) {
       return const Color(0xFF101814).withValues(alpha: 0.72);
     }
@@ -708,6 +902,17 @@ final class GlassAppearance {
   }
 
   Color listTileBorder(bool softSelected) {
+    if (isIos27) {
+      return softSelected
+          ? _ios27Blue.withValues(alpha: 0.60)
+          : Colors.white.withValues(alpha: 0.46);
+    }
+    if (isTvLite) {
+      return softSelected
+          ? _tvLiteRed.withValues(alpha: 0.75)
+          : const Color(0xFF2A2A2A);
+    }
+
     if (isSemc) {
       return _semcGreen.withValues(alpha: softSelected ? 0.42 : 0.22);
     }
@@ -721,9 +926,7 @@ final class GlassAppearance {
       return Colors.white.withValues(alpha: softSelected ? 0.62 : 0.42);
     }
     if (isFlatBlack) {
-      return softSelected
-          ? const Color(0xFF2A2A30)
-          : const Color(0xFF353543);
+      return softSelected ? const Color(0xFF2A2A30) : const Color(0xFF353543);
     }
     if (isDarkFlat) {
       return softSelected
@@ -764,6 +967,7 @@ final class GlassAppearance {
         ],
       );
     }
+
     if (isFlyUi) {
       return BoxDecoration(
         borderRadius: BorderRadius.circular(radius),
@@ -895,6 +1099,10 @@ final class GlassAppearance {
   }
 
   Color get settingsTileBorder {
+    if (isIos27) {
+      return _ios27EdgeColor;
+    }
+
     if (isSemc) {
       return _semcGreen.withValues(alpha: 0.24);
     }
@@ -912,6 +1120,13 @@ final class GlassAppearance {
 
   List<Color> settingsTileGradient(bool isColoredTint, Color themeColor) {
     if (isColoredTint) {
+      if (isIos27) {
+        return [
+          _ios27Blue.withValues(alpha: 0.22),
+          _ios27Blue.withValues(alpha: 0.06),
+        ];
+      }
+
       if (isSemc) {
         return [
           _semcGreen.withValues(alpha: 0.20),
@@ -943,9 +1158,13 @@ final class GlassAppearance {
         themeColor.withValues(alpha: isDarkGlass ? 0.03 : 0.04),
       ];
     }
+    if (isIos27) {
+      return const [_ios27GlassHi, _ios27GlassLo];
+    }
     if (isAmoledBlack) {
       return const [Color(0xCC0A0A0C), Color(0x99050506)];
     }
+
     if (isSemc) {
       return [const Color(0x4818201C), const Color(0x2A101412)];
     }
@@ -974,6 +1193,13 @@ final class GlassAppearance {
   }
 
   List<Color> homeCategoryCardNeutralGradient(bool portrait) {
+    if (isIos27) {
+      return [
+        const Color(0xFF1B2E52).withValues(alpha: portrait ? 0.42 : 0.50),
+        const Color(0xFF101F3C).withValues(alpha: portrait ? 0.34 : 0.40),
+        const Color(0xFF0A1730).withValues(alpha: portrait ? 0.46 : 0.52),
+      ];
+    }
     if (isAmoledBlack) {
       return [
         const Color(0xFF0A0A0C).withValues(alpha: portrait ? 0.52 : 0.48),
@@ -981,6 +1207,7 @@ final class GlassAppearance {
         const Color(0xFF020203).withValues(alpha: portrait ? 0.66 : 0.62),
       ];
     }
+
     if (isSemc) {
       return [
         const Color(0x621C2820),
@@ -1032,6 +1259,9 @@ final class GlassAppearance {
   }
 
   Color homeCategoryCardNeutralBorder(bool portrait) {
+    if (isIos27) {
+      return _ios27EdgeColor;
+    }
     if (isAmoledBlack) {
       return Colors.white.withValues(alpha: 0.14);
     }
@@ -1054,6 +1284,9 @@ final class GlassAppearance {
   }
 
   Color homeCategoryCardNeutralShadow() {
+    if (isIos27) {
+      return const Color(0xFF030712).withValues(alpha: 0.42);
+    }
     if (isSemc) {
       return const Color(0xFF003320).withValues(alpha: 0.32);
     }

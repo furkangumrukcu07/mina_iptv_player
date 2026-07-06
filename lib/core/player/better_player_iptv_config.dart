@@ -19,6 +19,7 @@ BetterPlayerVideoFormat iptvVideoFormatHintForUrl(String url) {
   final path = lower.split('?').first;
 
   // Ağ progressive: uzantı mp4/mkv/... → Exo "other" (tek dosya akışı).
+  // Ham MPEG-TS (.ts) akışlarını da "other" (Progressive) olarak aç ki ExoPlayer HLS çözmeye çalışıp hata vermesin.
   if (path.endsWith('.mp4') ||
       path.endsWith('.mkv') ||
       path.endsWith('.avi') ||
@@ -62,6 +63,12 @@ BetterPlayerVideoFormat iptvVideoFormatHintForUrl(String url) {
 /// kod çözücü) yolunu kullanır; `preferSoftwareVideoDecoder: false` iken Exo
 /// [MediaCodecSelector.DEFAULT] donanımı önceler. Ayarlardaki «yazılım video kod
 /// çözücü» tercihi burayı geçersiz kılabilir.
+///
+/// **Mina Güvenli Doku Profili** (*Texture-Safe Exo Profile*): Media Tunneling
+/// kapalı; Flutter texture/OSD korunur. Zayıf TV kutularında Exo
+/// [DefaultLoadControl] + geç kare düşürme + [setEnableDecoderFallback] ile
+/// 4K HEVC takılması ve A/V kayması azaltılır (native:
+/// [MinaTvTextureSafeRenderersFactory]).
 abstract final class IptvBetterPlayerConfig {
   /// Geçmiş uyumluluk: ayar anahtarı korunur; Exo tampon ms [iptvLiveBufferingTv] / [iptvVodBuffering].
   static const int defaultLiveBufferSecondsForExo = 3;
@@ -78,12 +85,15 @@ abstract final class IptvBetterPlayerConfig {
     prioritizeTimeOverSizeThresholds: true,
   );
 
+  /// Bağlantı kurtarma / tekrar açılış sonrası stabilizasyon profili.
+  /// [iptvLiveBufferingTv]'den farklı olarak daha geniş başlangıç tamponu ve
+  /// uzun rebuffer bekleme süresi içerir; küçük ağ dalgalanmalarına karşı direnç sağlar.
   static const BetterPlayerBufferingConfiguration iptvLiveBufferingTvStabilized =
       BetterPlayerBufferingConfiguration(
-    minBufferMs: 3000,
-    maxBufferMs: 8000,
-    bufferForPlaybackMs: 1000,
-    bufferForPlaybackAfterRebufferMs: 1500,
+    minBufferMs: 5000,
+    maxBufferMs: 12000,
+    bufferForPlaybackMs: 2500,
+    bufferForPlaybackAfterRebufferMs: 4000,
     preferSoftwareVideoDecoder: false,
     prioritizeTimeOverSizeThresholds: true,
   );
@@ -103,6 +113,105 @@ abstract final class IptvBetterPlayerConfig {
   static const BetterPlayerBufferingConfiguration iptvLargeBufferBuffering =
       iptvLiveBufferingTv;
 
+  /// **Canlı** Exo tampon profili — cihaz gücüne ([DevicePlaybackSegment]) göre.
+  ///
+  /// * `low`: Güvenli Doku — geniş yastık, 3 sn başlangıç, 5 sn rebuffer (zayıf TV).
+  /// * `mid`: mevcut dengeli profil ([iptvLiveBufferingTv]).
+  /// * `high`: kısa başlangıç tamponu → hızlı zap; geniş `maxBufferMs` (bol RAM).
+  static BetterPlayerBufferingConfiguration liveBufferingForSegment(
+    DevicePlaybackSegment seg,
+  ) {
+    switch (seg) {
+      case DevicePlaybackSegment.low:
+        return const BetterPlayerBufferingConfiguration(
+          minBufferMs: 6000,
+          maxBufferMs: 18000,
+          bufferForPlaybackMs: 3000,
+          bufferForPlaybackAfterRebufferMs: 5000,
+          preferSoftwareVideoDecoder: false,
+          prioritizeTimeOverSizeThresholds: true,
+        );
+      case DevicePlaybackSegment.high:
+        // bufferForPlaybackMs: 800 ms → 1400 ms: IPTV ağ jitter'ı genellikle 200–800 ms
+        // arasında olduğundan 800 ms eşiği mini kesintilerde hemen rebuffer'a yol açıyordu.
+        // afterRebuffer: 1500 → 2500 ms: rebuffer sonrası yeterli tampon dolana kadar bekle.
+        return const BetterPlayerBufferingConfiguration(
+          minBufferMs: 2500,
+          maxBufferMs: 10000,
+          bufferForPlaybackMs: 1400,
+          bufferForPlaybackAfterRebufferMs: 2500,
+          preferSoftwareVideoDecoder: false,
+          prioritizeTimeOverSizeThresholds: true,
+        );
+      case DevicePlaybackSegment.mid:
+        return iptvLiveBufferingTv;
+    }
+  }
+
+  /// Uzun segmentli (≥8 sn) ve ABR'siz HLS panelleri için geniş Exo tamponu.
+  /// Tek segment gecikmesi 10 sn'ye kadar çıkabildiğinden en az ~2 segment
+  /// tampon hedeflenir; ağ jitter'ında donmayı azaltır.
+  static const BetterPlayerBufferingConfiguration liveBufferingForLongSegmentHls =
+      BetterPlayerBufferingConfiguration(
+    minBufferMs: 22000,
+    maxBufferMs: 50000,
+    bufferForPlaybackMs: 12000,
+    bufferForPlaybackAfterRebufferMs: 18000,
+    preferSoftwareVideoDecoder: false,
+    prioritizeTimeOverSizeThresholds: true,
+  );
+
+  /// **VOD (film/dizi)** Exo tampon profili — cihaz gücüne göre.
+  ///
+  /// * `low`: Güvenli Doku — küçük `maxBufferMs`, zaman öncelikli tampon (RAM).
+  /// * `mid`: mevcut profil ([iptvVodBuffering]).
+  /// * `high`: büyük tampon → daha pürüzsüz ileri/geri sarma.
+  static BetterPlayerBufferingConfiguration vodBufferingForSegment(
+    DevicePlaybackSegment seg,
+  ) {
+    switch (seg) {
+      case DevicePlaybackSegment.low:
+        return const BetterPlayerBufferingConfiguration(
+          minBufferMs: 10000,
+          maxBufferMs: 30000,
+          bufferForPlaybackMs: 3000,
+          bufferForPlaybackAfterRebufferMs: 5000,
+          preferSoftwareVideoDecoder: false,
+          prioritizeTimeOverSizeThresholds: true,
+        );
+      case DevicePlaybackSegment.high:
+        return const BetterPlayerBufferingConfiguration(
+          minBufferMs: 20000,
+          maxBufferMs: 80000,
+          bufferForPlaybackMs: 2000,
+          bufferForPlaybackAfterRebufferMs: 4000,
+          preferSoftwareVideoDecoder: false,
+          prioritizeTimeOverSizeThresholds: false,
+        );
+      case DevicePlaybackSegment.mid:
+        return iptvVodBuffering;
+    }
+  }
+
+  /// Zayıf Android TV kutusu ([AndroidPlaybackSocHints.playbackChallengedTv])
+  /// için Güvenli Doku tampon katmanı — segment profilini bozmadan oynatma /
+  /// rebuffer eşiklerini donanımın nefes alacağı aralığa çeker.
+  static BetterPlayerBufferingConfiguration textureSafeBufferingOverlay(
+    BetterPlayerBufferingConfiguration base,
+  ) {
+    final startMs = base.bufferForPlaybackMs < 2500
+        ? 3000
+        : base.bufferForPlaybackMs.clamp(2500, 3500);
+    return BetterPlayerBufferingConfiguration(
+      minBufferMs: base.minBufferMs,
+      maxBufferMs: base.maxBufferMs,
+      bufferForPlaybackMs: startMs,
+      bufferForPlaybackAfterRebufferMs: 5000,
+      preferSoftwareVideoDecoder: base.preferSoftwareVideoDecoder,
+      prioritizeTimeOverSizeThresholds: true,
+    );
+  }
+
   /// [precacheStreamUrl] ve oynatıcı aynı anahtarı kullanır.
   static String cacheKeyForUrl(String url) {
     final h = sha256.convert(utf8.encode(url.trim()));
@@ -112,8 +221,145 @@ abstract final class IptvBetterPlayerConfig {
   /// Düşük donanımlı Android’de disk önbelleği: tek dosya ve toplam alan için üst sınır (~50 MiB).
   static const int iptvLowEndDiskCacheMaxBytes = 50 * 1024 * 1024;
 
+  /// ~1 GiB RAM: daha dar VOD disk önbelleği (MediaKit 24M tampon profiline paralel).
+  static const int iptvOneGiBDiskCacheMaxBytes = 32 * 1024 * 1024;
+
+  /// ~1 GiB RAM — canlı Exo [DefaultLoadControl] (dar tampon, 720p tavan ile uyumlu).
+  /// Fire TV Stick Lite, eski 1 GiB kutular.
+  static const BetterPlayerBufferingConfiguration oneGiBLiveBuffering =
+      BetterPlayerBufferingConfiguration(
+    minBufferMs: 5500,
+    maxBufferMs: 16000,
+    bufferForPlaybackMs: 2800,
+    bufferForPlaybackAfterRebufferMs: 4500,
+    preferSoftwareVideoDecoder: false,
+    prioritizeTimeOverSizeThresholds: true,
+  );
+
+  /// Ucuz 2 GiB kutu (X96/T95/H618/RK3318) — geniş başlangıç, dar max (RAM sınırı).
+  static const BetterPlayerBufferingConfiguration budgetTwoGiBLiveBuffering =
+      BetterPlayerBufferingConfiguration(
+    minBufferMs: 6000,
+    maxBufferMs: 18000,
+    bufferForPlaybackMs: 3200,
+    bufferForPlaybackAfterRebufferMs: 4800,
+    preferSoftwareVideoDecoder: false,
+    prioritizeTimeOverSizeThresholds: true,
+  );
+
+  /// TCL / Philips / Toshiba / Hisense Android TV — MTK/Realtek jitter'a karşı geniş tampon.
+  static const BetterPlayerBufferingConfiguration lowEndSmartTvLiveBuffering =
+      BetterPlayerBufferingConfiguration(
+    minBufferMs: 6500,
+    maxBufferMs: 22000,
+    bufferForPlaybackMs: 3500,
+    bufferForPlaybackAfterRebufferMs: 5500,
+    preferSoftwareVideoDecoder: false,
+    prioritizeTimeOverSizeThresholds: true,
+  );
+
+  /// 2 GiB capable TV/box — canlıda dengeli tampon (Mi Box S, Chromecast 4K, Onn 4K).
+  static const BetterPlayerBufferingConfiguration twoGiBLiveBuffering =
+      BetterPlayerBufferingConfiguration(
+    minBufferMs: 4200,
+    maxBufferMs: 17000,
+    bufferForPlaybackMs: 2200,
+    bufferForPlaybackAfterRebufferMs: 3200,
+    preferSoftwareVideoDecoder: false,
+    prioritizeTimeOverSizeThresholds: true,
+  );
+
+  /// ~1 GiB RAM — VOD Exo tamponu (Fire Stick, eski kutular).
+  static const BetterPlayerBufferingConfiguration oneGiBVodBuffering =
+      BetterPlayerBufferingConfiguration(
+    minBufferMs: 9000,
+    maxBufferMs: 26000,
+    bufferForPlaybackMs: 2800,
+    bufferForPlaybackAfterRebufferMs: 4500,
+    preferSoftwareVideoDecoder: false,
+    prioritizeTimeOverSizeThresholds: true,
+  );
+
+  /// Ucuz 2 GiB kutu VOD — orta tampon, 1080 tavan ile uyumlu.
+  static const BetterPlayerBufferingConfiguration budgetTwoGiBVodBuffering =
+      BetterPlayerBufferingConfiguration(
+    minBufferMs: 10000,
+    maxBufferMs: 32000,
+    bufferForPlaybackMs: 3000,
+    bufferForPlaybackAfterRebufferMs: 4800,
+    preferSoftwareVideoDecoder: false,
+    prioritizeTimeOverSizeThresholds: true,
+  );
+
+  /// 2 GiB capable — 4K VOD için geniş Exo tamponu (Mi Box S, Chromecast 4K sınıfı).
+  static const BetterPlayerBufferingConfiguration twoGiBVodBuffering =
+      BetterPlayerBufferingConfiguration(
+    minBufferMs: 13000,
+    maxBufferMs: 52000,
+    bufferForPlaybackMs: 3200,
+    bufferForPlaybackAfterRebufferMs: 5200,
+    preferSoftwareVideoDecoder: false,
+    prioritizeTimeOverSizeThresholds: false,
+  );
+
+  /// Canlı Exo tamponu — RAM sınıfı + segment ([exoLivePlaybackSegment]).
+  static BetterPlayerBufferingConfiguration liveBufferingForDevice({
+    bool useLongSegmentHls = false,
+    bool isRawTs = false,
+  }) {
+    // Raw TS için daha geniş buffering (kasma önleme)
+    if (isRawTs) {
+      return const BetterPlayerBufferingConfiguration(
+        minBufferMs: 5000,
+        maxBufferMs: 15000,
+        bufferForPlaybackMs: 2500,
+        bufferForPlaybackAfterRebufferMs: 4000,
+        preferSoftwareVideoDecoder: false,
+        prioritizeTimeOverSizeThresholds: true,
+      );
+    }
+    if (useLongSegmentHls) return liveBufferingForLongSegmentHls;
+    if (Platform.isAndroid) {
+      if (AndroidPlaybackSocHints.oneGiBRamClass) return oneGiBLiveBuffering;
+      if (AndroidPlaybackSocHints.budgetTwoGiBRamClass) {
+        return budgetTwoGiBLiveBuffering;
+      }
+      if (AndroidPlaybackSocHints.lowEndSmartTvLike) {
+        return lowEndSmartTvLiveBuffering;
+      }
+      if (AndroidPlaybackSocHints.twoGiBRamClass &&
+          (AndroidPlaybackSocHints.capableTwoGiBTvBox ||
+              !AndroidPlaybackSocHints.budgetTvBoxSoc)) {
+        return twoGiBLiveBuffering;
+      }
+      return liveBufferingForSegment(
+        AndroidPlaybackSocHints.exoLivePlaybackSegment(),
+      );
+    }
+    return liveBufferingForSegment(AndroidPlaybackSocHints.playbackSegment);
+  }
+
+  /// VOD Exo tamponu — RAM sınıfı + segment ([exoVodPlaybackSegment]).
+  static BetterPlayerBufferingConfiguration vodBufferingForDevice() {
+    if (Platform.isAndroid) {
+      if (AndroidPlaybackSocHints.oneGiBRamClass) return oneGiBVodBuffering;
+      if (AndroidPlaybackSocHints.budgetTwoGiBRamClass) {
+        return budgetTwoGiBVodBuffering;
+      }
+      if (AndroidPlaybackSocHints.twoGiBRamClass &&
+          (AndroidPlaybackSocHints.capableTwoGiBTvBox ||
+              !AndroidPlaybackSocHints.budgetTvBoxSoc)) {
+        return twoGiBVodBuffering;
+      }
+      return vodBufferingForSegment(
+        AndroidPlaybackSocHints.exoVodPlaybackSegment(),
+      );
+    }
+    return vodBufferingForSegment(AndroidPlaybackSocHints.playbackSegment);
+  }
+
   /// Android’de güçlü cihazlarda disk önbelleği kapalı kalır (bazı TV / OEM’lerde sorun raporu).
-  /// Düşük RAM veya az çekirdekte [useCache]: true ve [maxCacheFileSize] [iptvLowEndDiskCacheMaxBytes].
+  /// ~1 GiB RAM’de [useCache]: true ve [maxCacheFileSize] [iptvOneGiBDiskCacheMaxBytes].
   ///
   /// **Yalnızca VOD** ile kullanılmalı; canlıda `SimpleCache` ilk segmentleri kilitleyip birkaç saniye
   /// sonra durma ve tekrar açılınca aynı kesitin oynatılması gibi hatalara yol açar.
@@ -123,15 +369,11 @@ abstract final class IptvBetterPlayerConfig {
     String url,
   ) {
     if (!Platform.isAndroid) return null;
-    final lowEnd = AndroidPlaybackSocHints.weakMpvDevice ||
-        AndroidPlaybackSocHints.isTotalRamBelowBytes(
-          AndroidPlaybackSocHints.lowRamThresholdBytes,
-        );
-    if (!lowEnd) return null;
+    if (!AndroidPlaybackSocHints.oneGiBRamClass) return null;
     return BetterPlayerCacheConfiguration(
       useCache: true,
-      maxCacheSize: iptvLowEndDiskCacheMaxBytes,
-      maxCacheFileSize: iptvLowEndDiskCacheMaxBytes,
+      maxCacheSize: iptvOneGiBDiskCacheMaxBytes,
+      maxCacheFileSize: iptvOneGiBDiskCacheMaxBytes,
       preCacheSize: 2 * 1024 * 1024,
       key: cacheKeyForUrl(url),
     );
@@ -139,16 +381,13 @@ abstract final class IptvBetterPlayerConfig {
 
   /// Ön önbellek: ilk birkaç MB’ı indirir (Android `CacheWorker`).
   ///
-  /// Düşük donanımda [iptvLowEndDiskCacheMaxBytes]; aksi halde 48 MiB (yalnızca bu API’yi kullanan kod).
+  /// ~1 GiB RAM: [iptvOneGiBDiskCacheMaxBytes]; aksi halde 48 MiB.
   static BetterPlayerCacheConfiguration iptvPrecacheConfig(String cacheKey) {
-    final lowEnd = Platform.isAndroid &&
-        (AndroidPlaybackSocHints.weakMpvDevice ||
-            AndroidPlaybackSocHints.isTotalRamBelowBytes(
-              AndroidPlaybackSocHints.lowRamThresholdBytes,
-            ));
+    final oneGiB = Platform.isAndroid &&
+        AndroidPlaybackSocHints.oneGiBRamClass;
     final maxBytes =
-        lowEnd ? iptvLowEndDiskCacheMaxBytes : 48 * 1024 * 1024;
-    final preBytes = lowEnd ? 2 * 1024 * 1024 : 1536 * 1024;
+        oneGiB ? iptvOneGiBDiskCacheMaxBytes : 48 * 1024 * 1024;
+    final preBytes = oneGiB ? 2 * 1024 * 1024 : 1536 * 1024;
     return BetterPlayerCacheConfiguration(
       useCache: true,
       maxCacheSize: maxBytes,
@@ -342,18 +581,22 @@ abstract final class IptvBetterPlayerConfig {
   }
 }
 
-/// Android’de toplam RAM &lt; 2 GiB ise Exo [TrackSelectionParameters] ile başlangıç üst sınırı 720p.
+/// Android’de düşük RAM veya ucuz TV kutusu yonga seti (Allwinner/Rockchip) ise
+/// Exo [TrackSelectionParameters] ile başlangıç üst sınırı 720p (~1 GiB RAM).
 ///
-/// [AndroidPlaybackSocHints.ensureLoaded] çağrılmış olmalı; aksi halde RAM bilinmez ve kısıt uygulanmaz.
+/// [AndroidPlaybackSocHints.ensureLoaded] çağrılmış olmalı; aksi halde RAM
+/// bilinmez ve kısıt uygulanmaz.
 Future<void> iptvApplyBetterPlayerLowRam720CapIfNeeded(
   BetterPlayerController ctrl,
 ) async {
   if (!Platform.isAndroid) return;
-  if (!AndroidPlaybackSocHints.isTotalRamBelowBytes(
-        AndroidPlaybackSocHints.lowRamThresholdBytes,
-      )) {
-    return;
-  }
+  final lowRam = AndroidPlaybackSocHints.oneGiBRamClass;
+  // Digipoll GO2 (H618, ~2 GiB pazarlama RAM) gibi kutularda tam 2 GiB eşiğinin
+  // üstünde raporlanabiliyor; Allwinner/Rockchip/jenerik ucuz kutu + zayıf TV
+  // sınıfında yine 720p tavan uygula — 4K/1080p donanım kod çözücüyü kilitliyordu.
+  final budgetTv720 = AndroidPlaybackSocHints.budgetTvBoxSoc &&
+      AndroidPlaybackSocHints.playbackChallengedTv;
+  if (!lowRam && !budgetTv720) return;
   final vpc = ctrl.videoPlayerController;
   if (vpc == null) return;
   await vpc.setTrackParameters(1280, 720, 0);
@@ -380,19 +623,42 @@ BetterPlayerDataSource iptvBetterPlayerDataSource(
   /// Ayarlardan canlı tampon (saniye); üst katman tampon profili artık sabit ms ile
   /// hizalı — bu parametre geriye dönük API için tutulur.
   int liveBufferSeconds = IptvBetterPlayerConfig.defaultLiveBufferSecondsForExo,
+
+  /// [LiveHlsStreamProfileService] uzun segmentli ABR'siz HLS tespit ettiyse
+  /// [IptvBetterPlayerConfig.liveBufferingForLongSegmentHls] kullanılır.
+  bool useLongSegmentHlsBuffer = false,
+
+  /// Raw MPEG-TS formatı için özel buffering (kasma önleme).
+  bool isRawTs = false,
 }) {
   final hint = iptvVideoFormatHintForUrl(url);
+  // Uzantısız "web manifest / embed" (ör. `vidmody.com/vs/tt.../`) aslında HLS
+  // (`application/x-mpegURL`) ama URL uzantı taşımaz; segmentler `.gif` kılığında.
+  // Exo VOD'da `videoFormat: null` ile uzantıdan tahmin edip progressive sanar →
+  // "Source error". Bu adresler için açıkça HLS ipucu ver ki OSD'den Better'a
+  // geçildiğinde ExoPlayer HlsMediaSource manifesti çözüp deneyebilsin.
+  final bool isExtensionlessWebManifest =
+      IptvPlaybackDefaults.isExtensionlessWebManifestUrl(url);
   // Canlıda tüm URL’leri HLS sanmak (özellikle `.ts` / MPEG-TS) TV kutularında Exo
   // «Source error» / b0.L ile biter; URL ipucunu kullan.
-  final BetterPlayerVideoFormat? videoFormat = liveStream ? hint : null;
+  final BetterPlayerVideoFormat? videoFormat = liveStream
+      ? hint
+      : (isExtensionlessWebManifest ? BetterPlayerVideoFormat.hls : null);
 
   // VOD (canlı olmayan) içeriklerde donanım dekoderini zorla (ses sorunlarını önlemek için).
   // Xiaomi ve bazı Android cihazlarda yazılım dekoderi AC3/DTS desteklemez.
   // Ancak VOD TS dosyalarında bazen yazılım dekoderi daha iyi sonuç verebilir.
   final effectivePreferSoftware = preferSoftwareVideoDecoder;
 
-  final isTs = hint == BetterPlayerVideoFormat.other;
+  // MPEG-TS otomatik tespiti: çağıran `isRawTs: true` geçmese bile URL
+  // parametrelerinden (output=ts, type=ts vb.) MPEG-TS olduğu anlaşılıyorsa
+  // doğru tampon profili (liveBufferingForDevice isRawTs:true) uygulanır.
+  final bool effectiveRawTs = isRawTs ||
+      (liveStream && _isLikelyMpegTsStreamUrl(url));
+
+  final isTs = hint == BetterPlayerVideoFormat.other && !isExtensionlessWebManifest;
   final isAdaptive = liveStream ||
+      isExtensionlessWebManifest ||
       hint == BetterPlayerVideoFormat.hls ||
       hint == BetterPlayerVideoFormat.dash;
 
@@ -400,9 +666,18 @@ BetterPlayerDataSource iptvBetterPlayerDataSource(
   final effectiveUseAsmsAudio = useAsmsAudioTracks ??
       (!liveStream ? true : isAdaptive);
 
-  final baseBuffering = liveStream
-      ? IptvBetterPlayerConfig.iptvLiveBufferingTv
-      : IptvBetterPlayerConfig.iptvVodBuffering;
+  // Cihaz RAM sınıfı + güç segmentine göre tampon profili. [ensureLoaded]
+  // çağrılmadıysa segment `mid` döner → mevcut dengeli davranış korunur.
+  var baseBuffering = liveStream
+      ? IptvBetterPlayerConfig.liveBufferingForDevice(
+          useLongSegmentHls: useLongSegmentHlsBuffer,
+          isRawTs: effectiveRawTs,
+        )
+      : IptvBetterPlayerConfig.vodBufferingForDevice();
+  if (Platform.isAndroid && AndroidPlaybackSocHints.playbackChallengedTv) {
+    baseBuffering =
+        IptvBetterPlayerConfig.textureSafeBufferingOverlay(baseBuffering);
+  }
 
   final BetterPlayerBufferingConfiguration buffering =
       BetterPlayerBufferingConfiguration(
@@ -468,4 +743,16 @@ bool _isLocalFilePath(String url) {
   if (url.startsWith('file://')) return true;
   if (url.startsWith('/')) return true;
   return false;
+}
+
+/// Verilen `url` mpeg-ts yayını mı? (Uzantı veya parametrelere göre).
+bool _isLikelyMpegTsStreamUrl(String url) {
+  final streamLc = url.toLowerCase();
+  return streamLc.endsWith('.ts') ||
+      streamLc.contains('output=ts') ||
+      streamLc.contains('output=mpegts') ||
+      streamLc.contains('output=mpeg-ts') ||
+      streamLc.contains('output=m2ts') ||
+      streamLc.contains('type=ts') ||
+      streamLc.contains('container=ts');
 }

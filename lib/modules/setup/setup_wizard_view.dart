@@ -213,13 +213,7 @@ class _SetupFeaturesPage extends StatelessWidget {
         value: app.isAiRecommendationEnabled.value,
         onChanged: (v) => unawaited(app.setAiRecommendationEnabled(v)),
       ),
-      _FeatureToggleSpec(
-        icon: Icons.shield_outlined,
-        title: 'setup.hideAdultTitle'.tr,
-        subtitle: 'setup.hideAdultSub'.tr,
-        value: app.hideAdultContentEnabled.value,
-        onChanged: (v) => unawaited(app.setHideAdultContentEnabled(v)),
-      ),
+
       _FeatureToggleSpec(
         icon: Icons.label_off_outlined,
         title: 'setup.stripChannelPrefixTitle'.tr,

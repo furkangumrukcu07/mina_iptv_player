@@ -69,6 +69,24 @@ class BackupService {
   /// değerinde kalır.
   static const Set<String> _deviceLocalKeys = <String>{
     'mina_settings_layout_mode',
+    // Oynatma motoru tercihleri
+    'mina_settings_use_media_kit',
+    'mina_settings_live_use_media_kit',
+    'mina_settings_engine_user_chosen_v1',
+    // Donanım hızlandırma
+    'mina_settings_media_kit_low_power_hwdec',
+    // Video kod çözücü
+    'mina_settings_prefer_software_decoder',
+    // Yayın formatı
+    'mina_settings_live_stream_format_v1',
+    'mina_settings_live_stream_format_auto_v1',
+    'mina_settings_live_stream_format_ts_forced_lowend_v1',
+    // TV Lite (sade grafik)
+    'mina_settings_tv_lite',
+    'mina_settings_tv_lite_tv_forced',
+    // Düşük donanımlı cihaz modu
+    'mina_settings_low_end_device_mode',
+    'mina_settings_low_end_suggest_dismissed',
   };
 
   /// FlutterSecureStorage’daki M3U / Xtream kimlik bilgisi anahtar tabanları
@@ -366,11 +384,12 @@ class BackupService {
   /// uygula. Mevcut `mina_*` anahtarları önce temizlenir – böylece eski
   /// yedekte olmayan bir ayar üzerine yazılmaz.
   Future<BackupImportSummary> _applyBackupJson(Map<String, dynamic> data) async {
-    final prefs = _prefsOverride ?? await SharedPreferences.getInstance();
+    try {
+      final prefs = _prefsOverride ?? await SharedPreferences.getInstance();
 
-    var prefsCount = 0;
-    var secureCount = 0;
-    var m3uCount = 0;
+      var prefsCount = 0;
+      var secureCount = 0;
+      var m3uCount = 0;
 
     // 1) SharedPreferences: önce mevcut `mina_*` key’leri temizle. Cihaza özgü
     // anahtarlar (yerleşim modu) korunur — geri yükleme cihaz türünü
@@ -465,6 +484,8 @@ class BackupService {
       await _writeLocalM3u(_localM3uFileNameForSlot(slot), content);
       restoredLocalSlots.add(slot);
       m3uCount++;
+      // Büyük M3U yedeklerinde TV kutusunda UI thread'i nefes alsın.
+      await Future<void>.delayed(Duration.zero);
     }
 
     final bySlotRaw = data['localM3uBySlot'];
@@ -502,6 +523,10 @@ class BackupService {
       localM3uCount: m3uCount,
       createdAt: _parseCreatedAt(data['createdAt']),
     );
+    } catch (e, st) {
+      debugPrint('BackupService._applyBackupJson failed: $e\n$st');
+      rethrow;
+    }
   }
 
   DateTime? _parseCreatedAt(Object? raw) {

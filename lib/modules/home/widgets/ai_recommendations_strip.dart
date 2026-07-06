@@ -10,11 +10,14 @@ import '../../../core/home/home_card_frame_style.dart';
 import '../../../core/layout/app_layout_mode.dart';
 import '../../../core/services/app_image_cache_service.dart';
 import '../../../core/services/app_settings_service.dart';
+import '../../../core/services/playlist_cache_service.dart';
 import '../../../core/theme/app_scroll_physics.dart';
 import '../../../core/theme/glass_appearance.dart';
 import '../../../core/utils/epg_channel_display.dart';
+import '../../../core/home/showcase_player_launch.dart';
 import '../../../core/routes/app_routes.dart';
 import '../../../ui/tv_dpad_focus.dart';
+import '../../../ui/auto_scroll_text.dart';
 import '../../../core/home/film_dizi_detail_args.dart';
 import '../../../domain/entities/m3u_result.dart';
 import '../../../services/ai_recommendation_service.dart';
@@ -44,6 +47,20 @@ class AiRecommendationsStrip extends StatefulWidget {
   final int maxItems;
   final FocusNode? tvFirstItemFocusNode;
 
+  /// Ayarlar > sıfırlama sonrası açık şeritleri yeniden hesaplatır.
+  static final invalidationTick = 0.obs;
+
+  /// Statik öneri önbelleğini temizler. Kullanıcı "Mina AI önerilerini sıfırla"
+  /// veya "Son izlenenler"i sıfırladığında çağrılır; açık ana ekrandaki şerit
+  /// anında yeniden hesaplanır.
+  static void invalidateCache() {
+    _AiRecommendationsStripState._staticCache = null;
+    _AiRecommendationsStripState._staticCacheCatalogHash = null;
+    _AiRecommendationsStripState._staticCacheDailySalt = null;
+    _AiRecommendationsStripState._staticCacheHideScope = null;
+    invalidationTick.value++;
+  }
+
   @override
   State<AiRecommendationsStrip> createState() => _AiRecommendationsStripState();
 }
@@ -58,19 +75,15 @@ class _AiRecommendationsStripState extends State<AiRecommendationsStrip> {
   static int? _staticCacheDailySalt;
   static int? _staticCacheHideScope;
 
-  Worker? _hideAdultListener;
   Worker? _reviewModeListener;
   Worker? _hideRevisionListener;
   Worker? _cardScaleListener;
+  Worker? _invalidationListener;
 
   @override
   void initState() {
     super.initState();
     final app = Get.find<AppSettingsService>();
-    _hideAdultListener = ever<bool>(app.hideAdultContentEnabled, (_) {
-      _staticCache = null;
-      if (mounted) _compute();
-    });
     _reviewModeListener = ever<bool>(app.reviewModeActive, (_) {
       _staticCache = null;
       if (mounted) _compute();
@@ -82,15 +95,23 @@ class _AiRecommendationsStripState extends State<AiRecommendationsStrip> {
     _cardScaleListener = ever<double>(app.homeCardScale, (_) {
       if (mounted) setState(() {});
     });
+    _invalidationListener = ever<int>(AiRecommendationsStrip.invalidationTick, (_) {
+      if (!mounted) return;
+      _staticCache = null;
+      _staticCacheCatalogHash = null;
+      _staticCacheDailySalt = null;
+      _staticCacheHideScope = null;
+      _compute();
+    });
     _compute();
   }
 
   @override
   void dispose() {
-    _hideAdultListener?.dispose();
     _reviewModeListener?.dispose();
     _hideRevisionListener?.dispose();
     _cardScaleListener?.dispose();
+    _invalidationListener?.dispose();
     super.dispose();
   }
 
@@ -106,7 +127,12 @@ class _AiRecommendationsStripState extends State<AiRecommendationsStrip> {
   }
 
   int _catalogHash(M3uResult m) {
-    return Object.hash(m.channels.length, m.vod.length, m.series.length);
+    final cache = Get.find<PlaylistCacheService>();
+    return Object.hash(
+      m.channels.length,
+      cache.dbSourceKey.value,
+      cache.lastUpdated.value?.millisecondsSinceEpoch,
+    );
   }
 
   int _todaySalt() {
@@ -137,12 +163,41 @@ class _AiRecommendationsStripState extends State<AiRecommendationsStrip> {
 
   int _computeGeneration = 0;
 
+  String _diskCacheKey(int hash, int salt, int hideScope) =>
+      '$hash|$salt|$hideScope';
+
   Future<void> _computeAsync(int hash, int salt, int hideScope) async {
     final gen = ++_computeGeneration;
-    if (mounted) {
+    final svc = Get.find<AiRecommendationService>();
+    final key = _diskCacheKey(hash, salt, hideScope);
+
+    // 1) Soğuk açılış: gösterilecek bir şey yoksa diskteki son öneriyi anında
+    //    geri yükle (spinner/iskelet hiç görünmeyebilir). Disk kaydı yalnızca
+    //    bu açılıştaki katalog/gün/gizleme anahtarı birebir eşleşirse döner.
+    if (_items.isEmpty) {
+      final cached = await svc.restoreRaw(widget.data, key);
+      if (!mounted || gen != _computeGeneration) return;
+      if (cached != null && cached.isNotEmpty) {
+        // Disk anahtarı eşleşti → taze hesap birebir aynı sonucu üretir.
+        // Ağır isolate girdisini (büyük kataloglarda ana thread'i kilitleyip
+        // ANR'ye yol açan kısım) hiç çalıştırmadan in-memory cache'i de
+        // doldur ve çık. Yeniden hesap yalnızca katalog/gün/ayar değişince
+        // (cache ıskası) yapılır.
+        _staticCache = cached;
+        _staticCacheCatalogHash = hash;
+        _staticCacheDailySalt = salt;
+        _staticCacheHideScope = hideScope;
+        setState(() {
+          _items = cached;
+          _isLoading = false;
+        });
+        return;
+      }
+      // Disk önbelleği yok/eski → iskelet göster, aşağıda taze hesap yapılır.
       setState(() => _isLoading = true);
     }
-    final svc = Get.find<AiRecommendationService>();
+
+    // 2) Cache ıskası: taze hesap yap, şeridi güncelle ve diske yaz.
     final result = await svc.recommendAsync(
       widget.data,
       count: widget.maxItems,
@@ -157,6 +212,7 @@ class _AiRecommendationsStripState extends State<AiRecommendationsStrip> {
       _items = result;
       _isLoading = false;
     });
+    unawaited(svc.persistRaw(key, result));
   }
 
   @override
@@ -193,7 +249,7 @@ class _AiRecommendationsStripState extends State<AiRecommendationsStrip> {
           height: (isPortrait ? 102.0 : (tv ? 107.0 : 119.0)) *
               settings.homeCardScale.value,
           child: _isLoading
-              ? const Center(child: CircularProgressIndicator())
+              ? _AiSkeletonStrip(isPortrait: isPortrait, isTv: tv)
               : ListView.builder(
                   scrollDirection: Axis.horizontal,
                   physics: AppScrollPhysics.horizontal(),
@@ -224,8 +280,8 @@ class _AiRecommendationsStripState extends State<AiRecommendationsStrip> {
         final ch = rec.channel;
         if (ch == null) return;
         Get.toNamed(
-          '/player',
-          arguments: PlayerScreenArgs(channel: ch),
+          AppRoutes.player,
+          arguments: playerArgsForShowcaseHome(channel: ch),
         );
         break;
       case UserHistoryKind.vod:
@@ -252,6 +308,87 @@ class _AiRecommendationsStripState extends State<AiRecommendationsStrip> {
         );
         break;
     }
+  }
+}
+
+/// Yükleme iskeleti — gerçek kartlarla aynı silüette birkaç boş kart yanıp
+/// söner (shimmer/pulse). Spinner yerine; içerik gelene kadar şeridin yapısını
+/// korur ve "geliyor" hissi verir.
+class _AiSkeletonStrip extends StatefulWidget {
+  const _AiSkeletonStrip({required this.isPortrait, required this.isTv});
+
+  final bool isPortrait;
+  final bool isTv;
+
+  @override
+  State<_AiSkeletonStrip> createState() => _AiSkeletonStripState();
+}
+
+class _AiSkeletonStripState extends State<_AiSkeletonStrip>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+  late final Animation<double> _pulse;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    )..repeat(reverse: true);
+    _pulse = Tween<double>(begin: 0.35, end: 0.85).animate(
+      CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final settings = Get.find<AppSettingsService>();
+    final scale = settings.homeCardScale.value;
+    final width =
+        (widget.isPortrait ? 111.0 : (widget.isTv ? 122.0 : 136.0)) * scale;
+    final height =
+        (widget.isPortrait ? 85.0 : (widget.isTv ? 92.0 : 102.0)) * scale;
+    final ga = GlassAppearance.fromLabel(settings.themeLabel.value);
+    final cardR = ga.categoryCardBorderRadius;
+
+    return ListView.builder(
+      scrollDirection: Axis.horizontal,
+      physics: const NeverScrollableScrollPhysics(),
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      itemCount: 6,
+      itemBuilder: (context, index) {
+        return Padding(
+          padding: EdgeInsets.symmetric(horizontal: widget.isTv ? 11 : 6),
+          child: AnimatedBuilder(
+            animation: _pulse,
+            builder: (context, _) {
+              return Opacity(
+                opacity: _pulse.value,
+                child: Container(
+                  width: width,
+                  height: height,
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(cardR),
+                    color: Colors.white.withValues(alpha: 0.10),
+                    border: Border.all(
+                      width: 0.5,
+                      color: Colors.white.withValues(alpha: 0.16),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+        );
+      },
+    );
   }
 }
 
@@ -358,7 +495,9 @@ class _AiRecommendationCardState extends State<_AiRecommendationCard> {
     Widget card = Container(
       width: width,
       height: height,
-      margin: const EdgeInsets.symmetric(horizontal: 6),
+      // TV'de kartlar odakta %5 büyüyüp çerçeve aldığından daha geniş yatay
+      // boşluk bırak (aksi halde komşu kartlar bitişik/üst üste görünür).
+      margin: EdgeInsets.symmetric(horizontal: tv ? 11 : 6),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(cardR),
         border: Border.all(
@@ -468,18 +607,16 @@ class _AiRecommendationCardState extends State<_AiRecommendationCard> {
                 child: _MatchBadge(score: rec.score),
               ),
 
-            // Alt — başlık.
+            // Alt — başlık (sığmazsa 2 sn sonra yavaşça kayar).
             Positioned(
               bottom: 8,
               left: 10,
               right: 10,
-              child: Text(
-                title,
-                maxLines: 2,
-                overflow: TextOverflow.ellipsis,
+              child: AutoScrollText(
+                text: title,
                 style: const TextStyle(
                   color: Colors.white,
-                  fontSize: 12.5,
+                  fontSize: 11,
                   fontWeight: FontWeight.w800,
                   height: 1.15,
                   letterSpacing: 0.1,

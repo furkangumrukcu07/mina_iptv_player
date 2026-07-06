@@ -9,14 +9,17 @@ import '../../../core/epg/epg_mix_catalog.dart';
 import '../../../core/epg/epg_mix_category.dart';
 import '../../../core/epg/epg_mix_entry.dart';
 import '../../../core/epg/epg_replay_catalog.dart';
+import '../../../core/home/showcase_player_launch.dart';
 import '../../../core/routes/app_routes.dart';
 import '../../../core/layout/app_layout_mode.dart';
 import '../../../core/services/app_settings_service.dart';
 import '../../../core/services/epg_deferred_load_service.dart';
 import '../../../core/services/epg_service.dart';
 import '../../../core/services/playlist_cache_service.dart';
+import '../../../core/services/playlist_data_source.dart';
 import '../../../data/remote/m3u_xtream_sniffer.dart';
 import '../../../data/remote/xtream_api.dart';
+import '../../../domain/entities/m3u_result.dart';
 import '../../../domain/entities/channel.dart';
 import '../../../domain/entities/playlist_source.dart';
 import '../../../domain/repositories/playlist_repository.dart';
@@ -59,14 +62,24 @@ class EpgMixController extends GetxController {
       totalItems.value = 0;
       return;
     }
+    unawaited(_rebuildAsync(d));
+  }
+
+  Future<void> _rebuildAsync(M3uResult d) async {
+    final channels = Get.isRegistered<PlaylistDataSource>() &&
+            Get.find<PlaylistDataSource>().isDbBacked
+        ? await Get.find<PlaylistDataSource>().channelsForScan()
+        : d.channels.take(kMaxChannelsScan).toList(growable: false);
     final built = EpgMixCatalog.build(
       data: d,
+      channels: channels,
       app: _app,
       cache: _cache,
       epg: _epg,
     );
     final replay = EpgReplayCatalog.build(
       data: d,
+      channels: channels,
       app: _app,
       cache: _cache,
       epg: _epg,
@@ -170,7 +183,7 @@ class EpgMixController extends GetxController {
   void _openPlayerWith(Channel ch) {
     Get.toNamed(
       AppRoutes.player,
-      arguments: PlayerScreenArgs(channel: ch),
+      arguments: playerArgsForShowcaseHome(channel: ch),
     );
   }
 

@@ -73,7 +73,6 @@ class EpgSourceManageView extends GetView<EpgSourceManageController> {
                             label: 'settings.epg.source.urlLabel'.tr,
                             child: TextField(
                               controller: controller.urlController,
-                              readOnly: controller.isXtream.value,
                               maxLines: 3,
                               style: const TextStyle(color: Colors.white),
                               decoration: InputDecoration(

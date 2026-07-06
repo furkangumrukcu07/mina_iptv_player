@@ -1,7 +1,9 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 
+import '../../core/layout/app_layout_mode.dart';
 import '../../core/routes/app_routes.dart';
 import '../../core/services/app_settings_service.dart';
 import '../../core/services/auth_service.dart';
@@ -11,18 +13,45 @@ import '../../domain/repositories/playlist_repository.dart';
 import '../../ui/cloud_sync_loading_dialog.dart';
 import '../playlist/playlist_controller.dart';
 
-/// Mobil kurulum sihirbazı: sayfa indeksi + oynatma listesi gömme [PlaylistController] kancası.
-///
-/// Sayfa sırası: 0 Language, 1 Theme, 2 Player, 3 Performance (Normal /
-/// Düşük Donanım), 4 Features, 5 AppFont, 6 Personalization (Sürükleme Efekti
-/// + Çerçeve Stili), 7 Source. Son sayfada [PlaylistController]'a kanca takılır
-/// ve oynatma listesi yüklenince kurulum tamamlanır.
+/// Kurulum sihirbazı: mobil 8 adım; TV 6 adım (… → font → kaynak).
 class SetupWizardController extends GetxController {
   final pageIndex = 0.obs;
   static const int totalPages = 8;
+  static const int tvTotalPages = 6;
 
-  /// Son sayfanın indeksi — `Source` adımı her zaman en sondadır.
+  static int pageCountFor(bool tv) => tv ? tvTotalPages : totalPages;
+
+  static String stepKeyFor(int index, {required bool tv}) {
+    if (tv) {
+      return switch (index) {
+        0 => 'setup.stepLayoutMode',
+        1 => 'setup.stepTheme',
+        2 => 'setup.stepPlayer',
+        3 => 'setup.stepPerformance',
+        4 => 'setup.stepAppFont',
+        5 => 'setup.stepSource',
+        _ => 'setup.stepLayoutMode',
+      };
+    }
+    return switch (index) {
+      0 => 'setup.stepLayoutMode',
+      1 => 'setup.stepTheme',
+      2 => 'setup.stepPlayer',
+      3 => 'setup.stepPerformance',
+      4 => 'setup.stepFeatures',
+      5 => 'setup.stepAppFont',
+      _ => 'setup.stepSource',
+    };
+  }
+
+  /// Son sayfanın indeksi — mobil ve TV'de kaynak adımı.
+  static int lastPageIndexFor(bool tv) => pageCountFor(tv) - 1;
+
   static const int sourcePageIndex = totalPages - 1;
+  static const int tvSourcePageIndex = tvTotalPages - 1;
+
+  static bool isSourcePage(int index, {required bool tv}) =>
+      tv ? index == tvSourcePageIndex : index == sourcePageIndex;
 
   /// Son adımda «Kurulumu bitir»: yalnız M3U/Xtream liste yüklü veya kayıtlı kaynak varken.
   final canCompleteSetup = false.obs;
@@ -36,7 +65,9 @@ class SetupWizardController extends GetxController {
 
   void syncPage(int i) {
     pageIndex.value = i;
-    if (i == sourcePageIndex) {
+    final tv = Get.find<AppSettingsService>().layoutMode.value ==
+        AppLayoutMode.tv;
+    if (isSourcePage(i, tv: tv)) {
       unawaited(recomputeCanComplete());
     }
   }
@@ -61,25 +92,18 @@ class SetupWizardController extends GetxController {
     if (Get.isRegistered<PlaylistController>()) {
       ever(
         Get.find<PlaylistController>().canSubmit,
-        (_) {
-          if (pageIndex.value == sourcePageIndex) {
-            unawaited(recomputeCanComplete());
-          }
-        },
+        (_) => _recomputeCanCompleteIfOnSourcePage(),
       );
       ever(
         Get.find<PlaylistController>().isM3uLoaded,
-        (_) {
-          if (pageIndex.value == sourcePageIndex) {
-            unawaited(recomputeCanComplete());
-          }
-        },
+        (_) => _recomputeCanCompleteIfOnSourcePage(),
       );
     }
   }
 
   Future<void> _afterPlaylistLoaded() async {
-    await Get.find<AppSettingsService>().setSetupCompleted(true);
+    await Get.find<AppSettingsService>()
+        .setSetupCompleted(true, markShowcaseSuggestionSeen: true);
     // Bulut yazımı ana ekrana geçişi BLOKE ETMEMELİ — Firestore yazımı ağ
     // yavaşsa uzun sürebilir; arka planda çalışsın, navigasyon hemen olsun.
     unawaited(_maybeSyncToCloudOnComplete());
@@ -99,52 +123,99 @@ class SetupWizardController extends GetxController {
       return;
     }
     isCloudBusy.value = true;
+    var dialogOpen = true;
+    showCloudSyncLoadingDialog(); // Show loading dialog immediately!
     try {
       final result = await auth.signInWithGoogle();
       switch (result.outcome) {
         case GoogleSignInOutcome.cancelled:
+          dismissCloudSyncLoadingDialog();
           return;
         case GoogleSignInOutcome.notConfigured:
           toast.show('cloud.notConfigured'.tr, isError: true);
+          dismissCloudSyncLoadingDialog();
           return;
         case GoogleSignInOutcome.failed:
           toast.show(result.messageKey.tr, isError: true);
+          dismissCloudSyncLoadingDialog();
           return;
         case GoogleSignInOutcome.success:
           break;
       }
 
-      // Oturum açıldı → "Ayarlarınız yükleniyor…" popup'ı; bulut çekilirken
-      // açık kalır, işlem bitince kapanır.
-      showCloudSyncLoadingDialog();
+      final cloud = await auth
+          .loadUserSettingsFromCloud()
+          .timeout(const Duration(seconds: 45), onTimeout: () => null);
 
-      final cloud = await auth.loadUserSettingsFromCloud();
-      if (cloud != null && cloud.isNotEmpty) {
-        final applied = await auth.applyCloudSettingsLocally(cloud);
+      final hasCloudPlaylist = cloud != null &&
+          cloud.isNotEmpty &&
+          auth.cloudBackupHasPlaylistSource(cloud);
+
+      if (hasCloudPlaylist) {
+        final applied = await auth
+            .applyCloudSettingsLocally(cloud)
+            .timeout(const Duration(seconds: 120), onTimeout: () => false);
         if (!applied) {
-          dismissCloudSyncLoadingDialog();
           toast.show('cloud.restoreFailed'.tr, isError: true);
+          dismissCloudSyncLoadingDialog();
           return;
         }
         final app = Get.find<AppSettingsService>();
-        await app.reloadCoreFromPrefs();
-        if (Get.isRegistered<ProfilesService>()) {
-          await Get.find<ProfilesService>().reload();
+        try {
+          await app.reloadAllFromPrefs();
+          await app.reconcileDeviceLocalHardwareSettings();
+        } catch (e, st) {
+          debugPrint('[SetupWizard] prefs reload after cloud: $e\n$st');
         }
-        await app.setSetupCompleted(true);
+        if (Get.isRegistered<ProfilesService>()) {
+          try {
+            await Get.find<ProfilesService>().reload();
+          } catch (e, st) {
+            debugPrint('[SetupWizard] profiles reload after cloud: $e\n$st');
+          }
+        }
+        await app.setSetupCompleted(true, markShowcaseSuggestionSeen: true);
         _clearHook();
-        // Popup'ı kapat, ardından ana ekrana (splash → home) yönlendir.
         dismissCloudSyncLoadingDialog();
+        dialogOpen = false;
+        await Future<void>.delayed(const Duration(milliseconds: 150));
         Get.offAllNamed(AppRoutes.splash);
       } else {
-        // Yeni kullanıcı: şimdilik bilgilendir, kurulum sonunda buluta yaz.
         dismissCloudSyncLoadingDialog();
-        _syncToCloudOnComplete = true;
-        toast.show('cloud.signedInContinue'.tr);
+        dialogOpen = false;
+        await _stayOnSetupAfterCloudSignIn(auth, cloud, toast);
       }
+    } catch (e, st) {
+      debugPrint('[SetupWizard] signInWithGoogleAndSync error: $e\n$st');
+      toast.show('cloud.restoreFailed'.tr, isError: true);
+      if (dialogOpen) dismissCloudSyncLoadingDialog();
     } finally {
       isCloudBusy.value = false;
     }
+  }
+
+  /// Oturum açıldı; bulutta liste yok — kaynak adımında kal, formdan URL/Xtream gir.
+  Future<void> _stayOnSetupAfterCloudSignIn(
+    AuthService auth,
+    Map<String, dynamic>? cloud,
+    ToastService toast,
+  ) async {
+    _syncToCloudOnComplete = true;
+    if (cloud != null && cloud.isNotEmpty) {
+      try {
+        await auth.applyCloudSettingsLocally(cloud);
+        final app = Get.find<AppSettingsService>();
+        await app.reloadAllFromPrefs();
+        if (Get.isRegistered<ProfilesService>()) {
+          await Get.find<ProfilesService>().reload();
+        }
+      } catch (e, st) {
+        debugPrint('[SetupWizard] partial cloud apply on setup: $e\n$st');
+      }
+    }
+    ensurePlaylistHook();
+    unawaited(recomputeCanComplete());
+    toast.show('cloud.signedInContinue'.tr);
   }
 
   Future<void> _maybeSyncToCloudOnComplete() async {
@@ -190,6 +261,14 @@ class SetupWizardController extends GetxController {
     canCompleteSetup.value = src != null;
   }
 
+  void _recomputeCanCompleteIfOnSourcePage() {
+    final app = Get.find<AppSettingsService>();
+    final tv = app.layoutMode.value == AppLayoutMode.tv;
+    if (isSourcePage(pageIndex.value, tv: tv)) {
+      unawaited(recomputeCanComplete());
+    }
+  }
+
   /// «Kurulumu bitir» — kayıtlı/ yüklenmiş M3U veya Xtream yoksa izin yok.
   Future<void> tryCompleteSetup() async {
     await recomputeCanComplete();
@@ -207,7 +286,8 @@ class SetupWizardController extends GetxController {
       return;
     }
     _clearHook();
-    await Get.find<AppSettingsService>().setSetupCompleted(true);
+    await Get.find<AppSettingsService>()
+        .setSetupCompleted(true, markShowcaseSuggestionSeen: true);
     unawaited(_maybeSyncToCloudOnComplete());
     Get.offAllNamed(AppRoutes.home);
   }

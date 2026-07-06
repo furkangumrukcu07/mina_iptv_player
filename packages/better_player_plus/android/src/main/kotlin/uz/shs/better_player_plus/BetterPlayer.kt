@@ -190,28 +190,40 @@ internal class BetterPlayer(
             !isAndroidTv &&
                 !preferSoftwareVideoDecoder &&
                 MinaLowLatencyMediaCodecAdapterFactory.shouldEnableLowLatencyHeuristics()
-        // [DefaultRenderersFactory] + uzantı modu: ses için FFmpeg (varsa) tercih sırası.
+        // Android TV + donanım kod çözücü: Mina Güvenli Doku Profili (geç kare düşürme,
+        // decoder fallback, tunneling yok). Telefon/tablet: mevcut düşük gecikme yolu.
+        val useTextureSafeTvProfile =
+            MinaTvTextureSafeRenderersFactory.shouldEnable(
+                isAndroidTv,
+                preferSoftwareVideoDecoder,
+            )
         val renderersFactory =
-            object : DefaultRenderersFactory(context) {
-                override fun getCodecAdapterFactory(): MediaCodecAdapter.Factory {
-                    return if (enableLowLatencyPath) {
-                        MinaLowLatencyMediaCodecAdapterFactory(context, true)
-                    } else {
-                        super.getCodecAdapterFactory()
+            if (useTextureSafeTvProfile) {
+                MinaTvTextureSafeRenderersFactory.build(
+                    context,
+                    preferSoftwareVideoDecoder,
+                    extensionRendererMode,
+                    enableLowLatencyPath = false,
+                )
+            } else {
+                object : DefaultRenderersFactory(context) {
+                    override fun getCodecAdapterFactory(): MediaCodecAdapter.Factory {
+                        return if (enableLowLatencyPath) {
+                            MinaLowLatencyMediaCodecAdapterFactory(context, true)
+                        } else {
+                            super.getCodecAdapterFactory()
+                        }
                     }
-                }
-            }.setExtensionRendererMode(extensionRendererMode)
-                .setMediaCodecSelector(mediaCodecSelector)
-                .setEnableDecoderFallback(true)
-                // AudioTrack#setPlaybackParams (Media3 1.8: setEnableAudioTrackPlaybackParams) —
-                // A/V zamanlaması için; Xiaomi’de kare kare senkron sorunlarına karşı açık tutulur.
-                .setEnableAudioTrackPlaybackParams(true)
-                .apply {
-                    if (enableLowLatencyPath) {
-                        // Düşük gecikme: senkron MediaCodec kuyruğu (desteklenen cihazlarda).
-                        forceDisableMediaCodecAsynchronousQueueing()
+                }.setExtensionRendererMode(extensionRendererMode)
+                    .setMediaCodecSelector(mediaCodecSelector)
+                    .setEnableDecoderFallback(true)
+                    .setEnableAudioTrackPlaybackParams(true)
+                    .apply {
+                        if (enableLowLatencyPath) {
+                            forceDisableMediaCodecAsynchronousQueueing()
+                        }
                     }
-                }
+            }
         // Prefer device-friendly codecs first so phones (e.g. Xiaomi) pick AAC/MP3 when
         // muxed MP4/MKV exposes AC3/EAC3 alongside AAC; TV boxes often work either way.
         // Donanım tüneli (video+audio): Xiaomi ailesinde özellikle kapatılır; TV/STB’de de varsayılan kapalı.
@@ -1248,12 +1260,21 @@ internal class BetterPlayer(
             val group = groups[gIdx]
             when (group.type) {
                 C.TRACK_TYPE_AUDIO, C.TRACK_TYPE_TEXT -> {
-                    val target = if (group.type == C.TRACK_TYPE_AUDIO) audio else text
+                    val isAudio = group.type == C.TRACK_TYPE_AUDIO
+                    val target = if (isAudio) audio else text
                     for (tIdx in 0 until group.length) {
-                        if (!group.isTrackSupported(tIdx)) continue
+                        val supported = group.isTrackSupported(tIdx)
+                        // Ses: yalnızca cihazın çözebildiği parçalar listelensin
+                        // (oynatılamayacak bir ses parçası kullanıcıya sunulmasın).
+                        // Altyazı: resim tabanlı (PGS/HDMV, VobSub, DVB) gömülü
+                        // izler ExoPlayer'da "desteklenmez" görünür ama yine de
+                        // 'supported=false' ile bildiriyoruz — üst katman böylece
+                        // "altyazı var ama Exo çizemiyor" durumunu anlayıp MediaKit
+                        // (libass) oynatıcısına geçiş önerebilir.
+                        if (isAudio && !supported) continue
                         val f = group.getTrackFormat(tIdx)
                         val defaultLabel =
-                            if (group.type == C.TRACK_TYPE_AUDIO) {
+                            if (isAudio) {
                                 "Audio ${target.size + 1}"
                             } else {
                                 "Subtitle ${target.size + 1}"
@@ -1272,6 +1293,7 @@ internal class BetterPlayer(
                                 "language" to (f.language ?: ""),
                                 "selected" to group.isTrackSelected(tIdx),
                                 "mimeType" to (f.sampleMimeType ?: ""),
+                                "supported" to supported,
                             ),
                         )
                     }

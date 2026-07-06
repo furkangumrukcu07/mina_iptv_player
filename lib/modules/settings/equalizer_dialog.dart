@@ -3,6 +3,8 @@ import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
+import '../../core/layout/app_layout_mode.dart';
+import '../../core/services/app_settings_service.dart';
 import '../../core/services/equalizer_service.dart';
 import '../../ui/glass_overlays.dart';
 import '../../ui/tv_dpad_focus.dart';
@@ -36,9 +38,14 @@ class _EqualizerDialog extends StatelessWidget {
     final isPortrait = mq.orientation == Orientation.portrait;
     final dialogWidth = (isPortrait ? mq.size.width * 0.92 : mq.size.width * 0.7)
         .clamp(320.0, 760.0);
+    final tvOsdStyle = Get.isRegistered<AppSettingsService>() &&
+        Get.find<AppSettingsService>()
+            .layoutMode
+            .value
+            .usesRemoteNavigationStyle;
 
     return GlassAlertDialog(
-      tvOsdStyle: true,
+      tvOsdStyle: tvOsdStyle,
       title: Row(
         children: [
           const Icon(

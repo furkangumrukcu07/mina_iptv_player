@@ -12,11 +12,16 @@ class FilmDiziDetailTopBar extends StatefulWidget {
     required this.onBack,
     this.onFavorite,
     this.isFavorite = false,
+    this.autofocusBack = true,
   });
 
   final VoidCallback onBack;
   final VoidCallback? onFavorite;
   final bool isFavorite;
+
+  /// İlk açılışta kumanda odağını geri düğmesine ver. Yatay film/dizi detayında
+  /// odak İzle/Bölüm 1'e gittiği için `false` geçilir.
+  final bool autofocusBack;
 
   @override
   State<FilmDiziDetailTopBar> createState() => _FilmDiziDetailTopBarState();
@@ -72,7 +77,7 @@ class _FilmDiziDetailTopBarState extends State<FilmDiziDetailTopBar> {
       );
     }
 
-    if (!_didInitialFocus) {
+    if (!_didInitialFocus && widget.autofocusBack) {
       _didInitialFocus = true;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted && !_backFocus.hasFocus && !_favFocus.hasFocus) {
@@ -91,7 +96,7 @@ class _FilmDiziDetailTopBarState extends State<FilmDiziDetailTopBar> {
               icon: Icons.arrow_back_rounded,
               onPressed: widget.onBack,
               focusNode: _backFocus,
-              autofocus: true,
+              autofocus: widget.autofocusBack,
             ),
             const Spacer(),
             if (widget.onFavorite != null)

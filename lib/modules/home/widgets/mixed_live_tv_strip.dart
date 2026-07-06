@@ -7,6 +7,7 @@ import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../../core/layout/app_layout_mode.dart';
+import '../../../core/home/showcase_player_launch.dart';
 import '../../../core/routes/app_routes.dart';
 import '../../../ui/tv_dpad_focus.dart';
 import '../../../core/utils/epg_channel_display.dart';
@@ -15,17 +16,30 @@ import '../../../core/haptics/adaptive_haptics_service.dart';
 import '../../../core/services/app_settings_service.dart';
 import '../../../core/services/playlist_cache_service.dart';
 import '../../../core/services/playlist_category_hide.dart';
+import '../../../core/services/playlist_data_source.dart';
 import '../../../domain/entities/channel.dart';
 import '../../../domain/entities/m3u_result.dart';
+import '../../../ui/iptv_channel_logo.dart';
 import '../../player/player_route_args.dart';
 import 'home_glass_strip_chip.dart';
 
-const _kMaxChips = 36;
+const _kMaxChips = 6;
 const _kPrefsPrefix = 'mina_home_mixed_live_order_v2_';
 
 /// Ana sayfa: görünür canlı kanallar, karışık sıra + yatay sürükleyerek yeniden sıralama.
+///
+/// [showcase] true olduğunda Vitrin düzeni için **logo kartlı** kompakt bir
+/// şerit çizilir (büyük çerçeve yok); başlığın yanına [onSeeAll] ile «Tümünü
+/// gör» eklenir. Sürükleyerek sıralama kapalıdır (dokunmatik tek hedef).
 class MixedLiveTvStrip extends StatefulWidget {
-  const MixedLiveTvStrip({super.key});
+  const MixedLiveTvStrip({
+    super.key,
+    this.showcase = false,
+    this.onSeeAll,
+  });
+
+  final bool showcase;
+  final VoidCallback? onSeeAll;
 
   @override
   State<MixedLiveTvStrip> createState() => _MixedLiveTvStripState();
@@ -43,8 +57,27 @@ class _MixedLiveTvStripState extends State<MixedLiveTvStrip> {
   // değişmediği sürece önbellekten okuruz.
   M3uResult? _idMapForData;
   Map<int, Channel>? _channelByIdMap;
+  int? _resolvedByIdScope;
+  int _resolveGen = 0;
   int? _lastMergeScope;
   List<int>? _lastMergedIds;
+
+  Future<void> _ensureDbChannelMap(M3uResult d, PlaylistCacheService cache) async {
+    final scope = Object.hash(
+      d.hashCode,
+      cache.dbSourceKey.value,
+      cache.layoutRevision.value,
+      cache.lastUpdated.value?.millisecondsSinceEpoch ?? 0,
+    );
+    if (_resolvedByIdScope == scope && _channelByIdMap != null) return;
+    final gen = ++_resolveGen;
+    final page = await Get.find<PlaylistDataSource>().channelsForScan(limit: 5000);
+    if (gen != _resolveGen || !mounted) return;
+    _channelByIdMap = {for (final ch in page) ch.id: ch};
+    _idMapForData = d;
+    _resolvedByIdScope = scope;
+    setState(() {});
+  }
 
   Map<int, Channel> _ensureChannelByIdMap(M3uResult d) {
     if (identical(_idMapForData, d) && _channelByIdMap != null) {
@@ -79,6 +112,8 @@ class _MixedLiveTvStripState extends State<MixedLiveTvStrip> {
         out.add(asId);
         continue;
       }
+      // Slim SQLite önbelleğinde kanallar RAM'de yok; URL→id eşlemesi atlanır.
+      if (d.channels.isEmpty) continue;
       for (final ch in d.channels) {
         if (ch.streamUrl == s) {
           out.add(ch.id);
@@ -132,12 +167,13 @@ class _MixedLiveTvStripState extends State<MixedLiveTvStrip> {
 
   static List<int> _pureMergeOrder(
     List<int> current,
+    Iterable<Channel> channelSource,
     M3uResult d,
     AppSettingsService app,
     PlaylistCacheService cache,
   ) {
     final visible = <Channel>[];
-    for (final ch in d.channels) {
+    for (final ch in channelSource) {
       if (!PlaylistCategoryHide.liveChannelHiddenForHome(app, cache, d, ch)) {
         visible.add(ch);
       }
@@ -180,7 +216,7 @@ class _MixedLiveTvStripState extends State<MixedLiveTvStrip> {
   void _openChannel(Channel ch) {
     Get.toNamed(
       AppRoutes.player,
-      arguments: PlayerScreenArgs(channel: ch),
+      arguments: playerArgsForShowcaseHome(channel: ch),
     );
   }
 
@@ -202,7 +238,24 @@ class _MixedLiveTvStripState extends State<MixedLiveTvStrip> {
       final d = cache.result.value;
       if (d == null) return const SizedBox.shrink();
 
-      final byId = _ensureChannelByIdMap(d);
+      final dbBacked = Get.isRegistered<PlaylistDataSource>() &&
+          Get.find<PlaylistDataSource>().isDbBacked;
+      if (dbBacked) {
+        final mapScope = Object.hash(
+          d.hashCode,
+          cache.dbSourceKey.value,
+          cache.layoutRevision.value,
+          cache.lastUpdated.value?.millisecondsSinceEpoch ?? 0,
+        );
+        if (_resolvedByIdScope != mapScope || _channelByIdMap == null) {
+          unawaited(_ensureDbChannelMap(d, cache));
+          return const SizedBox.shrink();
+        }
+      }
+
+      final byId = dbBacked
+          ? _channelByIdMap!
+          : _ensureChannelByIdMap(d);
 
       var seed = _channelIdOrder;
       final pend = _prefsDecodePending;
@@ -230,7 +283,7 @@ class _MixedLiveTvStripState extends State<MixedLiveTvStrip> {
       if (_lastMergeScope == scope && _lastMergedIds != null) {
         ids = _lastMergedIds!;
       } else {
-        ids = _pureMergeOrder(seed, d, app, cache);
+        ids = _pureMergeOrder(seed, byId.values, d, app, cache);
         _lastMergeScope = scope;
         _lastMergedIds = ids;
       }
@@ -243,6 +296,10 @@ class _MixedLiveTvStripState extends State<MixedLiveTvStrip> {
       }
 
       if (ids.isEmpty) return const SizedBox.shrink();
+
+      if (widget.showcase) {
+        return _buildShowcase(context, ids, byId);
+      }
 
       return Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -287,6 +344,189 @@ class _MixedLiveTvStripState extends State<MixedLiveTvStrip> {
         ],
       );
     });
+  }
+
+  /// Vitrin düzeni — logo kartlı kompakt şerit + başlık yanında «Tümünü gör».
+  Widget _buildShowcase(
+    BuildContext context,
+    List<int> ids,
+    Map<int, Channel> byId,
+  ) {
+    final accent = Theme.of(context).colorScheme.primary;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(2, 0, 0, 8),
+          child: Row(
+            children: [
+              Container(
+                width: 3,
+                height: 16,
+                margin: const EdgeInsets.only(right: 10),
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    begin: Alignment.topCenter,
+                    end: Alignment.bottomCenter,
+                    colors: [accent, accent.withValues(alpha: 0.35)],
+                  ),
+                  borderRadius: BorderRadius.circular(2),
+                ),
+              ),
+              Expanded(
+                child: Text(
+                  'home.mixed_live'.tr,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                    letterSpacing: 0.2,
+                  ),
+                ),
+              ),
+              if (widget.onSeeAll != null)
+                TextButton(
+                  onPressed: widget.onSeeAll,
+                  style: TextButton.styleFrom(
+                    foregroundColor: accent,
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  ),
+                  child: Text(
+                    'recommendedFilms.seeAll'.tr,
+                    style: TextStyle(
+                      color: accent,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 12.5,
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        ),
+        SizedBox(
+          height: 98,
+          child: ListView.separated(
+            scrollDirection: Axis.horizontal,
+            physics: AppScrollPhysics.horizontal(),
+            padding: EdgeInsets.zero,
+            addRepaintBoundaries: true,
+            itemCount: ids.length,
+            separatorBuilder: (_, __) => const SizedBox(width: 10),
+            itemBuilder: (context, i) {
+              final ch = byId[ids[i]];
+              if (ch == null) return const SizedBox.shrink();
+              return ShowcaseLiveLogoCard(
+                channel: ch,
+                onTap: () => _openChannel(ch),
+              );
+            },
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// Vitrin Canlı TV logo kartı — küçük yarısaydam tile + kanal logosu + ad.
+/// Büyük çerçeve yok; sade «cam damla» hissi veren ince kenarlık.
+class ShowcaseLiveLogoCard extends StatelessWidget {
+  const ShowcaseLiveLogoCard({
+    super.key,
+    required this.channel,
+    required this.onTap,
+  });
+
+  final Channel channel;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final name = EpgChannelDisplay.liveChannelName(channel.name);
+    final label = name.isEmpty ? '—' : name;
+    final initial = label[0].toUpperCase();
+    final logo = channel.logoUrl?.trim() ?? '';
+    const double tile = 72;
+    return SizedBox(
+      width: tile,
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(14),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Container(
+                width: tile,
+                height: tile,
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(14),
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      Colors.white.withValues(alpha: 0.12),
+                      Colors.white.withValues(alpha: 0.03),
+                    ],
+                  ),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.16),
+                    width: 0.8,
+                  ),
+                ),
+                alignment: Alignment.center,
+                child: logo.isEmpty
+                    ? Text(
+                        initial,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 20,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      )
+                    : IptvChannelLogo(
+                        imageUrl: logo,
+                        width: tile - 16,
+                        height: tile - 16,
+                        fit: BoxFit.contain,
+                        errorWidget: Center(
+                          child: Text(
+                            initial,
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 20,
+                              fontWeight: FontWeight.w800,
+                            ),
+                          ),
+                        ),
+                      ),
+              ),
+              const SizedBox(height: 5),
+              Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.85),
+                  fontSize: 10.5,
+                  fontWeight: FontWeight.w600,
+                  height: 1.05,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
 

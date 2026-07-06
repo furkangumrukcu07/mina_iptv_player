@@ -6,6 +6,92 @@ import 'package:get/get.dart';
 
 import '../core/layout/app_layout_mode.dart';
 import '../core/services/app_settings_service.dart';
+import '../core/theme/app_performance.dart';
+
+/// Odak belirteci: Modern theme-aware border + scale, no glow/neon.
+({
+  Duration duration,
+  List<BoxShadow>? glow,
+  Color? fill,
+  Color? borderColor,
+  double borderWidth
+}) _focusDecorTuning(
+  Color primary, {
+  bool tiviMate = false,
+}) {
+  return (
+    duration: const Duration(milliseconds: 150),
+    glow: null,
+    fill: null,
+    borderColor: primary,
+    borderWidth: 2.0,
+  );
+}
+
+/// TV: oynatıcı veya üst rota kapandıktan sonra odak kaybını önlemek için
+/// [node]'a birkaç kare boyunca tekrar odak ister (rota animasyonu bitene kadar).
+///
+/// **Performans Optimizasyonu:** addPostFrameCallback ardışık döngüleri (kare çizim
+/// aşamasında CPU harcayarak) her karede çalışıyordu; bu durum zayıf cihazlarda D-pad
+/// kaydırmasında mikro kasma yapabiliyordu. Artık ilk kontrol post-frame'de yapılır,
+/// ardından 50 ms (yaklaşık 3 kare) aralıklarla geciktirilir. Ayrıca dispose
+/// edilmiş FocusNode'lara erişim hataları try-catch ile önlenir.
+void scheduleTvFocusRestore(FocusNode node, {int maxAttempts = 8}) {
+  bool safeCanRequestFocus() {
+    try {
+      return node.canRequestFocus;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  bool safeHasFocus() {
+    try {
+      return node.hasFocus;
+    } catch (_) {
+      return true; // Disposed ise döngüyü sonlandırmak için true dönüyoruz.
+    }
+  }
+
+  void safeRequestFocus() {
+    try {
+      node.requestFocus();
+    } catch (_) {}
+  }
+
+  // 1) Hemen odaklanmayı dene.
+  if (safeCanRequestFocus()) {
+    safeRequestFocus();
+    if (safeHasFocus()) return;
+  }
+
+  var attempts = 0;
+
+  void attemptNext() {
+    if (attempts >= maxAttempts) return;
+    attempts++;
+
+    // 50ms gecikme (ana render thread'ini meşgul etmeden)
+    Future<void>.delayed(const Duration(milliseconds: 50), () {
+      if (safeCanRequestFocus()) {
+        safeRequestFocus();
+      }
+      if (!safeHasFocus() && attempts < maxAttempts) {
+        attemptNext();
+      }
+    });
+  }
+
+  // 2) İlk kare çizimi sonrasında dene.
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    if (safeCanRequestFocus()) {
+      safeRequestFocus();
+    }
+    if (!safeHasFocus()) {
+      attemptNext();
+    }
+  });
+}
 
 /// Kumanda / D-pad «OK» tuşları.
 bool tvKeyIsActivate(LogicalKeyboardKey key) =>
@@ -14,6 +100,12 @@ bool tvKeyIsActivate(LogicalKeyboardKey key) =>
     key == LogicalKeyboardKey.numpadEnter ||
     key == LogicalKeyboardKey.space ||
     key == LogicalKeyboardKey.gameButtonSelect;
+
+/// Apple TV Siri Remote / Android TV geri tuşları.
+bool tvKeyIsBack(LogicalKeyboardKey key) =>
+    key == LogicalKeyboardKey.goBack ||
+    key == LogicalKeyboardKey.escape ||
+    key == LogicalKeyboardKey.gameButtonB;
 
 /// TV odak hedeflerine yön tuşları ile atlama + OK ile [onActivate].
 KeyEventResult tvHandleDpadKeys(
@@ -34,22 +126,18 @@ KeyEventResult tvHandleDpadKeys(
   final k = event.logicalKey;
 
   if (!blockUp && k == LogicalKeyboardKey.arrowUp && arrowUp != null) {
-    if (event is KeyRepeatEvent) return KeyEventResult.handled;
     arrowUp.requestFocus();
     return KeyEventResult.handled;
   }
   if (!blockDown && k == LogicalKeyboardKey.arrowDown && arrowDown != null) {
-    if (event is KeyRepeatEvent) return KeyEventResult.handled;
     arrowDown.requestFocus();
     return KeyEventResult.handled;
   }
   if (!blockLeft && k == LogicalKeyboardKey.arrowLeft && arrowLeft != null) {
-    if (event is KeyRepeatEvent) return KeyEventResult.handled;
     arrowLeft.requestFocus();
     return KeyEventResult.handled;
   }
   if (!blockRight && k == LogicalKeyboardKey.arrowRight && arrowRight != null) {
-    if (event is KeyRepeatEvent) return KeyEventResult.handled;
     arrowRight.requestFocus();
     return KeyEventResult.handled;
   }
@@ -100,9 +188,16 @@ class TvDpadFocus extends StatefulWidget {
     this.arrowDown,
     this.arrowLeft,
     this.arrowRight,
+    this.blockUp = false,
+    this.blockDown = false,
+    this.blockLeft = false,
+    this.blockRight = false,
     this.showFocusRing = true,
+    this.tiviMateStyle = false,
+    this.tiviMateFill = false,
     this.borderRadius = 12,
-    this.scaleOnFocus = 1.0,
+    this.scaleOnFocus = 1.03,
+    this.enableFocusScale = true,
     this.ensureVisibleOnFocus = true,
     this.onKeyEvent,
   });
@@ -115,9 +210,24 @@ class TvDpadFocus extends StatefulWidget {
   final FocusNode? arrowDown;
   final FocusNode? arrowLeft;
   final FocusNode? arrowRight;
+
+  /// İlgili yöndeki D-pad tuşunu **yut** (varsayılan odak geçişi yapılmaz).
+  /// Hedef düğüm yokken bile odak o yönde kaçmasın (ör. listenin en altındaki
+  /// satırda aşağı basınca odak kaybolmasın).
+  final bool blockUp;
+  final bool blockDown;
+  final bool blockLeft;
+  final bool blockRight;
   final bool showFocusRing;
+  final bool tiviMateStyle;
+
+  /// Odak: `false` → yalnızca parlama + ölçek (poster kartları).
+  final bool tiviMateFill;
   final double borderRadius;
   final double scaleOnFocus;
+
+  /// `false` → odakta büyüme yok (dar panel listeleri, tam genişlik karolar).
+  final bool enableFocusScale;
 
   /// Odak alındığında widget'ı içerdiği `Scrollable` içinde **otomatik
   /// görünür kıl** (D-pad ile uzun listelerde gezinirken seçili öğe ekran
@@ -159,6 +269,10 @@ class _TvDpadFocusState extends State<TvDpadFocus> {
   }
 
   void _onFocusChange() {
+    final needsRepaint = widget.showFocusRing ||
+        widget.tiviMateStyle ||
+        (widget.enableFocusScale && widget.scaleOnFocus != 1.0);
+    if (needsRepaint && mounted) setState(() {});
     if (!mounted || !widget.ensureVisibleOnFocus) return;
     if (!_node.hasFocus) return;
     final ctx = _node.context;
@@ -182,7 +296,7 @@ class _TvDpadFocusState extends State<TvDpadFocus> {
         if (custom == KeyEventResult.handled) {
           return KeyEventResult.handled;
         }
-        return tvHandleDpadKeys(
+        final r = tvHandleDpadKeys(
           event,
           onActivate: widget.onActivate,
           arrowUp: widget.arrowUp,
@@ -190,36 +304,61 @@ class _TvDpadFocusState extends State<TvDpadFocus> {
           arrowLeft: widget.arrowLeft,
           arrowRight: widget.arrowRight,
         );
+        if (r == KeyEventResult.handled) return r;
+        // Hedef düğüm yoksa bile istenen yönde odak kaçışını yut.
+        if (event is KeyDownEvent || event is KeyRepeatEvent) {
+          final k = event.logicalKey;
+          if ((widget.blockUp && k == LogicalKeyboardKey.arrowUp) ||
+              (widget.blockDown && k == LogicalKeyboardKey.arrowDown) ||
+              (widget.blockLeft && k == LogicalKeyboardKey.arrowLeft) ||
+              (widget.blockRight && k == LogicalKeyboardKey.arrowRight)) {
+            return KeyEventResult.handled;
+          }
+        }
+        return r;
       },
       child: Builder(
         builder: (context) {
           final focused = Focus.of(context).hasFocus;
+          final primary = Theme.of(context).colorScheme.primary;
+          final tuning = _focusDecorTuning(
+            primary,
+            tiviMate: widget.tiviMateStyle,
+          );
           Widget body = widget.child;
-          if (widget.scaleOnFocus != 1.0) {
+          final scale = !widget.enableFocusScale
+              ? 1.0
+              : widget.scaleOnFocus;
+          if (scale != 1.0) {
             body = AnimatedScale(
-              scale: focused ? widget.scaleOnFocus : 1.0,
-              duration: const Duration(milliseconds: 140),
-              curve: Curves.easeOut,
+              scale: focused ? scale : 1.0,
+              duration: tuning.duration,
+              curve: Curves.easeOutCubic,
+              alignment: Alignment.center,
               child: body,
             );
           }
-          if (!widget.showFocusRing) return body;
-          final primary = Theme.of(context).colorScheme.primary;
+          final useGlow = _useGlow;
           return AnimatedContainer(
-            duration: const Duration(milliseconds: 140),
-            curve: Curves.easeOut,
+            duration: tuning.duration,
+            curve: Curves.easeOutCubic,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(widget.borderRadius),
-              border: Border.all(
-                width: focused ? 2.5 : 0,
-                color: focused ? primary : Colors.transparent,
-              ),
-              boxShadow: focused
+              color: focused && widget.tiviMateFill
+                  ? primary.withValues(alpha: 0.12)
+                  : Colors.transparent,
+              border: focused
+                  ? Border.all(
+                      color: tuning.borderColor!,
+                      width: tuning.borderWidth,
+                    )
+                  : null,
+              boxShadow: focused && useGlow
                   ? [
                       BoxShadow(
-                        color: primary.withValues(alpha: 0.45),
+                        color: tuning.borderColor!.withValues(alpha: 0.38),
                         blurRadius: 10,
-                        spreadRadius: 0.5,
+                        spreadRadius: 2.2,
                       ),
                     ]
                   : null,
@@ -230,15 +369,21 @@ class _TvDpadFocusState extends State<TvDpadFocus> {
       ),
     );
   }
+
+  bool get _useGlow {
+    final s = Get.isRegistered<AppSettingsService>() ? Get.find<AppSettingsService>() : null;
+    if (s == null) return false;
+    return AppPerformance.useFocusGlow(s);
+  }
 }
 
-/// [Focus] alt ağacında kullanın: odaklanınca primary kenarlık + glow.
+/// [Focus] alt ağacında kullanın: Modern focus ring with scale and border, no glow!
 class TvFocusRing extends StatelessWidget {
   const TvFocusRing({
     super.key,
     required this.child,
     this.borderRadius = 12,
-    this.scaleOnFocus = 1.0,
+    this.scaleOnFocus = 1.03,
     this.padding = EdgeInsets.zero,
   });
 
@@ -251,33 +396,29 @@ class TvFocusRing extends StatelessWidget {
   Widget build(BuildContext context) {
     final focused = Focus.of(context).hasFocus;
     final primary = Theme.of(context).colorScheme.primary;
+    final tuning = _focusDecorTuning(primary, tiviMate: false);
     Widget body = Padding(padding: padding, child: child);
     if (scaleOnFocus != 1.0) {
       body = AnimatedScale(
         scale: focused ? scaleOnFocus : 1.0,
-        duration: const Duration(milliseconds: 140),
-        curve: Curves.easeOut,
+        duration: tuning.duration,
+        curve: Curves.easeOutCubic,
         child: body,
       );
     }
     return AnimatedContainer(
-      duration: const Duration(milliseconds: 140),
-      curve: Curves.easeOut,
+      duration: tuning.duration,
+      curve: Curves.easeOutCubic,
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(borderRadius),
-        border: Border.all(
-          width: focused ? 2.5 : 0,
-          color: focused ? primary : Colors.transparent,
-        ),
-        boxShadow: focused
-            ? [
-                BoxShadow(
-                  color: primary.withValues(alpha: 0.45),
-                  blurRadius: 10,
-                  spreadRadius: 0.5,
-                ),
-              ]
+        color: Colors.transparent,
+        border: focused
+            ? Border.all(
+                color: tuning.borderColor!,
+                width: tuning.borderWidth,
+              )
             : null,
+        boxShadow: null,
       ),
       child: body,
     );
@@ -308,9 +449,8 @@ class TvFocusableInkWell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final radius = BorderRadius.circular(borderRadius);
-    final inner = padding != null
-        ? Padding(padding: padding!, child: child)
-        : child;
+    final inner =
+        padding != null ? Padding(padding: padding!, child: child) : child;
     final ink = Material(
       color: Colors.transparent,
       child: InkWell(
@@ -336,30 +476,58 @@ class TvFocusableInkWell extends StatelessWidget {
 /// Kumanda mantığı açıksa [child] etrafına [TvDpadFocus] sarar.
 Widget tvDpadActivateWrap(
   BuildContext context, {
-  required VoidCallback onActivate,
+  VoidCallback? onActivate,
   required Widget child,
   double borderRadius = 12,
   double scaleOnFocus = 1.0,
+  bool autofocus = false,
+  FocusNode? focusNode,
+  FocusNode? arrowUp,
+  FocusNode? arrowDown,
+  FocusNode? arrowLeft,
+  FocusNode? arrowRight,
+  bool blockUp = false,
+  bool blockDown = false,
+  bool blockLeft = false,
+  bool blockRight = false,
+
+  /// `null` → [remoteNavForScreenLayout]. Film & Dizi'de
+  /// [filmDiziRemoteNavEnabled] ile geçersiz kılınır.
+  bool? useRemoteNav,
+  bool ensureVisibleOnFocus = true,
 }) {
-  final remote = remoteNavForScreenLayout(
-    context,
-    Get.find<AppSettingsService>().layoutMode.value,
-  );
+  final mode = Get.find<AppSettingsService>().layoutMode.value;
+  final remote = useRemoteNav ?? remoteNavForScreenLayout(context, mode);
   if (!remote) return child;
   return TvDpadFocus(
     onActivate: onActivate,
     borderRadius: borderRadius,
     scaleOnFocus: scaleOnFocus,
+    autofocus: autofocus,
+    focusNode: focusNode,
+    arrowUp: arrowUp,
+    arrowDown: arrowDown,
+    arrowLeft: arrowLeft,
+    arrowRight: arrowRight,
+    blockUp: blockUp,
+    blockDown: blockDown,
+    blockLeft: blockLeft,
+    blockRight: blockRight,
+    ensureVisibleOnFocus: ensureVisibleOnFocus,
     child: child,
   );
 }
 
 /// Ayarlar alt sayfaları: kumanda modunda odaklı geri düğmesi.
+/// TV modunda gizlenir — Geri / ◀ ile üst listeye dönülür.
 Widget tvSettingsBackButton(
   BuildContext context, {
   VoidCallback? onPressed,
   bool autofocus = false,
 }) {
+  if (Get.find<AppSettingsService>().layoutMode.value == AppLayoutMode.tv) {
+    return const SizedBox.shrink();
+  }
   final back = onPressed ?? () => Get.back<void>();
   final remote = remoteNavForScreenLayout(
     context,

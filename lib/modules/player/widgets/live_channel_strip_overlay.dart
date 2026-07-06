@@ -7,9 +7,11 @@ import 'package:get/get.dart';
 
 import '../../../core/layout/app_layout_mode.dart';
 import '../../../core/services/app_settings_service.dart';
+import '../../../core/services/epg_service.dart';
 import '../../../core/theme/app_performance.dart';
 import '../../../core/theme/glass_appearance.dart';
 import '../../../domain/entities/channel.dart';
+import '../../../ui/channel_list_epg_title.dart';
 import '../../../ui/iptv_channel_logo.dart';
 
 /// TV canlı: uzun OK ile film/dizi rayı ile aynı cam panel (sağ dikey liste).
@@ -50,6 +52,15 @@ class LiveChannelStripOverlayState extends State<LiveChannelStripOverlay> {
   late int _initialIndex;
   final List<FocusNode> _rowFocusNodes = [];
   double _categorySwipeAccumDx = 0;
+
+  /// EPG alt satırı sığmadığında kaydırma (marquee) — açılışta 2 sn statik kalsın
+  /// ki kullanıcı önce metni okuyabilsin, sonra yavaşça kaymaya başlasın.
+  bool _epgMarqueeEnabled = false;
+  Timer? _epgMarqueeTimer;
+
+  /// EPG servisi (kayıtlıysa) — kanal başına "şu an oynayan" programı verir.
+  EpgService? get _epg =>
+      Get.isRegistered<EpgService>() ? Get.find<EpgService>() : null;
 
   /// TV’de bazen hiçbir satır [hasFocus] raporlamaz; OK yine de gelir — o zaman
   /// son odaklı satırı kullan (aksi halde [confirmSelection] hep mevcut kanalı seçer).
@@ -97,6 +108,9 @@ class LiveChannelStripOverlayState extends State<LiveChannelStripOverlay> {
       _lastFocusedRailIndex = i;
       _rowFocusNodes[i].requestFocus();
     });
+    _epgMarqueeTimer = Timer(const Duration(seconds: 2), () {
+      if (mounted) setState(() => _epgMarqueeEnabled = true);
+    });
   }
 
   /// Yalnızca `stream_id` (id) ile kıyaslamak yetmez: bazı listelerde aynı id sırası
@@ -131,6 +145,7 @@ class LiveChannelStripOverlayState extends State<LiveChannelStripOverlay> {
 
   @override
   void dispose() {
+    _epgMarqueeTimer?.cancel();
     _scroll.dispose();
     for (final n in _rowFocusNodes) {
       n.dispose();
@@ -467,6 +482,11 @@ class LiveChannelStripOverlayState extends State<LiveChannelStripOverlay> {
         final c = widget.channels[i];
         final sel = c.id == widget.currentChannelId;
         final node = _rowFocusNodes[i];
+        // EPG: "şu an oynayan" program başlığı + başlangıç saati (varsa).
+        // Bilgi yoksa [ChannelListEpgTitleLine] alt satırı hiç çizmez.
+        final prog = _epg?.getCurrentProgrammeForLiveChannel(c);
+        final epgTitle = prog?.title.trim();
+        final epgStart = prog?.start;
         return FocusTraversalOrder(
           order: NumericFocusOrder(i.toDouble()),
           child: Material(
@@ -588,16 +608,15 @@ class LiveChannelStripOverlayState extends State<LiveChannelStripOverlay> {
                           ),
                           const SizedBox(width: 8),
                           Expanded(
-                            child: Text(
-                              c.name,
-                              maxLines: 2,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.95),
-                                fontSize: nameFs,
-                                fontWeight: FontWeight.w600,
-                                height: 1.12,
-                              ),
+                            child: ChannelListEpgTitleLine(
+                              channelName: c.name,
+                              programmeTitle: epgTitle,
+                              programmeStart: epgStart,
+                              marqueeEnabled: _epgMarqueeEnabled && focused,
+                              highlighted: focused || sel,
+                              channelFontSize: nameFs,
+                              programmeFontSize: portrait ? 10.0 : 9.25,
+                              channelMaxLines: 2,
                             ),
                           ),
                         ],

@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 
-import '../../../core/layout/app_layout_mode.dart';
+import '../../../core/layout/app_layout_mode.dart' show filmDiziRemoteNavEnabled;
 import '../../../core/services/app_settings_service.dart';
 import '../../../ui/tv_dpad_focus.dart';
 import 'recommended_films_poster_grid.dart';
@@ -141,11 +141,15 @@ class _FilmDiziHeroBannerState extends State<FilmDiziHeroBanner> {
   Widget build(BuildContext context) {
     if (widget.slides.isEmpty) return const SizedBox.shrink();
     final size = MediaQuery.sizeOf(context);
+    final landscape =
+        MediaQuery.orientationOf(context) == Orientation.landscape;
     // 16:9 oranına yakın — telefonlarda ekran genişliğine göre.
     final w = size.width;
     final h = widget.isTv
         ? (w * 9 / 16).clamp(320.0, 480.0)
-        : (w * 9 / 16).clamp(180.0, 280.0);
+        : landscape
+            ? (w * 9 / 16).clamp(120.0, 168.0)
+            : (w * 9 / 16).clamp(180.0, 280.0);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -248,8 +252,7 @@ class _HeroSlideViewState extends State<_HeroSlideView> {
     final accent = theme.colorScheme.primary;
     final title = widget.slide.title;
     final rating = widget.slide.rating;
-    final remote = remoteNavForScreenLayout(
-      context,
+    final remote = filmDiziRemoteNavEnabled(
       Get.find<AppSettingsService>().layoutMode.value,
     );
     final isTv = widget.isTv;
@@ -325,13 +328,25 @@ class _HeroSlideViewState extends State<_HeroSlideView> {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              // Arkaplan — afişi 16:9 alanı kapsayacak şekilde uzat.
+              // Arkaplan — afişi 16:9 alanı kapsayacak ve kayarken parallax yapacak şekilde çiz.
               Positioned.fill(
-                child: RepaintBoundary(
-                  child: RecommendedFilmsPosterImage(url: widget.slide.posterUrl),
+                child: ClipRect(
+                  child: Flow(
+                    delegate: ParallaxFlowDelegate(
+                      scrollable: Scrollable.maybeOf(context),
+                      listItemContext: context,
+                    ),
+                    children: [
+                      RepaintBoundary(
+                        child: RecommendedFilmsPosterImage(
+                          url: widget.slide.posterUrl,
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-              // Sol → sağ ve alt → üst koyu gradient (metin okunabilirliği).
+              // Sol → sağ ve alt → üst koyu sinematik gradient (metin okunabilirliği).
               Positioned.fill(
                 child: DecoratedBox(
                   decoration: BoxDecoration(
@@ -339,11 +354,12 @@ class _HeroSlideViewState extends State<_HeroSlideView> {
                       begin: Alignment.bottomLeft,
                       end: Alignment.topRight,
                       colors: [
-                        Colors.black.withValues(alpha: 0.78),
-                        Colors.black.withValues(alpha: 0.25),
+                        Colors.black.withValues(alpha: 0.85),
+                        Colors.black.withValues(alpha: 0.62),
+                        Colors.black.withValues(alpha: 0.22),
                         Colors.transparent,
                       ],
-                      stops: const [0.0, 0.55, 1.0],
+                      stops: const [0.0, 0.28, 0.58, 1.0],
                     ),
                   ),
                 ),
@@ -476,5 +492,58 @@ class _Dots extends StatelessWidget {
         ],
       ),
     );
+  }
+}
+
+class ParallaxFlowDelegate extends FlowDelegate {
+  ParallaxFlowDelegate({
+    required this.scrollable,
+    required this.listItemContext,
+  }) : super(repaint: scrollable?.position);
+
+  final ScrollableState? scrollable;
+  final BuildContext listItemContext;
+
+  @override
+  BoxConstraints getConstraintsForChild(int i, BoxConstraints constraints) {
+    if (scrollable == null) return constraints;
+    return BoxConstraints.tightFor(
+      width: constraints.maxWidth,
+      height: constraints.maxHeight * 1.32,
+    );
+  }
+
+  @override
+  void paintChildren(FlowPaintingContext context) {
+    final scr = scrollable;
+    if (scr == null) {
+      context.paintChild(0);
+      return;
+    }
+    final scrollableSize = scr.context.size ?? Size.zero;
+    final listItemBox = listItemContext.findRenderObject() as RenderBox?;
+    if (listItemBox == null) {
+      context.paintChild(0);
+      return;
+    }
+    final listItemOffset = listItemBox.localToGlobal(
+      Offset.zero,
+      ancestor: scr.context.findRenderObject(),
+    );
+    final viewportPercentPosition = scrollableSize.height > 0
+        ? (listItemOffset.dy / scrollableSize.height).clamp(0.0, 1.0)
+        : 0.5;
+    final dy = (viewportPercentPosition - 0.5) * (context.size.height * 0.32);
+
+    context.paintChild(
+      0,
+      transform: Matrix4.translationValues(0.0, dy, 0.0),
+    );
+  }
+
+  @override
+  bool shouldRepaint(ParallaxFlowDelegate oldDelegate) {
+    return scrollable != oldDelegate.scrollable ||
+        listItemContext != oldDelegate.listItemContext;
   }
 }

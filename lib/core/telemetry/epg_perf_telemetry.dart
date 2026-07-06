@@ -17,7 +17,7 @@ abstract final class EpgPerfTelemetry {
   }
 
   static String summaryLine() =>
-      'EPG perf: xtream=${xtreamLoadStarted} (throttled $xtreamLoadThrottled), '
-      'global=${globalLoadStarted} (throttled $globalLoadThrottled), '
+      'EPG perf: xtream=$xtreamLoadStarted (throttled $xtreamLoadThrottled), '
+      'global=$globalLoadStarted (throttled $globalLoadThrottled), '
       'gen+=$loadGenerationBumps gen~=$loadGenerationSkipped';
 }

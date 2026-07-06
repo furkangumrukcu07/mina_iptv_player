@@ -32,7 +32,6 @@ abstract final class ProfilePrefKeys {
     'mina_settings_daily_quote',
     'mina_settings_continue_watching',
     'mina_settings_mina_wrapped_enabled',
-    'mina_settings_hide_adult_content_v1',
     'mina_settings_strip_live_ch_prefix',
     // Canlı kanal liste düzeni (sıralama + gizlenenler, kaynak bazında).
     // Her profil kendi kanal düzenini tutar.

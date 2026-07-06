@@ -1,10 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:isolate';
 import 'dart:collection';
 
-import 'package:archive/archive.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
@@ -23,10 +21,8 @@ import '../telemetry/epg_perf_telemetry.dart';
 
 /// Global EPG Manager - Dünya genelinde çalışan dinamik EPG servisi
 class GlobalEpgService extends GetxService {
-  static const String _baseUrl = 'https://raw.githubusercontent.com/globetvapp/epg/main/';
   static const int _maxConcurrentDownloads = 4;
   static const Duration _downloadTimeout = Duration(seconds: 30);
-  static const Duration _parseTimeout = Duration(seconds: 60);
 
   final Dio _dio = Dio(BaseOptions(
     connectTimeout: _downloadTimeout,
@@ -161,7 +157,7 @@ class GlobalEpgService extends GetxService {
     final detectedCountries = <String>{};
     
     for (final channel in channels) {
-      final searchText = '${channel.name}'.toLowerCase();
+      final searchText = channel.name.toLowerCase();
       
       for (final entry in countryPatterns.entries) {
         if (entry.value.hasMatch(searchText)) {

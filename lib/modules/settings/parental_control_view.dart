@@ -343,6 +343,7 @@ class _ParentalControlViewState extends State<ParentalControlView> {
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
+        automaticallyImplyLeading: !tv,
         title: Text(
           // Unlock sonrasında embedded view kategori gizleme listesini
           // gösterdiği için AppBar başlığını ona göre değiştiriyoruz —
@@ -610,7 +611,7 @@ class _ParentalControlViewState extends State<ParentalControlView> {
           fontSize: 16,
           fontWeight: FontWeight.w600,
         ),
-        scrollPadding: EdgeInsets.only(bottom: tv ? 80 : 280),
+        scrollPadding: EdgeInsets.only(bottom: tv ? 80 : 24),
         decoration: decoration,
       ),
     );
@@ -1474,7 +1475,7 @@ class _RecoveryWordPromptDialogState extends State<_RecoveryWordPromptDialog> {
                     fontSize: 16,
                     fontWeight: FontWeight.w600,
                   ),
-                  scrollPadding: EdgeInsets.only(bottom: widget.tv ? 80 : 280),
+                  scrollPadding: EdgeInsets.only(bottom: widget.tv ? 80 : 24),
                   decoration: InputDecoration(
                     filled: true,
                     fillColor: Colors.white.withValues(alpha: 0.06),

@@ -224,7 +224,13 @@ class _FilmDiziDetailLoadingSkeletonState
 
 /// Bölüm listesi yüklenirken yan panel iskeleti.
 class FilmDiziEpisodesLoadingSkeleton extends StatefulWidget {
-  const FilmDiziEpisodesLoadingSkeleton({super.key});
+  const FilmDiziEpisodesLoadingSkeleton({super.key, this.shrinkWrap = false});
+
+  /// Dikey kaydırmalı ana gövde içindeyse (portrait) `true`. Bu durumda gelen
+  /// yükseklik sınırsızdır; `Spacer()` (Expanded) kullanılamaz, yoksa
+  /// "RenderFlex children have non-zero flex but incoming height constraints
+  /// are unbounded" hatası tüm sayfa layout'unu çökertir (siyah ekran).
+  final bool shrinkWrap;
 
   @override
   State<FilmDiziEpisodesLoadingSkeleton> createState() =>
@@ -283,7 +289,13 @@ class _FilmDiziEpisodesLoadingSkeletonState
               ),
               const SizedBox(height: 8),
             ],
-            const Spacer(),
+            // Yan panel (landscape) sınırlı yükseklikte → Spacer ile metni
+            // dibe iter. Portrait'te (shrinkWrap) yükseklik sınırsız olduğundan
+            // Spacer kullanılamaz; sabit boşluk bırakılır.
+            if (widget.shrinkWrap)
+              const SizedBox(height: 16)
+            else
+              const Spacer(),
             Center(
               child: Text(
                 'filmDizi.loading'.tr,

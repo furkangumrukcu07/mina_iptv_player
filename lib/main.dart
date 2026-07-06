@@ -30,10 +30,18 @@ import 'core/theme/app_performance.dart';
 import 'core/theme/app_scroll_physics.dart';
 import 'core/theme/app_theme.dart';
 import 'ui/adaptive_haptic_scroll_scope.dart';
+import 'ui/playlist_switch_overlay.dart';
+import 'package:workmanager/workmanager.dart';
+import 'data/repositories/playlist_repository_impl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   MediaKit.ensureInitialized();
+
+  Workmanager().initialize(
+    callbackDispatcher,
+  );
 
   await maybeInitSentry(() async {
     await Future.wait<void>([
@@ -77,9 +85,10 @@ Future<void> main() async {
 
     final settings = AppSettingsService();
     await settings.ensureLoaded();
-    // Düşük Donanımlı Cihaz Modu açıksa Flutter image cache limitlerini hemen
-    // düşür (poster/logo decode baskısını azaltır, OOM riskini düşürür).
-    AppPerformance.applyImageCacheLimits(settings.lowEndDeviceMode.value);
+    // Flutter image cache limitlerini cihaza göre hemen uygula: düşük-donanım
+    // modu veya TV düzeni daha düşük tavan alır (poster/logo decode baskısını
+    // azaltır, uzun süreli yayında OOM riskini düşürür).
+    AppPerformance.applyImageCacheLimitsFor(settings);
     Get.put<AppSettingsService>(settings, permanent: true);
     Get.put(OpenSubtitlesService(), permanent: true);
     final parental = ParentalControlService();
@@ -91,6 +100,17 @@ Future<void> main() async {
     Get.put<GlobalEpgService>(GlobalEpgService(), permanent: true);
     Get.put<HomeEpgCatalogCache>(HomeEpgCatalogCache(), permanent: true);
     await AndroidPlaybackSocHints.ensureLoaded();
+    // Google yedeği başka bir cihazda geri yüklendiyse (örn. telefon yedeği TV
+    // box'ta), cihaza özel donanım kararlarımızın eski cihaz değerleriyle
+    // ezilmemesi için zorlama bayraklarını bu cihaza göre uzlaştır. maybeForce*
+    // çağrılarından ÖNCE olmalı.
+    await settings.reconcileDeviceLocalHardwareSettings();
+    // SoC ipuçları yüklendi: zayıf donanımda (RAM/çekirdek düşük) TV Lite'ı bir
+    // kez otomatik aç (kullanıcı sonradan kapatabilir).
+    await settings.maybeForceTvLiteForWeakHardware();
+    // TV box / düşük donanımlı cihazda canlı yayın biçimini bir kez otomatik
+    // MPEG-TS'e zorla (HLS segment/ABR yükü bu cihazlarda takılma yapıyor).
+    await settings.maybeForceTsLiveFormatForWeakHardware();
     Get.updateLocale(
       materialLocaleFromLanguageCode(settings.languageCode.value),
     );
@@ -113,7 +133,6 @@ class MinaIptvApp extends StatelessWidget {
       settings.languageCode.value;
       settings.themeLabel.value;
       settings.appFontFamilyKey.value;
-      settings.layoutMode.value;
       return GetMaterialApp(
       title: 'Mina IPTV Player',
       debugShowCheckedModeBanner: false,
@@ -143,6 +162,15 @@ class MinaIptvApp extends StatelessWidget {
         Locale('it', 'IT'),
         Locale('pt', 'PT'),
         Locale('id', 'ID'),
+        Locale('de', 'DE'),
+        Locale('fa', 'IR'),
+        Locale('pl', 'PL'),
+        Locale('nl', 'NL'),
+        Locale('uk', 'UA'),
+        Locale('vi', 'VN'),
+        Locale('el', 'GR'),
+        Locale('ro', 'RO'),
+        Locale('sq', 'AL'),
       ],
       theme: AppTheme.materialThemeForLabel(
         settings.themeLabel.value,
@@ -152,11 +180,22 @@ class MinaIptvApp extends StatelessWidget {
       initialBinding: InitialBinding(),
       initialRoute: initialRoute,
       getPages: AppPages.routes,
-      defaultTransition: Transition.fadeIn,
-      transitionDuration: const Duration(milliseconds: 80),
+      defaultTransition: settings.layoutMode.value == AppLayoutMode.tv
+          ? Transition.fadeIn
+          : Transition.rightToLeft,
+      transitionDuration: settings.layoutMode.value == AppLayoutMode.tv
+          ? const Duration(milliseconds: 80)
+          : const Duration(milliseconds: 240),
       builder: (context, child) {
         Get.find<IntegrityService>().scheduleReleaseCheckIfNeeded(context);
-        final wrapped = child ?? const SizedBox.shrink();
+        // Liste geçişi sırasında (canlı TV / film / dizi / Film&Dizi) ekran
+        // ortasında yanıp sönen şemsiye göstergesi — tüm içeriğin üzerinde.
+        final wrapped = Stack(
+          children: [
+            child ?? const SizedBox.shrink(),
+            const Positioned.fill(child: PlaylistSwitchOverlay()),
+          ],
+        );
         return OrientationBuilder(
           builder: (context, _) {
             WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -189,4 +228,26 @@ class MinaIptvApp extends StatelessWidget {
     );
     });
   }
+}
+
+@pragma('vm:entry-point')
+void callbackDispatcher() {
+  Workmanager().executeTask((task, inputData) async {
+    try {
+      WidgetsFlutterBinding.ensureInitialized();
+      final prefs = await SharedPreferences.getInstance();
+      final activeSlot = prefs.getInt('mina_active_playlist_slot') ?? 1;
+
+      debugPrint('BackgroundSync: Starting silent sync for slot $activeSlot...');
+      final repo = PlaylistRepositoryImpl();
+      final result = await repo.loadSlotPlaylist(activeSlot);
+      if (result != null) {
+        debugPrint('BackgroundSync: Silent sync completed. Channels: ${result.channels.length}');
+        return true;
+      }
+    } catch (e) {
+      debugPrint('BackgroundSync: Silent sync failed: $e');
+    }
+    return false;
+  });
 }

@@ -27,6 +27,11 @@ class PlayerScreenArgs {
     /// TV: hızlı rayda sol/sağ ile kategori geçişi (birden fazla kategori varsa).
     this.movieBrowseCategoryTapes,
     this.seriesBrowseCategoryTapes,
+    /// Xtream `get_vod_info` / `get_series_info` ses kodeği (ör. `ac3`).
+    /// Proaktif motor seçimi (AC-3/DTS → MediaKit) için ipucu; yoksa null.
+    this.audioCodecHint,
+    /// Vitrin ana ekranından doğrudan açıldı; geri dönüşte dock mini oynatıcı.
+    this.showcaseInAppPipHandoff = false,
   });
 
   final Channel channel;
@@ -36,4 +41,6 @@ class PlayerScreenArgs {
   final List<SeriesEpisodeOption>? episodeBrowseTape;
   final List<PlayerBrowseCategoryTape<Channel>>? movieBrowseCategoryTapes;
   final List<PlayerBrowseCategoryTape<SeriesItem>>? seriesBrowseCategoryTapes;
+  final String? audioCodecHint;
+  final bool showcaseInAppPipHandoff;
 }

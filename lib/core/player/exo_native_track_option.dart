@@ -7,6 +7,8 @@ class ExoNativeTrackOption {
     required this.label,
     required this.language,
     required this.selected,
+    this.mimeType = '',
+    this.supported = true,
   });
 
   final int tracksGroupIndex;
@@ -15,6 +17,13 @@ class ExoNativeTrackOption {
   final String label;
   final String language;
   final bool selected;
+
+  /// Parçanın örnek MIME türü (örn. `application/pgs`, `text/vtt`).
+  final String mimeType;
+
+  /// ExoPlayer bu izi çözüp çizebiliyor mu? Resim tabanlı altyazılar
+  /// (PGS/HDMV, VobSub, DVB) `false` döner — Exo bunları render edemez.
+  final bool supported;
 
   String get displayLabel {
     if (label.trim().isNotEmpty) return label.trim();

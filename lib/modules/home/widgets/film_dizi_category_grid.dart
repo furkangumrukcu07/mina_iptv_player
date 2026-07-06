@@ -54,10 +54,50 @@ class FilmDiziCategoryGrid extends StatefulWidget {
 class _FilmDiziCategoryGridState extends State<FilmDiziCategoryGrid> {
   final _scroll = ScrollController();
 
+  List<VodItem>? _sortedFilms;
+  List<SeriesItem>? _sortedSeries;
+  List<String>? _sortKeys;
+  Map<String, int>? _letterIndex;
+  Object? _cacheKey;
+
   @override
   void dispose() {
     _scroll.dispose();
     super.dispose();
+  }
+
+  void _ensureSortedCache() {
+    final isFilms = widget.films != null;
+    final source = isFilms ? widget.films! : widget.series!;
+    final key = Object.hash(
+      isFilms,
+      widget.preserveOrder,
+      source.length,
+      identityHashCode(source),
+    );
+    if (key == _cacheKey) return;
+    _cacheKey = key;
+
+    if (isFilms) {
+      final list = List<VodItem>.from(widget.films!);
+      if (!widget.preserveOrder) {
+        list.sort((a, b) => _filmSortKey(a).compareTo(_filmSortKey(b)));
+      }
+      _sortedFilms = list;
+      _sortedSeries = null;
+      _sortKeys = list.map(_filmSortKey).toList(growable: false);
+    } else {
+      final list = List<SeriesItem>.from(widget.series!);
+      if (!widget.preserveOrder) {
+        list.sort((a, b) => _seriesSortKey(a).compareTo(_seriesSortKey(b)));
+      }
+      _sortedSeries = list;
+      _sortedFilms = null;
+      _sortKeys = list.map(_seriesSortKey).toList(growable: false);
+    }
+    _letterIndex = widget.preserveOrder
+        ? null
+        : filmDiziBuildFirstIndexByLetter(_sortKeys!);
   }
 
   void _openFilm(VodItem v) {
@@ -101,19 +141,10 @@ class _FilmDiziCategoryGridState extends State<FilmDiziCategoryGrid> {
 
   @override
   Widget build(BuildContext context) {
+    _ensureSortedCache();
     final isFilms = widget.films != null;
-    final sortedFilms = isFilms
-        ? (widget.preserveOrder
-            ? List<VodItem>.from(widget.films!)
-            : (List<VodItem>.from(widget.films!)
-              ..sort((a, b) => _filmSortKey(a).compareTo(_filmSortKey(b)))))
-        : null;
-    final sortedSeries = !isFilms
-        ? (widget.preserveOrder
-            ? List<SeriesItem>.from(widget.series!)
-            : (List<SeriesItem>.from(widget.series!)
-              ..sort((a, b) => _seriesSortKey(a).compareTo(_seriesSortKey(b)))))
-        : null;
+    final sortedFilms = _sortedFilms;
+    final sortedSeries = _sortedSeries;
     final count = isFilms ? sortedFilms!.length : sortedSeries!.length;
 
     if (count == 0) {
@@ -149,11 +180,8 @@ class _FilmDiziCategoryGridState extends State<FilmDiziCategoryGrid> {
     final cellH = cellW * 1.48 + (isTv ? 50 : 40);
     final rowExtent = cellH + (isTv ? 16 : 12);
 
-    final sortKeys = isFilms
-        ? sortedFilms!.map(_filmSortKey).toList()
-        : sortedSeries!.map(_seriesSortKey).toList();
-    final letterIndex = filmDiziBuildFirstIndexByLetter(sortKeys);
-    final showAzIndex = !widget.preserveOrder;
+    final letterIndex = _letterIndex;
+    final showAzIndex = !widget.preserveOrder && letterIndex != null;
 
     return Stack(
       children: [
@@ -164,6 +192,8 @@ class _FilmDiziCategoryGridState extends State<FilmDiziCategoryGrid> {
             right: widget.padding.right + 6,
             bottom: widget.padding.bottom + MediaQuery.paddingOf(context).bottom,
           ),
+          cacheExtent: cellH * 2,
+          addRepaintBoundaries: true,
           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: crossAxisCount,
             mainAxisSpacing: isTv ? 16 : 12,
@@ -174,17 +204,21 @@ class _FilmDiziCategoryGridState extends State<FilmDiziCategoryGrid> {
           itemBuilder: (context, index) {
             if (isFilms) {
               final v = sortedFilms![index];
-              return FilmDiziPosterCard.film(
-                vod: v,
-                posterWidth: cellW,
-                onTap: () => _openFilm(v),
+              return RepaintBoundary(
+                child: FilmDiziPosterCard.film(
+                  vod: v,
+                  posterWidth: cellW,
+                  onTap: () => _openFilm(v),
+                ),
               );
             }
             final s = sortedSeries![index];
-            return FilmDiziPosterCard.series(
-              series: s,
-              posterWidth: cellW,
-              onTap: () => _openSeries(s),
+            return RepaintBoundary(
+              child: FilmDiziPosterCard.series(
+                series: s,
+                posterWidth: cellW,
+                onTap: () => _openSeries(s),
+              ),
             );
           },
         ),

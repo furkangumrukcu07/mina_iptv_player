@@ -63,7 +63,7 @@ const List<PlaybackUserAgentPreset> kPlaybackUserAgentPresets = [
     id: 'kodi',
     label: 'Kodi',
     userAgent: 'Kodi/20.5 (Linux; Android 13; AOSP) Android/13 Sys_CPU/aarch64 App_Bitness/64 Version/20.5-(20.5.0)',
-    description: 'Kodi / Tivimate gibi IPTV uygulamaları için.',
+    description: 'Kodi gibi IPTV uygulamaları için.',
   ),
   PlaybackUserAgentPreset(
     id: 'smarttv_samsung',

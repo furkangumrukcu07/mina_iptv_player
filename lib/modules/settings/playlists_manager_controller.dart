@@ -14,6 +14,7 @@ import '../../core/services/toast_service.dart';
 import '../../data/remote/m3u_xtream_sniffer.dart';
 import '../../domain/entities/m3u_result.dart';
 import '../../domain/entities/playlist_source.dart';
+import '../../data/local/playlist_sqlite_store.dart';
 import '../../domain/repositories/playlist_repository.dart';
 import '../playlist/widgets/playlist_load_summary_dialog.dart';
 /// Tek slot için UI özet kartı verisi.
@@ -220,15 +221,27 @@ class PlaylistsManagerController extends GetxController {
               username: converted.username,
               password: converted.password,
             );
-            await _repo.persistSourceAt(
-              slot,
-              XtreamSource(
-                baseUrl: res.resolvedBaseUrl,
-                username: converted.username,
-                password: converted.password,
-              ),
-            );
-            return res.result;
+            // Panel `player_api.php`'yi kısıtlayıp boş dönerse (kanal+film+dizi
+            // hepsi boş) dönüşümü iptal et; aşağıda ham M3U (`get.php`) denenir
+            // — "içerikler eksik" sorununu önler.
+            if (res.result.channels.isEmpty &&
+                res.result.vod.isEmpty &&
+                res.result.series.isEmpty) {
+              debugPrint(
+                '[playlistsManager] Xtream conversion empty for '
+                '${converted.baseUrl} → falling back to raw M3U',
+              );
+            } else {
+              await _repo.persistSourceAt(
+                slot,
+                XtreamSource(
+                  baseUrl: res.resolvedBaseUrl,
+                  username: converted.username,
+                  password: converted.password,
+                ),
+              );
+              return res.result;
+            }
           } catch (e) {
             debugPrint(
               '[playlistsManager] Xtream sniff failed for '
@@ -386,16 +399,33 @@ class PlaylistsManagerController extends GetxController {
   /// `isReloadingMerged.value` reaktif spinner'ı ile gösterir.
   Future<bool> clear({required int slot}) async {
     // En az bir dolu liste kalmalı — tek liste silinemez (uygulama kaynaksız
-    // kalmasın). Kullanıcı yerine "Düzenle" ile içeriği değiştirebilir.
+    // kalmasın). 1. liste de silinebilir; silinince [compactSlots] 2. listeyi
+    // fiziksel olarak 1. slota taşır → yeniden açılışta m3u sorulmaz.
     if (filledCount <= 1) {
       _toast('playlistsManager.error.cannotRemoveLast'.tr, isError: true);
       return false;
     }
     isLoading.value = true;
     try {
-      final wasActive = _active.activeSlot.value == slot;
+      final prevActive = _active.activeSlot.value;
+      final wasActive = prevActive == slot;
       await _repo.clearSourceAt(slot);
       _active.invalidate(slot);
+
+      // Boşlukları kapat: 1,2,4,5 → 1,2,3,4. Taşınan slotların bellek
+      // önbelleği geçersizleşir; aktif slot (silinmeyen) yeni numarasına
+      // remap edilir ki "Listeler" barı doğru listeyi seçili göstersin.
+      final remap = await _repo.compactSlots();
+      if (remap.isNotEmpty) {
+        _active.invalidateAll();
+        if (!wasActive) {
+          final newActive = remap[prevActive];
+          if (newActive != null) {
+            await _active.remapActiveSlot(newActive);
+          }
+        }
+      }
+
       await reloadSlots();
       await _active.refreshAvailable();
       // Silinen liste aktifse, geçerli bir listeye geçip içeriği yükle.
@@ -532,10 +562,21 @@ class PlaylistsManagerController extends GetxController {
       final result = await loadAndPersist();
       await reloadSlots();
 
+      final dbKey = await _repo.slotDbKey(slot);
+      final filmCount = (dbKey != null &&
+              dbKey.isNotEmpty &&
+              result.vod.isEmpty)
+          ? await PlaylistSqliteStore.vodCount(dbKey)
+          : result.vod.length;
+      final seriesCount = (dbKey != null &&
+              dbKey.isNotEmpty &&
+              result.series.isEmpty)
+          ? await PlaylistSqliteStore.seriesCount(dbKey)
+          : result.series.length;
       progress?.value = PlaylistLoadProgress.done(
         liveChannelCount: result.channels.length,
-        filmCount: result.vod.length,
-        seriesCount: result.series.length,
+        filmCount: filmCount,
+        seriesCount: seriesCount,
       );
 
       // Yeni yüklenen listeyi aktif yap + önbelleğe yaz (birleştirme yok).

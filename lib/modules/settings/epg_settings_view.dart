@@ -6,6 +6,7 @@ import '../../core/layout/app_layout_mode.dart';
 import '../../core/services/app_settings_service.dart';
 import '../../ui/tv_dpad_focus.dart';
 import '../../core/services/epg_service.dart';
+import '../../ui/tv_settings_subpage.dart';
 import '../../core/theme/app_scroll_physics.dart';
 import '../../ui/themed_settings_background.dart';
 import 'settings_controller.dart';
@@ -17,48 +18,19 @@ class EpgSettingsView extends GetView<SettingsController> {
   Widget build(BuildContext context) {
     final primary = Theme.of(context).colorScheme.primary;
 
-    final remote = remoteNavForScreenLayout(
-      context,
-      Get.find<AppSettingsService>().layoutMode.value,
-    );
+    final tvDpad =
+        Get.find<AppSettingsService>().layoutMode.value == AppLayoutMode.tv;
 
     return Scaffold(
       backgroundColor: Colors.black,
       body: ThemedSettingsBackground(
         child: SafeArea(
-          child: FocusTraversalGroup(
-            policy: ReadingOrderTraversalPolicy(),
+          child: TvSettingsDpadScope(
+            enabled: tvDpad,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(8, 4, 16, 8),
-                  child: Row(
-                    children: [
-                      remote
-                          ? TvIconButton(
-                              icon: Icons.arrow_back_rounded,
-                              onPressed: () => Get.back<void>(),
-                              autofocus: true,
-                            )
-                          : IconButton(
-                              icon: const Icon(Icons.arrow_back_rounded,
-                                  color: Colors.white),
-                              onPressed: () => Get.back<void>(),
-                            ),
-                      Expanded(
-                        child: Text(
-                          'settings.epg.title'.tr,
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 20,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+                tvSettingsSubpageHeader(context, 'settings.epg.title'.tr),
                 Expanded(
                   child: ListView(
                     physics: AppScrollPhysics.list(context: context),
@@ -141,13 +113,18 @@ class EpgSettingsView extends GetView<SettingsController> {
                             _EpgOptionTile(
                               title: 'settings.epg.refreshFrequency'.tr,
                               subtitle: Obx(
-                                () => Text(
-                                  'settings.epg.refreshFrequency.sub'.trParams({
-                                    'n':
-                                        '${controller.app.epgDiskCacheRefreshDays.value}',
-                                  }),
-                                  style: _subStyle,
-                                ),
+                                () {
+                                  final d = controller
+                                      .app.epgDiskCacheRefreshDays.value;
+                                  return Text(
+                                    d <= 0
+                                        ? 'settings.epg.refreshFrequency.never'
+                                            .tr
+                                        : 'settings.epg.refreshFrequency.sub'
+                                            .trParams({'n': '$d'}),
+                                    style: _subStyle,
+                                  );
+                                },
                               ),
                               icon: Icons.update_rounded,
                               iconColor: primary,

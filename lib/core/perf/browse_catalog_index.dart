@@ -4,7 +4,12 @@ import '../../domain/entities/series.dart';
 import '../../domain/entities/vod.dart';
 
 /// Browse ekranında tekrarlayan `where((e) => e.id == id)` taramalarını
-/// O(1) map lookup'a indirir. [M3uResult] referansı değişince yeniden kurulur.
+/// O(1) map lookup'a indirir.
+///
+/// **Yalnızca bellek yolu:** [M3uResult] içinde film/dizi/kanal listeleri
+/// doluysa (SQLite öncesi veya DB yazımı başarısız küçük listeler) kullanılır.
+/// DB destekli slim önbellekte listeler boş olduğundan haritalar da boştur;
+/// bu durumda tüketiciler [PlaylistDataSource] üzerinden async okumalıdır.
 class BrowseCatalogIndex {
   BrowseCatalogIndex._(this.data)
       : vodById = {for (final v in data.vod) v.id: v},
@@ -20,12 +25,15 @@ class BrowseCatalogIndex {
   final Map<int, List<VodItem>> vodByCategory;
   final Map<int, List<SeriesItem>> seriesByCategory;
 
+  /// Bellekte tam katalog var mı? Slim önbellekte false döner.
+  bool get hasInMemoryLists =>
+      data.vod.isNotEmpty ||
+      data.series.isNotEmpty ||
+      data.channels.isNotEmpty;
+
   static BrowseCatalogIndex? _cached;
   static M3uResult? _cachedData;
 
-  /// Veri seti başına index'i weak-key ile saklar; iki liste arasında
-  /// ileri-geri geçişte her seferinde yeniden kurulmaz (büyük katalogda
-  /// O(vod+seri+kanal) maliyetini geçiş başına bir kereye indirir).
   static final Expando<BrowseCatalogIndex> _byData =
       Expando<BrowseCatalogIndex>('browseCatalogIndex');
 
@@ -44,8 +52,6 @@ class BrowseCatalogIndex {
   }
 
   static void invalidate() {
-    // Yalnızca hızlı yol (son kullanılan) sıfırlanır; veri seti başına weak
-    // önbellek korunur — aynı M3uResult tekrar gelirse yeniden kurulmaz.
     _cachedData = null;
     _cached = null;
   }

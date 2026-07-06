@@ -11,6 +11,17 @@ import '../../domain/entities/vod.dart';
 import '../../domain/entities/epg_entities.dart';
 import 'xtream_all_live_epg_parse.dart';
 
+/// Xtream liste yanıtını isolate içinde çözer (büyük JSON ana thread'i kilitlemesin).
+List<dynamic> _decodeXtreamJsonList(String raw) {
+  final dynamic data = jsonDecode(raw);
+  if (data is List) return data;
+  if (data is Map) {
+    final first = data.values.isNotEmpty ? data.values.first : null;
+    if (first is List) return first;
+  }
+  return const [];
+}
+
 class _XtreamSeriesPayload {
   const _XtreamSeriesPayload({
     required this.episodeMaps,
@@ -141,6 +152,18 @@ String? _xtreamVodTrailerUrl(Map<String, dynamic> item) {
     return _xtreamVodTrailerUrl(Map<String, dynamic>.from(info));
   }
   return null;
+}
+
+/// Bölümün ffprobe ses kodeği (`info.audio.codec_name`); yoksa null.
+String? _xtreamEpisodeAudioCodec(Map<String, dynamic> ep) {
+  for (final nested in ['info', 'episode_info', 'movie_data', 'data']) {
+    final o = ep[nested];
+    if (o is Map) {
+      final c = XtreamApi._nestedCodecName(o['audio']);
+      if (c != null) return c;
+    }
+  }
+  return XtreamApi._nestedCodecName(ep['audio']);
 }
 
 String? _xtreamEpisodePlot(Map<String, dynamic> ep) {
@@ -579,6 +602,21 @@ class XtreamApi {
     return null;
   }
 
+  /// `info.audio` / `info.video` ffprobe objesinden `codec_name` çeker
+  /// (ör. `{"codec_name":"ac3", ...}`). Liste gelirse ilk öğeyi kullanır.
+  static String? _nestedCodecName(dynamic node) {
+    if (node is List && node.isNotEmpty) return _nestedCodecName(node.first);
+    if (node is Map) {
+      for (final k in ['codec_name', 'codec', 'codec_long_name']) {
+        final v = node[k];
+        if (v == null) continue;
+        final s = v.toString().trim();
+        if (s.isNotEmpty && s != 'null') return s;
+      }
+    }
+    return null;
+  }
+
   /// Xtream `duration` alanı saniye, dakika veya `HH:MM:SS` olabilir.
   static int? _xtreamDurationToMinutes(dynamic raw) {
     if (raw == null) return null;
@@ -728,19 +766,23 @@ class XtreamApi {
       }
 
       final videoCodec = _pickXtreamString(merged, [
-        'video_codec',
-        'codec',
-        'codec_name',
-        'video_codec_name',
-        'vcodec',
-      ]);
+            'video_codec',
+            'codec',
+            'codec_name',
+            'video_codec_name',
+            'vcodec',
+          ]) ??
+          _nestedCodecName(merged['video']);
       if (videoCodec != null) out['video_codec'] = videoCodec;
 
+      // Xtream `get_vod_info` ffprobe verisini `info.audio.codec_name` altında
+      // (Map olarak) döndürür; düz `audio_codec` alanı çoğu panelde boştur.
       final audioCodec = _pickXtreamString(merged, [
-        'audio_codec',
-        'audio_codec_name',
-        'acodec',
-      ]);
+            'audio_codec',
+            'audio_codec_name',
+            'acodec',
+          ]) ??
+          _nestedCodecName(merged['audio']);
       if (audioCodec != null) out['audio_codec'] = audioCodec;
 
       final resolution = _pickXtreamString(merged, [
@@ -1024,6 +1066,7 @@ class XtreamApi {
           seriesPosterUrl;
       final epPlot = _xtreamEpisodePlot(ep);
       final durSecs = _xtreamEpisodeDurationSecs(ep);
+      final epAudioCodec = _xtreamEpisodeAudioCodec(ep);
       out.add(
         SeriesEpisodeOption(
           channel: Channel(
@@ -1041,6 +1084,7 @@ class XtreamApi {
           displayTitle: label,
           plot: epPlot,
           durationSecs: durSecs,
+          audioCodec: epAudioCodec,
         ),
       );
     }
@@ -1059,6 +1103,7 @@ class XtreamApi {
             displayTitle: e.displayTitle,
             plot: e.plot,
             durationSecs: defaultDur,
+            audioCodec: e.audioCodec,
           );
         }
       }
@@ -1183,19 +1228,18 @@ class XtreamApi {
 
   Future<List<dynamic>> _getList(Dio dio, String url) async {
     try {
-      final response = await dio.get<dynamic>(
+      // Büyük listelerde (15k film / 30k dizi) jsonDecode ana thread'i kilitleyip
+      // kasmaya yol açıyordu. Yanıtı düz metin alıp çözümlemeyi isolate'e taşıyoruz.
+      final response = await dio.get<String>(
         url,
         options: Options(
+          responseType: ResponseType.plain,
           receiveTimeout: const Duration(seconds: 120),
         ),
       );
-      final data = response.data;
-      if (data is List) return data;
-      if (data is Map) {
-        final first = data.values.isNotEmpty ? data.values.first : null;
-        if (first is List) return first;
-      }
-      return const [];
+      final raw = response.data;
+      if (raw == null || raw.isEmpty) return const [];
+      return await compute(_decodeXtreamJsonList, raw);
     } on DioException catch (e) {
       throw NetworkException(e.message ?? 'Network error', e);
     } catch (e) {

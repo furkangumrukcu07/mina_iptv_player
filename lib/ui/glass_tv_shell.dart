@@ -487,6 +487,49 @@ class GlassTopCombinedClockSettings extends StatelessWidget {
   final VoidCallback? onTvNavigateDownFromTopBar;
   final VoidCallback? onTvNavigateLeftFromTopBar;
 
+  /// Üst çubuk: ◀/▼ tekrar (KeyRepeat) olayları da aynı gezinmeyi tetikler.
+  /// Aksi halde ilk basış odaklanamazsa tekrarlar yok sayılıp varsayılan
+  /// traversal devreye girer ve saniyeler süren gecikmeye yol açar.
+  static KeyEventResult _tvTopBarNavFromKeyEvent({
+    required FocusNode? playlistNode,
+    required FocusNode? searchNode,
+    required FocusNode? timelineNode,
+    required FocusNode? settingsNode,
+    VoidCallback? onDown,
+    VoidCallback? onLeft,
+    required KeyEvent event,
+    required _TvTopBarSlot slot,
+  }) {
+    if (event is KeyRepeatEvent) {
+      final k = event.logicalKey;
+      if (k == LogicalKeyboardKey.arrowDown ||
+          k == LogicalKeyboardKey.arrowLeft) {
+        return _tvTopBarNav(
+          playlistNode: playlistNode,
+          searchNode: searchNode,
+          timelineNode: timelineNode,
+          settingsNode: settingsNode,
+          onDown: onDown,
+          onLeft: onLeft,
+          k: k,
+          slot: slot,
+        );
+      }
+      return KeyEventResult.ignored;
+    }
+    if (event is! KeyDownEvent) return KeyEventResult.ignored;
+    return _tvTopBarNav(
+      playlistNode: playlistNode,
+      searchNode: searchNode,
+      timelineNode: timelineNode,
+      settingsNode: settingsNode,
+      onDown: onDown,
+      onLeft: onLeft,
+      k: event.logicalKey,
+      slot: slot,
+    );
+  }
+
   static KeyEventResult _tvTopBarNav({
     required FocusNode? playlistNode,
     required FocusNode? searchNode,
@@ -501,23 +544,41 @@ class GlassTopCombinedClockSettings extends StatelessWidget {
       onDown?.call();
       return KeyEventResult.handled;
     }
-    // Önce buton-arası yatay gezinme; en soldaki butonda sol ok ile top bar'dan
-    // çıkış (onLeft) fallback olarak en sonda denenir.
+    // Üst bar ekranın en üstündedir; ▲ yukarı tuşu işlevsizdir. Aksi halde
+    // varsayılan traversal odağı dışarı (kategori/ayarlar) kaçırıyordu —
+    // kullanıcı yukarı basınca hiçbir işlem yapılmamalı.
+    if (k == LogicalKeyboardKey.arrowUp) {
+      return KeyEventResult.handled;
+    }
+    // Önce buton-arası yatay gezinme; en soldaki (playlist) butonda sol ok
+    // içerik listesine döner. Dart switch fall-through kullanılmaz — aksi hâlde
+    // playlist + ◀, search dalına düşüp playlistNode.requestFocus() ile
+    // aynı butonda kalıyordu.
     switch (slot) {
       case _TvTopBarSlot.playlist:
         if (k == LogicalKeyboardKey.arrowRight) {
           (searchNode ?? timelineNode ?? settingsNode)?.requestFocus();
           return KeyEventResult.handled;
         }
+        if (k == LogicalKeyboardKey.arrowLeft) {
+          onLeft?.call();
+          return KeyEventResult.handled;
+        }
+        return KeyEventResult.ignored;
       case _TvTopBarSlot.search:
         if (k == LogicalKeyboardKey.arrowRight) {
           (timelineNode ?? settingsNode)?.requestFocus();
           return KeyEventResult.handled;
         }
-        if (k == LogicalKeyboardKey.arrowLeft && playlistNode != null) {
-          playlistNode.requestFocus();
+        if (k == LogicalKeyboardKey.arrowLeft) {
+          if (playlistNode != null) {
+            playlistNode.requestFocus();
+          } else {
+            onLeft?.call();
+          }
           return KeyEventResult.handled;
         }
+        return KeyEventResult.ignored;
       case _TvTopBarSlot.timeline:
         if (k == LogicalKeyboardKey.arrowRight) {
           settingsNode?.requestFocus();
@@ -527,17 +588,14 @@ class GlassTopCombinedClockSettings extends StatelessWidget {
           (searchNode ?? playlistNode)?.requestFocus();
           return KeyEventResult.handled;
         }
+        return KeyEventResult.ignored;
       case _TvTopBarSlot.settings:
         if (k == LogicalKeyboardKey.arrowLeft) {
           (timelineNode ?? searchNode ?? playlistNode)?.requestFocus();
           return KeyEventResult.handled;
         }
+        return KeyEventResult.ignored;
     }
-    if (k == LogicalKeyboardKey.arrowLeft) {
-      onLeft?.call();
-      return KeyEventResult.handled;
-    }
-    return KeyEventResult.ignored;
   }
 
   @override
@@ -560,24 +618,19 @@ class GlassTopCombinedClockSettings extends StatelessWidget {
         return Focus(
           focusNode: tvPlaylistFocusNode,
           onKeyEvent: (node, event) {
-            if (event is KeyRepeatEvent) {
-              return KeyEventResult.ignored;
-            }
-            if (event is! KeyDownEvent) {
-              return KeyEventResult.ignored;
-            }
-            final k = event.logicalKey;
-            final nav = _tvTopBarNav(
+            final nav = _tvTopBarNavFromKeyEvent(
               playlistNode: tvPlaylistFocusNode,
               searchNode: tvSearchFocusNode,
               timelineNode: tvEpgTimelineFocusNode,
               settingsNode: tvSettingsFocusNode,
               onDown: onTvNavigateDownFromTopBar,
               onLeft: onTvNavigateLeftFromTopBar,
-              k: k,
+              event: event,
               slot: _TvTopBarSlot.playlist,
             );
             if (nav != KeyEventResult.ignored) return nav;
+            if (event is! KeyDownEvent) return KeyEventResult.ignored;
+            final k = event.logicalKey;
             if (k == LogicalKeyboardKey.select ||
                 k == LogicalKeyboardKey.enter ||
                 k == LogicalKeyboardKey.numpadEnter ||
@@ -649,24 +702,19 @@ class GlassTopCombinedClockSettings extends StatelessWidget {
         return Focus(
           focusNode: tvSearchFocusNode,
           onKeyEvent: (node, event) {
-            if (event is KeyRepeatEvent) {
-              return KeyEventResult.ignored;
-            }
-            if (event is! KeyDownEvent) {
-              return KeyEventResult.ignored;
-            }
-            final k = event.logicalKey;
-            final nav = _tvTopBarNav(
+            final nav = _tvTopBarNavFromKeyEvent(
               playlistNode: tvPlaylistFocusNode,
               searchNode: tvSearchFocusNode,
               timelineNode: tvEpgTimelineFocusNode,
               settingsNode: tvSettingsFocusNode,
               onDown: onTvNavigateDownFromTopBar,
               onLeft: onTvNavigateLeftFromTopBar,
-              k: k,
+              event: event,
               slot: _TvTopBarSlot.search,
             );
             if (nav != KeyEventResult.ignored) return nav;
+            if (event is! KeyDownEvent) return KeyEventResult.ignored;
+            final k = event.logicalKey;
             if (k == LogicalKeyboardKey.select ||
                 k == LogicalKeyboardKey.enter ||
                 k == LogicalKeyboardKey.numpadEnter ||
@@ -737,24 +785,19 @@ class GlassTopCombinedClockSettings extends StatelessWidget {
         return Focus(
           focusNode: tvSettingsFocusNode,
           onKeyEvent: (node, event) {
-            if (event is KeyRepeatEvent) {
-              return KeyEventResult.ignored;
-            }
-            if (event is! KeyDownEvent) {
-              return KeyEventResult.ignored;
-            }
-            final k = event.logicalKey;
-            final nav = _tvTopBarNav(
+            final nav = _tvTopBarNavFromKeyEvent(
               playlistNode: tvPlaylistFocusNode,
               searchNode: tvSearchFocusNode,
               timelineNode: tvEpgTimelineFocusNode,
               settingsNode: tvSettingsFocusNode,
               onDown: onTvNavigateDownFromTopBar,
               onLeft: onTvNavigateLeftFromTopBar,
-              k: k,
+              event: event,
               slot: _TvTopBarSlot.settings,
             );
             if (nav != KeyEventResult.ignored) return nav;
+            if (event is! KeyDownEvent) return KeyEventResult.ignored;
+            final k = event.logicalKey;
             if (k == LogicalKeyboardKey.select ||
                 k == LogicalKeyboardKey.enter ||
                 k == LogicalKeyboardKey.numpadEnter ||
@@ -829,23 +872,18 @@ class GlassTopCombinedClockSettings extends StatelessWidget {
         return Focus(
           focusNode: tvEpgTimelineFocusNode,
           onKeyEvent: (node, event) {
-            if (event is KeyRepeatEvent) {
-              return KeyEventResult.ignored;
-            }
-            if (event is! KeyDownEvent) {
-              return KeyEventResult.ignored;
-            }
-            final k = event.logicalKey;
-            final nav = _tvTopBarNav(
+            final nav = _tvTopBarNavFromKeyEvent(
               playlistNode: tvPlaylistFocusNode,
               searchNode: tvSearchFocusNode,
               timelineNode: tvEpgTimelineFocusNode,
               settingsNode: tvSettingsFocusNode,
               onDown: onTvNavigateDownFromTopBar,
-              k: k,
+              event: event,
               slot: _TvTopBarSlot.timeline,
             );
             if (nav != KeyEventResult.ignored) return nav;
+            if (event is! KeyDownEvent) return KeyEventResult.ignored;
+            final k = event.logicalKey;
             if (k == LogicalKeyboardKey.select ||
                 k == LogicalKeyboardKey.enter ||
                 k == LogicalKeyboardKey.numpadEnter ||
@@ -975,6 +1013,14 @@ class GlassCategoryRow extends StatefulWidget {
 
     /// TV: bu satır odağı aldığında (ör. kumanda ile kategoriye gelince) tuzak sıfırlanır.
     this.onTvFocusGained,
+
+    /// TV: paylaşımlı [focusNode] ile indeks tabanlı ▲▼ (traversal yerine).
+    /// Diğer satırlar [skipTraversal] ile geçiş dışı bırakılır; aşağı/yukarı
+    /// ok asla üst çubuk aramaya sıçramaz.
+    this.tvStrictVerticalCategories = false,
+    this.tvCategoryIndex,
+    this.tvCategoryCount,
+    this.tvOnCategoryNudge,
   });
 
   final String label;
@@ -994,6 +1040,10 @@ class GlassCategoryRow extends StatefulWidget {
   final bool tvArrowRightEntersChannels;
   final bool tvSuppressFocusRingUnlessSelected;
   final VoidCallback? onTvFocusGained;
+  final bool tvStrictVerticalCategories;
+  final int? tvCategoryIndex;
+  final int? tvCategoryCount;
+  final void Function(int delta)? tvOnCategoryNudge;
 
   @override
   State<GlassCategoryRow> createState() => _GlassCategoryRowState();
@@ -1018,24 +1068,55 @@ class _GlassCategoryRowState extends State<GlassCategoryRow> {
   }
 
   bool get _effectiveFocused {
+    // Orta sütun tuzağı: seçili kategori odağı kanallardayken de vurgulu kalsın.
+    if (widget.emphasizeSelection && widget.selected) return true;
+    // İndeks tabanlı (strict) kategori gezinimi: vurgu yalnızca seçili satırda.
+    // Böylece kumanda ile gezilen eski satırlarda kalıntı odak çerçevesi kalmaz.
+    // Tuzak (odak orta listede) iken kategori vurgusu söner.
+    if (widget.tvStrictVerticalCategories) {
+      if (widget.tvSuppressFocusRingUnlessSelected) return false;
+      return widget.selected;
+    }
     if (!widget.tvSuppressFocusRingUnlessSelected) return _focused;
     return _focused && widget.selected;
   }
 
+  bool get _tvAccent {
+    final settings = Get.find<AppSettingsService>();
+    return AppPerformance.isTvAndroidLayout(settings);
+  }
+
   Color _borderColor(Color primary, GlassAppearance ga) {
     if (_effectiveFocused) {
+      if (_tvAccent) {
+        return AppPerformance.tvFocusBorder(
+          primary,
+          emphasized: widget.emphasizeSelection && widget.selected,
+        );
+      }
       return Colors.white.withValues(alpha: 0.12);
     }
     return Colors.transparent;
   }
 
   double _borderWidth() {
+    if (_effectiveFocused && _tvAccent) {
+      return AppPerformance.tvFocusBorderWidth(
+        emphasized: widget.emphasizeSelection && widget.selected,
+      );
+    }
     return 1;
   }
 
-  Color _fillColor(GlassAppearance ga) {
+  Color _fillColor(Color primary, GlassAppearance ga) {
     if (_effectiveFocused) {
-      return Colors.white.withValues(alpha: 0.12); // Belirgin kutu (highlight)
+      if (_tvAccent) {
+        return AppPerformance.tvFocusFill(
+          primary,
+          emphasized: widget.emphasizeSelection && widget.selected,
+        );
+      }
+      return Colors.white.withValues(alpha: 0.12);
     }
     return Colors.transparent;
   }
@@ -1069,7 +1150,13 @@ class _GlassCategoryRowState extends State<GlassCategoryRow> {
           color: Colors.transparent,
           child: Focus(
             focusNode: widget.focusNode,
-            autofocus: widget.focusNode == null && widget.autofocus,
+            skipTraversal: widget.tvStrictVerticalCategories &&
+                widget.focusNode == null,
+            canRequestFocus: !(widget.tvStrictVerticalCategories &&
+                widget.focusNode == null),
+            autofocus: widget.focusNode == null &&
+                widget.autofocus &&
+                !widget.tvStrictVerticalCategories,
             onFocusChange: (v) {
               setState(() => _focused = v);
               if (v) widget.onTvFocusGained?.call();
@@ -1088,14 +1175,23 @@ class _GlassCategoryRowState extends State<GlassCategoryRow> {
                 );
               }
 
+              final strictVertical = widget.tvStrictVerticalCategories &&
+                  widget.focusNode != null &&
+                  widget.tvOnCategoryNudge != null;
+
               if (k == LogicalKeyboardKey.arrowDown) {
                 if (widget.tvBlockArrowDown) {
                   return KeyEventResult.handled;
                 }
-                // Basılı tutma: KeyRepeat de hareketi sürer (kesintisiz
-                // kaydırma). Sahte/çok hızlı tekrarlar throttle ile süzülür;
-                // tek basış yalnızca KeyDown ürettiği için çift atlama olmaz.
                 if (!_allowCategoryMove(isRepeat)) {
+                  return KeyEventResult.handled;
+                }
+                if (strictVertical) {
+                  final i = widget.tvCategoryIndex ?? 0;
+                  final len = widget.tvCategoryCount ?? 1;
+                  if (i < len - 1) {
+                    widget.tvOnCategoryNudge!(1);
+                  }
                   return KeyEventResult.handled;
                 }
                 move(TraversalDirection.down);
@@ -1107,13 +1203,18 @@ class _GlassCategoryRowState extends State<GlassCategoryRow> {
                 }
                 if (widget.tvIsFirstRow &&
                     widget.tvArrowUpFocusTarget != null) {
-                  // İlk satırdan üst hedefe (üst çubuk / playlist) yalnızca tek
-                  // basışta geç; tekrarlar yutulur (istemsiz çıkış olmasın).
                   if (isRepeat) return KeyEventResult.handled;
                   widget.tvArrowUpFocusTarget!.requestFocus();
                   return KeyEventResult.handled;
                 }
                 if (!_allowCategoryMove(isRepeat)) {
+                  return KeyEventResult.handled;
+                }
+                if (strictVertical) {
+                  final i = widget.tvCategoryIndex ?? 0;
+                  if (i > 0) {
+                    widget.tvOnCategoryNudge!(-1);
+                  }
                   return KeyEventResult.handled;
                 }
                 move(TraversalDirection.up);
@@ -1142,7 +1243,13 @@ class _GlassCategoryRowState extends State<GlassCategoryRow> {
                   k == LogicalKeyboardKey.enter ||
                   k == LogicalKeyboardKey.space ||
                   k == LogicalKeyboardKey.gameButtonSelect) {
-                widget.onTap();
+                // Canlı TV: OK = sağ ok gibi kanal listesine geç (kategori seç +
+                // odağı taşı). Boş kategoride yalnızca seçim yapılır.
+                if (widget.tvArrowRightEntersChannels) {
+                  widget.onBeforeFocusMoveRight?.call();
+                } else {
+                  widget.onTap();
+                }
                 return KeyEventResult.handled;
               }
               return KeyEventResult.ignored;
@@ -1195,7 +1302,7 @@ class _GlassCategoryRowState extends State<GlassCategoryRow> {
                             ? (_effectiveFocused
                                 ? Colors.white.withValues(alpha: 0.15)
                                 : Colors.black.withValues(alpha: 0.4))
-                            : _fillColor(ga),
+                            : _fillColor(primary, ga),
                       ),
                       child: Row(
                         children: [
@@ -1361,6 +1468,14 @@ class _GlassListNumberTileState extends State<GlassListNumberTile> {
       return widget.focusNode != null &&
           widget.focusNode!.hasFocus &&
           widget.selected;
+    }
+    // TV düzeni (kumanda/Leanback): vurgu tek kaynaktan — seçili satır —
+    // sürülür. `listFocusNode` seçili satıra yeniden bağlanırken eski satırın
+    // satır-içi Focus'u kısa süre `hasFocus=true` kalıp İKİ satırın birden
+    // odaklı görünmesine (çift focus) yol açıyordu. Seçim her zaman tek satır
+    // olduğundan bu kapı çift vurguyu tamamen ortadan kaldırır.
+    if (AppPerformance.isTvLayout(Get.find<AppSettingsService>())) {
+      return widget.selected;
     }
     return _isFocused;
   }
@@ -1689,8 +1804,13 @@ class _GlassListNumberTileState extends State<GlassListNumberTile> {
                     const curve = Curves.easeOutCubic;
 
                     // Yeni 'Sinematik' Liste Tasarımı
-                    final highlightColor = Colors.white.withValues(alpha: 0.12);
-                    final highlightBorder = Colors.white.withValues(alpha: 0.1);
+                    final tvAccent = isTvAndroid;
+                    final highlightColor = tvAccent
+                        ? AppPerformance.tvFocusFill(primary)
+                        : Colors.white.withValues(alpha: 0.12);
+                    final highlightBorder = tvAccent
+                        ? AppPerformance.tvFocusBorder(primary)
+                        : Colors.white.withValues(alpha: 0.1);
                     final idleColor = Colors.transparent;
 
                     final textColor =
@@ -1713,7 +1833,11 @@ class _GlassListNumberTileState extends State<GlassListNumberTile> {
                               : (_effectiveFocused
                                   ? highlightBorder
                                   : Colors.transparent),
-                          width: isPortrait ? 0.5 : 1,
+                          width: isPortrait
+                              ? 0.5
+                              : (_effectiveFocused && tvAccent
+                                  ? AppPerformance.tvFocusBorderWidth()
+                                  : 1),
                         ),
                         color: isPortrait
                             ? (_effectiveFocused

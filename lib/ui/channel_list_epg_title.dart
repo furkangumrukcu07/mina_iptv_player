@@ -11,6 +11,11 @@ class ChannelListEpgTitleLine extends StatelessWidget {
     this.programmeStart,
     required this.marqueeEnabled,
     required this.highlighted,
+    this.channelFontSize = 15,
+    this.programmeFontSize = 10.5,
+    this.channelMaxLines = 1,
+    this.textColor,
+    this.subtitleColor,
   });
 
   final String channelName;
@@ -18,6 +23,19 @@ class ChannelListEpgTitleLine extends StatelessWidget {
   final DateTime? programmeStart;
   final bool marqueeEnabled;
   final bool highlighted;
+
+  /// Kanal adı font boyutu (dar şeritlerde küçültmek için).
+  final double channelFontSize;
+
+  /// EPG alt satırı font boyutu.
+  final double programmeFontSize;
+
+  /// Kanal adı en fazla kaç satır (EPG yoksa 2 satıra izin verilebilir).
+  final int channelMaxLines;
+
+  /// Dinamik tema desteği için isteğe bağlı renkler
+  final Color? textColor;
+  final Color? subtitleColor;
 
   static String programmeLine(String? title, DateTime? start) {
     final t = title?.trim();
@@ -28,21 +46,24 @@ class ChannelListEpgTitleLine extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final titleColor = highlighted ? Colors.white : Colors.white70;
+    final defaultTitleColor = highlighted ? Colors.white : Colors.white70;
+    final titleColor = textColor ?? defaultTitleColor;
     final titleStyle = TextStyle(
       color: titleColor,
-      fontSize: 15,
+      fontSize: channelFontSize,
       fontWeight: FontWeight.w700,
       height: 1.12,
       letterSpacing: 0.15,
     );
     final progStyle = TextStyle(
-      color: titleColor.withValues(alpha: 0.58),
-      fontSize: 10.5,
+      color: subtitleColor ?? titleColor.withValues(alpha: 0.58),
+      fontSize: programmeFontSize,
       fontWeight: FontWeight.w500,
       height: 1.15,
     );
     final epgLine = programmeLine(programmeTitle, programmeStart);
+    // EPG yoksa kanal adına ekstra satır hakkı tanı (uzun isim kesilmesin).
+    final nameMaxLines = epgLine.isEmpty ? channelMaxLines : 1;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -51,7 +72,7 @@ class ChannelListEpgTitleLine extends StatelessWidget {
         Text(
           channelName,
           style: titleStyle,
-          maxLines: 1,
+          maxLines: nameMaxLines,
           overflow: TextOverflow.ellipsis,
         ),
         if (epgLine.isNotEmpty) ...[

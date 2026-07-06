@@ -7,6 +7,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../../../core/home/film_dizi_detail_args.dart';
 import '../../../core/home/film_dizi_media_pills.dart';
+import '../../../core/layout/app_layout_mode.dart';
 import '../../../core/services/app_settings_service.dart';
 import '../../../core/services/download_service.dart';
 import '../../../core/services/favorites_service.dart';
@@ -16,6 +17,7 @@ import '../../../core/theme/glass_appearance.dart';
 import '../../../domain/entities/movie_model.dart';
 import '../widgets/download_button.dart';
 import '../widgets/film_dizi_detail_loading_skeleton.dart';
+import '../widgets/recommended_films_loading_skeleton.dart';
 import '../widgets/film_dizi_detail_top_bar.dart';
 import '../widgets/film_dizi_poster_card.dart';
 import '../widgets/film_dizi_quick_info_panel.dart';
@@ -32,19 +34,19 @@ class FilmDiziDetailView extends GetView<FilmDiziDetailController> {
       backgroundColor: Colors.black,
       body: Obx(() {
         final loading = controller.isLoading.value;
-        final poster = controller.posterUrl;
+        final backdrop = controller.backdropUrl;
 
         return Stack(
           fit: StackFit.expand,
           children: [
-            if (poster != null && poster.isNotEmpty)
+            if (backdrop != null && backdrop.isNotEmpty)
               Positioned.fill(
                 child: ImageFiltered(
                   imageFilter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
                   child: Transform.scale(
                     scale: 1.08,
                     child: CachedNetworkImage(
-                      imageUrl: poster,
+                      imageUrl: backdrop,
                       fit: BoxFit.cover,
                       fadeInDuration: Duration.zero,
                       errorWidget: (_, __, ___) =>
@@ -76,10 +78,21 @@ class FilmDiziDetailView extends GetView<FilmDiziDetailController> {
                   children: [
                     Obx(() {
                       Get.find<FavoritesService>().vodIds.length;
+                      // Yatayda favori, İzle'nin altına taşındı → üst çubukta
+                      // gösterilmez (TV + tablet + mobil yatay ortak düzen).
+                      final landscape =
+                          MediaQuery.orientationOf(context) ==
+                          Orientation.landscape;
+                      final isTv =
+                          Get.find<AppSettingsService>().layoutMode.value ==
+                          AppLayoutMode.tv;
                       return FilmDiziDetailTopBar(
                         onBack: () => Get.back<void>(),
-                        onFavorite: controller.toggleFavorite,
+                        onFavorite:
+                            landscape ? null : controller.toggleFavorite,
                         isFavorite: controller.isFavorite,
+                        // Yalnız TV yatayda odak İzle'ye gider → geri odağı kapalı.
+                        autofocusBack: !(landscape && isTv),
                       );
                     }),
                     Expanded(
@@ -98,19 +111,94 @@ class FilmDiziDetailView extends GetView<FilmDiziDetailController> {
   }
 }
 
-class _DetailScroll extends StatelessWidget {
+class _DetailScroll extends StatefulWidget {
   const _DetailScroll({required this.controller});
 
   final FilmDiziDetailController controller;
 
   @override
+  State<_DetailScroll> createState() => _DetailScrollState();
+}
+
+class _DetailScrollState extends State<_DetailScroll> {
+  final FocusNode _playFocus = FocusNode(debugLabel: 'filmPlay');
+
+  FilmDiziDetailController get controller => widget.controller;
+
+  @override
+  void dispose() {
+    _playFocus.dispose();
+    super.dispose();
+  }
+
+  /// Oynatıcıdan geri dönünce TV kumanda odağını İzle butonunda tutar.
+  Future<void> _playAndRestoreFocus() async {
+    await controller.play();
+    if (!mounted) return;
+    final isTv =
+        Get.find<AppSettingsService>().layoutMode.value == AppLayoutMode.tv;
+    if (!isTv) return;
+    scheduleTvFocusRestore(_playFocus);
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final landscape =
+        MediaQuery.orientationOf(context) == Orientation.landscape;
+    final isTv =
+        Get.find<AppSettingsService>().layoutMode.value == AppLayoutMode.tv;
     final meta = controller.meta.value;
     final title = meta?.title ?? controller.displayTitle;
     final poster = controller.posterUrl;
     final width = MediaQuery.sizeOf(context).width;
-    final thumbW = width * 0.28;
-    final similarW = (width - 48) / 2.4;
+
+    final Widget content;
+    if (landscape) {
+      // Yatay (TV + tablet + mobil yatay): ortak düzen. Poster + başlık/meta/
+      // İzle üstte yan yana; favori butonu İzle'nin altında, yanında tür/teknik
+      // rozetleri. Özet ve diğer bölümler posterin altından başlayıp tam
+      // genişlikte (soldan) sıralanır — boş alan kalmaz. Otomatik İzle odağı
+      // yalnız TV'de.
+      final posterW = (width * 0.18).clamp(140.0, 240.0).toDouble();
+      content = Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (poster != null) _poster(poster, posterW),
+              const SizedBox(width: 16),
+              Expanded(
+                child: _headerColumn(
+                  context,
+                  title,
+                  autofocusPlay: isTv,
+                  playFocus: _playFocus,
+                  onPlay: _playAndRestoreFocus,
+                  trailing: _FilmTvFavoriteAndPills(controller: controller),
+                ),
+              ),
+            ],
+          ),
+          ..._belowContent(context, tv: true),
+        ],
+      );
+    } else {
+      content = Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              if (poster != null) _poster(poster, width * 0.28),
+              const SizedBox(width: 14),
+              Expanded(child: _headerColumn(context, title)),
+            ],
+          ),
+          ..._belowContent(context),
+        ],
+      );
+    }
 
     return SingleChildScrollView(
       physics: AppScrollPhysics.list(context: context),
@@ -120,268 +208,301 @@ class _DetailScroll extends StatelessWidget {
         16,
         24 + MediaQuery.paddingOf(context).bottom,
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (poster != null)
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: SizedBox(
-                    width: thumbW,
-                    child: AspectRatio(
-                      aspectRatio: 2 / 3,
-                      child: RecommendedFilmsPosterImage(url: poster),
-                    ),
-                  ),
-                ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 20,
-                        fontWeight: FontWeight.w800,
-                        height: 1.2,
-                      ),
-                    ),
-                    Obx(() {
-                      controller.meta.value;
-                      controller.xtreamFields.value;
-                      controller.ratingTick.value;
-                      final rating = controller.imdbRating;
-                      if (rating == null) return const SizedBox.shrink();
-                      return Padding(
-                        padding: const EdgeInsets.only(top: 8),
-                        child: Row(
-                          children: [
-                            const Icon(
-                              Icons.star_rounded,
-                              size: 18,
-                              color: Colors.amber,
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              'IMDb',
-                              style: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.65),
-                                fontSize: 13,
-                                fontWeight: FontWeight.w700,
-                                letterSpacing: 0.3,
-                              ),
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              rating,
-                              style: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.95),
-                                fontSize: 15,
-                                fontWeight: FontWeight.w800,
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    }),
-                    Obx(() {
-                      controller.meta.value;
-                      controller.xtreamFields.value;
-                      final runtime = controller.runtimeLabel;
-                      if (runtime == null) return const SizedBox.shrink();
-                      return Padding(
-                        padding: const EdgeInsets.only(top: 8),
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.schedule_rounded,
-                              size: 16,
-                              color: Colors.white.withValues(alpha: 0.75),
-                            ),
-                            const SizedBox(width: 6),
-                            Text(
-                              runtime,
-                              style: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.88),
-                                fontSize: 14,
-                                fontWeight: FontWeight.w600,
-                              ),
-                            ),
-                          ],
-                        ),
-                      );
-                    }),
-                    Obx(() {
-                      controller.meta.value;
-                      controller.xtreamFields.value;
-                      if (!controller.hasHeaderInfoPanel) {
-                        return const SizedBox.shrink();
-                      }
-                      return Padding(
-                        padding: const EdgeInsets.only(top: 10),
-                        child: _FilmHeaderPanel(controller: controller),
-                      );
-                    }),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 14),
-          Center(
-            child: SizedBox(
-              width: (width * 0.56).clamp(200.0, 280.0),
-              height: 46,
-              child: _FilmPlayButton(
-                onPressed: controller.play,
-                posterUrl: controller.posterUrl,
-              ),
-            ),
-          ),
-          const SizedBox(height: 10),
-          Center(
-            child: DownloadButton(
-              itemId: 'vod_${controller.vod.id}',
-              onStart: () =>
-                  Get.find<DownloadService>().enqueueFilm(controller.vod),
-            ),
-          ),
-          const SizedBox(height: 16),
-          const SizedBox(height: 20),
-          _SectionTitle('filmDizi.synopsis'.tr),
-          const SizedBox(height: 8),
-          Obx(() {
-            controller.meta.value;
-            controller.xtreamFields.value;
-            final text = controller.synopsis;
-            return RecommendedFilmsGlassPanel(
-              child: Text(
-                text,
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.90),
-                  fontSize: 14,
-                  height: 1.4,
-                  letterSpacing: 0.1,
-                ),
-              ),
-            );
-          }),
-          Obx(() {
-            if (controller.trailers.isEmpty) {
-              return const SizedBox.shrink();
-            }
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const SizedBox(height: 20),
-                _SectionTitle('filmDizi.trailers'.tr),
-                const SizedBox(height: 10),
-                SizedBox(
-                  height: 148,
-                  child: ListView.separated(
-                    scrollDirection: Axis.horizontal,
-                    physics: AppScrollPhysics.list(context: context),
-                    itemCount: controller.trailers.length,
-                    separatorBuilder: (_, __) => const SizedBox(width: 12),
-                    itemBuilder: (context, i) {
-                      final t = controller.trailers[i];
-                      return _TrailerCard(trailer: t);
-                    },
-                  ),
-                ),
-              ],
-            );
-          }),
-          Obx(() {
-            controller.meta.value;
-            controller.xtreamFields.value;
-            final director = controller.directorLabel;
-            final genres = controller.genreRowPills
-                .map((p) => p.label.trim())
-                .where((s) => s.isNotEmpty)
-                .toList(growable: false);
-            if (director == null && genres.isEmpty) {
-              return const SizedBox.shrink();
-            }
-            return Padding(
-              padding: const EdgeInsets.only(top: 20),
-              child: FilmDiziQuickInfoPanel(
-                director: director,
-                genres: genres,
-              ),
-            );
-          }),
-          Obx(() {
-            final cast = controller.meta.value?.cast;
-            if (cast == null || cast.isEmpty) {
-              return const SizedBox.shrink();
-            }
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const SizedBox(height: 20),
-                _SectionTitle('filmDizi.cast'.tr),
-                const SizedBox(height: 10),
-                SizedBox(
-                  height: 132,
-                  child: ListView.separated(
-                    scrollDirection: Axis.horizontal,
-                    physics: AppScrollPhysics.list(context: context),
-                    itemCount: cast.length,
-                    separatorBuilder: (_, __) => const SizedBox(width: 14),
-                    itemBuilder: (context, i) {
-                      return _CastChip(
-                        member: cast[i],
-                        onTap: () => controller.openActor(cast[i]),
-                      );
-                    },
-                  ),
-                ),
-              ],
-            );
-          }),
-          Obx(() {
-            if (controller.similar.isEmpty) {
-              return const SizedBox.shrink();
-            }
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const SizedBox(height: 20),
-                _SectionTitle('filmDizi.similar'.tr),
-                const SizedBox(height: 10),
-                SizedBox(
-                  height: similarW * 1.48 + 44,
-                  child: ListView.separated(
-                    scrollDirection: Axis.horizontal,
-                    physics: AppScrollPhysics.list(context: context),
-                    itemCount: controller.similar.length,
-                    separatorBuilder: (_, __) => const SizedBox(width: 10),
-                    itemBuilder: (context, i) {
-                      final v = controller.similar[i];
-                      return FilmDiziPosterCard.film(
-                        vod: v,
-                        posterWidth: similarW,
-                        onTap: () => controller.openSimilar(v),
-                      );
-                    },
-                  ),
-                ),
-              ],
-            );
-          }),
-        ],
+      child: content,
+    );
+  }
+
+  Widget _poster(String poster, double w) {
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(12),
+      child: SizedBox(
+        width: w,
+        child: AspectRatio(
+          aspectRatio: 2 / 3,
+          child: RecommendedFilmsPosterImage(url: poster),
+        ),
       ),
     );
   }
+
+  /// Poster sağındaki bilgi sütunu: başlık, IMDb/TMDB puanı, süre, yıl/ülke/dil
+  /// meta satırı ve İzle/İndir butonları. [trailing] verilirse butonların
+  /// altına eklenir (TV: favori + tür/teknik satırı). [autofocusPlay]: kumanda
+  /// ilk odağı İzle butonuna gelir.
+  Widget _headerColumn(
+    BuildContext context,
+    String title, {
+    Widget? trailing,
+    bool autofocusPlay = false,
+    FocusNode? playFocus,
+    Future<void> Function()? onPlay,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: const TextStyle(
+            color: Colors.white,
+            fontSize: 20,
+            fontWeight: FontWeight.w800,
+            height: 1.2,
+          ),
+        ),
+        Obx(() {
+          controller.meta.value;
+          controller.xtreamFields.value;
+          controller.ratingTick.value;
+          final rating = controller.imdbRating;
+          final tmdb = controller.tmdbRatingLabel;
+          final tmdbVotes = controller.tmdbVoteCountLabel;
+          final runtime = controller.runtimeLabel;
+          
+          final ratingBadge = (rating == null && tmdb == null)
+              ? const SizedBox.shrink()
+              : Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Wrap(
+                    spacing: 14,
+                    runSpacing: 6,
+                    crossAxisAlignment: WrapCrossAlignment.center,
+                    children: [
+                      if (rating != null)
+                        _RatingBadge(
+                          source: 'IMDb',
+                          value: rating,
+                          color: Colors.amber,
+                        ),
+                      if (tmdb != null)
+                        _RatingBadge(
+                          source: 'TMDB',
+                          value: tmdbVotes != null ? '$tmdb ($tmdbVotes)' : tmdb,
+                          color: const Color(0xFF01B4E4),
+                        ),
+                    ],
+                  ),
+                );
+          
+          final runtimeBadge = runtime == null
+              ? const SizedBox.shrink()
+              : Padding(
+                  padding: const EdgeInsets.only(top: 8),
+                  child: Row(
+                    children: [
+                      Icon(
+                        Icons.schedule_rounded,
+                        size: 16,
+                        color: Colors.white.withValues(alpha: 0.75),
+                      ),
+                      const SizedBox(width: 6),
+                      Text(
+                        runtime,
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.88),
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+          
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ratingBadge,
+              runtimeBadge,
+              _FilmHeaderPanel(controller: controller),
+            ],
+          );
+        }),
+        // "Ülke" satırının hemen altında, eşit ebatta yan yana
+        // İzle + İndir butonları.
+        const SizedBox(height: 14),
+        _DetailActionButtons(
+          controller: controller,
+          autofocusPlay: autofocusPlay,
+          playFocus: playFocus,
+          onPlay: onPlay,
+        ),
+        if (trailing != null) ...[
+          const SizedBox(height: 12),
+          trailing,
+        ],
+      ],
+    );
+  }
+
+  /// İzle/İndir altındaki bölümler: tür+teknik rozetleri (TMDB/OMDB), özet,
+  /// fragman, künye, oyuncular, benzer filmler. Yatayda sağ sütunda; dikeyde
+  /// poster satırının altında sıralanır.
+  List<Widget> _belowContent(BuildContext context, {bool tv = false}) {
+    final width = MediaQuery.sizeOf(context).width;
+    final landscape =
+        MediaQuery.orientationOf(context) == Orientation.landscape;
+    // "Bunlar da ilginizi çekebilir" posterleri: yatayda 0.35, dikeyde %40
+    // küçültülmüş (0.6) gösterilir.
+    final similarW = ((width - 48) / 2.4) * (landscape ? 0.35 : 0.6);
+    return [
+      // TV'de tür/teknik rozetleri başlık alanına (favori yanına) taşındı;
+      // burada tekrar gösterilmez. Diğer modlarda İzle/İndir altında.
+      if (!tv)
+        Obx(() {
+          controller.meta.value;
+          controller.xtreamFields.value;
+          controller.metaEnriching.value;
+          final genre = controller.genreRowPills;
+          final tech = controller.techRowPills;
+          final synopsis = controller.synopsis;
+          final director = controller.directorLabel;
+          final genres = controller.genreRowPills
+              .map((p) => p.label.trim())
+              .where((s) => s.isNotEmpty)
+              .toList(growable: false);
+          final cast = controller.meta.value?.cast;
+          
+          final pillsSection = genre.isEmpty && tech.isEmpty
+              ? (controller.metaEnriching.value
+                  ? const Padding(
+                      padding: EdgeInsets.only(top: 14),
+                      child: FilmDiziPillsSkeleton(count: 3),
+                    )
+                  : const SizedBox.shrink())
+              : Padding(
+                  padding: const EdgeInsets.only(top: 14),
+                  child: _DetailPillRow(genre: genre, tech: tech),
+                );
+          
+          final quickInfoSection = director == null && genres.isEmpty
+              ? const SizedBox.shrink()
+              : Padding(
+                  padding: const EdgeInsets.only(top: 20),
+                  child: FilmDiziQuickInfoPanel(
+                    director: director,
+                    genres: genres,
+                  ),
+                );
+          
+          final castSection = cast == null || cast.isEmpty
+              ? const SizedBox.shrink()
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const SizedBox(height: 20),
+                    _SectionTitle('filmDizi.cast'.tr),
+                    const SizedBox(height: 10),
+                    SizedBox(
+                      height: 132,
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        physics: AppScrollPhysics.list(context: context),
+                        itemCount: cast.length,
+                        separatorBuilder: (_, __) => const SizedBox(width: 14),
+                        itemBuilder: (context, i) {
+                          return _CastChip(
+                            member: cast[i],
+                            onTap: () => controller.openActor(cast[i]),
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                );
+          
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              pillsSection,
+              const SizedBox(height: 20),
+              _SectionTitle('filmDizi.synopsis'.tr),
+              const SizedBox(height: 8),
+              RecommendedFilmsGlassPanel(
+                child: Text(
+                  synopsis,
+                  style: TextStyle(
+                    color: Colors.white.withValues(alpha: 0.90),
+                    fontSize: 14,
+                    height: 1.4,
+                    letterSpacing: 0.1,
+                  ),
+                ),
+              ),
+              quickInfoSection,
+              castSection,
+            ],
+          );
+        }),
+      Obx(() {
+        final trailers = controller.trailers;
+        final similar = controller.similar;
+        
+        final trailerSection = trailers.isEmpty
+            ? const SizedBox.shrink()
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const SizedBox(height: 20),
+                  _SectionTitle('filmDizi.trailers'.tr),
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    height: 148,
+                    child: ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      physics: AppScrollPhysics.list(context: context),
+                      itemCount: trailers.length,
+                      separatorBuilder: (_, __) => const SizedBox(width: 12),
+                      itemBuilder: (context, i) {
+                        final t = trailers[i];
+                        return _TrailerCard(trailer: t);
+                      },
+                    ),
+                  ),
+                ],
+              );
+        
+        final similarSection = similar.isEmpty
+            ? const SizedBox.shrink()
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const SizedBox(height: 20),
+                  _SectionTitle('filmDizi.similar'.tr),
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    height: similarW * 1.48 + 44,
+                    child: ListView.separated(
+                      scrollDirection: Axis.horizontal,
+                      physics: AppScrollPhysics.list(context: context),
+                      itemCount: similar.length,
+                      separatorBuilder: (_, __) => const SizedBox(width: 10),
+                      itemBuilder: (context, i) {
+                        final v = similar[i];
+                        return FilmDiziPosterCard.film(
+                          vod: v,
+                          posterWidth: similarW,
+                          ensureVisibleOnFocus: false,
+                          onTap: () => controller.openSimilar(v),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              );
+        
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            trailerSection,
+            similarSection,
+          ],
+        );
+      }),
+    ];
+  }
 }
 
-/// Poster sağı — IMDb, süre, ses + kategori / çözünürlük / codec rozetleri.
+/// Poster sağı — yıl, tarih, sınıf, ülke, dil + oyuncu önizleme satırı.
+/// Tür / teknik rozetler artık posterin altında ayrı satırda gösterilir.
 class _FilmHeaderPanel extends StatelessWidget {
   const _FilmHeaderPanel({required this.controller});
 
@@ -397,80 +518,153 @@ class _FilmHeaderPanel extends StatelessWidget {
     final country = controller.countryLabel;
     final castPreview = controller.castPreviewLabel;
     final streamLabels = controller.streamMediaLabels;
-    final genrePills = controller.genreRowPills;
-    final techPills = controller.techRowPills;
-    final showLanguage =
-        language != null && streamLabels.isEmpty;
+    final showLanguage = language != null && streamLabels.isEmpty;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Wrap(
-          spacing: 12,
-          runSpacing: 8,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: [
-            if (year != null)
-              _FilmMetaChip(
-                icon: Icons.calendar_today_outlined,
-                label: year,
-              ),
-            if (releaseDate != null)
-              _FilmMetaChip(
-                icon: Icons.event_outlined,
-                label: releaseDate,
-              ),
-            if (rated != null)
-              _FilmMetaChip(
-                icon: Icons.local_movies_outlined,
-                label: rated,
-              ),
-            if (country != null)
-              _FilmMetaChip(
-                icon: Icons.public_outlined,
-                label: country,
-              ),
-            if (director != null)
-              _FilmMetaChip(
-                icon: Icons.movie_creation_outlined,
-                label: director,
-              ),
-            if (showLanguage)
-              _FilmMetaChip(
-                icon: Icons.translate_rounded,
-                label: language,
-              ),
-            for (final label in streamLabels)
-              _FilmMetaChip(
-                icon: label.toLowerCase().contains('altyaz')
-                    ? Icons.subtitles_outlined
-                    : Icons.volume_up_rounded,
-                label: label,
-              ),
-          ],
+    final chips = <Widget>[
+      if (year != null)
+        _FilmMetaChip(icon: Icons.calendar_today_outlined, label: year),
+      if (releaseDate != null)
+        _FilmMetaChip(icon: Icons.event_outlined, label: releaseDate),
+      if (rated != null)
+        _FilmMetaChip(icon: Icons.local_movies_outlined, label: rated),
+      if (country != null)
+        _FilmMetaChip(icon: Icons.public_outlined, label: country),
+      if (director != null)
+        _FilmMetaChip(icon: Icons.movie_creation_outlined, label: director),
+      if (showLanguage)
+        _FilmMetaChip(icon: Icons.translate_rounded, label: language),
+      for (final label in streamLabels)
+        _FilmMetaChip(
+          icon: label.toLowerCase().contains('altyaz')
+              ? Icons.subtitles_outlined
+              : Icons.volume_up_rounded,
+          label: label,
         ),
-        if (genrePills.isNotEmpty) ...[
-          const SizedBox(height: 10),
-          _PillWrap(pills: genrePills),
+    ];
+
+    if (chips.isEmpty && castPreview == null) {
+      return const SizedBox.shrink();
+    }
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 10),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (chips.isNotEmpty)
+            Wrap(
+              spacing: 12,
+              runSpacing: 8,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: chips,
+            ),
+          if (castPreview != null) ...[
+            const SizedBox(height: 10),
+            Text(
+              castPreview,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.62),
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+                height: 1.35,
+              ),
+            ),
+          ],
         ],
-        if (techPills.isNotEmpty) ...[
-          const SizedBox(height: 8),
-          _PillWrap(pills: techPills, muted: true),
-        ],
-        if (castPreview != null) ...[
-          const SizedBox(height: 10),
-          Text(
-            castPreview,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.62),
-              fontSize: 13,
-              fontWeight: FontWeight.w500,
-              height: 1.35,
+      ),
+    );
+  }
+}
+
+/// Eşit ebatta, yan yana "İzle" + "İndir" butonları. Detay başlığında ülke
+/// satırının hemen altına yerleşir.
+class _DetailActionButtons extends StatelessWidget {
+  const _DetailActionButtons({
+    required this.controller,
+    this.autofocusPlay = false,
+    this.playFocus,
+    this.onPlay,
+  });
+
+  final FilmDiziDetailController controller;
+  final bool autofocusPlay;
+  final FocusNode? playFocus;
+  final Future<void> Function()? onPlay;
+
+  @override
+  Widget build(BuildContext context) {
+    const height = 46.0;
+    final play = onPlay ?? controller.play;
+    return Row(
+      children: [
+        Expanded(
+          child: SizedBox(
+            height: height,
+            child: _FilmPlayButton(
+              onPressed: play,
+              posterUrl: controller.posterUrl,
+              autofocus: autofocusPlay,
+              focusNode: playFocus,
             ),
           ),
-        ],
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: SizedBox(
+            height: height,
+            child: DownloadButton(
+              itemId: 'vod_${controller.vod.id}',
+              compact: true,
+              expand: true,
+              onStart: () =>
+                  Get.find<DownloadService>().enqueueFilm(controller.vod),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+/// IMDb / TMDB puan rozeti (yıldız + kaynak + değer).
+class _RatingBadge extends StatelessWidget {
+  const _RatingBadge({
+    required this.source,
+    required this.value,
+    required this.color,
+  });
+
+  final String source;
+  final String value;
+  final Color color;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(Icons.star_rounded, size: 18, color: color),
+        const SizedBox(width: 6),
+        Text(
+          source,
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.65),
+            fontSize: 13,
+            fontWeight: FontWeight.w700,
+            letterSpacing: 0.3,
+          ),
+        ),
+        const SizedBox(width: 6),
+        Text(
+          value,
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.95),
+            fontSize: 15,
+            fontWeight: FontWeight.w800,
+          ),
+        ),
       ],
     );
   }
@@ -480,19 +674,17 @@ class _FilmMetaChip extends StatelessWidget {
   const _FilmMetaChip({
     required this.icon,
     required this.label,
-    this.iconColor,
   });
 
   final IconData icon;
   final String label;
-  final Color? iconColor;
 
   @override
   Widget build(BuildContext context) {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
-        Icon(icon, size: 16, color: iconColor ?? Colors.white70),
+        Icon(icon, size: 16, color: Colors.white70),
         const SizedBox(width: 5),
         Text(
           label,
@@ -526,18 +718,21 @@ class _SectionTitle extends StatelessWidget {
 }
 
 
-/// Tek satırlık, sığmazsa yatay kaydırılabilir pill listesi. Eski `Wrap`
-/// uygulaması son pill'i bir alt satıra atıp ekranda dağınık görünüyordu;
-/// bu sürüm pill'leri tek hizada, sırayla tutar.
-class _PillWrap extends StatelessWidget {
-  const _PillWrap({required this.pills, this.muted = false});
+/// Posterin altında, tek satırda yatay kaydırılabilir tür + teknik rozetleri.
+/// Tür pill'leri normal/vurgulu, teknik pill'ler (H.264, 5.1 vb.) sönük tonda.
+class _DetailPillRow extends StatelessWidget {
+  const _DetailPillRow({required this.genre, required this.tech});
 
-  final List<FilmDiziMediaPill> pills;
-  final bool muted;
+  final List<FilmDiziMediaPill> genre;
+  final List<FilmDiziMediaPill> tech;
 
   @override
   Widget build(BuildContext context) {
-    if (pills.isEmpty) return const SizedBox.shrink();
+    final items = <({FilmDiziMediaPill pill, bool muted})>[
+      for (final p in genre) (pill: p, muted: false),
+      for (final p in tech) (pill: p, muted: true),
+    ];
+    if (items.isEmpty) return const SizedBox.shrink();
     return Obx(() {
       final ga = GlassAppearance.fromLabel(
         Get.find<AppSettingsService>().themeLabel.value,
@@ -547,17 +742,21 @@ class _PillWrap extends StatelessWidget {
         child: ListView.separated(
           scrollDirection: Axis.horizontal,
           padding: EdgeInsets.zero,
-          itemCount: pills.length,
+          itemCount: items.length,
           separatorBuilder: (_, __) => const SizedBox(width: 8),
           itemBuilder: (context, i) {
-            final p = pills[i];
+            final it = items[i];
+            final p = it.pill;
             return Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
               alignment: Alignment.center,
               decoration: BoxDecoration(
                 color: p.highlight
-                    ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.55)
-                    : muted
+                    ? Theme.of(context)
+                        .colorScheme
+                        .primary
+                        .withValues(alpha: 0.55)
+                    : it.muted
                         ? Colors.white.withValues(alpha: 0.07)
                         : Colors.white.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(20),
@@ -578,6 +777,72 @@ class _PillWrap extends StatelessWidget {
         ),
       );
     });
+  }
+}
+
+/// TV: İzle/İndir butonlarının altında favori düğmesi ve hemen yanında
+/// tür/teknik rozetleri (Son İzlenenler, Komedi, SD, H.264 ...).
+class _FilmTvFavoriteAndPills extends StatelessWidget {
+  const _FilmTvFavoriteAndPills({required this.controller});
+
+  final FilmDiziDetailController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    return Obx(() {
+      controller.meta.value;
+      controller.xtreamFields.value;
+      Get.find<FavoritesService>().vodIds.length;
+      final fav = controller.isFavorite;
+      final genre = controller.genreRowPills;
+      final tech = controller.techRowPills;
+      final hasPills = genre.isNotEmpty || tech.isNotEmpty;
+      return Row(
+        children: [
+          _FavoriteChip(active: fav, onTap: controller.toggleFavorite),
+          if (hasPills) ...[
+            const SizedBox(width: 10),
+            Expanded(child: _DetailPillRow(genre: genre, tech: tech)),
+          ],
+        ],
+      );
+    });
+  }
+}
+
+/// Kalp (favori) düğmesi — D-pad ile seçilebilir, açıkken kırmızı dolu.
+class _FavoriteChip extends StatelessWidget {
+  const _FavoriteChip({required this.active, required this.onTap});
+
+  final bool active;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final body = Material(
+      color: active
+          ? const Color(0xFFEF4444).withValues(alpha: 0.22)
+          : Colors.white.withValues(alpha: 0.08),
+      shape: const StadiumBorder(),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+          child: Icon(
+            active ? Icons.favorite_rounded : Icons.favorite_border_rounded,
+            color: active ? const Color(0xFFEF4444) : Colors.white,
+            size: 22,
+          ),
+        ),
+      ),
+    );
+    return tvDpadActivateWrap(
+      context,
+      onActivate: onTap,
+      borderRadius: 22,
+      child: body,
+    );
   }
 }
 
@@ -671,7 +936,12 @@ class _TrailerCard extends StatelessWidget {
         ),
       ),
     );
-    return tvDpadActivateWrap(context, onActivate: _open, child: body);
+    return tvDpadActivateWrap(
+      context,
+      onActivate: _open,
+      ensureVisibleOnFocus: false,
+      child: body,
+    );
   }
 
   Widget _trailerPlaceholder() {
@@ -744,24 +1014,43 @@ class _CastChip extends StatelessWidget {
         ),
       ),
     );
-    return tvDpadActivateWrap(context, onActivate: onTap, child: body);
+    return tvDpadActivateWrap(
+      context,
+      onActivate: onTap,
+      ensureVisibleOnFocus: false,
+      child: body,
+    );
   }
 }
 
 class _FilmPlayButton extends StatelessWidget {
-  const _FilmPlayButton({required this.onPressed, this.posterUrl});
+  const _FilmPlayButton({
+    required this.onPressed,
+    this.posterUrl,
+    this.autofocus = false,
+    this.focusNode,
+  });
 
-  final VoidCallback onPressed;
+  final Future<void> Function() onPressed;
   final String? posterUrl;
+  final bool autofocus;
+  final FocusNode? focusNode;
 
   @override
   Widget build(BuildContext context) {
+    void activate() => onPressed();
     final btn = FilmDiziGlassPlayButton(
       label: 'filmDizi.watch'.tr,
-      onPressed: onPressed,
+      onPressed: activate,
       compact: true,
       posterUrl: posterUrl,
     );
-    return tvDpadActivateWrap(context, onActivate: onPressed, child: btn);
+    return tvDpadActivateWrap(
+      context,
+      onActivate: activate,
+      autofocus: autofocus,
+      focusNode: focusNode,
+      child: btn,
+    );
   }
 }

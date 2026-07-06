@@ -13,6 +13,7 @@ import '../../../core/haptics/adaptive_haptics_service.dart';
 import '../../../ui/tv_dpad_focus.dart';
 import '../../../core/layout/app_layout_mode.dart';
 import '../../../core/theme/app_scroll_physics.dart';
+import '../../../core/home/showcase_player_launch.dart';
 import '../../../core/routes/app_routes.dart';
 import '../../../core/services/app_bootstrap_service.dart';
 import '../../../core/services/app_settings_service.dart';
@@ -147,6 +148,9 @@ class _UpcomingMatchesStripState extends State<UpcomingMatchesStrip> {
       app.playlistLayoutRevision.value;
       epg.loadGeneration.value;
       epg.isLoading.value;
+      final bucketsRev = Get.isRegistered<HomeEpgCatalogCache>()
+          ? Get.find<HomeEpgCatalogCache>().bucketsRevision.value
+          : 0;
       if (Get.isRegistered<GlobalEpgService>()) {
         Get.find<GlobalEpgService>().isLoading.value;
       }
@@ -179,7 +183,8 @@ class _UpcomingMatchesStripState extends State<UpcomingMatchesStrip> {
       }
 
       final scope = _scope(d, cache, epg);
-      if (_scopeKey != scope) {
+      if (_scopeKey != scope ||
+          (_entries.isEmpty && bucketsRev > 0 && !loading)) {
         scheduleMicrotask(() {
           if (!mounted) return;
           final catCache = Get.isRegistered<HomeEpgCatalogCache>()
@@ -295,7 +300,7 @@ class _UpcomingMatchChipState extends State<_UpcomingMatchChip> {
   void _open() {
     Get.toNamed(
       AppRoutes.player,
-      arguments: PlayerScreenArgs(channel: widget.entry.channel),
+      arguments: playerArgsForShowcaseHome(channel: widget.entry.channel),
     );
   }
 

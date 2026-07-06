@@ -1,11 +1,13 @@
 import 'dart:io';
 import 'dart:ui';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../../core/layout/app_layout_mode.dart';
 import '../../core/routes/app_routes.dart';
+import '../../core/services/app_image_cache_service.dart';
 import '../../core/services/app_settings_service.dart';
 import '../../core/services/download_service.dart';
 import '../../domain/entities/channel.dart';
@@ -202,10 +204,17 @@ class _DownloadRow extends StatelessWidget {
                   width: 64,
                   height: 88,
                   child: item.posterUrl != null && item.posterUrl!.isNotEmpty
-                      ? Image.network(
-                          item.posterUrl!,
+                      ? CachedNetworkImage(
+                          imageUrl: item.posterUrl!,
+                          cacheKey:
+                              AppImageCacheService.cacheKeyFor(item.posterUrl!),
+                          cacheManager: AppImageCacheService.manager,
                           fit: BoxFit.cover,
-                          errorBuilder: (_, __, ___) => Container(
+                          memCacheWidth: 128,
+                          memCacheHeight: 176,
+                          fadeInDuration: Duration.zero,
+                          fadeOutDuration: Duration.zero,
+                          errorWidget: (_, __, ___) => Container(
                             color: Colors.white.withValues(alpha: 0.08),
                             child: const Icon(
                               Icons.movie_outlined,

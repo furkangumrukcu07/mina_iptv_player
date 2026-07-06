@@ -1,5 +1,6 @@
 import 'dart:math';
 
+import 'package:flutter/scheduler.dart';
 import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -250,11 +251,30 @@ abstract final class RecommendedFilmsRatingCache {
   static bool _diskLoaded = false;
   static final Map<int, double> _disk = {};
   static final RxInt revision = 0.obs;
+  static bool _revisionBumpScheduled = false;
+
+  /// Çok sayıda poster kartı varken `revision` artışını aynı frame'de
+  /// yüzlerce dinleyiciye yaymak stack overflow'a yol açıyordu.
+  static void _scheduleRevisionBump() {
+    if (_revisionBumpScheduled) return;
+    _revisionBumpScheduled = true;
+    SchedulerBinding.instance.scheduleFrameCallback((_) {
+      _revisionBumpScheduled = false;
+      revision.value = revision.value + 1;
+    });
+  }
 
   static double effectiveRating(VodItem v) {
     final cached = _memory[v.id];
     if (cached != null && cached > 0) return cached;
     return _parseRating(v.rating);
+  }
+
+  /// Film/dizi kimliği için önbellekteki IMDb puanı (yoksa 0).
+  static double ratingForContentId(int id) {
+    final cached = _memory[id];
+    if (cached != null && cached > 0) return cached;
+    return 0;
   }
 
   static double _parseRating(String? raw) {
@@ -277,17 +297,21 @@ abstract final class RecommendedFilmsRatingCache {
     } catch (_) {}
     if (_disk.isNotEmpty) {
       _memory.addAll(_disk);
-      revision.value = revision.value + 1;
+      _scheduleRevisionBump();
     }
   }
 
-  static Future<void> put(int vodId, double rating) async {
+  static Future<void> put(
+    int vodId,
+    double rating, {
+    bool notify = true,
+  }) async {
     if (rating <= 0) return;
     final prev = _memory[vodId];
     _memory[vodId] = rating;
     _disk[vodId] = rating;
-    if (prev != rating) {
-      revision.value = revision.value + 1;
+    if (prev != rating && notify) {
+      _scheduleRevisionBump();
     }
     try {
       final p = await SharedPreferences.getInstance();
@@ -305,6 +329,7 @@ abstract final class RecommendedFilmsRatingCache {
     final ms = Get.find<MovieService>();
     if (!MovieService.omdbApiAvailable) return;
     var done = 0;
+    var changed = false;
     for (final v in candidates) {
       if (done >= limit) break;
       if (effectiveRating(v) > 0) continue;
@@ -326,13 +351,15 @@ abstract final class RecommendedFilmsRatingCache {
         if (!MovieService.omdbApiAvailable) break;
         final r = _parseRating(info?.imdbRating);
         if (r > 0) {
-          await put(v.id, r);
+          await put(v.id, r, notify: false);
+          changed = true;
           done++;
         }
       } catch (_) {}
       // UI thread'e nefes: ardışık OMDb çağrıları ana izoleyi tıkamasın.
       await Future<void>.delayed(const Duration(milliseconds: 40));
     }
+    if (changed) _scheduleRevisionBump();
   }
 
   static String? _imdbFromUrl(String url) {
@@ -348,8 +375,27 @@ abstract final class RecommendedFilmsCatalog {
   static const int rowLimit = 24;
   static const int minRowItems = 1;
 
+  // visibleVods, açılışta feed kurulumu + favoriler + son izlenenler + puan
+  // zenginleştirme tarafından arka arkaya çağrılıyor; her seferinde tüm
+  // `data.vod`'u taramak (gizli kategori/yetişkin/inceleme filtresi) ana
+  // thread'i kilitliyordu. Sonucu (data kimliği + hide revizyonu + inceleme
+  // modu) anahtarıyla önbelleğe alıyoruz.
+  static Object? _visibleVodsData;
+  static int _visibleVodsRev = -1;
+  static bool _visibleVodsReview = false;
+  static List<VodItem>? _visibleVodsCache;
+
   static List<VodItem> visibleVods(M3uResult data) {
     final app = Get.find<AppSettingsService>();
+    final rev = app.xtreamHideRevision.value;
+    final review = app.reviewModeActive.value;
+    final cached = _visibleVodsCache;
+    if (cached != null &&
+        identical(_visibleVodsData, data) &&
+        _visibleVodsRev == rev &&
+        _visibleVodsReview == review) {
+      return cached;
+    }
     final cache = Get.find<PlaylistCacheService>();
     final out = <VodItem>[];
     for (final v in data.vod) {
@@ -357,6 +403,10 @@ abstract final class RecommendedFilmsCatalog {
         out.add(v);
       }
     }
+    _visibleVodsCache = out;
+    _visibleVodsData = data;
+    _visibleVodsRev = rev;
+    _visibleVodsReview = review;
     return out;
   }
 

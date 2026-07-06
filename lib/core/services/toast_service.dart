@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:ui';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
@@ -69,17 +68,21 @@ class ToastService extends GetxService {
     }
 
     _currentEntry = OverlayEntry(
-      builder: (context) => _GlassToastWidget(
-        message: data.message,
-        title: data.title,
-        isError: data.isError,
-        onDismissed: () {
-          _currentEntry?.remove();
-          _currentEntry = null;
-          _isShowing = false;
-          // Kısa bir bekleme sonrası sıradaki uyarıya geç
-          Future.delayed(const Duration(milliseconds: 300), _processQueue);
-        },
+      builder: (context) => Stack(
+        children: [
+          _GlassToastWidget(
+            message: data.message,
+            title: data.title,
+            isError: data.isError,
+            onDismissed: () {
+              _currentEntry?.remove();
+              _currentEntry = null;
+              _isShowing = false;
+              // Kısa bir bekleme sonrası sıradaki uyarıya geç
+              Future.delayed(const Duration(milliseconds: 300), _processQueue);
+            },
+          ),
+        ],
       ),
     );
 
@@ -157,77 +160,83 @@ class _GlassToastWidgetState extends State<_GlassToastWidget>
 
   @override
   Widget build(BuildContext context) {
-    return Center(
-      child: Material(
-        color: Colors.transparent,
-        child: FadeTransition(
-          opacity: _fadeAnimation,
-          child: ScaleTransition(
-            scale: _scaleAnimation,
-            child: Container(
-              margin: const EdgeInsets.symmetric(horizontal: 40),
-              constraints: BoxConstraints(
-                maxWidth: MediaQuery.of(context).size.width * 0.8,
-                minWidth: 120,
-              ),
-              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-              decoration: BoxDecoration(
-                color: widget.isError
-                    ? Colors.red.withValues(alpha: 0.5)
-                    : Colors.black.withValues(alpha: 0.65),
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.1),
-                  width: 0.5,
+    return Positioned(
+      bottom: MediaQuery.of(context).padding.bottom + 32,
+      left: 0,
+      right: 0,
+      child: Center(
+        child: Material(
+          color: Colors.transparent,
+          child: FadeTransition(
+            opacity: _fadeAnimation,
+            child: ScaleTransition(
+              scale: _scaleAnimation,
+              child: Container(
+                margin: const EdgeInsets.symmetric(horizontal: 40),
+                constraints: BoxConstraints(
+                  maxWidth: MediaQuery.of(context).size.width * 0.8,
+                  minWidth: 120,
                 ),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.2),
-                    blurRadius: 20,
-                    spreadRadius: 2,
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                decoration: BoxDecoration(
+                  color: widget.isError
+                      ? Colors.red.withValues(alpha: 0.5)
+                      : Colors.black.withValues(alpha: 0.65),
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.1),
+                    width: 0.5,
                   ),
-                ],
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Icon(
-                    widget.isError ? Icons.error_outline : Icons.info_outline,
-                    color: Colors.white.withValues(alpha: 0.9),
-                    size: 24,
-                  ),
-                  const SizedBox(width: 14),
-                  Flexible(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (widget.title != null && widget.title!.isNotEmpty)
-                          Padding(
-                            padding: const EdgeInsets.only(bottom: 2),
-                            child: Text(
-                              widget.title!,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 16,
-                                fontWeight: FontWeight.w800,
-                                height: 1.1,
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.2),
+                      blurRadius: 20,
+                      spreadRadius: 2,
+                    ),
+                  ],
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      widget.isError ? Icons.error_outline : Icons.info_outline,
+                      color: Colors.white.withValues(alpha: 0.9),
+                      size: 24,
+                    ),
+                    const SizedBox(width: 14),
+                    Flexible(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          if (widget.title != null && widget.title!.isNotEmpty)
+                            Padding(
+                              padding: const EdgeInsets.only(bottom: 2),
+                              child: Text(
+                                widget.title!,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 16,
+                                  fontWeight: FontWeight.w800,
+                                  height: 1.1,
+                                ),
                               ),
                             ),
+                          Text(
+                            widget.message,
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.9),
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                              height: 1.2,
+                            ),
                           ),
-                        Text(
-                          widget.message,
-                          style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.9),
-                            fontSize: 14,
-                            fontWeight: FontWeight.w500,
-                            height: 1.2,
-                          ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),

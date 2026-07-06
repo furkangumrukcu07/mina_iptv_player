@@ -2,6 +2,1035 @@
 
 ## Uygulama özellikleri (genel)
 
+## v2.12.99+4343 — TV kabuğu: ayarlar, odak ve canlı TV D-pad
+
+**17 Haziran 2026 — Rail/ayarlar odak, TV Lite odak çerçevesi, canlı TV kategori→kanal gezinmesi.**
+
+## v2.12.99+4342 — TV VOD OSD uzun basma ile 15 sn atlama
+
+**17 Haziran 2026 — Tam ekran VOD izlerken OSD geri/ileri tuşlarına uzun basınca 15 sn sürekli sarma (Better Player + MediaKit).**
+
+## v2.12.99+4341 — TV kabuğu: D-pad, arama, kategori ve otomatik geçiş
+
+**17 Haziran 2026 — Yeni TV modu (shell) odak, gezinme ve güncelleme geçişi.**
+
+- **TV arama → dizi detayı.** Birleşik aramadan dizi seçildiğinde eski browse
+  düzenine değil, yeni TV sinema detay paneline (`TvShellSeriesCinemaPanel`)
+  geçilir; bölümler ve meta doğrudan yüklenir.
+- **TV bölüm seçiminde kategori atlama düzeltildi.** Filmler / Canlı TV rail'den
+  onaylandığında bazen yanlış kategoriye atlama (yarış durumu) giderildi; ilk
+  kategori senkron seçilir, odak hemen ilk satıra gider, gecikmiş async callback'ler
+  yok sayılır.
+- **Canlı TV kategori sırası.** Favoriler artık «Tüm Kanallar»ın hemen altında
+  (standart kanal listesi ile aynı sıra).
+- **Canlı TV: ilk kategori odak.** Bölüm onayında ilk kategori anında odaklanır;
+  aşağı ok beklemeden seçili/highlight görünür.
+- **Ayarlar paneli D-pad.** TV kabuğunda Ayarlar açıldığında kumanda ile sağ panele
+  geçiş; ilk ayar karo odaklanır, ← ile sol menüye dönüş.
+- **Sol menü dikey zincir.** Rail öğeleri arasında ↑/↓ sabit komşu zinciri;
+  Canlı TV'den aşağı inerken Filmler'in atlanması giderildi.
+- **Güncelleme geçişi (V4 migration).** Android TV / TV layout kullanıcılarında
+  «Varsayılan düzen» (classic) bir kez «TV modu» (shell) kabuğuna taşınır; isteyen
+  Ayarlar'dan tekrar klasik düzene dönebilir.
+
+## v2.12.92+4334 — Vitrin ayarları, Ayarlar üst çubuğu ve dock hizası
+
+**16 Haziran 2026 — Vitrin modu iyileştirmeleri + Ayarlar üst çubuğu yenileme.**
+
+- **Vitrin: kategori aç/kapat anahtarları.** Ana Ekran Ayarları'na ve kurulum
+  sihirbazına favori filmler, favori diziler, karışık filmler, karışık diziler
+  anahtarları eklendi (yalnızca vitrin düzeninde, varsayılan açık).
+- **Vitrin: Karışık Canlı TV varsayılan kapalı.** Vitrin düzeni için ayrı
+  `showcaseMixedLiveTvEnabled` bayrağı; diğer düzenlerde davranış değişmedi.
+- **Vitrin: gizlenen kategoriler ana ekranda görünmez.** Kullanıcı bir kategoriyi
+  (film/dizi/canlı) gizlerse vitrin şeritleri ve favorilerde de filtrelenir.
+- **Vitrin: Mina AI Önerileri ve Sıradaki Maçlar çerçevelendi.** Diğer şeritlerle
+  aynı «liquid glass» çerçeveye alındı.
+- **Vitrin: arama butonu kenar düzeltmesi.** Dairesel arama butonundaki pikselli
+  beyaz hale `RepaintBoundary` + `antiAliasWithSaveLayer` ile giderildi.
+- **Vitrin: alt bar (dock) hizası.** Sekme butonları (Canlı TV · Film & Dizi · …)
+  çubuğun tam dikey ortasına hizalandı.
+- **Trend/favori/karışık şeritleri yalnızca mobil/tablet vitrinde.** TV modunda ve
+  standart/sade düzende kurulum sihirbazı ile ayarlarda gösterilmez.
+- **Ayarlar üst çubuğu yenilendi.** Geri ikonu + «Ayarlar» yazısı tek cam çerçevede
+  birleşti (dokunmatik ve kumanda için tek odak hedefi → ana ekrana döner). Sağ
+  üstteki saat cam çerçeveye alındı; yanına ayıraç + Mina şemsiye logosu eklendi,
+  sol çerçeveyle aynı boy/hizada.
+- **Hesap Bilgileri taşındı.** Xtream hesap bilgisi kartı «Uygulama Bilgileri»
+  bölümünün en altına alındı; sayfa altındaki Xtream kullanıcı adı / bağlantı
+  adresi satırı gizlendi.
+- **Veri Kullanım Detayı taşındı.** Genel ayarlardan çıkarılıp «Mina Wrapped &
+  İzleme Analitiği» sayfasının en altına yerleştirildi.
+
+## v2.12.67+4309 — "Son Eklenen 50" kategorileri + altyazı davranışı
+
+**14 Haziran 2026 — Film/Dizi yeni kategori + VOD altyazı düzeltmeleri.**
+
+- **Film & Dizi (modern) — "Son Eklenen 50" kategorileri.** Film sekmesine
+  "Son Eklenen 50 Film", Dizi sekmesine "Son Eklenen 50 Dizi" yatay satırı
+  eklendi; diğer kategoriler gibi "Tümünü Gör" ile detay listesi açılır.
+  - Mevcut sentinel-kategori deseni (Son İzlenenler / Favoriler) kullanıldı;
+    yeni ID'ler `kFilmDiziLast50FilmsCategoryId` (-1003) ve
+    `kFilmDiziLast50SeriesCategoryId` (-1004). Route/grid değişmedi.
+  - `FilmDiziCatalog.last50Films/last50FilmsFromDb/last50Series/
+    last50SeriesFromDb` — eklenmeye göre (en yeni önce) sıralı ilk 50; DB
+    destekli kaynaklarda `recentVodIds`/`recentSeriesIds` ile sayfalı okuma.
+  - Detayda en-yeni-önce sıra korunur (`preserveOrder`). Xtream'de gerçek
+    `added` zamanına dayanır; düz M3U'da `addedUnix` yoksa isme düşer.
+- **VOD altyazı: "altyazı yok" mesajı artık anında.** `discoverVodSubtitleOptions`
+  yoklama bütçesi ~3-5 sn'den ~0,6 sn'ye indirildi (son denemeden sonra bekleme
+  kaldırıldı); diyaloglardaki gereksiz "yükleniyor" snackbar'ı kaldırıldı.
+- **VOD altyazı varsayılan KAPALI.** Otomatik altyazı açılması engellendi:
+  - MediaKit: libmpv'de VOD için `sub-auto=no` + `sid=no`.
+  - Better/Exo: açılışta altyazı açıkça kapatılır
+    (`_disableBetterSubtitlesQuietly`); "ilk parçayı seç" davranışı kaldırıldı.
+- **Seçilen altyazı dili hatırlanır.** Kullanıcı bir dil seçince token kaydedilir;
+  sonraki VOD'larda **yalnızca o dile uyan parça varsa** otomatik seçilir
+  (`_applyVodSubtitleDefaultOrPreferenceForBetter` + yeni
+  `applyMediaKitVodSubtitlePreference`). "Kapalı" seçilirse hatırlanan dil
+  temizlenir. Ayar sıfırlamada otomatik açma artık geri gelmiyor.
+- i18n: `recommendedFilms.last50Films` / `recommendedFilms.last50Series`
+  eklenip tüm kısmi dillere çevrildi. In-app "Sürüm notları" güncellendi.
+
+## Yayınlanmamış — Mina İzleme (Wrapped) analitiği varsayılan açık
+
+**12 Haziran 2026 — Kurulum sihirbazı + normal modda açık gelir.**
+
+- Mina İzleme/Wrapped analitiği (yerel izleme istatistikleri) artık hem kurulum
+  sihirbazında hem normal modda **varsayılan açık**. Daha önce gizlilik dostu
+  olarak kapalı geliyordu.
+- Kullanıcı isterse **Ayarlar → Ana Ekran** veya kurulum sihirbazından
+  kapatabilir; kapatma tercihi korunur (tekrar açılmaz).
+- Tüm veri yerelde kalır (bulut sync yok). Varsayılan `mina_analytics_service`
+  ve `app_settings_service` tarafında `true` olarak hizalandı.
+
+## Yayınlanmamış — +18 gizleme: oynatıcı ayarlarına anahtar eklendi
+
+**12 Haziran 2026 — Kullanıcı kontrollü, varsayılan kapalı.**
+
+- "+18 içerikleri gizle" özelliğinin bir UI girişi yoktu (çeviriler vardı ama
+  ne ayarda anahtar ne sihirbazda adım gösteriliyordu). Artık:
+  - **Ayarlar → Oynatma Ayarları**'na aç/kapat anahtarı eklendi.
+  - **Varsayılan kapalı**; kapalıyken +18 isim taraması hiç çalışmaz, cihazı
+    yormaz. Yalnızca kullanıcı açarsa Canlı/Film/Dizi/Arama ve ana ekran
+    şeritlerinde +18 içerik filtrelenir.
+  - Kurulum sihirbazında **gösterilmez** (zaten adım yoktu).
+  - Not: Mağaza inceleme modu (uzaktan) aktifse +18 içerik, kullanıcı
+    ayarından bağımsız olarak yine gizlenir (mağaza uyumu için korundu).
+
+## Yayınlanmamış — Mina AI şeridi: zayıf cihazda ANR düzeltildi
+
+**12 Haziran 2026 — Tablette "yanıt vermiyor" + geç açılma giderildi.**
+
+- Mina AI önerileri her açılışta disk önbelleğinden gösterilse de arka planda
+  taze hesap **yine de** çalışıyordu. DB destekli dev kataloglarda (~233 bin
+  canlı kanal) isolate girdisi ana thread'de kuruluyordu: tüm kanallar için
+  `Map` üretimi + +18 isim taraması + isolate'e serileştirme → SM-T530 gibi
+  zayıf cihazlarda UI thread saniyelerce kilitlenip Android ANR ("yanıt
+  vermiyor") gösteriyordu. Düzeltmeler:
+  - **Disk anahtarı eşleşince yeniden hesap atlanır.** Anahtar
+    (`katalog | gün | gizleme`) aynıysa sonuç birebir aynı olacağından ağır
+    isolate girdisi hiç kurulmaz. Yeniden hesap yalnızca katalog/gün/ayar
+    değişince yapılır.
+  - **Canlı aday havuzu üst kategorilerle sınırlandı** (azami 6000). Profil
+    dolu olduğunda skorlayıcı zaten yalnızca üst kategorilerden ~2 kanal
+    seçtiği için sonuç değişmez; ana thread'deki `Map` üretimi/serileştirme
+    233 binden birkaç bine düşer.
+  - **Soğuk başlangıç** (yeni kullanıcı) artık tüm kanalları taramak yerine
+    sınırlı rastgele örnekten görünür kanal seçer.
+- Öneri sayısı 6'ya sabitlendi (önceki düzenleme).
+
+## Yayınlanmamış — Mina AI şeridi anında gelir + yanıp sönen iskelet
+
+**12 Haziran 2026 — Spinner kaldırıldı, disk önbelleği eklendi.**
+
+- Ana ekrandaki "Mina AI — Senin İçin Önerilenler" şeridi her soğuk açılışta
+  isolate skorlamasını baştan hesaplayıp dönen `CircularProgressIndicator`
+  gösteriyordu. Artık:
+  - Son hesaplanan öneriler kompakt biçimde (`{k,id,s}`) diske yazılır; bir
+    sonraki açılışta anahtar (katalog + gün + gizleme ayarı) eşleşirse **anında
+    geri yüklenir ve hydrate edilir** (10 öğe, hızlı). Şerit "hemen" gelir;
+    taze hesap arka planda yapılıp sessizce güncellenir.
+  - Disk önbelleği yoksa, spinner yerine kartlarla **aynı silüette yanıp sönen
+    (pulse) iskelet** gösterilir.
+
+## Yayınlanmamış — TV ana kart odağında büyüme efekti geri getirildi
+
+**12 Haziran 2026 — Solma (spotlight) yerine büyüme efekti.**
+
+- TV ana ekranında kategori kartına odaklanınca artık kart **hafifçe büyür**
+  (`AnimatedScale` 1.08, 200 ms). Daha önce büyüme kaldırılıp "kardeşleri
+  soldurma" (dim/spotlight) efekti kullanılıyordu; bu solma efekti tamamen
+  kaldırıldı. İlgili `_tvCardFocused` / `dimSignal` mekanizması temizlendi.
+
+## Yayınlanmamış — Ana ekranda aşağı çekerek yenileme kaldırıldı
+
+**12 Haziran 2026 — Pull-to-refresh kapatıldı.**
+
+- Ana ekrandaki `RefreshIndicator` (aşağı çekince listeyi yenileme) kaldırıldı.
+  Kullanıcı içeriği sonuna kadar serbestçe kaydırabilir; yanlışlıkla yenileme
+  tetiklenmez. Liste hâlâ `BouncingScrollPhysics` ile esnek kayar.
+
+## Yayınlanmamış — MediaKit (mpv) zayıf cihaz oynatma optimizasyonu
+
+**12 Haziran 2026 — SM-T530 / Next Star 4K gibi cihazlarda kasma + ses/görüntü kayması.**
+
+- **Zayıf cihaz mpv profili** (`_applyMpvIptvTuning`): Daha önce yalnızca `force-seekable`
+  ve altyazı ayarı uygulanıyordu (Amlogic için "ek demuxer/latency" yorumu vardı ama
+  gerçekte uygulanmıyordu). Artık zayıf cihaz/zorlu TV box/düşük segment tespitinde
+  (`weakMpvDevice` / `playbackChallengedTv` / `low`) şu mpv ayarları uygulanır:
+  - `framedrop=decoder+vo` — geç kalan kareleri at, sesi ana saatle hizalı tut
+    (A/V senkron kayması düzelir).
+  - `vd-lavc-skiploopfilter=all` — H.264/HEVC deblocking atla, büyük CPU tasarrufu.
+  - `vd-lavc-fast=yes`, `vd-lavc-threads=0` — daha hızlı çok çekirdekli kod çözme.
+- **Canlı tampon genişletildi:** `cache=yes`, `cache-secs` (zayıf 30 / diğer 20),
+  `demuxer-readahead-secs` (zayıf 20 / diğer 10), `demuxer-max-bytes` 64 MiB,
+  `demuxer-max-back-bytes` 32 MiB — ağ kaynaklı duraklama/takılma azalır.
+- **Gerçekten zayıf cihazlarda çözünürlük sınırı:** `weakMpvDevice` (otomatik:
+  RAM < 2.5 GiB veya ≤4 çekirdek — SM-T530 dahil) tespitinde uyarlanabilir HLS
+  akışında en düşük varyant zorlanır (`hls-bitrate=min`) → çözünürlük/decode yükü
+  düşer. Bu sınıftaki tüm cihazlarda otomatik uygulanır; tek-akış (MPEG-TS/mp4)
+  kaynaklarda etkisizdir.
+- Mevcut sert hata fallback'i (MediaKit → Exo yazılım kod çözücü) korunur; bu profil
+  sert hata vermeyen (yalnız kasan/kayan) MediaKit oynatımını iyileştirir.
+
+## Yayınlanmamış — Filmler/Diziler kategorilerinde tekrarlı liste seçici kaldırıldı
+
+**12 Haziran 2026 — Klasik Filmler & Diziler kategori sütunundaki «Listeler» barı çıkarıldı.**
+
+- Klasik Filmler / Diziler bölümlerinde (browse kategori paneli) kategorilerin
+  üstünde gösterilen `PlaylistSwitcherBar` kaldırıldı. Liste değiştirme zaten üst
+  çubukta (ayarlar / saat / arama yanındaki playlist ikonu) bulunduğu için tekrarlı
+  seçici hem **dikey** hem **yatay** modda artık gösterilmiyor. (TV düzeninde zaten
+  gizliydi.)
+
+## Yayınlanmamış — Ucuz 4K TV box'larda kasma/kekemelik düzeltildi
+
+**12 Haziran 2026 — Next Star / Allwinner / Rockchip kutularda kesik kesik oynatma.**
+
+- **SoC tespiti genişletildi** (`MainActivity.kt` `mediaKitSoCProfile`): Ucuz 4K
+  Android kutular (Next Star, Atlas vb.) çoğunlukla **Allwinner** (sunxi: `sun8i` /
+  `sun50iw…`) veya **Rockchip** (`rk3318` / `rk3328` / `rk3399`) yonga seti kullanır.
+  Bunlar artık `allwinnerLike` / `rockchipLike` ile algılanıp (yalnız TV cihazlarda)
+  `playbackChallengedTv` sınıfına alınıyor. Önceden algılanmadıkları için yanlışlıkla
+  `mid`/`high` segmente düşüp **küçük tampon** (canlı min 3s/max 8s) ile kasıyorlardı;
+  artık `low` segment → **geniş kararlı tampon** (canlı min 6s/max 18s) + VOD'da
+  yazılım kod çözücü ilk deneme.
+- **Zorlu TV kutularında adaptif çözünürlük tavanı 1080p:** Zayıf donanım kod çözücü
+  1080p'yi sorunsuz kaldırır ama 4K HLS varyantında kare düşürüp kesik kesik oynatır.
+  `playbackChallengedTv` cihazlarda canlı/VOD adaptif akış 1080p ile sınırlandı.
+- **TV'lerde TV Lite tek seferlik zorla açıldı:** TV düzeninde TV Lite kapalı kalmış
+  eski kullanıcılarda bir kez otomatik açılır (`_kTvLiteTvForced` migration bayrağı).
+  Kullanıcı sonrasında dilerse kapatabilir; tercihi korunur.
+- **Zayıf donanımda TV Lite otomatik açılır:** Android'de RAM &lt; ~2.5 GiB veya ≤4
+  çekirdekli cihazlarda (`AndroidPlaybackSocHints.weakMpvDevice` — ör. Galaxy Tab 4
+  SM-T530) TV Lite hem runtime'da garanti etkin (`AppPerformance.isTvLite` artık
+  `isWeakHardware`'i de kapsar) hem de kalıcı toggle bir kez otomatik açılır
+  (`maybeForceTvLiteForWeakHardware`, SoC ipuçları yüklendikten sonra `main`'de).
+  Kullanıcı sonradan kapatabilir.
+
+## Yayınlanmamış — TV Lite: merkezi sade grafik katmanı
+
+**12 Haziran 2026 — Zayıf TV box'larda GPU yükünü tek bayrakla düşür.**
+
+- **TV Lite modu eklendi** (`AppSettingsService.tvLite`): TV düzeninde varsayılan
+  açık, diğer düzenlerde kapalı; Ayarlar › Diğer Araçlar'dan değiştirilebilir.
+  Kullanıcı tercihi kalıcıdır. Yüzlerce widget'ı elle düzenlemek yerine mevcut
+  merkezi `AppPerformance`/`GlassAppearance` sisteminden tek noktadan tüketilir.
+- **`AppPerformance` TV Lite kapısı:** `isTvLite()` (kullanıcı bayrağı **veya**
+  TV düzeni **veya** düşük donanım) tek geçit. Yeni yardımcılar: `liteShadow()`
+  (gölgeyi kaldırır), `liteRadius()` (köşeyi sadeleştirir), `focusAnimDuration()`
+  (60 ms), `useFocusGlow()`.
+- **Gerçek zamanlı blur tamamen kapalı:** `useRealtimeBackdropBlur`, `glassSigma`,
+  `glassSigmaRemoteStyle`, `skipHomeStyleBackgroundBlur`, `usePlayerOsdBackdropBlur`
+  kapıları artık TV Lite'ta da blur'u sıfırlıyor (önceden yalnız TV düzeni / düşük
+  donanım kapsıyordu).
+- **Kumanda odak belirteci sadeleşti:** `TvDpadFocus` / `TvFocusRing` TV Lite'ta
+  glow (yumuşak ışıma) gölgesini bırakır — yalnız net renkli çerçeve kalır — ve
+  odak animasyonu 140 ms yerine 60 ms'e iner. Bu tüm uygulamadaki odaklanabilir
+  kartları tek noktadan etkiler.
+- **Paylaşılan cam gölgeleri kapıdan geçti:** `GlassPopupPanel`, `GlassListTile`
+  odak gölgesi ve ana ekran kategori kartı gölgesi TV Lite'ta düşürülür. Cam renk
+  paleti + ince kenarlar korunur; yalnız GPU-pahalı efektler kalkar.
+
+## Yayınlanmamış — Görsel önbellek tamamlandı + parser isolate'e taşındı
+
+**12 Haziran 2026 — TV'de kasma azaltma: tüm görseller önbellekli, ağır parse arka thread'de.**
+
+- **Kalan `Image.network` kullanımları kaldırıldı:** Global arama diyaloğu, önerilen
+  filmler cam zemini (blur poster), indirilenler listesi ve Mina Analytics avatarı
+  artık `CachedNetworkImage` + paylaşılan `AppImageCacheService` önbelleği +
+  `memCacheWidth/Height` ile çiziliyor. Böylece bu ekranlarda da posterler/logolar
+  diskten gelir ve TV'ye gelmeden küçültülür (RAM + ağ baskısı düşer).
+- **M3U parse isolate'e taşındı (streaming yol):** `M3uStreamParser` artık girişleri
+  ~2000'lik batch'ler halinde `compute()` ile bir arka isolate'te parse + sınıflandırıp
+  ana thread'e yalnızca SQLite yazımı + kategori-id atamasını bırakıyor. Büyük
+  listelerde EXTINF regex eşleştirme artık UI thread'ini kilitlemiyor; streaming
+  bellek avantajı (batch sınırlı tampon) korunuyor.
+- **RegExp derleme darboğazı giderildi:** Yeni paylaşılan `M3uExtinfFields`, attribute
+  regex'lerini anahtar başına **bir kez** derleyip önbelleğe alıyor. Eski kodda her
+  `_attr` çağrısı 3 regex derliyordu (7 alan × on binlerce giriş ≈ milyonlarca
+  derleme). Hem streaming hem klasik `M3uParser` bu ortak yolu kullanıyor.
+
+## Yayınlanmamış — M3U dayanıklılığı: proaktif teşhis + #EXTGRP
+
+**12 Haziran 2026 — Reaktif yamadan, kendi kendini izleyen parser'a.**
+
+- **Parse sağlık raporu (erken uyarı):** Hem `M3uStreamParser` hem `M3uParser`
+  artık `#EXTINF` sayısı ile üretilen giriş sayısını karşılaştırıp fark (URL'siz /
+  bozuk yapı nedeniyle düşen giriş) varsa loga `⚠️ m3u parse drop …` yazıyor.
+  "Sessizce kaybolan film/dizi" sınıfı hatalar artık kullanıcı bildirmeden
+  loglardan/QA'dan yakalanabilir.
+- **`#EXTGRP` desteği:** Grup adı `group-title` attribute'u yerine ayrı bir
+  `#EXTGRP:` satırında gelen listelerde kategori artık doğru atanıyor (önceden
+  "Uncategorised" oluyordu). İki parser da kapsanıyor; regresyon testi eklendi.
+
+## Yayınlanmamış — Faz 3 (slim) çoklu liste + SQLite temizliği
+
+**12 Haziran 2026 — 20+ liste senaryosunda DB bloat'ı önlendi; merge artık slim.**
+
+- **SQLite yetim temizliği:** Bir liste silindiğinde / kaynağı düzenlendiğinde /
+  slotlar sıkıştırıldığında eski `source_key` satırları artık `mina_playlist.sqlite`
+  içinde yetim kalmıyor. `clearSourceAt`, compaction ve taze yükleme sonrası
+  aktif slot kümesine ait olmayan kayıtlar `PlaylistSqliteStore.pruneExcept` ile
+  siliniyor. 20+ liste eklenip çıkarıldığında DB sınırsız büyümüyor.
+- **`loadMergedPlaylist` → DB/slim:** Birincil + ikincil kaynak birleştirme
+  yolu, birleşik sonucu SQLite'a (`replaceFromResult`) yazıp cache'i `dbSourceKey`
+  ile besliyor; film/dizi artık RAM'de tutulmuyor (slim). Yazım başarısızsa eski
+  tam-bellek davranışına düşülür.
+- Birleşik anahtar, prune sırasında aktif oturum boyunca korunur (kullanıcı
+  birleşik görünümdeyken verisi silinmez).
+
+## Yayınlanmamış — "İçerikler eksik" M3U sınıflandırma + indirme düzeltmeleri
+
+**12 Haziran 2026 — Düz M3U listelerinde diziler/filmler artık doğru sekmede.**
+
+- **M3U içerik sınıflandırma (`M3uContentClassifier`):** Xtream yol biçimini
+  (`/series/`, `/movie/`) kullanmayan "düz" listelerde diziler ve filmler yanlış
+  şekilde **Canlı TV**'ye düşüyordu. Artık ad kalıpları da değerlendiriliyor:
+  `S01E02` / `1x02`, "12. Bölüm" / "3. Sezon" (TR), "Episode/Season" (EN) → dizi;
+  grup yalnızca yıl ("2024") → film. Heuristikler canlı kanallarda nadir görülen
+  güçlü sinyallerle sınırlı (yanlış pozitif riski düşük). İki parser
+  (`M3uParser` + `M3uStreamParser`) ortak sınıflandırıcıyı kullanır.
+- **İndirme User-Agent'ı:** Playlist/Xtream indirmeleri artık playback ile aynı
+  (varsayılan tarayıcı) User-Agent'i gönderiyor. Bazı barındırıcılar (Cloudflare
+  Worker proxy'leri, CDN erişim filtreleri) varsayılan `Dart (dart:io)` / boş
+  UA'yı reddedip "Erişim Reddedildi" döndürüyordu → liste boş/eksik geliyordu.
+- **Xtream dönüşümü "boş" koruması:** `get.php?...&username=...` URL'leri otomatik
+  Xtream'e çevrilirken panel `player_api.php`'yi kısıtlayıp **boş** dönerse
+  (kanal+film+dizi hepsi boş) dönüşüm iptal edilip ham M3U (`get.php`) yüklenir;
+  HLS↔TS oynatma fallback'i korunur.
+- **`#EXTVLCOPT` / `#EXTSUB` girişleri artık kaybolmuyor (kritik):** Bazı listeler
+  (ör. prectv/deathless film & dizi listeleri) her girişte `#EXTINF` ile URL
+  arasına `#EXTVLCOPT:http-user-agent=…` (ve bazen `#EXTSUB:`) satırı koyar.
+  Parser bu `#` satırını görünce girişi **iptal ediyordu** → binlerce film/dizi
+  sessizce düşüyor, sadece bu satırı taşımayan ~birkaç kanal görünüyordu.
+  Artık `#EXTINF` ile URL arasındaki direktif/boş satırlar atlanıp pending giriş
+  korunuyor. Örnek listede önce ~161 giriş gelirken artık **76.718** giriş
+  (20.720 film + 55.837 dizi + 161 canlı) doğru kategorilerde geliyor. İki parser
+  (`M3uParser` + `M3uStreamParser`) için regresyon testi eklendi.
+- **URL yolu önceliği:** Sınıflandırıcı artık `/live/`, `/movie/`, `/series/`
+  yollarına en yüksek önceliği veriyor; bir canlı kanalın adı yanlışlıkla bölüm
+  kalıbına benzese bile (`/live/.../1x02`) dizi/film sanılmıyor.
+
+## 2.12.53 (build 4295)
+
+**10 Haziran 2026 — Ana ekran kart sırası güncellendi; TV'de Film & Dizi gizli.**
+
+- **TV:** "Film & Dizi" (recommendedFilms) kartı artık **hiçbir koşulda**
+  gösterilmiyor (`visibleForLayout` TV'de filtreliyor). TV ayrı Filmler /
+  Diziler kartlarını kullanır.
+- **Mobil/tablet varsayılan sıra:** Canlı TV · Film & Dizi · Filmler · Diziler ·
+  Mina Analytics · EPG Mix. (Görünürlük yine Film & Dizi moduna ve açık olan
+  özelliklere bağlı; kapalı kartlar gösterilmez.)
+- Eski varsayılan sırada kalan / hiç özelleştirmemiş kullanıcılar tek seferlik
+  geçişle yeni sıraya alınır; kartlarını elle sıralayanların düzeni korunur.
+
+## 2.12.52 (build 4294)
+
+**10 Haziran 2026 — Kanal değişimi "logo flaşı" kökten çözüldü.**
+
+- Gerçek sebep: `zapTo` içinde eski Better örneği dispose edilince
+  (`_setBetterPlayer(null)`) yüzey kayboluyor ve splash "yüzey yok" dalına
+  düşüyordu; ancak `channel.value` ancak ~100 ms sonra güncelleniyordu, bu
+  pencerede splash eski kanalın logosunu gösteriyordu.
+- `channel.value` artık zap'ın en başında (dispose'dan önce) güncelleniyor;
+  splash her zaman yeni kanalı yansıtıyor.
+
+## 2.12.51 (build 4293)
+
+**10 Haziran 2026 — Kanal değişiminde eski logo flaşı düzeltildi.**
+
+- Dikey modda farklı kanala geçerken milisaniyelik eski kanal logosu görünüyordu.
+  Sebep: splash overlay yalnızca [isBusy] değişimine aboneydi; kanal değişince
+  (özellikle yükleme sürerken) overlay yeniden çizilmiyordu.
+- Obx artık kanal değişimini de dinliyor; splash widget'ları kanal id ile
+  `ValueKey` alıyor. Logo önbelleği URL değişince anında temizleniyor.
+
+## 2.12.50 (build 4292)
+
+**10 Haziran 2026 — Canlı TV "Detay" sekmesi varsayılan olarak gizli.**
+
+- Ayarlar > Oynatma > "Canlı TV detay sekmesini gizle (dikey)" seçeneği artık
+  varsayılan olarak AÇIK (gizli) geliyor; dikey modda kanal seçilince doğrudan
+  tam ekran yayın açılır. İsteyen ayardan tekrar görünür yapabilir.
+
+## 2.12.49 (build 4291)
+
+**10 Haziran 2026 — Dikey modda çıplak spinner tamamen kaldırıldı.**
+
+- Kök neden: dikey mobilde `liveCh` her zaman `false` (kumanda navigasyonu
+  yatay/TV'ye özgü), bu yüzden yükleme akışı `_PlayerCenterLoadingSpinner`
+  (çıplak spinner) dalına düşüyordu; logo+şemsiye splash'ı yalnızca "yüzey yok"
+  anında görünüyordu — sonuçta önce spinner, sonra splash.
+- `addBusyShell` sadeleştirildi: canlı→canlı zaplama dışında tüm yükleme
+  durumlarında (canlı/VOD, dikey/yatay) tutarlı kanal logosu + yanıp sönen
+  şemsiye splash'ı gösterilir.
+- `UniversalVideoPlayer` yüzey bağlanana kadar varsayılan spinner yerine düz
+  siyah gösterir (görünür gösterge üstteki splash'tır).
+- Kullanılmayan `_PlayerCenterLoadingSpinner` kaldırıldı.
+
+## 2.12.48 (build 4290)
+
+**10 Haziran 2026 — Canlı ilk açılışta tutarlı splash (çıplak spinner düzeltildi).**
+
+- Bazı canlı kanallarda yeni logo + yanıp sönen şemsiye splash'ı yerine
+  player'ın çıplak buffering spinner'ı görünüyordu. Sebep: yüzey hızlı oluşan
+  kanallarda `addBusyShell` doğrudan player'ı döndürüyor, splash'ı atlıyordu;
+  yavaş yüzeyli kanallarda ise "yüzey yok" dalı splash'ı gösteriyordu.
+- Artık canlı **ilk açılışta** (zap değilse) yüzey hazır olsa bile video ilk
+  kareye kadar logo + yanıp sönen şemsiye splash'ı gösterilir; ilk kare gelince
+  kaybolur. Canlı→canlı zaplama davranışı değişmedi.
+
+## 2.12.47 (build 4289)
+
+**10 Haziran 2026 — Yayın açılış splash'ı yenilendi (yanıp sönen şemsiye).**
+
+- Yayın açılırken gösterilen yükleme ekranında kanal logosunun altındaki
+  progress bar + "Akış açılıyor…" metni kaldırıldı; yerine kanal logosunun
+  altında yanıp sönen küçük uygulama ikonu (mavi şemsiye) eklendi. Splash
+  ekranı ve liste geçiş göstergesiyle aynı görsel dil.
+
+## 2.12.46 (build 4288)
+
+**10 Haziran 2026 — Sessiz takılma TS geçiş eşiği 5 sn → 3 sn.**
+
+- Hata vermeyen (sessiz buffer) canlı yayınlarda otomatik HLS→TS geçiş eşiği
+  **5 sn'den 3 sn'ye** indirildi. Gerçek kod çözücü/kaynak hataları zaten anında
+  swap ettiği için bu eşik yalnızca sessiz takılmayı etkiler; 3 sn normal HLS
+  başlangıç buffer'ına izin verecek kadar uzun, gereksiz boş beklemeyi önleyecek
+  kadar kısa.
+
+## 2.12.45 (build 4287)
+
+**10 Haziran 2026 — Donanım kod çözücü (video/mp2t) hatasında da otomatik TS geçişi.**
+
+- Logcat: bazı kanallar (`…/183.m3u8`) sessiz takılma yerine doğrudan
+  `MediaCodecVideoRenderer error (video/mp2t)` donanım kod çözücü hatası
+  veriyordu. Bu yol önce yazılım kod çözücü → MediaKit yedeğine gidiyor, TS
+  geçişine hiç ulaşmıyordu (HLS-içi mp2t için swap kasıtlı engelliydi). Oysa
+  aynı yayın manuel `.ts` ile anında açılıyordu.
+- Artık **canlı** yayın hatalarında (kod çözücü VEYA kaynak) yazılım kod çözücü
+  ve MediaKit yedeğinden ÖNCE bir kez HLS↔TS taşıma biçimi değişimi denenir.
+  Swap URL'yi değiştirmiyorsa (Xtream canlı kalıbı değil / zaten denenmiş)
+  normal kurtarma zinciri sürer. Bu, `183` gibi tüm kanallar için genel
+  düzeltmedir (hiçbir kanal numarası koda gömülü değildir).
+
+## 2.12.44 (build 4286)
+
+**10 Haziran 2026 — Otomatik HLS→TS geçişi sonrası ağ kurtarmasının m3u8'e dönmesi düzeltildi.**
+
+- Logcat: TS swap tetikleniyordu (`…/183.ts`) fakat hemen ardından ağ kurtarması
+  kanal satırındaki `.m3u8` ile yeniden `_boot` ediyordu; yayın yine açılmıyordu.
+  Manuel TS seçiminde ise her boot'ta `_applyPreferredLiveStreamFormat` çalıştığı
+  için sorun görülmüyordu.
+- `_resolveBootPlayUrl`: swap sonrası yeniden bağlanma `_lastPlaybackUrl` (`.ts`)
+  ile devam eder; m3u8'e geri sarılmaz.
+- Ağ kurtarması ve canlı hata yollarında, TS swap denenmeden m3u8 retry yapılmaz.
+- Başlangıç gözcüsü boot başında kurulur; yüzey yokken (`v==null`) de swap denenir.
+- Swap başarılı olunca bekleyen ağ kurtarma zamanlayıcısı iptal edilir.
+
+## 2.12.43 (build 4285)
+
+**10 Haziran 2026 — Otomatik TS geçişi hızlandırıldı + "oynatıcı hazır değil" durumunda da devreye giriyor.**
+
+- Telefon/tablette canlı başlangıç eşiği **12 sn → 5 sn**'ye indirildi; HLS
+  açılmazsa çok daha hızlı TS'e geçilir.
+- **Kök neden:** "Oynatıcı hazır değil" mesajı, oynatıcı yüzeyi (BetterPlayer)
+  hiç oluşmadığında (yetim yüzey) gösteriliyordu. Bu durumda `controller == null`
+  olduğu için başlangıç gözcüsü çıkıp TS geçişini hiç tetiklemiyordu. Artık
+  yetim yüzey tüm denemelerde oluşmazsa telefon/tablette bir kez otomatik
+  HLS↔TS taşıma biçimi değişimi yapılıp baştan denenir.
+
+## 2.12.42 (build 4284)
+
+**10 Haziran 2026 — Telefon/tablette HLS açılmayan kanallar için otomatik TS geçişi.**
+
+- Bazı paneller canlıyı gerçekte yalnızca `.ts` ile veriyor; `.m3u8` manifesti
+  hata üretmeden sonsuz buffer'da takılıyordu. Otomatik HLS→TS taşıma biçimi
+  değişimi (`_tryLiveTransportFormatSwapRecovery`) yalnızca TV modunda
+  çalışıyordu; telefon/tablette yayın hiç açılmıyordu.
+- Artık telefon/tablette de canlı yayın için bir başlangıç gözcüsü kuruluyor:
+  oynatma **12 sn** içinde başlamazsa otomatik olarak diğer taşıma biçimi
+  (HLS↔TS) denenir. Uzun tampon (72 sn) yolunda da yeniden bağlanmadan önce
+  bir kez biçim değişimi denenir. TV davranışı (48 sn) korundu.
+
+## 2.12.41 (build 4283)
+
+**10 Haziran 2026 — Canlı TV "yanlış kanal açılıyor" hatası düzeltildi (TS formatı).**
+
+- **Kritik düzeltme:** Ayarlar > Oynatıcı > Yayın Formatı **MPEG-TS** seçiliyken
+  HLS (`.m3u8`) canlı URL'si TS'e çevrilirken string kesme matematiği hatalıydı:
+  `.m3u8` (5 karakter) yerine 6 karakter siliniyordu; bu, Xtream `stream_id`'nin
+  son rakamını da kırpıp **farklı bir kanalı** açıyordu (ör. `12345.m3u8` →
+  yanlışlıkla `1234.ts`). HLS formatında dönüşüm olmadığı için sorun yalnızca
+  TS modunda görülüyordu. `_applyPreferredLiveStreamFormat` ve
+  `_trySwapLiveTsM3u8Url` içindeki iki nokta `length - 5` ile düzeltildi.
+
+## 2.12.40 (build 4282)
+
+**10 Haziran 2026 — Cihaz güç sınıfına göre oynatma profilleri (düşük/orta/yüksek).**
+
+- **Yeni segment modeli:** Cihaz RAM + çekirdek sayısı + SoC ipuçlarından
+  `DevicePlaybackSegment` (low/mid/high) türetilir. `low`: ≤4 çekirdek veya
+  &lt; 3 GiB RAM ya da zorlu SoC (Amlogic/MTK TV, eski TV box). `high`: ≥ 6 GiB
+  RAM **ve** ≥ 8 çekirdek. Aksi: `mid`.
+- **Better Player (Exo) tampon profilleri:** Canlı ve VOD tamponları artık
+  segmente göre seçilir. `low` daha geniş yastık (takılma azalır), `mid` mevcut
+  dengeli profil, `high` kısa başlangıç tamponu (hızlı zap) + geniş `maxBufferMs`
+  (pürüzsüz seek).
+- **MediaKit (mpv) ayarları:** `framedrop`, `vd-lavc-threads` (low ≤2 · mid ≤4 ·
+  high ≤8), `vd-lavc-skiploopfilter`, `demuxer-readahead-secs`, `cache-secs`,
+  `stream-buffer-size` ve VOD `demuxer-max-bytes` değerleri segmente göre
+  ayarlanır.
+- Mevcut tüm özel durumlar korunur (Amlogic, SM-T530 mor ekran düzeltmesi,
+  Xiaomi TextureView/1080p tavanı, yazılım dekoder fallback zinciri).
+
+## 2.12.39 (build 4281)
+
+**10 Haziran 2026 — AMOLED duvar kağıtları optimize edildi.**
+
+- **APK boyutu:** AMOLED tema arka planları (`blackyatay.webp` / `blackdikey.webp`)
+  6000×4000 / 4000×6000 (~5.7 MB/adet) → 2560×1440 / 1440×2560 (~0.42 MB/adet)
+  olarak yeniden boyutlandırıldı ve WebP sıkıştırıldı. Toplam ~10.5 MB ham varlık
+  azaltımı; görsel sonuç aynı (saf siyah AMOLED duvar kağıdı).
+
+## 2.12.38 (build 4280)
+
+**10 Haziran 2026 — x86_64 ABI paketten çıkarıldı (APK/AAB boyutu).**
+
+- **Paket boyutu:** x86_64 native kütüphaneleri (yalnızca emülatörler için gerekli)
+  APK ve AAB'den çıkarıldı. Gerçek telefon ve TV box'ların tamamı ARM olduğundan
+  cihaz desteği etkilenmez; universal APK'dan ~48 MB ham native yük kalkar. Yalnızca
+  x86_64 emülatör desteği kaldırıldı.
+
+## 2.12.37 (build 4279)
+
+**10 Haziran 2026 — Sürüm yükseltme (AAB).**
+
+## 2.12.36 (build 4278)
+
+**10 Haziran 2026 — Kullanılmayan duvar kağıdı varlıkları temizlendi (APK boyutu).**
+
+- **APK boyutu:** Hiçbir tema tarafından kullanılmayan portre arka plan varyantları
+  (dark_flat / glass_gri / flat_black / glassmorphism `*_portrait`) 1x/2x/3x klasörlerinden
+  kaldırıldı (~11 MB). Ayrıca 2x/3x'te 1x ile birebir aynı olan (gerçek yüksek çözünürlük
+  varyantı olmayan) dört arka planın kopyaları silindi; bu temalar artık tek dosyadan
+  yükleniyor (~6.5 MB). Toplam ~17.5 MB ham varlık azaltımı. Görsel sonuç değişmedi.
+
+## 2.12.35 (build 4277)
+
+**10 Haziran 2026 — Canlı TV kartı logo havuzu gizli kategori filtresi.**
+
+- **Canlı TV kartı (logolar):** Ana ekrandaki Canlı TV kartında dönen logo havuzu artık
+  gizlenen kategorilerdeki (ve +18) kanalların logolarını içermiyor. Kategori gizleme
+  değiştiğinde havuz anında yeniden kuruluyor.
+
+## 2.12.34 (build 4276)
+
+**10 Haziran 2026 — EPG yenileme sıklığı, gizli kategori filtreleri.**
+
+- **EPG rehber güncelleme sıklığı:** Ayarlara ve kurulum sihirbazına **0** seçeneği
+  eklendi. Sıfıra getirildiğinde rehber yalnızca bir kez indirilir; otomatik yenileme
+  tamamen kapanır.
+- **Ana ekran şeritleri (gizli kategori):** Kullanıcının gizlediği kategorilerdeki
+  canlı TV, film ve dizi içerikleri artık **Mina AI — Senin İçin Önerilenler** ve
+  **Karışık Canlı TV** bölümlerinde gösterilmiyor. AI cold-start (profil boş) yolunda
+  gizleme filtresi eksikti; düzeltildi.
+
+## 2.12.33 (build 4275)
+
+**10 Haziran 2026 — Liste yönetimi, equalizer, hız testi ve liste geçiş göstergesi.**
+
+- **Liste yönetimi (dikey mod):** Liste kartları kompaktlaştırıldı; yenile/düzenle/sil
+  ikonları dikey istif yerine yatay sıralandı, boş alan azaltıldı. Bir liste silindiğinde
+  kalan listeler otomatik olarak 1,2,3,4… şeklinde yeniden numaralanıyor (boşluklar kapanıyor).
+- **Liste adı düzenleme:** Telefon/tablet sanal klavyesinde öneri/tahmin bandı artık
+  açılıyor (ad alanında öneriler ve otomatik büyük harf etkin; URL/şifre alanlarında kapalı).
+- **Equalizer popup:** Alt "Sıfırla / Kapat" butonları artık popup içine tam sığıyor;
+  telefonda butonlar yatay dizilir, gövde kaydırılabilir (taşma giderildi).
+- **Hız testi:** "Son Test Sonucu" kartında hız değeri (ör. 45.6 Mbps) dikey karakterlere
+  bölünmeden düzgün gösteriliyor; analiz mesajı kalan alanda sağa hizalı sarıyor.
+- **Liste geçiş göstergesi:** Birden fazla liste varken farklı listeye geçişte (canlı TV /
+  film / dizi / Film&Dizi) ekran ortasında yanıp sönen şemsiye ikonu beliriyor; liste tam
+  yüklenince kayboluyor. Dokunmayı engellemez.
+- **Oynatıcı (aggregator/embed VOD):** Uzantısız HLS embed adresleri (ör. vidmody.com/vs/tt…)
+  için BetterPlayer'a açık HLS ipucu verildi; OSD'den Better'a geçişte de denenebiliyor
+  (otomatik mod bu içerikler için media_kit kullanmaya devam eder).
+
+## 2.12.32 (build 4274)
+
+**10 Haziran 2026 — Yatay OSD motor geçiş butonu.**
+
+- **Oynatıcı (yatay mod):** Better/Exo ↔ MediaKit oynatma motoru geçiş butonu
+  artık yatay tam ekran OSD'de de görünüyor (önceden yalnızca dikey moddaydı).
+  Hem Better hem MediaKit OSD düzenine eklendi; TV düzeninde gizli, yalnızca
+  mobilde. Aktif motora göre ⚡ (Exo) / 🧠 (MediaKit) ikonu gösterilir.
+
+## 2.12.31 (build 4273)
+
+**10 Haziran 2026 — Oynatma sırasında arka plan iş/sayaç optimizasyonu.**
+
+- **Oynatıcı (wakelock):** Oynatma boyunca ~500 ms'de bir tetiklenen video
+  dinleyicisi artık ekranı açık tutma (wakelock) çağrısını yalnızca durum
+  değiştiğinde yapıyor; her tikte tekrarlanan platform kanalı çağrısı kaldırıldı.
+- **Oynatıcı (Android PiP):** Resimde-resim otomatik giriş uygunluğu da aynı
+  şekilde yalnızca değer değişince native'e yazılıyor; gereksiz tekrarlı çağrılar
+  önlendi. Arka plandan dönüşte durum yeniden senkronlanıyor.
+- **Oynatıcı (Jeneriği Atla):** "Jeneriği atla" sayacı artık yalnızca dizi intro
+  penceresinde yeniden çiziyor; film/canlıda ve pencere geçtikten sonra her
+  saniye yapılan gereksiz yeniden çizim kaldırıldı.
+- **Oynatıcı (dikey ilerleme çubuğu):** media_kit konum akışına bağlı ilerleme
+  çubuğu, saniyede ~5 yeniden çizim yerine yalnızca oynat/duraklat, süre veya
+  ≥500 ms konum değişiminde yenileniyor (BetterPlayer ile aynı eşik).
+
+**Better Player güncel sürüme taşıma (yerel API'ler korunarak):**
+
+- **Media3 1.8.0 → 1.10.1:** ExoPlayer çekirdeği güncellendi; tüm Mina
+  özelleştirmeleri (düşük gecikme kod çözücü, yazılım/donanım decoder tercihi,
+  TextureView/ölçekleme, gömülü altyazı, Hz etiketi) korundu.
+- **Kontrol görünürlüğü:** OSD görünürlük akışında yinelenen durum
+  güncellemelerine karşı guard eklendi (gereksiz yeniden çizim/feedback döngüsü
+  önlendi).
+- **İlerleme çubuğu (Material/Cupertino):** Süre/genişlik için NaN, sonsuz ve
+  sıfıra bölme güvenlik kontrolleri eklendi; bozuk süre bilgisinde çizim
+  hatası/çökme önlendi.
+
+## 2.12.30 (build 4272)
+
+**10 Haziran 2026 — Ek performans iyileştirmeleri + canlı logo süresi.**
+
+- **Filmler/Diziler (klasik):** Liste paneli artık EPG güncellemelerini yalnızca
+  Favoriler modunda dinliyor; film/dizi listelerinde her EPG tikinde yapılan
+  gereksiz tam yeniden çizim kaldırıldı.
+- **Filmler (klasik):** Asenkron (isolate) filtre eşiği 2500 → 1000'e indirildi;
+  orta boy kataloglarda kategori/arama geçişi artık arayüzü bloklamıyor.
+- **Ana ekran (minimal düzen):** Canlı TV kartı kendi ayrı logo zamanlayıcısını
+  bırakıp standart düzenle aynı tek kaynağı kullanıyor — çift zamanlayıcı/çift
+  tarama önlendi.
+- **Film & Dizi:** Favori film/dizi şeritleri önbelleğe alındı; favori
+  ekle/çıkarda tüm katalog yeniden taranmıyor.
+- **Canlı TV logosu:** Ana ekrandaki Canlı TV kartının arka plan logosu artık
+  tüm cihazlarda 20 saniyede bir değişiyor.
+
+## 2.12.29 (build 4271)
+
+**10 Haziran 2026 — Performans iyileştirmeleri (orta/yüksek öncelik).**
+
+- **Sohbet:** Mesaj ve destek thread akışları artık ekran açılışında bir kez
+  oluşturuluyor; klavye/yanıt/gönder gibi her yeniden çizimde Firestore'a tekrar
+  abone olunmuyor.
+- **Görsel önbelleği:** url/etag index'leri bellekte tutuluyor; açılışta görsel
+  başına yapılan disk okuma/yazmaları kaldırıldı (1 sn debounce ile diske yazılır).
+- **Oynatıcı:** Canlı kanal şeridi kategori bantları playlist + gizleme revizyonu
+  ile önbelleğe alındı; tekrarlı tam kanal taraması kaldırıldı.
+- **Filmler/Diziler:** Hızlı kumanda gezintisinde önizleme için generation guard
+  eklendi; geç gelen eski önizleme yenisinin üstüne binmiyor.
+- **Kanallar:** Detay panelindeki aynı-kategori kanal listesi önbelleğe alındı.
+- **Cam efektleri:** Düşük donanım modunda kategori kartı blur'u kapatıldı; sohbet
+  ekranlarında çift blur katmanı tek katmana indirildi.
+
+## 2.12.28 (build 4270)
+
+**10 Haziran 2026 — Ayarlar, sıfırlama ve iletişim iyileştirmeleri.**
+
+- **Filmler (TV):** Yatay modda sağ üstte saat/tarih artık Dizi bölümündeki gibi
+  görünür.
+- **SSL/TLS:** «Sertifika doğrulamasını yoksay» varsayılan **açık** (yeni kurulum
+  ve sıfırlamada).
+- **Tema:** «Diğer Araçlar»dan ana Ayarlar sayfasına taşındı (Oynatma Ayarları'nın
+  hemen altında).
+- **Sıfırlama:** «Tüm ayarları sil» menüsü ve alt seçenekler (son izlenenler,
+  Mina AI, playlist, tümünü sıfırla) düzeltildi — onay diyalogları, TV OK tuşu ve
+  bellek önbelleği temizliği artık güvenilir çalışıyor.
+- **Bize Ulaşın:** «Admine Mesaj Gönder» seçeneği eklendi; uygulama içi sohbetteki
+  yönetici konuşmasına doğrudan yönlendirir.
+
+## 2.12.27 (build 4269)
+
+**10 Haziran 2026 — Ana ekran şerit kartı isim yazıları küçültüldü.**
+
+- Mina AI önerileri, İzlemeye devam et ve Karışık Canlı TV kartlarındaki
+  yayın/içerik adları biraz küçültüldü; uzun isimler daha rahat sığıyor.
+
+## 2.12.26 (build 4268)
+
+**10 Haziran 2026 — TV Film/Dizi üst çubuk → liste geçişindeki ~10 sn gecikme düzeltildi.**
+
+- **Kök neden:** Listede aşağı kaydırıp üst çubuktaki liste seçimi/arama ikonuna
+  geçince, paylaşımlı liste odak düğümü yalnızca seçili (ekran dışı) satıra bağlı
+  olduğundan `canRequestFocus` false kalıyordu; odak isteği başarısız olup
+  varsayılan traversal'a düşünce 2. bölgeye geçiş saniyelerce gecikiyordu.
+  Ayrıca üst çubuk `KeyRepeat` olaylarını yok sayıyordu (tuşu basılı tutunca
+  gezinme tetiklenmiyordu).
+- **Çözüm:** ◀/▼ ile listeye dönerken önce seçili satır görünür alana kaydırılıp
+  sonra odak isteniyor; yapışkan odak denemesi 24 kareye çıkarıldı. Üst çubukta
+  ◀/▼ için `KeyRepeat` da aynı gezinmeyi tetikliyor.
+
+## 2.12.25 (build 4267)
+
+**10 Haziran 2026 — TV kurulum D-pad + Google giriş hata düzeltmesi.**
+
+- **Kurulum sihirbazı (TV):** Tüm adımlarda yön tuşu gezinmesi uçtan uca
+  düzeltildi — Dil/Tema/Yazı tipi listelerinde ▲▼, Oynatıcı motorlarında 2×2
+  ızgara (◀▶▲▼), Performans ve Yerleşim modu kartlarında ◀▶, Özellikler
+  ızgarasında ◀▶▲▼ ve alttan EPG seçicisine geçiş, footer Geri/İlerle arası
+  ◀▶. Kartlara açık odak düğümleri bağlandı.
+- **Google ile giriş:** Bazı WebView/storage-partitioned cihazlarda (ör. Meizu)
+  oturum açıldığı halde gösterilen "missing initial state" hatası artık
+  bastırılıyor; giriş gerçekten başarılıysa kullanıcıya hata gösterilmez.
+
+## 2.12.24 (build 4266)
+
+**10 Haziran 2026 — Kurulum yerleşim modu kart gezinmesi (TV).**
+
+- Kurulum sihirbazı «Yerleşim modu» adımında **Varsayılan düzen** ile
+  **Sade düzen** kartları arasında **◀ ▶ sol/sağ** (dikey düzende ▲ ▼) ile
+  geçiş artık çalışıyor — kartlara açık odak düğümleri bağlandı, mevcut seçili
+  karta otomatik odak verilir.
+
+## 2.12.23 (build 4265)
+
+**10 Haziran 2026 — TV kurulum sihirbazı + browse gezinme iyileştirmeleri.**
+
+- **Kurulum sihirbazı (TV):** Tek-seçimli adımlarda (Dil, Yerleşim modu, Tema,
+  Performans, Uygulama yazı tipi) OK/onay tuşu ile seçim yapılınca otomatik
+  olarak bir sonraki adıma geçilir; «İlerle» butonuna gitmeye gerek kalmaz.
+  Yerleşim modunda sade/varsayılan seçiminden sonra ilerle butonuna
+  ulaşılamama sorunu giderildi.
+- **Filmler/Diziler (TV):** Üst çubuktan (liste seçimi/arama) sol veya aşağı
+  tuşu ile içerik listesine dönüşte gecikme/ikinci basış sorunu giderildi
+  (yapışkan odak isteği).
+- **Filmler/Diziler:** Klasik düzende girişteki yanıp sönen iskelet ekranı
+  tamamen kaldırıldı; gerçek ekran anında açılır.
+
+## 2.12.22 (build 4264)
+
+**10 Haziran 2026 — TV kumanda + kurulum oynatıcı iyileştirmeleri.**
+
+- **Filmler/Diziler/Canlı TV üst çubuğu (TV):** Liste seçimi/arama satırındayken
+  **▲ yukarı tuşu artık işlevsiz** (odak kategori/ayarlara kaçmıyor); **◀ sol**
+  veya **▼ aşağı** tuşu içerik listesine (2. bölge) geri döndürür.
+- **Canlı TV sütun oranları:** Kategoriler sütunu genişletildi, detay (3. sütun)
+  daraltıldı (31/38/31) — uzun kategori isimleri artık sığıyor (Film/Dizi ile
+  aynı düzen).
+- **Kurulum sihirbazı oynatıcı adımı (TV):** Artık TV'de de **Canlı TV** ve
+  **Film & Dizi** için ayrı motor seçimi (Better Player | MediaKit), tam D-pad
+  desteğiyle.
+
+## 2.12.21 (build 4263)
+
+**10 Haziran 2026 — Kurulum sihirbazına "Yerleşim modu" adımı (TV/mobil/tablet).**
+
+- Dil seçiminden hemen sonra yeni **Yerleşim modu** adımı: «Varsayılan düzen»
+  ve «Sade düzen» seçenekleri, her birinin yanında **canlı animasyonlu
+  önizleme** (standart düzende kayan kart şeridi, sade düzende nabız atan 2×2
+  kart). TV, mobil ve tablette geçerli.
+- **Sade düzen** seçilirse ilerleyen sihirbaz adımlarında kısıtlı özellikler
+  gizlenir: Özellikler adımında **Sıradaki maçlar, Karışık Canlı TV, İzlemeye
+  devam et, Yapay zekâ önerileri**; Kişiselleştirme adımında **Sürükleme efekti
+  ve Çerçeve stili**. (Ayarlardaki ilgili bölümler de zaten kilitli.)
+- Canlı TV önizleme (3. sütun) TV'de optimize edildi: D-pad gezinmesinde
+  oynatıcı/ağ ısıtması yalnızca durulunca tetiklenir.
+
+## 2.12.20 (build 4262)
+
+**10 Haziran 2026 — TV D-pad: Diziler girişi + boş kategori sağ ok + panel oranları.**
+
+- TV'de ana ekrandan **Filmler/Diziler** kartına girince odak doğrudan **ilk
+  kategoriye** gelir; üst çubuk/liste seçimine kaymaz. Üst çubuktan **▼**:
+  liste sütunundan gelindiyse listeye, yeni girişte ilk kategoriye iner.
+- **Boş kategori** (kanal/film/dizi sayısı 0) iken **▶** ile listeye geçiş
+  engellendi — odak kategoride kalır. Canlı TV, Filmler ve Diziler için geçerli.
+- Yatay modda Filmler/Diziler **kategori sütunu genişletildi**, **detay (3.)
+  sütunu daraltıldı** (uzun kategori isimleri artık sığar).
+
+## 2.12.19 (build 4261)
+
+**10 Haziran 2026 — Sade düzen seçilince ilgili ana ekran ayarları kilitlenir.**
+
+- Ana ekran ayarlarında **Sade düzen** seçiliyken şu bölümler **kilitlenir**
+  (sönükleşir, dokunma/D-pad odağı kapatılır, "Sade düzende kapalı" rozeti gösterilir):
+  **Kart sırası, Kart boyutu, Sürükleme efekti, Çerçeve stili, Karışık Canlı TV,
+  Sıradaki maçlar, İzlemeye devam et, Yapay zekâ ana ekran önerileri, Günün sözü.**
+- Bu özellikler sade düzende zaten görünmediğinden işlevsel olarak da devre dışı.
+  Varsayılan düzene dönülünce bölümler otomatik açılır.
+
+## 2.12.18 (build 4260)
+
+**10 Haziran 2026 — Filmler/Diziler TV D-pad + liste seçimi rafine edildi.**
+
+- TV'de Filmler/Diziler kategorilerinin **üstündeki "Listeler" seçici kaldırıldı**
+  (liste seçimi üst çubuktaki playlist ikonunda). Mobil/tablet'te eskisi gibi.
+- **En üst kategoride ▲** üst bara/ayarlara geçmiyor, orada kalıyor.
+- Listeden **▶** → 2+ liste varsa **liste seçimi**, yoksa **arama** butonuna;
+  **detay (3.) sütununa kumanda geçişi kapatıldı**.
+- Üst bardan listeye dönüş: **◀** veya **▼**. Aynı mantık Filmler ve Diziler'de.
+
+## 2.12.17 (build 4259)
+
+**10 Haziran 2026 — TV kategori/kanal D-pad gezinimi rafine edildi.**
+
+- Kategori sütununda gezerken **kalıntı odak çerçevesi** kalmıyor; yalnızca
+  seçili kategori vurgulanıyor.
+- **En üst kategoride ▲** artık üst bara/ayarlara geçmiyor, orada kalıyor.
+- **Canlı TV:** kanal listesinden ▶ → 2+ liste varsa **liste seçimi**, yoksa
+  doğrudan **arama** butonuna; **detay (3.) sütununa kumanda ile geçiş kapatıldı**.
+- Üst bardan kanallara dönüş: **◀** veya **▼**.
+
+## 2.12.16 (build 4258)
+
+**9 Haziran 2026 — Sürüm yükseltme.**
+
+- Bakım sürümü: önceki TV D-pad gezinim düzeltmeleriyle yeni APK derlendi.
+
+## 2.12.15 (build 4257)
+
+**9 Haziran 2026 — TV D-pad gezinimi (Canlı TV · Filmler · Diziler) düzeltildi.**
+
+- Kategori sütununda ▲▼ artık **indeks tabanlı** çalışıyor; paylaşımlı odak +
+  Flutter traversal çakışmasından doğan takılma ve ilk ▼ ile arama butonuna
+  sıçrama giderildi.
+- **Canlı TV:** kanal listesinden ▶ doğrudan üst çubuk (arama / liste / ayarlar);
+  detay sütununa gitmez. Üst çubuktan ◀ kanal listesine döner.
+- **Filmler / Diziler:** aynı kategori ▲▼ düzeltmesi; listeden ▶ üst arama,
+  ◀ kategorilere dönüş.
+
+## 2.12.14 (build 4256)
+
+**9 Haziran 2026 — Filmler/Diziler giriş iskeletindeki yanıp sönme kaldırıldı.**
+
+- Klasik düzende Filmler/Diziler bölümüne girerken gösterilen yükleme
+  iskeletinin **pulse (yanıp sönme)** animasyonu kaldırıldı; iskelet artık
+  sabit opaklıkta görünüyor.
+
+## 2.12.13 (build 4255)
+
+**9 Haziran 2026 — TV'de Filmler/Diziler kategori D-pad gezinimi düzeltildi.**
+
+- TV girişinde **«Son eklenenler» kategorisini zorla odaklama** davranışı
+  kaldırıldı; bu davranış ilk satırda yukarı okun bloklanmasından doğan
+  **takılmaya** ve ilk aşağı basışında yanlış hedefe gitmeye yol açıyordu.
+- Artık Filmler/Diziler'e girince odak son seçilen kategoride başlar; **▼/▲**
+  kategoriler arasında düzgün gezer, **asla** doğrudan arama butonuna sıçramaz.
+- **Arama/ayarlar** butonlarına yalnızca listeye geçip (▶) tekrar **▶** ile
+  ulaşılır. Aynı akış Filmler, Diziler ve Canlı TV'de tutarlı.
+
+## 2.12.12 (build 4254)
+
+**9 Haziran 2026 — Sade düzen görsel iyileştirmeleri.**
+
+- Sade düzende **ayarlar** butonu artık ekranın en sağ üstünde, Mina logosu ile
+  aynı hizada (yatay ve dikey mod).
+- Ana ekran kartları **%30 küçültüldü**; dikey modda 2×2 ızgara ortalanmış.
+- Kartların içinde yarı saydam **kanal logosu / film / dizi posteri** arka planı;
+  Canlı TV'de logolar **10 saniyede bir** döner. Yazılar okunabilir kalsın diye
+  scrim ve gölge eklendi.
+
+## 2.12.11 (build 4253)
+
+**9 Haziran 2026 — TV'de Filmler/Diziler D-pad gezinimi düzenlendi.**
+
+- TV modunda **Filmler** veya **Diziler** bölümüne girildiğinde ilk odak artık
+  **«Son eklenenler»** kategorisinde başlıyor (kategori varsa).
+- Kategori sütununda ▲▼ ile kategoriler arası, ▶ ile listeye geçiş; listede ▶ ile
+  ekranın üstündeki **arama / ayarlar** butonlarına, ◀ ile tekrar kategorilere
+  dönüş. Akış hem Filmler hem Diziler için aynı mantıkta çalışıyor.
+
+## 2.12.10 (build 4252)
+
+**9 Haziran 2026 — TV'de Film & Dizi modu sabitlendi (klasik).**
+
+- TV modunda Ayarlar → Ana Ekran Ayarları'ndaki **Film & Dizi modu** seçeneği
+  artık gösterilmiyor.
+- TV ana ekranı her zaman **klasik düzen** kullanıyor: «Filmler» ve «Diziler»
+  ayrı kartlar olarak görünüyor (kayıtlı tercih ne olursa olsun render anında
+  klasik zorlanıyor). Mobil/tablet'te seçim eskisi gibi kullanılabiliyor.
+
+## 2.12.9 (build 4251)
+
+**9 Haziran 2026 — Sade düzen mobil ve tablette de kullanılabilir.**
+
+- **Yerleşim modu** seçeneği artık yalnızca TV'de değil, **mobil ve tablet**
+  ayarlarında da görünüyor (Ayarlar → Ana Ekran Ayarları → Yerleşim modu).
+- **Sade düzen** tüm cihaz tiplerinde uygulanıyor:
+  - Yatay ekran (TV / tablet / telefon yatay): 4 kart tek sırada.
+  - Dikey ekran (telefon / tablet portre): 4 kart **2×2 ızgara** olarak.
+  - Dokunmatik cihazlarda dokunarak; kumandada D-pad ile gezinilir.
+
+## 2.12.8 (build 4250)
+
+**9 Haziran 2026 — TV için "Sade düzen" + büyük liste performansı.**
+
+- **Yeni: TV yerleşim modu (Ayarlar → Ana Ekran Ayarları → Yerleşim modu).**
+  Yalnızca TV modunda görünür; iki seçenek sunar:
+  - **Varsayılan düzen:** mevcut tam ana ekran (şeritler, devam et, tüm kartlar).
+  - **Sade düzen:** sol üstte logo + isim + saat/tarih, sağ üstte ayarlar butonu,
+    ortada 4 büyük kart (**Canlı TV · Filmler · Diziler · EPG Mix**). Arka planda
+    seçili temanın duvar kağıdı kalır; tema değişince arka plan da değişir.
+  - TV kumandası (D-pad) ile uyumlu: kartlar arası ◀▶, kartlardan ▲ ile ayarlara
+    çıkış, ilk kart otomatik odaklı.
+- **Performans (büyük listeler — ör. 30.000 dizi / 15.000 film / 1.200 kanal):**
+  - Dizi gruplama regex'leri her çağrıda yeniden derlenmiyor; bir kez derlenip
+    yeniden kullanılıyor. Grup sıralaması başlık başına tek hesapla yapılıyor.
+  - Xtream liste yanıtlarının (film/dizi) JSON çözümlemesi ana iş parçacığı yerine
+    arka plan isolate'inde yapılıyor — açılışta donma azaldı.
+  - Liste anlık görüntüsü (snapshot) kaydı tamamen isolate'e taşındı.
+
+## 2.12.7 (build 4249)
+
+**9 Haziran 2026 — Ayarlar: seçmeli sıfırlama menüsü.**
+
+- Ayarlar → "Tüm ayarları sil" artık doğrudan silmek yerine bir **seçim menüsü**
+  açıyor. Kullanıcı istediğini tek tek sıfırlayabiliyor:
+  - **Son izlenenler bilgisini sıfırla** (izleme geçmişi + "devam et" listesi)
+  - **Mina AI önerilerini sıfırla** ("senin için önerilenler" yeniden oluşur)
+  - **Playlist bilgilerini sıfırla** (kayıtlı liste + içerik önbelleği silinir)
+  - **Tüm ayarları ve verileri sıfırla** (eski tam sıfırlama davranışı)
+- Her seçim ayrı bir onay penceresi gösteriyor. Menü ve onaylar TV kumandasıyla
+  da kullanılabiliyor (D-pad odaklı).
+
+## 2.12.6 (build 4248)
+
+**9 Haziran 2026 — Play Store yayın paketi (AAB).**
+
+- Sürüm yükseltildi; Google Play için Android App Bundle (AAB) derlendi.
+
+## 2.12.5 (build 4247)
+
+**9 Haziran 2026 — Kurulum sihirbazından "+18 içerikleri gizle" anahtarı kaldırıldı.**
+
+- Kurulum sihirbazının özellik anahtarları bölümünden **+18 içerikleri gizle**
+  seçeneği kaldırıldı. (Ayar mevcut; yalnızca sihirbaz adımında gösterilmiyor.)
+
+## 2.12.4 (build 4246)
+
+**9 Haziran 2026 — Bulut: "Google'a yedekle" butonu tepkisizliği giderildi.**
+
+- Ayarlar → Google bulut senkronunda oturum açıkken **Google'a Yedekle**
+  butonuna basınca hiçbir şey olmaması düzeltildi. Yedekle/Geri yükle/Sil
+  eylemleri önce `isCloudBusy=true` yapıp ardından oturum kontrolünü çağırıyordu;
+  oturum kontrolü de "meşgul" guard'ı nedeniyle hemen iptal olup işlemi hiç
+  başlatmıyordu.
+- Oturum açma mantığı, busy guard'ı kontrol etmeyen bir çekirdek metoda ayrıldı;
+  yedekle/geri yükle/sil artık doğru çalışıyor (giriş bölümündeki "Oturum aç"
+  davranışı korunur).
+
+## 2.12.3 (build 4245)
+
+**9 Haziran 2026 — Play Store yayın paketi (AAB).**
+
+- Sürüm yükseltildi; Google Play için Android App Bundle (AAB) derlendi.
+
+## 2.12.2 (build 4244)
+
+**9 Haziran 2026 — Açılış ekranı: dönen halka yerine yanıp sönen ikon.**
+
+- Açılış ekranının altındaki dönen yükleme halkası kaldırıldı; yerine çember
+  boyutuna küçültülmüş **uygulama ikonu yumuşak nabızla (yanıp sönerek)**
+  gösteriliyor.
+- "Neredeyse hazır…" durumu en az kısa bir süre görünür kalıyor (boşta bekleme
+  sırasında nabız akıcı döner) → ekran aniden donup geçmek yerine yumuşak
+  şekilde ana ekrana geçiyor.
+
+## 2.12.1 (build 4243)
+
+**9 Haziran 2026 — Filmler / Diziler kartları anında açılış + yanıp sönme.**
+
+- Ana ekrandaki **Filmler** ve **Diziler** kartlarına basınca ekran artık anında
+  açılıyor; kategoriler/ızgara hazır olana kadar yanıp sönen (pulse) iskelet
+  gösteriliyor (Film & Dizi kartından bağımsız, eski tip tarama ekranı).
+- Önceki sürümde ağır hazırlık (kategori sayımı, dizi adı önbelleği, son seçim
+  geri yükleme) navigasyon sırasında senkron çalışıp girişi geciktiriyordu.
+  Artık bu iş ilk frame boyandıktan sonra aşamalı/yield'li yapılıyor; ekran
+  hemen açılıp iskelet akıcı yanıp sönüyor.
+
+## 2.12.0 (build 4242)
+
+**9 Haziran 2026 — Yöneticiye mesaj sohbetini silme.**
+
+- Sohbet → **Yöneticiye Mesaj Gönder** satırına **uzun basınca** "Sohbeti Sil"
+  seçeneği çıkıyor; onaylanınca kullanıcının yönetici ile olan tüm konuşması
+  (mesajlar + thread) kalıcı olarak siliniyor.
+- Admin gelen kutusunda da her kullanıcı thread'ine uzun basıp o konuşmayı
+  silebiliyor.
+- Silme yetkisi: kullanıcı yalnızca kendi konuşmasını, admin herhangi bir
+  konuşmayı silebilir (Firestore kuralları tarafında da zorlanır).
+
+## 2.11.9 (build 4241)
+
+**9 Haziran 2026 — Film & Dizi anında açılış + akıcı yanıp sönme iskeleti.**
+
+- **Film & Dizi** kartına basıldığı an bölüm açılıyor ve içerik hazır olana
+  kadar cam iskelet **kesintisiz yanıp sönüyor** (pulse). Önceki sürümde feed
+  kurulurken UI thread kısa süre bloklanıp animasyon donuyordu.
+- Film ve dizi feed'i artık aşamalı/yield'li kuruluyor (`buildFilmsChunked` /
+  `buildSeriesChunked`): kategori döngüsü her birkaç kategoride event-loop'a
+  yield ettiği için iskeletin yanıp sönme animasyonu build boyunca akıcı kalıyor.
+
+## 2.11.8 (build 4240)
+
+**9 Haziran 2026 — Film & Dizi sekme geçişi donması giderildi.**
+
+- Film & Dizi içinde **Filmler ↔ Diziler** sekmeleri arasında geçerken yaşanan
+  hafif donma giderildi. Önceki sürümde sekme değişiminde dış `Obx` `tab`'ı
+  okuduğu için tüm bölüm (her iki sekmenin gövdesi dahil) yeniden kuruluyordu;
+  ayrıca Diziler'e ilk geçişte dizi listesi senkron oluşturuluyordu.
+- Artık her iki sekme gövdesi `IndexedStack` içinde bir kez kurulu tutuluyor;
+  sekme geçişi yalnızca görünür index'i değiştiriyor (gövdeler rebuild edilmiyor,
+  senkron `buildSeries` kaldırıldı). Her gövde yalnızca kendi feed'i değişince
+  kendi `Obx`'inde yenileniyor.
+
+## 2.11.7 (build 4239)
+
+**9 Haziran 2026 — Film & Dizi bölümü açılış hızı.**
+
+- Ana ekrandan **Film & Dizi** kartına basınca bölümün 3-4 sn donup sonra
+  açılması giderildi. Önceki sürümde feed kurulumu (film/dizi kategori
+  listeleri + dizi gruplama) navigasyon sırasında UI thread'ini senkron
+  kilitliyordu. Artık ekran anında skeleton ile açılıyor; önce Filmler sekmesi,
+  ardından Diziler arka planda hazırlanıyor.
+- Feed kurulumu hızlandırıldı: kategori bazlı listeler tek geçişte oluşturuluyor
+  (her kategori için tüm katalog yeniden taranmıyor).
+
+## 2.11.6 (build 4238)
+
+**9 Haziran 2026 — Film & Dizi akıcılık/hız iyileştirmeleri + detay ekran düzeni.**
+
+- **Film & Dizi kaydırma performansı:** Film ve Dizi sekmelerinde aşağı/yukarı
+  kaydırırken yaşanan takılmalar giderildi. Sekme gövdeleri lazy `CustomScrollView`
+  + `SliverList` ile yeniden yazıldı (yalnızca görünür kategori satırları çizilir),
+  kategori panellerinden ağır `BackdropFilter`/`ShaderMask` katmanları kaldırıldı,
+  satırlara `RepaintBoundary` eklendi. IMDb puan zenginleştirmesi artık tüm akışı
+  yeniden kurmuyor (tek seferde günceller).
+- **Detay açılış hızı:** Bir film/dizi seçildiğinde poster + başlık anında
+  görünüyor; Xtream alanları ve TMDB/OMDb verisi paralel çekiliyor, fragman ve
+  ek puanlar arka planda yükleniyor. Gereksiz yapay gecikme kaldırıldı.
+- **Detay ekran düzeni:** "İzle" ve "İndir" butonları ülke/meta satırının hemen
+  altına, eşit ebatta yan yana taşındı. Tür ve teknik rozetler (Aksiyon, H.264,
+  5.1 vb.) posterin altında tek yatay satırda sıralanıyor. Aynı düzen dizi
+  detayına da uygulandı (İndir → ilk bölüm).
+
 ## 2.11.4 (build 4236)
 
 **9 Haziran 2026 — Kategori göster/gizle iyileştirmeleri + TMDB/OMDb anahtar rotasyonu.**

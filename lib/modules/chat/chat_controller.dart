@@ -15,6 +15,21 @@ class ChatController extends GetxController {
   /// Google ile oturum açma sürerken butonları kilitlemek için.
   final isSigningIn = false.obs;
 
+  /// Sohbet bölümüne girilince çevrimiçi varlık (presence) heartbeat'i başlar;
+  /// bölümden çıkılınca durur. Bu controller tüm chat alt-rotaları boyunca
+  /// canlı kaldığından, presence bölümün tamamını kapsar.
+  @override
+  void onInit() {
+    super.onInit();
+    chat.acquirePresence();
+  }
+
+  @override
+  void onClose() {
+    chat.releasePresence();
+    super.onClose();
+  }
+
   /// Bulut yapılandırılmış mı (Firebase hazır)?
   bool get isCloudAvailable => _auth.isAvailable;
 

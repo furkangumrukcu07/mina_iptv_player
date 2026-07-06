@@ -151,16 +151,20 @@ class _VideoProgressBarState extends State<BetterPlayerCupertinoVideoProgressBar
     final RenderObject? renderObject = context.findRenderObject();
     if (renderObject != null) {
       final box = renderObject as RenderBox;
+      final duration = controller!.value.duration;
+      if (duration == null || duration.inMilliseconds <= 0 || box.size.width <= 0) {
+        return;
+      }
       final Offset tapPos = box.globalToLocal(globalPosition);
-      final double relative = tapPos.dx / box.size.width;
+      final double relative = (tapPos.dx / box.size.width).clamp(0.0, 1.0);
       if (relative > 0) {
-        final Duration position = controller!.value.duration! * relative;
+        final Duration position = duration * relative;
         lastSeek = position;
         await betterPlayerController!.seekTo(position);
         onFinishedLastSeek();
         if (relative >= 1) {
-          lastSeek = controller!.value.duration;
-          await betterPlayerController!.seekTo(controller!.value.duration!);
+          lastSeek = duration;
+          await betterPlayerController!.seekTo(duration);
           onFinishedLastSeek();
         }
       }
@@ -197,14 +201,20 @@ class _ProgressBarPainter extends CustomPainter {
       ),
       colors.backgroundPaint,
     );
-    if (!value.initialized) {
+    final duration = value.duration;
+    if (!value.initialized || duration == null || duration.inMilliseconds <= 0 || !size.width.isFinite || size.width <= 0) {
       return;
     }
-    final double playedPartPercent = value.position.inMilliseconds / value.duration!.inMilliseconds;
-    final double playedPart = playedPartPercent > 1 ? size.width : playedPartPercent * size.width;
+    final double playedPartPercent = _safeFraction(value.position, duration);
+    final double playedPart = (playedPartPercent * size.width).clamp(0.0, size.width);
     for (final DurationRange range in value.buffered) {
-      final double start = range.startFraction(value.duration!) * size.width;
-      final double end = range.endFraction(value.duration!) * size.width;
+      final double startFraction = _safeFractionValue(range.startFraction(duration));
+      final double endFraction = _safeFractionValue(range.endFraction(duration));
+      if (endFraction <= startFraction) {
+        continue;
+      }
+      final double start = (startFraction * size.width).clamp(0.0, size.width);
+      final double end = (endFraction * size.width).clamp(0.0, size.width);
       canvas.drawRRect(
         RRect.fromRectAndRadius(
           Rect.fromPoints(Offset(start, baseOffset), Offset(end, baseOffset + barHeight)),
@@ -226,5 +236,20 @@ class _ProgressBarPainter extends CustomPainter {
 
     canvas.drawShadow(shadowPath, Colors.black, 0.2, false);
     canvas.drawCircle(Offset(playedPart, baseOffset + barHeight / 2), handleHeight, colors.handlePaint);
+  }
+
+  double _safeFraction(Duration part, Duration total) {
+    final totalMs = total.inMilliseconds;
+    if (totalMs <= 0) {
+      return 0;
+    }
+    return _safeFractionValue(part.inMilliseconds / totalMs);
+  }
+
+  double _safeFractionValue(double fraction) {
+    if (!fraction.isFinite || fraction.isNaN) {
+      return 0;
+    }
+    return fraction.clamp(0.0, 1.0);
   }
 }

@@ -4,6 +4,7 @@ import 'package:get/get.dart';
 import '../../../core/services/app_settings_service.dart';
 import '../../../core/theme/app_performance.dart';
 import '../../../core/theme/glass_appearance.dart';
+import '../../../ui/auto_scroll_text.dart';
 
 /// Ana sayfa yatay şeritleri: karışık canlı TV ve sıradaki maçlar cam çipi.
 class HomeGlassStripChip extends StatelessWidget {
@@ -51,14 +52,16 @@ class HomeGlassStripChip extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(
-              primaryText,
+            AutoScrollText(
+              text: primaryText,
+              // Çip içeriğine göre büyür; sığmazsa (200px'i aşan uzun isim)
+              // 2 sn sonra yavaşça kayar.
+              maxWidth: 200 * scale - 24 * scale,
               maxLines: 2,
-              overflow: TextOverflow.ellipsis,
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: flat ? cs.onSurface : Colors.white,
-                fontSize: 12.5,
+                fontSize: 11,
                 fontWeight: FontWeight.w700,
                 height: 1.15,
                 shadows: flat

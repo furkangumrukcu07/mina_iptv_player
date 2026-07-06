@@ -12,6 +12,7 @@ import 'app_settings_service.dart';
 import 'backup_service.dart';
 import 'firebase_bootstrap.dart';
 import 'mina_telemetry_service.dart';
+import '../platform/android_playback_soc_hints.dart';
 import 'profiles_service.dart';
 import 'toast_service.dart';
 
@@ -194,6 +195,21 @@ class AuthService extends GetxService {
     }
   }
 
+  /// Firebase Anonymous Auth ile oturum açar (deneme süresi takibi için)
+  Future<void> signInAnonymously() async {
+    if (!gFirebaseReady) {
+      debugPrint('[AuthService] Firebase not ready, cannot sign in anonymously');
+      return;
+    }
+    try {
+      await FirebaseAuth.instance.signInAnonymously();
+      debugPrint('[AuthService] Anonymous sign-in successful');
+    } catch (e) {
+      debugPrint('[AuthService] Anonymous sign-in failed: $e');
+      rethrow;
+    }
+  }
+
   /// Google hesabı ile Firebase Auth oturumu açar.
   ///
   /// Android: önce native (Credential Manager); başarısız / zaman aşımı /
@@ -206,8 +222,12 @@ class AuthService extends GetxService {
     }
 
     if (_isAndroidPlatform) {
+      await AndroidPlaybackSocHints.ensureLoaded();
       await refreshPlayServicesAvailability();
       await _ensureGoogleInitialized();
+
+      // Android TV / kutularda native girişi kullan (hesap seçici gösterir)
+      // Tarayıcı yedeği sadece native başarısız olursa devreye girsin.
       final canNative = playServicesAvailable.value &&
           GoogleSignIn.instance.supportsAuthenticate();
 
@@ -268,8 +288,8 @@ class AuthService extends GetxService {
     } on TimeoutException catch (e) {
       debugPrint('[AuthService] native sign-in timeout: $e');
       return const GoogleSignInResult.failed('timeout');
-    } catch (e) {
-      debugPrint('[AuthService] native sign-in error: $e');
+    } catch (e, st) {
+      debugPrint('[AuthService] native sign-in error: $e\n$st');
       return GoogleSignInResult.failed(e.toString());
     }
   }
@@ -300,12 +320,24 @@ class AuthService extends GetxService {
       if (_isAuthCancelledCode(e.code)) {
         return const GoogleSignInResult.cancelled();
       }
+      // "missing initial state" vb. ortam hatalarında oturum aslında açılmış
+      // olabilir — önce gerçekten giriş yapılmış mı diye bak.
+      if (_isIgnorableRedirectStateError('${e.code} ${e.message}')) {
+        final recovered = await _recoverSignedInAfterError();
+        if (recovered != null) return recovered;
+      }
       return GoogleSignInResult.failed(e.code);
     } on TimeoutException catch (e) {
       debugPrint('[AuthService] browser sign-in timeout: $e');
+      final recovered = await _recoverSignedInAfterError();
+      if (recovered != null) return recovered;
       return const GoogleSignInResult.failed('timeout');
     } catch (e) {
       debugPrint('[AuthService] browser sign-in error: $e');
+      if (_isIgnorableRedirectStateError(e.toString())) {
+        final recovered = await _recoverSignedInAfterError();
+        if (recovered != null) return recovered;
+      }
       return GoogleSignInResult.failed(e.toString());
     }
   }
@@ -313,6 +345,35 @@ class AuthService extends GetxService {
   bool _isAuthCancelledCode(String code) {
     final c = code.toLowerCase();
     return c.contains('cancel') || c == 'user-cancelled';
+  }
+
+  /// Bazı WebView / storage-partitioned tarayıcı ortamlarında (ör. bazı Meizu
+  /// cihazları) `signInWithProvider` redirect sonucunu işlerken
+  /// "missing initial state" / "web-storage-unsupported" hatası fırlatır —
+  /// ancak oturum aslında açılmış olur. Bu hatalar kullanıcıya gösterilmemeli.
+  bool _isIgnorableRedirectStateError(String raw) {
+    final s = raw.toLowerCase();
+    return s.contains('missing initial state') ||
+        s.contains('missing-initial-state') ||
+        s.contains('web-storage-unsupported') ||
+        s.contains('web storage') ||
+        s.contains('sessionstorage') ||
+        s.contains('session storage');
+  }
+
+  /// Hata sonrası oturumun gerçekten açılıp açılmadığını kısa süre bekleyerek
+  /// kontrol eder. Açıldıysa [GoogleSignInResult.success], aksi halde `null`.
+  Future<GoogleSignInResult?> _recoverSignedInAfterError() async {
+    for (var i = 0; i < 6; i++) {
+      final user = FirebaseAuth.instance.currentUser;
+      if (user != null) {
+        currentUser.value = user;
+        _syncPrimaryProfile(user);
+        return GoogleSignInResult.success(user.uid);
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 350));
+    }
+    return null;
   }
 
   /// Oturumu kapatır (hem Firebase hem Google).
@@ -431,25 +492,16 @@ class AuthService extends GetxService {
       try {
         final decoded = jsonDecode(raw);
         if (decoded is Map) {
-          final secure = decoded['secure'];
-          if (secure is Map) {
-            for (final entry in secure.entries) {
-              final k = entry.key.toString();
-              // Slot başına kaynak türü anahtarı bir listeyi temsil eder
-              // (slot 1: `mina_iptv_source_type`, slot N: `..._N`).
-              if (!k.startsWith('mina_iptv_source_type')) continue;
-              final v = entry.value;
-              if (v is String && v.trim().isNotEmpty) playlists++;
-            }
-          }
-          final prefs = decoded['prefs'];
+          final map = Map<String, dynamic>.from(decoded);
+          playlists = countCloudBackupPlaylistSources(map);
+          final prefs = map['prefs'];
           if (prefs is Map) settings = prefs.length;
-          final bySlot = decoded['localM3uBySlot'];
+          final bySlot = map['localM3uBySlot'];
           if (bySlot is Map) {
             localM3u = bySlot.length;
           } else {
-            if (decoded['localM3u'] is String) localM3u++;
-            if (decoded['localM3u2'] is String) localM3u++;
+            if (map['localM3u'] is String) localM3u++;
+            if (map['localM3u2'] is String) localM3u++;
           }
         }
       } catch (_) {}
@@ -568,6 +620,37 @@ class AuthService extends GetxService {
       return false;
     }
   }
+
+  /// Yedek JSON'da en az bir M3U/Xtream kaynağı veya yerel M3U içeriği var mı?
+  bool cloudBackupHasPlaylistSource(Map<String, dynamic> data) =>
+      countCloudBackupPlaylistSources(data) > 0;
+}
+
+/// Yedek JSON'da yapılandırılmış oynatma listesi kaynağı sayısı.
+int countCloudBackupPlaylistSources(Map<String, dynamic> data) {
+  var playlists = 0;
+  final secure = data['secure'];
+  if (secure is Map) {
+    for (final entry in secure.entries) {
+      final k = entry.key.toString();
+      if (!k.startsWith('mina_iptv_source_type')) continue;
+      final v = entry.value;
+      if (v is String && v.trim().isNotEmpty) playlists++;
+    }
+  }
+  if (playlists > 0) return playlists;
+
+  final bySlot = data['localM3uBySlot'];
+  if (bySlot is Map) {
+    for (final v in bySlot.values) {
+      if (v is String && v.trim().isNotEmpty) return 1;
+    }
+  }
+  final m3u1 = data['localM3u'];
+  if (m3u1 is String && m3u1.trim().isNotEmpty) return 1;
+  final m3u2 = data['localM3u2'];
+  if (m3u2 is String && m3u2.trim().isNotEmpty) return 1;
+  return 0;
 }
 
 /// Buluttaki son yedeğin özeti — boyut ve içerik dökümü (Bulut Senkronu

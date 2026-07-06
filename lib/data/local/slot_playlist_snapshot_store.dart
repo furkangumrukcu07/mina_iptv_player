@@ -21,11 +21,20 @@ abstract final class SlotPlaylistSnapshotStore {
   static File _file(Directory dir, int slot) =>
       File('${dir.path}/${_fileName(slot)}');
 
-  static Future<void> write(int slot, String key, M3uResult result) async {
+  static Future<void> write(
+    int slot,
+    String key,
+    M3uResult result, {
+    bool slim = false,
+  }) async {
     final dir = await getApplicationSupportDirectory();
     await dir.create(recursive: true);
     final f = _file(dir, slot);
-    final json = await encodeMergedPlaylistSnapshotForWrite(key, result);
+    final json = await encodeMergedPlaylistSnapshotForWrite(
+      key,
+      result,
+      slim: slim,
+    );
     final tmp = File('${f.path}.tmp');
     await tmp.writeAsString(json, flush: true);
     if (await f.exists()) {

@@ -9,11 +9,11 @@ import '../../../core/home/film_dizi_detail_args.dart';
 import '../../../core/home/recommended_films_catalog.dart';
 import '../../../core/home/series_episode_loader.dart';
 import '../../../core/home/series_name_grouping.dart';
-import '../../../core/layout/app_layout_mode.dart';
+import '../../../core/layout/app_layout_mode.dart' show AppLayoutMode, filmDiziRemoteNavEnabled;
 import '../../../core/routes/app_routes.dart';
 import '../../../core/services/app_settings_service.dart';
 import '../../../core/services/playlist_cache_service.dart';
-import '../../../core/theme/app_performance.dart';
+import '../../../core/services/playlist_data_source.dart';
 import '../../../core/theme/app_scroll_physics.dart';
 import '../../../domain/entities/channel.dart';
 import '../../../domain/entities/m3u_result.dart';
@@ -22,6 +22,7 @@ import '../../../domain/entities/vod.dart';
 import '../../../domain/repositories/playlist_repository.dart';
 import '../../../ui/tv_dpad_focus.dart';
 import '../../player/player_route_args.dart';
+import '../recommended_films/recommended_films_controller.dart';
 import 'film_dizi_hero_banner.dart';
 import 'film_dizi_poster_card.dart';
 
@@ -29,20 +30,17 @@ import 'film_dizi_poster_card.dart';
 class RecommendedFilmsSection extends StatelessWidget {
   const RecommendedFilmsSection({
     super.key,
+    required this.controller,
     required this.data,
-    required this.tab,
-    required this.filmsFeed,
-    required this.seriesFeed,
-    required this.onTabChanged,
     this.padding = const EdgeInsets.symmetric(horizontal: 16),
     this.onSearchTap,
   });
 
+  /// Reaktif sekme + feed kaynağı. `tab` yalnızca sekme barı ve [IndexedStack]
+  /// index'i etrafında dinlenir; gövdeler sekme değişiminde yeniden kurulmaz.
+  final RecommendedFilmsController controller;
+
   final M3uResult data;
-  final FilmDiziTab tab;
-  final FilmDiziFilmsFeed? filmsFeed;
-  final FilmDiziSeriesFeed? seriesFeed;
-  final ValueChanged<FilmDiziTab> onTabChanged;
   final EdgeInsets padding;
 
   /// Opsiyonel: sekme barının ortasında cam bir arama butonu gösterir.
@@ -62,18 +60,38 @@ class RecommendedFilmsSection extends StatelessWidget {
   /// Hero "İzle" butonu — VOD'u doğrudan player'a açar (detayı atlar).
   /// `movieBrowseTape` olarak `data.vod` Channel listesine map edilir;
   /// player'da yatay gezinti için kullanılır.
-  void _playFilmDirect(VodItem v) {
-    final tape = data.vod
-        .map(
-          (e) => Channel(
-            id: e.id,
-            name: e.name,
-            streamUrl: e.streamUrl,
-            categoryId: e.categoryId,
-            logoUrl: e.posterUrl,
-          ),
-        )
-        .toList();
+  Future<void> _playFilmDirect(VodItem v) async {
+    List<Channel> tape;
+    final ds = Get.find<PlaylistDataSource>();
+    if (ds.isDbBacked) {
+      final page = await ds.vodPage(
+        categoryId: v.categoryId,
+        limit: 200,
+      );
+      tape = page
+          .map(
+            (e) => Channel(
+              id: e.id,
+              name: e.name,
+              streamUrl: e.streamUrl,
+              categoryId: e.categoryId,
+              logoUrl: e.posterUrl,
+            ),
+          )
+          .toList();
+    } else {
+      tape = data.vod
+          .map(
+            (e) => Channel(
+              id: e.id,
+              name: e.name,
+              streamUrl: e.streamUrl,
+              categoryId: e.categoryId,
+              logoUrl: e.posterUrl,
+            ),
+          )
+          .toList();
+    }
     Get.toNamed(
       AppRoutes.player,
       arguments: PlayerScreenArgs(
@@ -203,6 +221,30 @@ class RecommendedFilmsSection extends StatelessWidget {
     );
   }
 
+  /// «Tümünü gör» — Son eklenen 50 film (sentinel kategori).
+  void _seeAllLast50Films() {
+    Get.toNamed(
+      AppRoutes.recommendedFilmsCategory,
+      arguments: FilmDiziCategoryArgs(
+        tab: FilmDiziTab.films,
+        categoryId: kFilmDiziLast50FilmsCategoryId,
+        title: 'recommendedFilms.last50Films'.tr,
+      ),
+    );
+  }
+
+  /// «Tümünü gör» — Son eklenen 50 dizi (sentinel kategori).
+  void _seeAllLast50Series() {
+    Get.toNamed(
+      AppRoutes.recommendedFilmsCategory,
+      arguments: FilmDiziCategoryArgs(
+        tab: FilmDiziTab.series,
+        categoryId: kFilmDiziLast50SeriesCategoryId,
+        title: 'recommendedFilms.last50Series'.tr,
+      ),
+    );
+  }
+
   /// Kategori bloklarının yatay padding'i (16 dp veya tablette 24 dp).
   /// Hero banner tam genişlikte olduğu için bu padding'in dışına çıkar.
   @override
@@ -222,57 +264,84 @@ class RecommendedFilmsSection extends StatelessWidget {
         : (landscape ? (width >= 900 ? 4.5 : 3.8) : 3.15);
     final posterW = (width - padding.horizontal - 32) / cols;
 
+    // Gövdeler bir kez kurulur; yalnızca kendi feed'leri değişince (her biri
+    // kendi Obx'inde) yeniden çizilir. Sekme değişimi bunları rebuild etmez.
+    final filmsBody = Obx(
+      () {
+        // OMDb puanları gelince tüm film gövdesi bir kez yenilenir (kart başına
+        // Obx yerine — çok kategori satırında stack overflow önlenir).
+        RecommendedFilmsRatingCache.revision.value;
+        return _FilmsBody(
+        key: const PageStorageKey<String>('film_dizi_films_tab'),
+        data: data,
+        controller: controller,
+        feed: controller.filmsFeed.value,
+        posterWidth: posterW,
+        accent: accent,
+        onSurface: onSurface,
+        sectionPadding: padding,
+        isTv: isTv,
+        onOpenDetail: (v, {categoryName}) =>
+            _openFilmDetail(v, categoryName: categoryName),
+        onPlayDirect: (v) => unawaited(_playFilmDirect(v)),
+        onSeeAllCategory: _seeAllFilmsCategory,
+        onSeeAllRecentlyWatched: () =>
+            _seeAllRecentlyWatched(FilmDiziTab.films),
+        onSeeAllFavorites: () => _seeAllFavorites(FilmDiziTab.films),
+        onSeeAllLast50: _seeAllLast50Films,
+      );
+      },
+    );
+    final seriesBody = Obx(
+      () => _SeriesBody(
+        key: const PageStorageKey<String>('film_dizi_series_tab'),
+        data: data,
+        controller: controller,
+        feed: controller.seriesFeed.value,
+        posterWidth: posterW,
+        accent: accent,
+        onSurface: onSurface,
+        sectionPadding: padding,
+        isTv: isTv,
+        onOpen: (s, {categoryName}) =>
+            _openSeries(s, categoryName: categoryName),
+        onPlayDirect: (s, {categoryName}) => unawaited(
+          _playSeriesFirstEpisodeDirect(s, categoryName: categoryName),
+        ),
+        onSeeAllCategory: _seeAllSeriesCategory,
+        onSeeAllRecentlyWatched: () =>
+            _seeAllRecentlyWatched(FilmDiziTab.series),
+        onSeeAllFavorites: () => _seeAllFavorites(FilmDiziTab.series),
+        onSeeAllLast50: _seeAllLast50Series,
+      ),
+    );
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         Padding(
           padding: padding,
-          child: FilmDiziTabBar(
-            tab: tab,
-            onTabChanged: onTabChanged,
-            onSearchTap: onSearchTap,
-            isTv: isTv,
+          child: Obx(
+            () => FilmDiziTabBar(
+              tab: controller.tab.value,
+              onTabChanged: controller.setTab,
+              onSearchTap: onSearchTap,
+              isTv: isTv,
+            ),
           ),
         ),
         SizedBox(height: isTv ? 28 : 18),
-        if (tab == FilmDiziTab.films)
-          _FilmsBody(
-            data: data,
-            feed: filmsFeed,
-            posterWidth: posterW,
-            accent: accent,
-            onSurface: onSurface,
-            sectionPadding: padding,
-            isTv: isTv,
-            // Kart tıklaması → detay; hero "İzle" → doğrudan oynat;
-            // hero "Detay" → detay sayfası.
-            onOpenDetail: (v, {categoryName}) =>
-                _openFilmDetail(v, categoryName: categoryName),
-            onPlayDirect: _playFilmDirect,
-            onSeeAllCategory: _seeAllFilmsCategory,
-            onSeeAllRecentlyWatched: () =>
-                _seeAllRecentlyWatched(FilmDiziTab.films),
-            onSeeAllFavorites: () => _seeAllFavorites(FilmDiziTab.films),
-          )
-        else
-          _SeriesBody(
-            data: data,
-            feed: seriesFeed,
-            posterWidth: posterW,
-            accent: accent,
-            onSurface: onSurface,
-            sectionPadding: padding,
-            isTv: isTv,
-            onOpen: (s, {categoryName}) =>
-                _openSeries(s, categoryName: categoryName),
-            onPlayDirect: (s, {categoryName}) => unawaited(
-              _playSeriesFirstEpisodeDirect(s, categoryName: categoryName),
+        // IndexedStack: her iki gövde önceden kurulur; sekme değişiminde
+        // yalnızca görünür index değişir (gövdeler rebuild edilmez → donma yok).
+        Expanded(
+          child: Obx(
+            () => IndexedStack(
+              index: controller.tab.value == FilmDiziTab.films ? 0 : 1,
+              sizing: StackFit.expand,
+              children: [filmsBody, seriesBody],
             ),
-            onSeeAllCategory: _seeAllSeriesCategory,
-            onSeeAllRecentlyWatched: () =>
-                _seeAllRecentlyWatched(FilmDiziTab.series),
-            onSeeAllFavorites: () => _seeAllFavorites(FilmDiziTab.series),
           ),
+        ),
       ],
     );
   }
@@ -280,7 +349,9 @@ class RecommendedFilmsSection extends StatelessWidget {
 
 class _FilmsBody extends StatelessWidget {
   const _FilmsBody({
+    super.key,
     required this.data,
+    required this.controller,
     required this.feed,
     required this.posterWidth,
     required this.accent,
@@ -292,9 +363,11 @@ class _FilmsBody extends StatelessWidget {
     required this.onSeeAllCategory,
     required this.onSeeAllRecentlyWatched,
     required this.onSeeAllFavorites,
+    required this.onSeeAllLast50,
   });
 
   final M3uResult data;
+  final RecommendedFilmsController controller;
   final FilmDiziFilmsFeed? feed;
   final double posterWidth;
   final Color accent;
@@ -314,6 +387,9 @@ class _FilmsBody extends StatelessWidget {
 
   /// «Favoriler» kategori başlığında «Tümünü gör» tıklaması.
   final VoidCallback onSeeAllFavorites;
+
+  /// «Son eklenen 50 film» kategori başlığında «Tümünü gör» tıklaması.
+  final VoidCallback onSeeAllLast50;
 
   /// Hero banner için öne çıkan ilk 5 filmi seçer — IMDB puanı olanlar
   /// önceliklidir; yoksa basitçe yeni eklenenlerin başı kullanılır.
@@ -348,101 +424,154 @@ class _FilmsBody extends StatelessWidget {
     // "Son izlenenler" fallback önizlemesinde aynı poster'ları tekrar
     // göstermeyelim.
     final heroExcludeIds = f.recentlyAdded.map((v) => v.id).toSet();
-    final recentlyWatched = FilmDiziCatalog.recentlyWatchedFilmsOrFallback(
-      data,
-      excludeIds: heroExcludeIds,
-      count: FilmDiziCatalog.rowPreviewLimit,
-    );
-    final recentlyWatchedPreview = recentlyWatched
-        .take(FilmDiziCatalog.rowPreviewLimit)
-        .toList(growable: false);
+    // "Son eklenen 50 film" satırı önizlemesi — feed'in (eklenmeye göre sıralı)
+    // recentlyAdded listesinden ilk rowPreviewLimit kadar. «Tümünü gör» 50'yi açar.
+    final lastAddedPreview =
+        f.recentlyAdded.take(FilmDiziCatalog.rowPreviewLimit).toList();
+    final rowGap = isTv ? 32.0 : 24.0;
+    final bottomPad = 24.0 + MediaQuery.paddingOf(context).bottom;
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
+    return CustomScrollView(
+      physics: AppScrollPhysics.list(context: context),
+      cacheExtent: posterWidth * 6,
+      slivers: [
         if (heroSlides.isNotEmpty) ...[
-          FilmDiziHeroBanner(slides: heroSlides, isTv: isTv),
-          SizedBox(height: isTv ? 36 : 24),
-        ],
-        // Hero banner'ın **hemen altında** «Son İzlenenler».
-        // Kullanıcı geçmişi boşsa playlist havuzundan rastgele filmlerle
-        // doldurulur (fallback); ilk gerçek izlemede liste otomatik gerçek
-        // veriye geçer. Yalnızca playlist tamamen boşsa satır gizlenir.
-        if (recentlyWatchedPreview.isNotEmpty) ...[
-          _HorizontalRow(
-            title: 'recommendedFilms.recentlyWatched.title'.tr,
-            accent: accent,
-            onSurface: onSurface,
-            posterWidth: posterWidth,
-            sectionPadding: sectionPadding,
-            isTv: isTv,
-            onSeeAll: onSeeAllRecentlyWatched,
-            childCount: recentlyWatchedPreview.length,
-            itemBuilder: (i) => FilmDiziPosterCard.film(
-              vod: recentlyWatchedPreview[i],
-              posterWidth: posterWidth,
-              compactLabel: true,
-              onTap: () => onOpenDetail(
-                recentlyWatchedPreview[i],
-                categoryName: 'recommendedFilms.recentlyWatched.title'.tr,
-              ),
-            ),
+          SliverToBoxAdapter(
+            child: FilmDiziHeroBanner(slides: heroSlides, isTv: isTv),
           ),
-          SizedBox(height: isTv ? 32 : 24),
+          SliverToBoxAdapter(child: SizedBox(height: isTv ? 36 : 24)),
         ],
-        // «Favoriler» — yalnızca favori film varsa. Favori değişiminde
-        // (poster kartından ekleme/çıkarma) satır anında belirsin/gizlensin
-        // diye kendi Obx'i içinde reaktif olarak okunur.
         Obx(() {
-          final favoritesPreview = FilmDiziCatalog.favoriteFilms(data)
+          final recentlyWatchedPreview = controller.filmsRecentlyWatched
+              .where((v) => !heroExcludeIds.contains(v.id))
               .take(FilmDiziCatalog.rowPreviewLimit)
               .toList(growable: false);
-          if (favoritesPreview.isEmpty) return const SizedBox.shrink();
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _HorizontalRow(
-                title: 'browse.favorites'.tr,
-                accent: accent,
-                onSurface: onSurface,
-                posterWidth: posterWidth,
-                sectionPadding: sectionPadding,
-                isTv: isTv,
-                onSeeAll: onSeeAllFavorites,
-                childCount: favoritesPreview.length,
-                itemBuilder: (i) => FilmDiziPosterCard.film(
-                  vod: favoritesPreview[i],
+          if (recentlyWatchedPreview.isEmpty) {
+            return const SliverToBoxAdapter(child: SizedBox.shrink());
+          }
+          return SliverMainAxisGroup(
+            slivers: [
+              SliverToBoxAdapter(
+                child: _HorizontalRow(
+                  title: 'recommendedFilms.recentlyWatched.title'.tr,
+                  accent: accent,
+                  onSurface: onSurface,
                   posterWidth: posterWidth,
-                  compactLabel: true,
-                  onTap: () => onOpenDetail(
-                    favoritesPreview[i],
-                    categoryName: 'browse.favorites'.tr,
+                  sectionPadding: sectionPadding,
+                  isTv: isTv,
+                  onSeeAll: onSeeAllRecentlyWatched,
+                  childCount: recentlyWatchedPreview.length,
+                  itemBuilder: (i) => FilmDiziPosterCard.film(
+                    vod: recentlyWatchedPreview[i],
+                    posterWidth: posterWidth,
+                    compactLabel: true,
+                    onTap: () => onOpenDetail(
+                      recentlyWatchedPreview[i],
+                      categoryName:
+                          'recommendedFilms.recentlyWatched.title'.tr,
+                    ),
                   ),
                 ),
               ),
-              SizedBox(height: isTv ? 32 : 24),
+              SliverToBoxAdapter(child: SizedBox(height: rowGap)),
             ],
           );
         }),
-        for (final row in f.categoryRows) ...[
-          _HorizontalRow(
-            title: row.name,
-            accent: accent,
-            onSurface: onSurface,
-            posterWidth: posterWidth,
-            sectionPadding: sectionPadding,
-            isTv: isTv,
-            onSeeAll: () => onSeeAllCategory(row.categoryId, row.name),
-            childCount: row.items.length,
-            itemBuilder: (i) => FilmDiziPosterCard.film(
-              vod: row.items[i],
-              posterWidth: posterWidth,
-              compactLabel: true,
-              onTap: () => onOpenDetail(row.items[i], categoryName: row.name),
+        SliverToBoxAdapter(
+          child: Obx(() {
+            final favoritesPreview = controller.filmsFavorites
+                .take(FilmDiziCatalog.rowPreviewLimit)
+                .toList(growable: false);
+            if (favoritesPreview.isEmpty) return const SizedBox.shrink();
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _HorizontalRow(
+                  title: 'browse.favorites'.tr,
+                  accent: accent,
+                  onSurface: onSurface,
+                  posterWidth: posterWidth,
+                  sectionPadding: sectionPadding,
+                  isTv: isTv,
+                  onSeeAll: onSeeAllFavorites,
+                  childCount: favoritesPreview.length,
+                  itemBuilder: (i) => FilmDiziPosterCard.film(
+                    vod: favoritesPreview[i],
+                    posterWidth: posterWidth,
+                    compactLabel: true,
+                    onTap: () => onOpenDetail(
+                      favoritesPreview[i],
+                      categoryName: 'browse.favorites'.tr,
+                    ),
+                  ),
+                ),
+                SizedBox(height: rowGap),
+              ],
+            );
+          }),
+        ),
+        if (lastAddedPreview.isNotEmpty)
+          SliverToBoxAdapter(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _HorizontalRow(
+                  title: 'recommendedFilms.last50Films'.tr,
+                  accent: accent,
+                  onSurface: onSurface,
+                  posterWidth: posterWidth,
+                  sectionPadding: sectionPadding,
+                  isTv: isTv,
+                  onSeeAll: onSeeAllLast50,
+                  childCount: lastAddedPreview.length,
+                  itemBuilder: (i) => FilmDiziPosterCard.film(
+                    vod: lastAddedPreview[i],
+                    posterWidth: posterWidth,
+                    compactLabel: true,
+                    onTap: () => onOpenDetail(
+                      lastAddedPreview[i],
+                      categoryName: 'recommendedFilms.last50Films'.tr,
+                    ),
+                  ),
+                ),
+                SizedBox(height: rowGap),
+              ],
             ),
           ),
-          SizedBox(height: isTv ? 32 : 24),
-        ],
+        SliverList.builder(
+          itemCount: f.categoryRows.length,
+          itemBuilder: (context, i) {
+            final row = f.categoryRows[i];
+            return RepaintBoundary(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _HorizontalRow(
+                    title: row.name,
+                    accent: accent,
+                    onSurface: onSurface,
+                    posterWidth: posterWidth,
+                    sectionPadding: sectionPadding,
+                    isTv: isTv,
+                    onSeeAll: () => onSeeAllCategory(row.categoryId, row.name),
+                    childCount: row.items.length,
+                    itemBuilder: (j) => FilmDiziPosterCard.film(
+                      vod: row.items[j],
+                      posterWidth: posterWidth,
+                      compactLabel: true,
+                      onTap: () =>
+                          onOpenDetail(row.items[j], categoryName: row.name),
+                    ),
+                  ),
+                  SizedBox(height: rowGap),
+                ],
+              ),
+            );
+          },
+        ),
+        SliverPadding(padding: EdgeInsets.only(bottom: bottomPad)),
       ],
     );
   }
@@ -450,7 +579,9 @@ class _FilmsBody extends StatelessWidget {
 
 class _SeriesBody extends StatelessWidget {
   const _SeriesBody({
+    super.key,
     required this.data,
+    required this.controller,
     required this.feed,
     required this.posterWidth,
     required this.accent,
@@ -462,9 +593,11 @@ class _SeriesBody extends StatelessWidget {
     required this.onSeeAllCategory,
     required this.onSeeAllRecentlyWatched,
     required this.onSeeAllFavorites,
+    required this.onSeeAllLast50,
   });
 
   final M3uResult data;
+  final RecommendedFilmsController controller;
   final FilmDiziSeriesFeed? feed;
   final double posterWidth;
   final Color accent;
@@ -484,6 +617,9 @@ class _SeriesBody extends StatelessWidget {
 
   /// «Favoriler» diziler kategorisinde «Tümünü gör» tıklaması.
   final VoidCallback onSeeAllFavorites;
+
+  /// «Son eklenen 50 dizi» kategori başlığında «Tümünü gör» tıklaması.
+  final VoidCallback onSeeAllLast50;
 
   /// Diziler için ilk 5 yeni eklenenden hero slaytları üretir. Dizide IMDb
   /// puanı tutmadığımız için `rating: 0` veririz; banner puan satırını gizler.
@@ -511,98 +647,153 @@ class _SeriesBody extends StatelessWidget {
     // Hero/recentlyAdded satırındaki dizileri fallback shuffle havuzundan
     // çıkar — aynı satıra iki kez aynı temsilci dizi gelmesin.
     final heroExcludeIds = f.recentlyAdded.map((s) => s.id).toSet();
-    final recentlyWatched = FilmDiziCatalog.recentlyWatchedSeriesOrFallback(
-      data,
-      excludeIds: heroExcludeIds,
-      count: FilmDiziCatalog.rowPreviewLimit,
-    );
-    final recentlyWatchedPreview = recentlyWatched
-        .take(FilmDiziCatalog.rowPreviewLimit)
-        .toList(growable: false);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
+    // "Son eklenen 50 dizi" satırı önizlemesi — «Tümünü gör» 50'yi açar.
+    final lastAddedPreview =
+        f.recentlyAdded.take(FilmDiziCatalog.rowPreviewLimit).toList();
+    final rowGap = isTv ? 32.0 : 24.0;
+    final bottomPad = 24.0 + MediaQuery.paddingOf(context).bottom;
+
+    return CustomScrollView(
+      physics: AppScrollPhysics.list(context: context),
+      cacheExtent: posterWidth * 6,
+      slivers: [
         if (heroSlides.isNotEmpty) ...[
-          FilmDiziHeroBanner(slides: heroSlides, isTv: isTv),
-          SizedBox(height: isTv ? 36 : 24),
-        ],
-        // Hero banner'ın **hemen altında** «Son İzlenenler» dizi satırı.
-        // Kullanıcının izleme geçmişi yoksa playlist havuzundan rastgele
-        // gruplandırılmış dizilerle dolar; ilk gerçek izlemede gerçek veriye
-        // geçer. Yalnızca playlist boşsa satır gizlenir.
-        if (recentlyWatchedPreview.isNotEmpty) ...[
-          _HorizontalRow(
-            title: 'recommendedFilms.recentlyWatched.title'.tr,
-            accent: accent,
-            onSurface: onSurface,
-            posterWidth: posterWidth,
-            sectionPadding: sectionPadding,
-            isTv: isTv,
-            onSeeAll: onSeeAllRecentlyWatched,
-            childCount: recentlyWatchedPreview.length,
-            itemBuilder: (i) => FilmDiziPosterCard.series(
-              series: recentlyWatchedPreview[i],
-              posterWidth: posterWidth,
-              compactLabel: true,
-              onTap: () => onOpen(
-                recentlyWatchedPreview[i],
-                categoryName: 'recommendedFilms.recentlyWatched.title'.tr,
-              ),
-            ),
+          SliverToBoxAdapter(
+            child: FilmDiziHeroBanner(slides: heroSlides, isTv: isTv),
           ),
-          SizedBox(height: isTv ? 32 : 24),
+          SliverToBoxAdapter(child: SizedBox(height: isTv ? 36 : 24)),
         ],
-        // «Favoriler» — yalnızca favori dizi varsa (favori değişiminde reaktif).
         Obx(() {
-          final favoritesPreview = FilmDiziCatalog.favoriteSeries(data)
+          final recentlyWatchedPreview = controller.seriesRecentlyWatched
+              .where((s) => !heroExcludeIds.contains(s.id))
               .take(FilmDiziCatalog.rowPreviewLimit)
               .toList(growable: false);
-          if (favoritesPreview.isEmpty) return const SizedBox.shrink();
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              _HorizontalRow(
-                title: 'browse.favorites'.tr,
-                accent: accent,
-                onSurface: onSurface,
-                posterWidth: posterWidth,
-                sectionPadding: sectionPadding,
-                isTv: isTv,
-                onSeeAll: onSeeAllFavorites,
-                childCount: favoritesPreview.length,
-                itemBuilder: (i) => FilmDiziPosterCard.series(
-                  series: favoritesPreview[i],
+          if (recentlyWatchedPreview.isEmpty) {
+            return const SliverToBoxAdapter(child: SizedBox.shrink());
+          }
+          return SliverMainAxisGroup(
+            slivers: [
+              SliverToBoxAdapter(
+                child: _HorizontalRow(
+                  title: 'recommendedFilms.recentlyWatched.title'.tr,
+                  accent: accent,
+                  onSurface: onSurface,
                   posterWidth: posterWidth,
-                  compactLabel: true,
-                  onTap: () => onOpen(
-                    favoritesPreview[i],
-                    categoryName: 'browse.favorites'.tr,
+                  sectionPadding: sectionPadding,
+                  isTv: isTv,
+                  onSeeAll: onSeeAllRecentlyWatched,
+                  childCount: recentlyWatchedPreview.length,
+                  itemBuilder: (i) => FilmDiziPosterCard.series(
+                    series: recentlyWatchedPreview[i],
+                    posterWidth: posterWidth,
+                    compactLabel: true,
+                    onTap: () => onOpen(
+                      recentlyWatchedPreview[i],
+                      categoryName:
+                          'recommendedFilms.recentlyWatched.title'.tr,
+                    ),
                   ),
                 ),
               ),
-              SizedBox(height: isTv ? 32 : 24),
+              SliverToBoxAdapter(child: SizedBox(height: rowGap)),
             ],
           );
         }),
-        for (final row in f.categoryRows) ...[
-          _HorizontalRow(
-            title: row.name,
-            accent: accent,
-            onSurface: onSurface,
-            posterWidth: posterWidth,
-            sectionPadding: sectionPadding,
-            isTv: isTv,
-            onSeeAll: () => onSeeAllCategory(row.categoryId, row.name),
-            childCount: row.items.length,
-            itemBuilder: (i) => FilmDiziPosterCard.series(
-              series: row.items[i],
-              posterWidth: posterWidth,
-              compactLabel: true,
-              onTap: () => onOpen(row.items[i], categoryName: row.name),
+        SliverToBoxAdapter(
+          child: Obx(() {
+            final favoritesPreview = controller.seriesFavorites
+                .take(FilmDiziCatalog.rowPreviewLimit)
+                .toList(growable: false);
+            if (favoritesPreview.isEmpty) return const SizedBox.shrink();
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _HorizontalRow(
+                  title: 'browse.favorites'.tr,
+                  accent: accent,
+                  onSurface: onSurface,
+                  posterWidth: posterWidth,
+                  sectionPadding: sectionPadding,
+                  isTv: isTv,
+                  onSeeAll: onSeeAllFavorites,
+                  childCount: favoritesPreview.length,
+                  itemBuilder: (i) => FilmDiziPosterCard.series(
+                    series: favoritesPreview[i],
+                    posterWidth: posterWidth,
+                    compactLabel: true,
+                    onTap: () => onOpen(
+                      favoritesPreview[i],
+                      categoryName: 'browse.favorites'.tr,
+                    ),
+                  ),
+                ),
+                SizedBox(height: rowGap),
+              ],
+            );
+          }),
+        ),
+        if (lastAddedPreview.isNotEmpty)
+          SliverToBoxAdapter(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _HorizontalRow(
+                  title: 'recommendedFilms.last50Series'.tr,
+                  accent: accent,
+                  onSurface: onSurface,
+                  posterWidth: posterWidth,
+                  sectionPadding: sectionPadding,
+                  isTv: isTv,
+                  onSeeAll: onSeeAllLast50,
+                  childCount: lastAddedPreview.length,
+                  itemBuilder: (i) => FilmDiziPosterCard.series(
+                    series: lastAddedPreview[i],
+                    posterWidth: posterWidth,
+                    compactLabel: true,
+                    onTap: () => onOpen(
+                      lastAddedPreview[i],
+                      categoryName: 'recommendedFilms.last50Series'.tr,
+                    ),
+                  ),
+                ),
+                SizedBox(height: rowGap),
+              ],
             ),
           ),
-          SizedBox(height: isTv ? 32 : 24),
-        ],
+        SliverList.builder(
+          itemCount: f.categoryRows.length,
+          itemBuilder: (context, i) {
+            final row = f.categoryRows[i];
+            return RepaintBoundary(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _HorizontalRow(
+                    title: row.name,
+                    accent: accent,
+                    onSurface: onSurface,
+                    posterWidth: posterWidth,
+                    sectionPadding: sectionPadding,
+                    isTv: isTv,
+                    onSeeAll: () => onSeeAllCategory(row.categoryId, row.name),
+                    childCount: row.items.length,
+                    itemBuilder: (j) => FilmDiziPosterCard.series(
+                      series: row.items[j],
+                      posterWidth: posterWidth,
+                      compactLabel: true,
+                      onTap: () =>
+                          onOpen(row.items[j], categoryName: row.name),
+                    ),
+                  ),
+                  SizedBox(height: rowGap),
+                ],
+              ),
+            );
+          },
+        ),
+        SliverPadding(padding: EdgeInsets.only(bottom: bottomPad)),
       ],
     );
   }
@@ -635,8 +826,12 @@ class _HorizontalRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final rowH = posterWidth * 1.48 + (isTv ? 56 : 40);
     final hPad = sectionPadding.horizontal / 2;
+    final dpad = filmDiziRemoteNavEnabled(
+      Get.find<AppSettingsService>().layoutMode.value,
+    );
 
-    return Padding(
+    return RepaintBoundary(
+      child: Padding(
       padding: EdgeInsets.symmetric(horizontal: hPad),
       child: _CategoryGlassPanel(
         accent: accent,
@@ -689,6 +884,7 @@ class _HorizontalRow extends StatelessWidget {
                       context,
                       onActivate: onSeeAll!,
                       borderRadius: 8,
+                      useRemoteNav: dpad,
                       child: TextButton(
                         onPressed: onSeeAll,
                         style: TextButton.styleFrom(
@@ -714,44 +910,31 @@ class _HorizontalRow extends StatelessWidget {
                 ],
               ),
             ),
-            // Yatay liste — panel iç dolgusu hafif, kenarlardan fade-out.
+            // Yatay liste — ShaderMask scroll sırasında ekstra compositing
+            // katmanı oluşturup jank yapıyordu; düz ListView yeterli.
             SizedBox(
               height: rowH,
-              child: ShaderMask(
-                shaderCallback: (rect) {
-                  const fadeFrac = 0.05;
-                  return LinearGradient(
-                    begin: Alignment.centerLeft,
-                    end: Alignment.centerRight,
-                    stops: const [0.0, fadeFrac, 1 - fadeFrac, 1.0],
-                    colors: const [
-                      Colors.transparent,
-                      Colors.black,
-                      Colors.black,
-                      Colors.transparent,
-                    ],
-                  ).createShader(rect);
-                },
-                blendMode: BlendMode.dstIn,
-                child: ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  physics: AppScrollPhysics.list(context: context),
-                  padding: EdgeInsets.fromLTRB(
-                    isTv ? 16 : 12,
-                    0,
-                    isTv ? 16 : 12,
-                    isTv ? 14 : 12,
-                  ),
-                  itemCount: childCount,
-                  separatorBuilder: (_, __) =>
-                      SizedBox(width: isTv ? 14 : 10),
-                  itemBuilder: (context, i) => itemBuilder(i),
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                physics: AppScrollPhysics.list(context: context),
+                cacheExtent: posterWidth * 2,
+                addRepaintBoundaries: true,
+                padding: EdgeInsets.fromLTRB(
+                  isTv ? 16 : 12,
+                  0,
+                  isTv ? 16 : 12,
+                  isTv ? 14 : 12,
                 ),
+                itemCount: childCount,
+                separatorBuilder: (_, __) =>
+                    SizedBox(width: isTv ? 14 : 10),
+                itemBuilder: (context, i) => itemBuilder(i),
               ),
             ),
           ],
         ),
       ),
+    ),
     );
   }
 }
@@ -772,58 +955,36 @@ class _CategoryGlassPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final settings = Get.find<AppSettingsService>();
+    // Kaydırılabilir kategori satırlarında her satır için BackdropFilter,
+    // dikey scroll sırasında ciddi jank yapar → yalnızca gradient cam.
     return ClipRRect(
       borderRadius: BorderRadius.circular(borderRadius),
-      child: Obx(() {
-        final tv = settings.layoutMode.value == AppLayoutMode.tv;
-        final isPortrait =
-            MediaQuery.orientationOf(context) == Orientation.portrait;
-        // Portrait'te ve TV layout dışında belirgin blur; tablet/landscape'te
-        // performans için biraz daha hafif.
-        final sigma = (tv && !isPortrait)
-            ? 0.0
-            : AppPerformance.glassSigma(
-                settings,
-                zeroOnTvLayout: true,
-                isTvLayout: tv && !isPortrait,
-                fullSigma: 14,
-                reducedSigma: 9,
-              );
-
-        final body = DecoratedBox(
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(borderRadius),
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                Colors.white.withValues(alpha: 0.10),
-                Colors.white.withValues(alpha: 0.03),
-              ],
-            ),
-            border: Border.all(
-              color: Colors.white.withValues(alpha: 0.10),
-              width: 0.8,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: accent.withValues(alpha: 0.10),
-                blurRadius: 18,
-                spreadRadius: -4,
-                offset: const Offset(0, 6),
-              ),
+      child: DecoratedBox(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(borderRadius),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Colors.white.withValues(alpha: 0.10),
+              Colors.white.withValues(alpha: 0.03),
             ],
           ),
-          child: child,
-        );
-
-        if (sigma <= 0) return body;
-        return BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
-          child: body,
-        );
-      }),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.10),
+            width: 0.8,
+          ),
+          boxShadow: [
+            BoxShadow(
+              color: accent.withValues(alpha: 0.10),
+              blurRadius: 18,
+              spreadRadius: -4,
+              offset: const Offset(0, 6),
+            ),
+          ],
+        ),
+        child: child,
+      ),
     );
   }
 }

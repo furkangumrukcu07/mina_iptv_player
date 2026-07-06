@@ -29,6 +29,7 @@ class PlaylistSourceSetupForm extends StatefulWidget {
     this.firstKindFocusNode,
     this.topFocusNode,
     this.autofocusFirstOnTv = false,
+    this.footerFocusNode,
   });
 
   final PlaylistController controller;
@@ -53,6 +54,9 @@ class PlaylistSourceSetupForm extends StatefulWidget {
 
   /// TV modunda ekrana girince ilk segmenti otomatik odakla.
   final bool autofocusFirstOnTv;
+
+  /// «Listeyi yükle» düğümünden aşağı — kurulum sihirbazı alt «Bitir» düğümü.
+  final FocusNode? footerFocusNode;
 
   @override
   State<PlaylistSourceSetupForm> createState() =>
@@ -107,7 +111,22 @@ class _PlaylistSourceSetupFormState extends State<PlaylistSourceSetupForm> {
         _firstKindFocus()?.requestFocus();
       });
     }
+
+    // Yatay modda Xtream alanları odaklanınca klavye altında kalmasın diye
+    // hafif kaydır (kurulum sihirbazı + mobil yatay).
+    _xtreamBaseFocus.addListener(_onXtreamBaseFocus);
+    _xtreamUserFocus.addListener(_onXtreamUserFocus);
+    _xtreamPassFocus.addListener(_onXtreamPassFocus);
   }
+
+  void _onXtreamBaseFocus() =>
+      _ensureXtreamFieldVisible(_xtreamBaseFocus, alignment: 0.05);
+
+  void _onXtreamUserFocus() =>
+      _ensureXtreamFieldVisible(_xtreamUserFocus, alignment: 0.22);
+
+  void _onXtreamPassFocus() =>
+      _ensureXtreamFieldVisible(_xtreamPassFocus, alignment: 0.38);
 
   bool get _isTvMode {
     if (!Get.isRegistered<AppSettingsService>()) return false;
@@ -206,8 +225,42 @@ class _PlaylistSourceSetupFormState extends State<PlaylistSourceSetupForm> {
     }
   }
 
+  /// Xtream metin alanı odaklandığında (yalnızca mobil/tablet yatay) aktif
+  /// satırı klavyenin üstüne hafifçe kaydırır.
+  void _ensureXtreamFieldVisible(
+    FocusNode node, {
+    required double alignment,
+  }) {
+    if (!node.hasFocus) return;
+    if (_tvDeferredKeyboard) return;
+    if (!mounted) return;
+    if (MediaQuery.orientationOf(context) != Orientation.landscape) return;
+    if (_kind != PlaylistSetupSourceKind.xtream) return;
+
+    void run() {
+      if (!mounted || !node.hasFocus) return;
+      final ctx = node.context;
+      if (ctx == null) return;
+      Scrollable.ensureVisible(
+        ctx,
+        alignment: alignment,
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOutCubic,
+      );
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      run();
+      // Sanal klavye animasyonu bittikten sonra bir kez daha hizala.
+      Future<void>.delayed(const Duration(milliseconds: 280), run);
+    });
+  }
+
   @override
   void dispose() {
+    _xtreamBaseFocus.removeListener(_onXtreamBaseFocus);
+    _xtreamUserFocus.removeListener(_onXtreamUserFocus);
+    _xtreamPassFocus.removeListener(_onXtreamPassFocus);
     _tabWorker?.dispose();
     _fileWorker?.dispose();
     _m3uUrlFocus.dispose();
@@ -334,6 +387,7 @@ class _PlaylistSourceSetupFormState extends State<PlaylistSourceSetupForm> {
                       : (_kind == PlaylistSetupSourceKind.m3uFile
                           ? _filePickFocus
                           : _m3uUrlFocus)),
+              arrowDown: widget.footerFocusNode,
             ),
           ),
         ],
@@ -359,6 +413,7 @@ class _PlaylistSourceSetupFormState extends State<PlaylistSourceSetupForm> {
           keyboard: TextInputType.url,
           cs: cs,
           useDeferredKeyboard: deferredKeyboard,
+          showPaste: true,
           textInputAction: TextInputAction.done,
           onSubmitted: () => unawaited(_onPrimaryPressed()),
           onArrowUp: () => _currentKindFocus()?.requestFocus(),
@@ -387,6 +442,7 @@ class _PlaylistSourceSetupFormState extends State<PlaylistSourceSetupForm> {
               keyboard: TextInputType.url,
               cs: cs,
               useDeferredKeyboard: deferredKeyboard,
+              showPaste: true,
               textInputAction: TextInputAction.next,
               onSubmitted: () => _xtreamUserFocus.requestFocus(),
               onArrowUp: () => _currentKindFocus()?.requestFocus(),
@@ -413,7 +469,7 @@ class _PlaylistSourceSetupFormState extends State<PlaylistSourceSetupForm> {
               focusNode: _xtreamPassFocus,
               label: 'playlist.xtream.pass'.tr,
               icon: Icons.lock_outline_rounded,
-              obscure: true,
+              obscure: false,
               cs: cs,
               useDeferredKeyboard: deferredKeyboard,
               textInputAction: TextInputAction.done,
@@ -766,6 +822,7 @@ class _PrimaryActionButton extends StatefulWidget {
     required this.focusNode,
     required this.remote,
     this.arrowUp,
+    this.arrowDown,
   });
 
   final String label;
@@ -775,6 +832,7 @@ class _PrimaryActionButton extends StatefulWidget {
   final FocusNode focusNode;
   final bool remote;
   final FocusNode? arrowUp;
+  final FocusNode? arrowDown;
 
   @override
   State<_PrimaryActionButton> createState() => _PrimaryActionButtonState();
@@ -839,6 +897,7 @@ class _PrimaryActionButtonState extends State<_PrimaryActionButton> {
       onActivate:
           widget.enabled ? () => unawaited(widget.onPressed()) : null,
       arrowUp: widget.arrowUp,
+      arrowDown: widget.arrowDown,
       child: btn,
     );
   }
@@ -867,12 +926,34 @@ Widget _glassField({
   String? helper,
   IconData? icon,
   bool obscure = false,
+  bool showPaste = false,
   TextInputType? keyboard,
   TextInputAction textInputAction = TextInputAction.next,
   VoidCallback? onSubmitted,
   VoidCallback? onArrowUp,
   VoidCallback? onArrowDown,
 }) {
+  // Pano → alan yapıştırma. Kumandalı TV ve mobil dokunmatikte güvenilir tek
+  // yol: açık buton. (TV'de uzun-bas seçim menüsü yok; readOnly ertelenmiş
+  // klavye alanında sistem yapıştır menüsü çıkmıyor.)
+  Future<void> pasteFromClipboard() async {
+    final messenger = ScaffoldMessenger.maybeOf(context);
+    final data = await Clipboard.getData(Clipboard.kTextPlain);
+    final text = data?.text?.trim();
+    if (text == null || text.isEmpty) {
+      messenger?.showSnackBar(
+        SnackBar(
+          content: Text('playlist.pasteEmpty'.tr),
+          duration: const Duration(seconds: 2),
+        ),
+      );
+      return;
+    }
+    controller.text = text;
+    controller.selection =
+        TextSelection.collapsed(offset: controller.text.length);
+  }
+
   final decoration = InputDecoration(
     filled: true,
     fillColor: Colors.white.withValues(alpha: 0.06),
@@ -887,6 +968,16 @@ Widget _glassField({
     prefixIcon: icon == null
         ? null
         : Icon(icon, color: Colors.white.withValues(alpha: 0.6)),
+    suffixIcon: showPaste
+        ? IconButton(
+            tooltip: 'playlist.pasteUrl'.tr,
+            icon: Icon(
+              Icons.content_paste_rounded,
+              color: cs.primary,
+            ),
+            onPressed: () => unawaited(pasteFromClipboard()),
+          )
+        : null,
     contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
     border: _fieldBorder(Colors.white.withValues(alpha: 0.16), 1),
     enabledBorder: _fieldBorder(Colors.white.withValues(alpha: 0.16), 1),

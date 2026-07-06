@@ -142,9 +142,8 @@ class EpgSourceManageController extends GetxController {
     if (isSaving.value) return;
     isSaving.value = true;
     try {
-      if (!isXtream.value) {
-        await _app.setXmltvUrl(urlController.text.trim());
-      }
+      // Allow saving XMLTV URL for all source types (M3U and Xtream)
+      await _app.setXmltvUrl(urlController.text.trim());
       await _settings.refreshEpgGuide();
       final pl = _cache.result.value;
       if (pl != null && _cacheKey != null) {

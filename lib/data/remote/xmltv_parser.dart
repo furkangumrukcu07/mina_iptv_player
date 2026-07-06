@@ -1,9 +1,28 @@
+import 'dart:convert' show utf8;
 import 'package:flutter/foundation.dart';
 import 'package:xml/xml.dart';
+import 'package:archive/archive.dart' show GZipDecoder;
 import '../../domain/entities/epg_entities.dart';
 
 /// [compute] için top-level olmalı; instance metodu isolate’ta kullanılamaz.
 Map<String, dynamic> parseXmlTvIsolate(String xmlContent) {
+  return XmlTvParser.instance.parse(xmlContent);
+}
+
+Map<String, dynamic> parseXmlTvBytesIsolate(Map<String, dynamic> args) {
+  final List<int> raw = args['bytes'] as List<int>;
+  final bool isGz = args['isGz'] as bool;
+
+  List<int> xmlBytes = raw;
+  if (isGz || (raw.length >= 2 && raw[0] == 0x1f && raw[1] == 0x8b)) {
+    try {
+      xmlBytes = GZipDecoder().decodeBytes(raw);
+    } catch (e) {
+      debugPrint('EPG gzip decode failed inside Isolate: $e');
+    }
+  }
+
+  final xmlContent = utf8.decode(xmlBytes, allowMalformed: true);
   return XmlTvParser.instance.parse(xmlContent);
 }
 

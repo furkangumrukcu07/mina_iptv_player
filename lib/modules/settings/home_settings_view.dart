@@ -7,14 +7,16 @@ import 'package:get/get.dart';
 
 import '../../core/home/home_card_frame_style.dart';
 import '../../core/home/home_card_swipe_effect.dart';
-import '../../core/home/home_category_card_id.dart';
+import '../../core/home/home_layout_style.dart';
+import '../../core/home/page_transition_effect.dart';
 import '../../core/layout/app_layout_mode.dart';
 import '../../core/services/app_settings_service.dart';
+import '../../ui/glass_overlays.dart';
 import '../../ui/tv_dpad_focus.dart';
 import '../../core/theme/app_scroll_physics.dart';
 import '../../ui/settings_glass_panel.dart';
 import '../../ui/themed_settings_background.dart';
-import '../../core/routes/app_routes.dart';
+import '../../ui/tv_settings_subpage.dart';
 import 'home_card_order_editor_view.dart';
 
 /// Ana ekran bileşenlerini tek yerden yönet:
@@ -31,52 +33,24 @@ class HomeSettingsView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final settings = Get.find<AppSettingsService>();
-    final remote = remoteNavForScreenLayout(context, settings.layoutMode.value);
+    final tvDpad = settings.layoutMode.value == AppLayoutMode.tv;
 
     return Scaffold(
       backgroundColor: Colors.black,
-      body: FocusTraversalGroup(
-        policy: OrderedTraversalPolicy(),
-        child: ThemedSettingsBackground(
-          child: SafeArea(
-            child: SettingsGlassPanel(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
-                    child: Row(
-                      children: [
-                        remote
-                            ? TvIconButton(
-                                icon: Icons.arrow_back_rounded,
-                                onPressed: () => Get.back<void>(),
-                                tooltip: 'common.back'.tr,
-                                autofocus: true,
-                              )
-                            : IconButton(
-                                onPressed: () => Get.back<void>(),
-                                icon: const Icon(Icons.arrow_back_rounded),
-                                color: Colors.white,
-                                tooltip: 'common.back'.tr,
-                              ),
-                        Expanded(
-                          child: Text(
-                            'homeSettings.title'.tr,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 18,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
-                    child: Text(
-                      'homeSettings.hint'.tr,
+      body: ThemedSettingsBackground(
+        child: SafeArea(
+          child: SettingsGlassPanel(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                tvSettingsSubpageHeader(context, 'homeSettings.title'.tr),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
+                  child: Obx(
+                    () => Text(
+                      settings.layoutMode.value == AppLayoutMode.tv
+                          ? 'homeSettings.tvLayout.hint'.tr
+                          : 'homeSettings.hint'.tr,
                       style: TextStyle(
                         color: Colors.white.withValues(alpha: 0.65),
                         fontSize: 12.5,
@@ -84,100 +58,219 @@ class HomeSettingsView extends StatelessWidget {
                       ),
                     ),
                   ),
-                  Expanded(
-                    child: ListView(
-                      physics: AppScrollPhysics.list(),
-                      padding: const EdgeInsets.fromLTRB(12, 4, 12, 16),
-                      children: [
-                        _NavSection(
-                          icon: Icons.dashboard_customize_rounded,
-                          title: 'homeSettings.cardOrder.title'.tr,
-                          subtitle: 'homeSettings.cardOrder.sub'.tr,
-                          preview: const _CardOrderPreview(),
-                          onTap: () => Get.to<void>(
-                            () => const HomeCardOrderEditorView(),
-                          ),
-                        ),
+                ),
+                Expanded(
+                  child: TvSettingsDpadScope(
+                    enabled: tvDpad,
+                    child: Obx(() {
+                      final isTv =
+                          settings.layoutMode.value == AppLayoutMode.tv;
+                      return ListView(
+                        physics: AppScrollPhysics.list(),
+                        padding: const EdgeInsets.fromLTRB(12, 4, 12, 16),
+                        children: isTv
+                            ? const [
+                                _TvHomeLayoutSection(),
+                              ]
+                            : [
+                        // Yerleşim modu (varsayılan / sade / vitrin) — her zaman
+                        // en üstte ve görünür. "Wrapped Özetini Aç" girişi
+                        // kullanıcı isteğiyle gizlendi.
+                        const _LayoutStyleSection(),
                         const SizedBox(height: 14),
-                        const MinaWrappedSection(),
-                        const SizedBox(height: 14),
-                        Obx(() {
-                          if (!settings.minaWrappedEnabled.value) {
-                            return const SizedBox.shrink();
-                          }
-                          return Column(
+                        // Klasik ana ekrana özgü ayarlar (kart sırası/boyutu,
+                        // film&dizi modu, sürükleme efekti, çerçeve stili) —
+                        // **vitrin** düzeninde tamamen gizlenir, **sade**
+                        // düzende kilitlenir; varsayılan düzende düzenlenebilir.
+                        _LockableSection(
+                          hideOnShowcase: true,
+                          child: Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
                               _NavSection(
-                                icon: Icons.insights_rounded,
-                                title: 'analytics.entry.openTitle'.tr,
-                                subtitle: 'analytics.entry.openSub'.tr,
-                                preview: const _MinaWrappedPreview(),
-                                onTap: () => Get.toNamed<void>(
-                                  AppRoutes.minaAnalytics,
+                                icon: Icons.dashboard_customize_rounded,
+                                title: 'homeSettings.cardOrder.title'.tr,
+                                subtitle: 'homeSettings.cardOrder.sub'.tr,
+                                preview: const _CardOrderPreview(),
+                                onTap: () => Get.to<void>(
+                                  () => const HomeCardOrderEditorView(),
                                 ),
                               ),
                               const SizedBox(height: 14),
+                              const _CardScaleSection(),
+                              const SizedBox(height: 14),
+
+                              const SwipeEffectSection(),
+                              const SizedBox(height: 14),
+                              const FrameStyleSection(),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        // Geçiş efekti seçimi — mobil/tablet'te görünür, TV'de gizli
+                        Obx(() {
+                          if (settings.layoutMode.value == AppLayoutMode.tv) {
+                            return const SizedBox.shrink();
+                          }
+                          return const Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              PageTransitionEffectSection(),
+                              SizedBox(height: 14),
                             ],
                           );
                         }),
-                        const _CardScaleSection(),
-                        const SizedBox(height: 14),
-                        const _FilmDiziModeSection(),
-                        const SizedBox(height: 14),
-                        const SwipeEffectSection(),
-                        const SizedBox(height: 14),
-                        const FrameStyleSection(),
-                        const SizedBox(height: 14),
-                        _ToggleSection(
-                          icon: Icons.shuffle_rounded,
-                          title: 'homeSettings.mixedLive.title'.tr,
-                          subtitle: 'homeSettings.mixedLive.sub'.tr,
-                          value: settings.mixedLiveTvEnabled,
-                          onChanged: settings.setMixedLiveTvEnabled,
-                          preview: const _MixedLivePreview(),
+                        // Karışık Canlı TV — standart düzende global
+                        // bayrak (`mixedLiveTvEnabled`). Vitrinde gizlenir;
+                        // vitrine özgü ayrı bayrak aşağıdaki vitrin bölümünde.
+                        _LockableSection(
+                          lockOnShowcase: false,
+                          hideOnShowcase: true,
+                          child: _ToggleSection(
+                            icon: Icons.shuffle_rounded,
+                            title: 'homeSettings.mixedLive.title'.tr,
+                            subtitle: 'homeSettings.mixedLive.sub'.tr,
+                            value: settings.mixedLiveTvEnabled,
+                            onChanged: settings.setMixedLiveTvEnabled,
+                            preview: const _MixedLivePreview(),
+                          ),
                         ),
                         const SizedBox(height: 14),
-                        _ToggleSection(
-                          icon: Icons.sports_soccer_rounded,
-                          title: 'homeSettings.upcomingMatches.title'.tr,
-                          subtitle: 'homeSettings.upcomingMatches.sub'.tr,
-                          value: settings.upcomingMatchesEnabled,
-                          onChanged: settings.setUpcomingMatchesEnabled,
-                          preview: const _UpcomingMatchesPreview(),
+                        // Trend Filmler / Trend Diziler / Favori & Karışık
+                        // şeritler / Karışık Canlı TV — yalnızca vitrin
+                        // düzeninde görünür ve düzenlenebilir.
+                        _ShowcaseOnlySection(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              _ToggleSection(
+                                icon: Icons.shuffle_rounded,
+                                title: 'homeSettings.mixedLive.title'.tr,
+                                subtitle: 'homeSettings.mixedLive.sub'.tr,
+                                value: settings.showcaseMixedLiveTvEnabled,
+                                onChanged:
+                                    settings.setShowcaseMixedLiveTvEnabled,
+                                preview: const _MixedLivePreview(),
+                              ),
+                              const SizedBox(height: 14),
+                              _ToggleSection(
+                                icon: Icons.local_fire_department_rounded,
+                                title: 'homeSettings.trendFilms.title'.tr,
+                                subtitle: 'homeSettings.trendFilms.sub'.tr,
+                                value: settings.trendFilmsEnabled,
+                                onChanged: settings.setTrendFilmsEnabled,
+                                preview: const _TrendPreview(),
+                              ),
+                              const SizedBox(height: 14),
+                              _ToggleSection(
+                                icon: Icons.trending_up_rounded,
+                                title: 'homeSettings.trendSeries.title'.tr,
+                                subtitle: 'homeSettings.trendSeries.sub'.tr,
+                                value: settings.trendSeriesEnabled,
+                                onChanged: settings.setTrendSeriesEnabled,
+                                preview: const _TrendPreview(),
+                              ),
+                              const SizedBox(height: 14),
+                              _ToggleSection(
+                                icon: Icons.favorite_rounded,
+                                title: 'homeSettings.favoriteFilms.title'.tr,
+                                subtitle: 'homeSettings.favoriteFilms.sub'.tr,
+                                value: settings.favoriteFilmsEnabled,
+                                onChanged: settings.setFavoriteFilmsEnabled,
+                                preview: const _FavoritePreview(),
+                              ),
+                              const SizedBox(height: 14),
+                              _ToggleSection(
+                                icon: Icons.favorite_border_rounded,
+                                title: 'homeSettings.favoriteSeries.title'.tr,
+                                subtitle: 'homeSettings.favoriteSeries.sub'.tr,
+                                value: settings.favoriteSeriesEnabled,
+                                onChanged: settings.setFavoriteSeriesEnabled,
+                                preview: const _FavoritePreview(),
+                              ),
+                              const SizedBox(height: 14),
+                              _ToggleSection(
+                                icon: Icons.shuffle_rounded,
+                                title: 'homeSettings.mixedFilms.title'.tr,
+                                subtitle: 'homeSettings.mixedFilms.sub'.tr,
+                                value: settings.mixedFilmsEnabled,
+                                onChanged: settings.setMixedFilmsEnabled,
+                                preview: const _MixedPosterPreview(),
+                              ),
+                              const SizedBox(height: 14),
+                              _ToggleSection(
+                                icon: Icons.shuffle_on_rounded,
+                                title: 'homeSettings.mixedSeries.title'.tr,
+                                subtitle: 'homeSettings.mixedSeries.sub'.tr,
+                                value: settings.mixedSeriesEnabled,
+                                onChanged: settings.setMixedSeriesEnabled,
+                                preview: const _MixedPosterPreview(),
+                              ),
+                              const SizedBox(height: 14),
+                              _ToggleSection(
+                                icon: Icons.play_circle_rounded,
+                                title: 'homeSettings.lastWatchedButton.title'.tr,
+                                subtitle: 'homeSettings.lastWatchedButton.sub'.tr,
+                                value: settings.showcaseLastWatchedButtonEnabled,
+                                onChanged: settings.setShowcaseLastWatchedButtonEnabled,
+                                preview: const SizedBox.shrink(),
+                              ),
+                              const SizedBox(height: 14),
+                            ],
+                          ),
+                        ),
+                        _LockableSection(
+                          lockOnShowcase: false,
+                          child: _ToggleSection(
+                            icon: Icons.sports_soccer_rounded,
+                            title: 'homeSettings.upcomingMatches.title'.tr,
+                            subtitle: 'homeSettings.upcomingMatches.sub'.tr,
+                            value: settings.upcomingMatchesEnabled,
+                            onChanged: settings.setUpcomingMatchesEnabled,
+                            preview: const _UpcomingMatchesPreview(),
+                          ),
                         ),
                         const SizedBox(height: 14),
-                        _ToggleSection(
-                          icon: Icons.play_circle_outline_rounded,
-                          title: 'homeSettings.continueWatching.title'.tr,
-                          subtitle: 'homeSettings.continueWatching.sub'.tr,
-                          value: settings.continueWatchingEnabled,
-                          onChanged: settings.setContinueWatchingEnabled,
-                          preview: const _ContinueWatchingPreview(),
+                        _LockableSection(
+                          lockOnShowcase: false,
+                          child: _ToggleSection(
+                            icon: Icons.play_circle_outline_rounded,
+                            title: 'homeSettings.continueWatching.title'.tr,
+                            subtitle: 'homeSettings.continueWatching.sub'.tr,
+                            value: settings.continueWatchingEnabled,
+                            onChanged: settings.setContinueWatchingEnabled,
+                            preview: const _ContinueWatchingPreview(),
+                          ),
                         ),
                         const SizedBox(height: 14),
-                        _ToggleSection(
-                          icon: Icons.auto_awesome_rounded,
-                          title: 'homeSettings.aiRecommendations.title'.tr,
-                          subtitle: 'homeSettings.aiRecommendations.sub'.tr,
-                          value: settings.isAiRecommendationEnabled,
-                          onChanged: settings.setAiRecommendationEnabled,
-                          preview: const _AiRecommendationsPreview(),
+                        _LockableSection(
+                          lockOnShowcase: false,
+                          child: _ToggleSection(
+                            icon: Icons.auto_awesome_rounded,
+                            title: 'homeSettings.aiRecommendations.title'.tr,
+                            subtitle: 'homeSettings.aiRecommendations.sub'.tr,
+                            value: settings.isAiRecommendationEnabled,
+                            onChanged: settings.setAiRecommendationEnabled,
+                            preview: const _AiRecommendationsPreview(),
+                          ),
                         ),
                         const SizedBox(height: 14),
+                        // Performans: tüm cihaz tiplerinde geçerli →
+                        // _LockableSection ile sarmalanmaz.
                         _ToggleSection(
-                          icon: Icons.format_quote_rounded,
-                          title: 'homeSettings.dailyQuote.title'.tr,
-                          subtitle: 'homeSettings.dailyQuote.sub'.tr,
-                          value: settings.dailyQuoteEnabled,
-                          onChanged: settings.setDailyQuoteEnabled,
-                          preview: const _DailyQuotePreview(),
+                          icon: Icons.blur_on_rounded,
+                          title: 'homeSettings.reduceBlur.title'.tr,
+                          subtitle: 'homeSettings.reduceBlur.sub'.tr,
+                          value: settings.reduceBlur,
+                          onChanged: settings.setReduceBlur,
+                          preview: const _ReduceBlurPreview(),
                         ),
                       ],
-                    ),
+                      );
+                    }),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ),
@@ -189,6 +282,106 @@ class HomeSettingsView extends StatelessWidget {
 // ---------------------------------------------------------------------------
 // Section blocks
 // ---------------------------------------------------------------------------
+
+/// Vitrin düzeni seçiliyken ana ekranın klasik bileşenleri görünmediği için
+/// ilgili ayar bölümleri **kilitlenir**: dokunma ve D-pad odağı kapatılır,
+/// bölüm sönükleşir ve sağ üstte kilit rozeti gösterilir. [lockOnShowcase]
+/// `false` ise vitrinde açık kalır (ör. Karışık Canlı TV — vitrin şeridi ayarla
+/// senkron).
+class _LockableSection extends StatelessWidget {
+  const _LockableSection({
+    required this.child,
+    this.lockOnShowcase = true,
+    this.hideOnShowcase = false,
+  });
+
+  final Widget child;
+  final bool lockOnShowcase;
+
+  /// `true` → Vitrin düzeninde bölüm kilitlenmek yerine tamamen gizlenir
+  /// (klasik ana ekrana özgü ayarlar: kart sırası/boyutu, film&dizi modu,
+  /// sürükleme efekti, çerçeve stili — vitrinde anlamsız).
+  final bool hideOnShowcase;
+
+  @override
+  Widget build(BuildContext context) {
+    final settings = Get.find<AppSettingsService>();
+    return Obx(() {
+      final style = settings.homeLayoutStyle.value;
+      if (hideOnShowcase && style == HomeLayoutStyle.showcase) {
+        return const SizedBox.shrink();
+      }
+      final locked = lockOnShowcase && style == HomeLayoutStyle.showcase;
+      if (!locked) return child;
+      return Stack(
+        children: [
+          ExcludeFocus(
+            child: IgnorePointer(
+              child: Opacity(opacity: 0.38, child: child),
+            ),
+          ),
+          Positioned(
+            top: 10,
+            right: 10,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+              decoration: BoxDecoration(
+                color: Colors.black.withValues(alpha: 0.55),
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.22),
+                ),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(
+                    Icons.lock_rounded,
+                    color: Colors.white70,
+                    size: 13,
+                  ),
+                  const SizedBox(width: 5),
+                  Text(
+                    'homeSettings.lockedByShowcase'.tr,
+                    style: const TextStyle(
+                      color: Colors.white70,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      );
+    });
+  }
+}
+
+/// Yalnızca **Vitrin** düzeni seçiliyken çocuğu gösterir; diğer düzenlerde
+/// (varsayılan / sade) tamamen gizlenir. Trend Filmler / Trend Diziler gibi
+/// yalnızca vitrine özgü ayarlar için.
+class _ShowcaseOnlySection extends StatelessWidget {
+  const _ShowcaseOnlySection({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final settings = Get.find<AppSettingsService>();
+    return Obx(() {
+      // Vitrine özgü şeritler (trend/favori/karışık) yalnızca mobil/tablet
+      // vitrin düzeninde görünür; TV'de ve diğer düzenlerde gizli.
+      final isTv = settings.layoutMode.value == AppLayoutMode.tv;
+      if (isTv ||
+          settings.homeLayoutStyle.value != HomeLayoutStyle.showcase) {
+        return const SizedBox.shrink();
+      }
+      return child;
+    });
+  }
+}
 
 class _SectionShell extends StatelessWidget {
   const _SectionShell({
@@ -376,17 +569,92 @@ class _NavSection extends StatelessWidget {
   }
 }
 
-/// Ayarlar > Ana Ekran > Film & Dizi modu — kullanıcı kurulum sihirbazında
-/// yaptığı seçimi buradan tekrar değiştirebilir. Önizleme kartlarıyla
-/// birlikte 3 seçenek (modern / klasik / her ikisi).
-class _FilmDiziModeSection extends StatelessWidget {
-  const _FilmDiziModeSection();
+/// Ayarlar > Ana Ekran > TV yerleşim modu (yalnızca TV layout).
+class _TvHomeLayoutSection extends StatelessWidget {
+  const _TvHomeLayoutSection();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Colors.white.withValues(alpha: 0.07),
+            Colors.white.withValues(alpha: 0.02),
+          ],
+        ),
+      ),
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.white.withValues(alpha: 0.10),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.18),
+                  ),
+                ),
+                alignment: Alignment.center,
+                child: const Icon(
+                  Icons.dashboard_rounded,
+                  color: Colors.white,
+                  size: 20,
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      'homeSettings.tvLayout.title'.tr,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 15,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      'homeSettings.tvLayout.sub'.tr,
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.65),
+                        fontSize: 12.5,
+                        height: 1.25,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Ayarlar > Ana Ekran > Yerleşim modu. Kullanıcı «Varsayılan düzen» ile
+/// «Vitrin düzeni» arasında seçim yapar. Seçim anında ana ekrana yansır
+/// (`home_view.dart` `Obx`).
+class _LayoutStyleSection extends StatelessWidget {
+  const _LayoutStyleSection();
 
   @override
   Widget build(BuildContext context) {
     final settings = Get.find<AppSettingsService>();
     return Obx(() {
-      final current = settings.homeFilmDiziMode.value;
+      final current = settings.homeLayoutStyle.value;
       return Container(
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(18),
@@ -418,7 +686,7 @@ class _FilmDiziModeSection extends StatelessWidget {
                   ),
                   alignment: Alignment.center,
                   child: const Icon(
-                    Icons.movie_outlined,
+                    Icons.dashboard_rounded,
                     color: Colors.white,
                     size: 20,
                   ),
@@ -429,7 +697,7 @@ class _FilmDiziModeSection extends StatelessWidget {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'homeSettings.filmDiziMode.title'.tr,
+                        'homeSettings.layoutStyle.title'.tr,
                         style: const TextStyle(
                           color: Colors.white,
                           fontSize: 15,
@@ -438,7 +706,7 @@ class _FilmDiziModeSection extends StatelessWidget {
                       ),
                       const SizedBox(height: 2),
                       Text(
-                        'homeSettings.filmDiziMode.sub'.tr,
+                        'homeSettings.layoutStyle.sub'.tr,
                         style: TextStyle(
                           color: Colors.white.withValues(alpha: 0.65),
                           fontSize: 12.5,
@@ -451,14 +719,24 @@ class _FilmDiziModeSection extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 10),
-            for (var i = 0; i < HomeFilmDiziMode.values.length; i++) ...[
-              if (i > 0) const SizedBox(height: 8),
-              _FilmDiziModeRow(
-                mode: HomeFilmDiziMode.values[i],
-                selected: current == HomeFilmDiziMode.values[i],
-                onTap: () => settings.setHomeFilmDiziMode(
-                  HomeFilmDiziMode.values[i],
-                ),
+            // «Vitrin» yalnızca mobil/tablette seçilebilir → TV'de gizlenir.
+            for (final style
+                in HomeLayoutStyle.selectableFor(settings.layoutMode.value)) ...[
+              if (style != HomeLayoutStyle.values.first)
+                const SizedBox(height: 8),
+              _LayoutStyleRow(
+                style: style,
+                selected: current == style,
+                onTap: () {
+                  // TV: kumanda akışında popup gereksiz → anında uygula.
+                  // Mobil/tablet: küçük önizleme yetersiz olduğundan büyük
+                  // önizlemeli onay popup'ı açılır.
+                  if (settings.layoutMode.value == AppLayoutMode.tv) {
+                    settings.setHomeLayoutStyle(style);
+                  } else {
+                    showLayoutPreviewDialog(settings, style);
+                  }
+                },
               ),
             ],
           ],
@@ -467,6 +745,202 @@ class _FilmDiziModeSection extends StatelessWidget {
     });
   }
 }
+
+/// Mobil/tablet: bir yerleşim modu seçilince büyük (kırpılmamış) ekran
+/// görüntüsü önizlemesi + başlık/açıklama + Onayla / İptal düğmeleriyle bir
+/// glass popup açar. Onaylanırsa seçim uygulanır ve `true` döner. Kurulum
+/// sihirbazı da aynı popup'ı kullanır (yalnızca mobil/tablet).
+Future<bool> showLayoutPreviewDialog(
+  AppSettingsService settings,
+  HomeLayoutStyle style,
+) async {
+  final confirmed = await Get.dialog<bool>(
+    GlassAlertDialog(
+      title: Text(style.labelKey.tr),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // Büyük telefon önizlemesi — tam görsel (kırpmasız), cam çerçeve.
+          Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 360),
+              child: AspectRatio(
+                aspectRatio: 9 / 16,
+                child: Container(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(16),
+                    color: Colors.black.withValues(alpha: 0.35),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.16),
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.35),
+                        blurRadius: 22,
+                        spreadRadius: -6,
+                        offset: const Offset(0, 10),
+                      ),
+                    ],
+                  ),
+                  clipBehavior: Clip.antiAlias,
+                  child: Image.asset(
+                    style.previewAsset,
+                    fit: BoxFit.cover,
+                    alignment: Alignment.topCenter,
+                    filterQuality: FilterQuality.medium,
+                  ),
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(height: 14),
+          Text(
+            style.subtitleKey.tr,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.7),
+              fontSize: 13,
+              height: 1.35,
+            ),
+          ),
+        ],
+      ),
+      actions: [
+        GlassDialogActionButton(
+          label: 'common.cancel'.tr,
+          onPressed: () => Get.back<bool>(result: false),
+        ),
+        GlassDialogActionButton(
+          label: 'common.confirm'.tr,
+          primary: true,
+          onPressed: () => Get.back<bool>(result: true),
+        ),
+      ],
+    ),
+    barrierColor: Colors.black.withValues(alpha: 0.55),
+  );
+  if (confirmed == true) {
+    await settings.setHomeLayoutStyle(style);
+    return true;
+  }
+  return false;
+}
+
+class _LayoutStyleRow extends StatelessWidget {
+  const _LayoutStyleRow({
+    required this.style,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final HomeLayoutStyle style;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    return tvDpadActivateWrap(
+      context,
+      onActivate: onTap,
+      borderRadius: 14,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 180),
+          curve: Curves.easeOut,
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+          decoration: BoxDecoration(
+            color: selected
+                ? cs.primary.withValues(alpha: 0.12)
+                : Colors.white.withValues(alpha: 0.04),
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: selected
+                  ? cs.primary.withValues(alpha: 0.85)
+                  : Colors.white.withValues(alpha: 0.16),
+              width: selected ? 1.4 : 0.8,
+            ),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Padding(
+                padding: const EdgeInsets.only(top: 2),
+                child: Icon(
+                  selected
+                      ? Icons.radio_button_checked_rounded
+                      : Icons.radio_button_off_rounded,
+                  size: 22,
+                  color:
+                      selected ? cs.primary : Colors.white.withValues(alpha: 0.55),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      style.labelKey.tr,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 14,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      style.subtitleKey.tr,
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.62),
+                        fontSize: 12,
+                        height: 1.25,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              _LayoutStylePreview(style: style),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Yerleşim stili satırı için minik önizleme — ilgili düzenin gerçek telefon
+/// ekran görüntüsü, dikey küçük bir çerçevede gösterilir.
+class _LayoutStylePreview extends StatelessWidget {
+  const _LayoutStylePreview({required this.style});
+
+  final HomeLayoutStyle style;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: 46,
+      height: 80,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(9),
+        color: Colors.black.withValues(alpha: 0.35),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.16)),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Image.asset(
+        style.previewAsset,
+        fit: BoxFit.cover,
+        alignment: Alignment.topCenter,
+        filterQuality: FilterQuality.low,
+      ),
+    );
+  }
+}
+
 
 /// Ayarlar > Ana Ekran > Çerçeve Stili — kullanıcı ana ekrandaki tüm kart
 /// gruplarına (kategori kartları, Mina AI, yüksek puanlı
@@ -791,6 +1265,186 @@ class SwipeEffectSection extends StatelessWidget {
   }
 }
 
+/// Sayfa geçiş efekti seçer. Mevcut 2 efekt: ios, fadeScale.
+/// TV layout'unda bu seçenek gösterilmez.
+class PageTransitionEffectSection extends StatelessWidget {
+  const PageTransitionEffectSection({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+   final settings = Get.find<AppSettingsService>();
+    // TV layout'unda gösterme
+    if (settings.layoutMode.value == AppLayoutMode.tv) {
+      return const SizedBox.shrink();
+    }
+    return Obx(() {
+      final current = settings.pageTransitionEffect.value;
+      return Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(18),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              Colors.white.withValues(alpha: 0.07),
+              Colors.white.withValues(alpha: 0.02),
+            ],
+          ),
+        ),
+        padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: Colors.white.withValues(alpha: 0.10),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.18),
+                    ),
+                  ),
+                  alignment: Alignment.center,
+                  child: const Icon(
+                    Icons.animation_rounded,
+                    color: Colors.white,
+                    size: 20,
+                  ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'homeSettings.transitionEffect.title'.tr,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 15,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 2),
+                      Text(
+                        'homeSettings.transitionEffect.sub'.tr,
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.65),
+                          fontSize: 12.5,
+                          height: 1.25,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 10),
+            for (var i = 0; i < PageTransitionEffect.values.length; i++) ...[
+              if (i > 0) const SizedBox(height: 8),
+              _TransitionEffectRow(
+                effect: PageTransitionEffect.values[i],
+                selected: current == PageTransitionEffect.values[i],
+                onTap: () => settings.setPageTransitionEffect(
+                  PageTransitionEffect.values[i],
+                ),
+              ),
+            ],
+          ],
+        ),
+      );
+    });
+  }
+}
+
+/// Geçiş efekti seçim satırı — sol radio + başlık/alt.
+class _TransitionEffectRow extends StatelessWidget {
+  const _TransitionEffectRow({
+    required this.effect,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final PageTransitionEffect effect;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(12),
+          color: selected
+              ? Colors.white.withValues(alpha: 0.12)
+              : Colors.transparent,
+          border: Border.all(
+            color: selected
+                ? Colors.white.withValues(alpha: 0.25)
+                : Colors.white.withValues(alpha: 0.08),
+          ),
+        ),
+        child: Row(
+          children: [
+            Container(
+              width: 20,
+              height: 20,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                border: Border.all(
+                  color: selected
+                      ? Colors.white
+                      : Colors.white.withValues(alpha: 0.4),
+                  width: 2,
+                ),
+              ),
+              child: selected
+                  ? const Center(
+                      child: Icon(
+                        Icons.check,
+                        color: Colors.white,
+                        size: 14,
+                      ),
+                    )
+                  : null,
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    effect.labelKey.tr,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(height: 2),
+                  Text(
+                    effect.subtitleKey.tr,
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.6),
+                      fontSize: 11.5,
+                      height: 1.2,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// Sürükleme efekti seçim satırı — sol radio + başlık/alt + sağda efekti
 /// temsil eden minik animasyonsuz illüstrasyon.
 class _SwipeEffectRow extends StatelessWidget {
@@ -1000,175 +1654,6 @@ class _SwipeEffectMiniPreview extends StatelessWidget {
   }
 }
 
-class _FilmDiziModeRow extends StatelessWidget {
-  const _FilmDiziModeRow({
-    required this.mode,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final HomeFilmDiziMode mode;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return tvDpadActivateWrap(
-      context,
-      onActivate: onTap,
-      borderRadius: 14,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 180),
-          curve: Curves.easeOut,
-          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
-          decoration: BoxDecoration(
-            color: selected
-                ? cs.primary.withValues(alpha: 0.12)
-                : Colors.white.withValues(alpha: 0.04),
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: selected
-                  ? cs.primary.withValues(alpha: 0.85)
-                  : Colors.white.withValues(alpha: 0.16),
-              width: selected ? 1.4 : 0.8,
-            ),
-          ),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Padding(
-                padding: const EdgeInsets.only(top: 2),
-                child: Icon(
-                  selected
-                      ? Icons.radio_button_checked_rounded
-                      : Icons.radio_button_off_rounded,
-                  size: 22,
-                  color: selected
-                      ? cs.primary
-                      : Colors.white.withValues(alpha: 0.55),
-                ),
-              ),
-              const SizedBox(width: 10),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      mode.labelKey.tr,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      mode.subtitleKey.tr,
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.62),
-                        fontSize: 12,
-                        height: 1.25,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              _FilmDiziSettingsPreview(mode: mode),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-/// HomeSettings > Film & Dizi modu önizlemesi — kurulum sihirbazıyla aynı
-/// görsel dilde mini kartlar.
-class _FilmDiziSettingsPreview extends StatelessWidget {
-  const _FilmDiziSettingsPreview({required this.mode});
-
-  final HomeFilmDiziMode mode;
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    final cards = switch (mode) {
-      HomeFilmDiziMode.modern => const [
-          ('home.recommendedFilms', Icons.local_movies_rounded),
-        ],
-      HomeFilmDiziMode.classic => const [
-          ('home.films', Icons.movie_filter_rounded),
-          ('home.series', Icons.theater_comedy_rounded),
-        ],
-      HomeFilmDiziMode.both => const [
-          ('home.recommendedFilms', Icons.local_movies_rounded),
-          ('home.films', Icons.movie_filter_rounded),
-          ('home.series', Icons.theater_comedy_rounded),
-        ],
-    };
-
-    return SizedBox(
-      width: cards.length == 1 ? 56 : (cards.length == 2 ? 88 : 116),
-      height: 42,
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.end,
-        crossAxisAlignment: CrossAxisAlignment.center,
-        children: [
-          for (var i = 0; i < cards.length; i++) ...[
-            if (i > 0) const SizedBox(width: 4),
-            Container(
-              width: 34,
-              height: 42,
-              padding: const EdgeInsets.fromLTRB(4, 5, 4, 5),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(7),
-                gradient: LinearGradient(
-                  begin: Alignment.topLeft,
-                  end: Alignment.bottomRight,
-                  colors: [
-                    cs.primary.withValues(alpha: 0.45),
-                    Colors.white.withValues(alpha: 0.10),
-                  ],
-                ),
-                border: Border.all(
-                  color: Colors.white.withValues(alpha: 0.25),
-                  width: 0.6,
-                ),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Icon(
-                    cards[i].$2,
-                    color: Colors.white.withValues(alpha: 0.9),
-                    size: 11,
-                  ),
-                  Text(
-                    cards[i].$1.tr,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 7.5,
-                      fontWeight: FontWeight.w700,
-                      height: 1.05,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ],
-      ),
-    );
-  }
-}
 
 /// Ana ekran kart ölçeği — global slider. Değişiklik anında reaktif olarak
 /// üst kategori kartlarına ve aşağıdaki şeritlere yansır (Continue Watching,
@@ -1556,6 +2041,155 @@ class _CardOrderPreview extends StatelessWidget {
   }
 }
 
+/// Trend Filmler / Trend Diziler önizlemesi — IMDB yıldız rozetli poster
+/// kartı dizisi (sahte içerik; yalnızca görsel ipucu).
+class _TrendPreview extends StatelessWidget {
+  const _TrendPreview();
+
+  @override
+  Widget build(BuildContext context) {
+    const ratings = ['9.2', '8.7', '8.4', '8.1', '7.6', '7.2'];
+    return _previewBackground(
+      child: Row(
+        children: [
+          for (var i = 0; i < ratings.length; i++) ...[
+            Container(
+              width: 38,
+              height: 52,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(7),
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.deepPurple.withValues(alpha: 0.6),
+                    Colors.black.withValues(alpha: 0.55),
+                  ],
+                ),
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.18),
+                ),
+              ),
+              alignment: Alignment.center,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.star_rounded,
+                      color: Colors.amber, size: 11),
+                  const SizedBox(width: 1),
+                  Text(
+                    ratings[i],
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 9,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            if (i != ratings.length - 1) const SizedBox(width: 6),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Favori Filmler / Favori Diziler önizlemesi — kalp rozetli poster kartı
+/// dizisi (sahte içerik; yalnızca görsel ipucu).
+class _FavoritePreview extends StatelessWidget {
+  const _FavoritePreview();
+
+  @override
+  Widget build(BuildContext context) {
+    return _previewBackground(
+      child: Row(
+        children: [
+          for (var i = 0; i < 6; i++) ...[
+            Container(
+              width: 38,
+              height: 52,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(7),
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    Colors.pink.withValues(alpha: 0.55),
+                    Colors.black.withValues(alpha: 0.55),
+                  ],
+                ),
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.18),
+                ),
+              ),
+              alignment: Alignment.center,
+              child: const Icon(
+                Icons.favorite_rounded,
+                color: Colors.pinkAccent,
+                size: 16,
+              ),
+            ),
+            if (i != 5) const SizedBox(width: 6),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Karışık Filmler / Karışık Diziler önizlemesi — renkli poster kartlarının
+/// karışık dizilimi (sahte içerik; yalnızca görsel ipucu).
+class _MixedPosterPreview extends StatelessWidget {
+  const _MixedPosterPreview();
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = [
+      Colors.indigo,
+      Colors.teal,
+      Colors.orange,
+      Colors.purpleAccent,
+      Colors.redAccent,
+      Colors.cyan,
+    ];
+    return _previewBackground(
+      child: Row(
+        children: [
+          for (var i = 0; i < colors.length; i++) ...[
+            Container(
+              width: 38,
+              height: 52,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(7),
+                gradient: LinearGradient(
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                  colors: [
+                    colors[i].withValues(alpha: 0.7),
+                    colors[i].withValues(alpha: 0.25),
+                  ],
+                ),
+                border: Border.all(
+                  color: Colors.white.withValues(alpha: 0.20),
+                ),
+              ),
+              alignment: Alignment.center,
+              child: const Icon(
+                Icons.shuffle_rounded,
+                color: Colors.white,
+                size: 14,
+              ),
+            ),
+            if (i != colors.length - 1) const SizedBox(width: 6),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
 class _MixedLivePreview extends StatelessWidget {
   const _MixedLivePreview();
 
@@ -1676,75 +2310,6 @@ class _UpcomingMatchesPreview extends StatelessWidget {
   }
 }
 
-/// «Günün Sözü» önizlemesi — ana ekrandaki haftalık kayan yazı şeridinin
-/// minik bir temsili. Glass çerçeve + ortalanmış kısa metin + bayrak rozeti.
-class _DailyQuotePreview extends StatelessWidget {
-  const _DailyQuotePreview();
-
-  @override
-  Widget build(BuildContext context) {
-    return _previewBackground(
-      child: Center(
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(12),
-            color: Colors.white.withValues(alpha: 0.07),
-            border: Border.all(
-              color: Colors.white.withValues(alpha: 0.18),
-              width: 0.8,
-            ),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Icon(
-                Icons.format_quote_rounded,
-                color: Colors.white.withValues(alpha: 0.7),
-                size: 16,
-              ),
-              const SizedBox(width: 8),
-              Flexible(
-                child: Text(
-                  'homeSettings.dailyQuote.previewText'.tr,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.88),
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    letterSpacing: 0.3,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Container(
-                width: 20,
-                height: 14,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(3),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.18),
-                    width: 0.6,
-                  ),
-                ),
-                child: const Text(
-                  '\uD83C\uDDF9\uD83C\uDDF7',
-                  style: TextStyle(fontSize: 11, height: 1.0),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
 /// «İzlemeye Devam Et» önizlemesi — üç poster kartı, her birinin altında
 /// farklı doluluk oranında ilerleme barı (gerçek şeridin minik temsili).
 class _ContinueWatchingPreview extends StatelessWidget {
@@ -1821,6 +2386,65 @@ class _ContinueWatchingPreview extends StatelessWidget {
               ),
             ),
           ],
+        ],
+      ),
+    );
+  }
+}
+
+/// «Bulanıklığı Azalt» önizlemesi — solda bulanık (yavaş), sağda net (hızlı)
+/// iki temsili kart. Aynı gradient, farklı işlem maliyetini görselleştirir.
+class _ReduceBlurPreview extends StatelessWidget {
+  const _ReduceBlurPreview();
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    Widget card({required bool blurred}) {
+      final box = Container(
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(10),
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [
+              cs.primary.withValues(alpha: 0.55),
+              Colors.white.withValues(alpha: 0.12),
+            ],
+          ),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.22)),
+        ),
+        alignment: Alignment.center,
+        child: Icon(
+          blurred ? Icons.hourglass_top_rounded : Icons.bolt_rounded,
+          color: Colors.white,
+          size: 22,
+        ),
+      );
+      return Expanded(
+        child: SizedBox(
+          height: 50,
+          width: double.infinity,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(10),
+            child: blurred
+                ? ImageFiltered(
+                    imageFilter: ImageFilter.blur(sigmaX: 3.5, sigmaY: 3.5),
+                    child: box,
+                  )
+                : box,
+          ),
+        ),
+      );
+    }
+
+    return _previewBackground(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          card(blurred: true),
+          const SizedBox(width: 10),
+          card(blurred: false),
         ],
       ),
     );
@@ -2138,96 +2762,3 @@ class _PreviewBar extends StatelessWidget {
   }
 }
 
-/// "Mina Wrapped" giriş kartının altındaki minik önizleme — üç renkli
-/// neon ilerleme çubuğu artı küçük "%" etiketleri. Statik veri ile
-/// kullanıcıya neye benzeyeceğini gösterir.
-class _MinaWrappedPreview extends StatelessWidget {
-  const _MinaWrappedPreview();
-
-  @override
-  Widget build(BuildContext context) {
-    final primary = Theme.of(context).colorScheme.primary;
-    Widget bar(Color c, double ratio) {
-      return Padding(
-        padding: const EdgeInsets.symmetric(vertical: 3),
-        child: Row(
-          children: [
-            Container(
-              width: 6,
-              height: 6,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: c,
-                boxShadow: [
-                  BoxShadow(
-                    color: c.withValues(alpha: 0.6),
-                    blurRadius: 4,
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 6),
-            Expanded(
-              child: ClipRRect(
-                borderRadius: BorderRadius.circular(3),
-                child: SizedBox(
-                  height: 6,
-                  child: Stack(
-                    children: [
-                      Container(
-                        color: Colors.white.withValues(alpha: 0.08),
-                      ),
-                      FractionallySizedBox(
-                        widthFactor: ratio,
-                        alignment: Alignment.centerLeft,
-                        child: Container(
-                          decoration: BoxDecoration(
-                            gradient: LinearGradient(
-                              colors: [
-                                c.withValues(alpha: 0.55),
-                                c,
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-            const SizedBox(width: 6),
-            Text(
-              '%${(ratio * 100).round()}',
-              style: TextStyle(
-                color: c,
-                fontSize: 9.5,
-                fontWeight: FontWeight.w900,
-              ),
-            ),
-          ],
-        ),
-      );
-    }
-
-    return Container(
-      padding: const EdgeInsets.fromLTRB(10, 8, 10, 8),
-      decoration: BoxDecoration(
-        color: Colors.white.withValues(alpha: 0.04),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(
-          color: Colors.white.withValues(alpha: 0.08),
-          width: 0.5,
-        ),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          bar(const Color(0xFFFF3B47), 0.62),
-          bar(primary, 0.28),
-          bar(const Color(0xFF22C55E), 0.10),
-        ],
-      ),
-    );
-  }
-}

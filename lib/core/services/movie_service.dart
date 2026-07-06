@@ -8,11 +8,38 @@ import '../../core/home/film_dizi_detail_args.dart';
 import '../../domain/entities/movie_model.dart';
 import '../constants/api_constants.dart';
 import '../home/recommended_films_catalog.dart';
+import 'app_settings_service.dart';
 
 class MovieService extends GetxService {
-  final Dio _dio = Dio();
+  final Dio _dio = Dio(BaseOptions(
+    connectTimeout: const Duration(seconds: 10),
+    receiveTimeout: const Duration(seconds: 15),
+  ));
   final GoogleTranslator _translator = GoogleTranslator();
   static const String _transCachePrefix = 'trans_cache_';
+
+  SharedPreferences? _prefs;
+  Future<SharedPreferences> _getPrefs() async {
+    if (_prefs != null) return _prefs!;
+    _prefs = await SharedPreferences.getInstance();
+    return _prefs!;
+  }
+
+  /// Oturum içi metadata önbelleği — aynı film/dizi tekrar açılınca anında döner.
+  static final Map<String, MovieModel> _metaMemCache = {};
+  static const int _metaMemCacheMax = 72;
+
+  static String _metaCacheKey(String name, String? year, bool isSeries) {
+    final y = year?.trim() ?? '';
+    return '${isSeries ? 'tv' : 'mv'}:${name.trim().toLowerCase()}:$y';
+  }
+
+  static void _metaCachePut(String key, MovieModel model) {
+    _metaMemCache[key] = model;
+    while (_metaMemCache.length > _metaMemCacheMax) {
+      _metaMemCache.remove(_metaMemCache.keys.first);
+    }
+  }
 
   /// OMDb yedekli anahtar rotasyonu. Aktif anahtar limite/geçersizliğe takılınca
   /// ([_isOmdbKeyExhausted]) sıradaki yedek anahtara geçilir; havuzdaki tüm
@@ -50,7 +77,7 @@ class MovieService extends GetxService {
     final keys = ApiConstants.omdbApiKeys;
     if (_omdbKeyIndex + 1 < keys.length) {
       _omdbKeyIndex++;
-      print(
+      debugPrint(
           '[MovieService] OMDb anahtarı limite takıldı → yedek anahtara geçiliyor (#${_omdbKeyIndex + 1}/${keys.length})');
       return true;
     }
@@ -116,7 +143,7 @@ class MovieService extends GetxService {
     if (_tmdbKey != failedKey) return true; // başka çağrı zaten döndürmüş
     if (_tmdbKeyIndex + 1 < keys.length) {
       _tmdbKeyIndex++;
-      print(
+      debugPrint(
           '[MovieService] TMDB anahtarı geçersiz → yedek anahtara geçiliyor (#${_tmdbKeyIndex + 1}/${keys.length})');
       return true;
     }
@@ -159,18 +186,18 @@ class MovieService extends GetxService {
     if (text.isEmpty || _deviceLanguage == 'en') return text;
 
     final cacheKey =
-        '${_transCachePrefix}${_deviceLanguage}_${id ?? text.hashCode}';
+        '$_transCachePrefix${_deviceLanguage}_${id ?? text.hashCode}';
 
     try {
-      final prefs = await SharedPreferences.getInstance();
+      final prefs = await _getPrefs();
 
       // 1. Cache kontrolü
       final cached = prefs.getString(cacheKey);
       if (cached != null) return cached;
 
       // 2. Çeviri yap
-      print(
-          '[MovieService] Metin çevriliyor (${_deviceLanguage}): ${text.substring(0, text.length > 20 ? 20 : text.length)}...');
+      debugPrint(
+          '[MovieService] Metin çevriliyor ($_deviceLanguage): ${text.substring(0, text.length > 20 ? 20 : text.length)}...');
       final translation =
           await _translator.translate(text, to: _deviceLanguage);
       final translatedText = translation.text;
@@ -179,7 +206,31 @@ class MovieService extends GetxService {
       await prefs.setString(cacheKey, translatedText);
       return translatedText;
     } catch (e) {
-      print('[MovieService] Translation Error: $e');
+      debugPrint('[MovieService] Translation Error: $e');
+      return text;
+    }
+  }
+
+  /// TMDB bölüm metnini (ad/özet — kaynak `tr-TR`) cihaz diline çevirir ve
+  /// kalıcı önbelleğe alır. [_translateText]'ten farkı: kaynak Türkçe olduğu
+  /// için yalnızca cihaz dili **Türkçe** olduğunda çeviri atlanır (İngilizce
+  /// dahil diğer tüm diller çevrilir). [cacheId] bölüm bazında benzersiz olmalı.
+  Future<String?> _translateEpisodeText(String? text, String cacheId) async {
+    if (text == null || text.isEmpty) return text;
+    final lang = _deviceLanguage;
+    if (lang == 'tr') return text; // kaynak zaten Türkçe
+    final cacheKey = '${_transCachePrefix}ep_${lang}_$cacheId';
+    try {
+      final prefs = await _getPrefs();
+      final cached = prefs.getString(cacheKey);
+      if (cached != null) return cached;
+      final translation = await _translator.translate(text, to: lang);
+      final translated = translation.text;
+      if (translated.trim().isEmpty) return text;
+      await prefs.setString(cacheKey, translated);
+      return translated;
+    } catch (e) {
+      debugPrint('[MovieService] Episode translation error: $e');
       return text;
     }
   }
@@ -222,7 +273,7 @@ class MovieService extends GetxService {
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
 
-    print(
+    debugPrint(
         '[MovieService] İsim temizlendi (${isSeries ? "Dizi" : "Film"}): "$originalName" -> "$cleaned" (Yıl: $year)');
     return {'name': cleaned, 'year': year};
   }
@@ -231,7 +282,7 @@ class MovieService extends GetxService {
   Future<MovieModel?> fetchMovieInfo(String title,
       {String? year, String? type}) async {
     if (!omdbApiAvailable) return null;
-    print(
+    debugPrint(
         '[MovieService] OMDb sorgusu başlatıldı (İsim): $title ($year, Type: $type)');
     try {
       final queryParameters = <String, dynamic>{
@@ -254,7 +305,7 @@ class MovieService extends GetxService {
       if (!omdbApiAvailable) return null;
       return _fetchOmdbBySearch(title, year: year, type: type);
     } catch (e) {
-      print('OMDb API Error: $e');
+      debugPrint('OMDb API Error: $e');
       return null;
     }
   }
@@ -290,7 +341,7 @@ class MovieService extends GetxService {
       }
       return null;
     } catch (e) {
-      print('OMDb Search Error: $e');
+      debugPrint('OMDb Search Error: $e');
       return null;
     }
   }
@@ -304,7 +355,7 @@ class MovieService extends GetxService {
   /// OMDb API'den film veya dizi bilgilerini getirir (IMDb ID ile).
   Future<MovieModel?> fetchMovieByImdbId(String imdbId) async {
     if (!omdbApiAvailable) return null;
-    print('[MovieService] OMDb sorgusu başlatıldı (IMDb ID): $imdbId');
+    debugPrint('[MovieService] OMDb sorgusu başlatıldı (IMDb ID): $imdbId');
     try {
       final response = await _omdbGet(<String, dynamic>{
         'i': imdbId,
@@ -319,7 +370,7 @@ class MovieService extends GetxService {
       }
       return null;
     } catch (e) {
-      print('OMDb API Error (IMDb ID): $e');
+      debugPrint('OMDb API Error (IMDb ID): $e');
       return null;
     }
   }
@@ -338,10 +389,54 @@ class MovieService extends GetxService {
     /// URL'den çıkarılan IMDb kimliği (vidmody vb.) — TMDB aramasını atlar.
     String? imdbIdHint,
   }) async {
+    final settings = Get.find<AppSettingsService>();
+    final vodInfoEngine = settings.vodInfoEngine.value;
+
+    // Xtream Only modu: TMDB/OMDB çalıştırma, sadece yerel verileri kullan
+    if (vodInfoEngine == AppSettingsService.vodInfoEngineXtreamOnly) {
+      return MovieModel.fromFallback(
+        name: name,
+        localPlot: localPlot,
+        localPoster: localPoster,
+        localRating: localRating,
+        omdbData: null,
+        tmdbCast: null,
+        tmdbRuntime: null,
+        tmdbPoster: null,
+        tmdbBackdrop: null,
+        tmdbRating: null,
+        tmdbVoteCount: null,
+        tmdbGenres: null,
+        releaseDate: null,
+        country: null,
+        certification: null,
+        seasons: null,
+        episodes: null,
+      );
+    }
+
+    // TMDB/OMDB Only modu: Yerel verileri kullanma, sadece TMDB/OMDB'den veri al
+    if (vodInfoEngine == AppSettingsService.vodInfoEngineTmdbOmdbOnly) {
+      localPlot = null;
+      localPoster = null;
+      localRating = null;
+    }
+
     MovieModel? omdbData;
     List<CastMember>? tmdbCast;
     String? tmdbOverview;
     int? tmdbRuntimeMinutes;
+    // TMDB ek metadata
+    String? tmdbPoster;
+    String? tmdbBackdrop;
+    double? tmdbRating;
+    int? tmdbVoteCount;
+    List<String>? tmdbGenres;
+    String? tmdbReleaseDate;
+    String? tmdbCountry;
+    String? tmdbCertification;
+    int? tmdbSeasons;
+    int? tmdbEpisodes;
 
     // Vidmody / tt… URL'li kaynaklarda doğrudan OMDb (tek istek, daha hızlı).
     final hint = imdbIdHint?.trim();
@@ -357,6 +452,12 @@ class MovieService extends GetxService {
     final searchName = cleanedData['name'] ?? name;
     final searchYear = year ?? cleanedData['year'];
     final omdbType = isSeries ? 'series' : 'movie';
+
+    final cacheKey = _metaCacheKey(searchName, searchYear, isSeries);
+    if ((imdbIdHint == null || imdbIdHint.isEmpty) &&
+        _metaMemCache.containsKey(cacheKey)) {
+      return _metaMemCache[cacheKey]!;
+    }
 
     try {
       // Önce TMDB'de ara (search/multi kullanarak)
@@ -387,11 +488,16 @@ class MovieService extends GetxService {
           final String mediaType =
               match['media_type'] ?? (isSeries ? 'tv' : 'movie');
 
-          // IMDb ID, oyuncular ve özet (overview) paralel
+          // IMDb ID, oyuncular ve özet (overview) paralel.
+          // Detay çağrısına sertifika (yaş sınırı) için append_to_response ekle:
+          // film → release_dates, dizi → content_ratings (TMDB diğerini yok sayar).
           final details = await Future.wait([
             _tmdbGet('/$mediaType/$tmdbId/external_ids', const {}),
             _tmdbGet('/$mediaType/$tmdbId/credits', const {}),
-            _tmdbGet('/$mediaType/$tmdbId', const {'language': 'tr-TR'}),
+            _tmdbGet('/$mediaType/$tmdbId', const {
+              'language': 'tr-TR',
+              'append_to_response': 'release_dates,content_ratings',
+            }),
           ]);
 
           if (details[0]?.statusCode == 200) {
@@ -409,7 +515,7 @@ class MovieService extends GetxService {
           }
 
           if (details[2]?.statusCode == 200) {
-            final detailData = details[2]!.data;
+            final detailData = details[2]!.data as Map<String, dynamic>;
             final ov = detailData['overview']?.toString().trim();
             if (_plotUsable(ov)) tmdbOverview = ov;
             if (isSeries) {
@@ -425,14 +531,78 @@ class MovieService extends GetxService {
               tmdbRuntimeMinutes =
                   run is int ? run : int.tryParse(run?.toString() ?? '');
             }
-            if (tmdbRuntimeMinutes != null && tmdbRuntimeMinutes! <= 0) {
+            if (tmdbRuntimeMinutes != null && tmdbRuntimeMinutes <= 0) {
               tmdbRuntimeMinutes = null;
             }
+
+            // Poster & backdrop (tam URL)
+            final posterPath = detailData['poster_path'] as String?;
+            if (posterPath != null && posterPath.isNotEmpty) {
+              tmdbPoster = 'https://image.tmdb.org/t/p/w500$posterPath';
+            }
+            final backdropPath = detailData['backdrop_path'] as String?;
+            if (backdropPath != null && backdropPath.isNotEmpty) {
+              tmdbBackdrop = 'https://image.tmdb.org/t/p/w1280$backdropPath';
+            }
+
+            // Puan & oy sayısı
+            final va = detailData['vote_average'];
+            if (va is num && va > 0) tmdbRating = va.toDouble();
+            final vc = detailData['vote_count'];
+            if (vc is num && vc > 0) tmdbVoteCount = vc.toInt();
+
+            // Türler (yerelleştirilmiş)
+            final genresRaw = detailData['genres'];
+            if (genresRaw is List && genresRaw.isNotEmpty) {
+              final names = <String>[];
+              for (final g in genresRaw) {
+                if (g is Map && g['name'] != null) {
+                  final n = g['name'].toString().trim();
+                  if (n.isNotEmpty) names.add(n);
+                }
+              }
+              if (names.isNotEmpty) tmdbGenres = names;
+            }
+
+            // Çıkış / ilk yayın tarihi
+            final relDate =
+                (detailData['release_date'] ?? detailData['first_air_date'])
+                    ?.toString()
+                    .trim();
+            if (relDate != null && relDate.isNotEmpty) {
+              tmdbReleaseDate = relDate;
+            }
+
+            // Yapım ülkesi (öncelik: production_countries adı → origin_country)
+            final prodCountries = detailData['production_countries'];
+            if (prodCountries is List && prodCountries.isNotEmpty) {
+              final first = prodCountries.first;
+              if (first is Map && first['name'] != null) {
+                tmdbCountry = first['name'].toString().trim();
+              }
+            }
+            if (tmdbCountry == null || tmdbCountry.isEmpty) {
+              final origin = detailData['origin_country'];
+              if (origin is List && origin.isNotEmpty) {
+                tmdbCountry = origin.first.toString().trim();
+              }
+            }
+
+            // Dizi: sezon / bölüm sayısı
+            if (isSeries) {
+              final ns = detailData['number_of_seasons'];
+              if (ns is num && ns > 0) tmdbSeasons = ns.toInt();
+              final ne = detailData['number_of_episodes'];
+              if (ne is num && ne > 0) tmdbEpisodes = ne.toInt();
+            }
+
+            // Yaş sınırı / sertifika
+            tmdbCertification = _extractCertification(detailData, isSeries);
           }
         }
       }
     } catch (e) {
-      print('[MovieService] TMDB Advanced Fetch Error: $e');
+      debugPrint('[MovieService] TMDB Advanced Fetch Error: $e');
     }
 
     // 2. Adım: Eğer ID bulunamadıysa veya OMDb verisi gelmediyse, temizlenmiş isimle dene
@@ -489,11 +659,11 @@ class MovieService extends GetxService {
     }
 
     String? tmdbRuntimeLabel;
-    if (tmdbRuntimeMinutes != null && tmdbRuntimeMinutes! > 0) {
+    if (tmdbRuntimeMinutes != null && tmdbRuntimeMinutes > 0) {
       tmdbRuntimeLabel = '$tmdbRuntimeMinutes min';
     }
 
-    return MovieModel.fromFallback(
+    final result = MovieModel.fromFallback(
       name: name,
       localPlot: effectivePlot,
       localPoster: localPoster,
@@ -501,7 +671,210 @@ class MovieService extends GetxService {
       omdbData: omdbData,
       tmdbCast: tmdbCast,
       tmdbRuntime: tmdbRuntimeLabel,
+      tmdbPoster: tmdbPoster,
+      tmdbBackdrop: tmdbBackdrop,
+      tmdbRating: tmdbRating,
+      tmdbVoteCount: tmdbVoteCount,
+      tmdbGenres: tmdbGenres,
+      releaseDate: tmdbReleaseDate,
+      country: tmdbCountry,
+      certification: tmdbCertification,
+      seasons: tmdbSeasons,
+      episodes: tmdbEpisodes,
     );
+    if (imdbIdHint == null || imdbIdHint.isEmpty) {
+      _metaCachePut(cacheKey, result);
+    }
+    return result;
+  }
+
+  /// Dizi adı → TMDB tv id eşleşmesi (oturum içi önbellekli). Bulunamazsa null.
+  static final Map<String, int?> _tmdbTvIdCache = {};
+
+  /// TMDB sezon bölümleri önbelleği: "name|year|season" → bölüm bilgisi.
+  static final Map<String, Map<int, ({String? name, String? overview})>>
+      _seasonEpisodeCache = {};
+
+  Future<int?> _resolveTmdbTvId(String name, String? year) async {
+    final cleaned = _cleanNameAndExtractYear(name, isSeries: true);
+    final searchName = cleaned['name'] ?? name;
+    final searchYear = year ?? cleaned['year'];
+    final key = 'tv:${searchName.trim().toLowerCase()}:${searchYear ?? ''}';
+    if (_tmdbTvIdCache.containsKey(key)) return _tmdbTvIdCache[key];
+    if (ApiConstants.tmdbApiKey == 'YOUR_TMDB_API_KEY') {
+      return _tmdbTvIdCache[key] = null;
+    }
+    try {
+      final resp = await _tmdbGet('/search/multi', {
+        'query': searchName,
+        if (searchYear != null) 'year': searchYear,
+        'language': 'tr-TR',
+      });
+      if (resp?.statusCode == 200 && resp?.data['results'] is List) {
+        final results = resp!.data['results'] as List;
+        if (results.isNotEmpty) {
+          final match = results.firstWhere(
+            (e) => e is Map && e['media_type'] == 'tv',
+            orElse: () => results.first,
+          );
+          if (match is Map) {
+            final id = match['id'];
+            if (id is int) return _tmdbTvIdCache[key] = id;
+          }
+        }
+      }
+    } catch (e) {
+      debugPrint('[MovieService] resolveTmdbTvId error: $e');
+    }
+    return _tmdbTvIdCache[key] = null;
+  }
+
+  /// Bir dizinin belirli sezonundaki bölüm adı + özetini TMDB'den çeker
+  /// (`/tv/{id}/season/{s}` tek istek). Sonuç bölüm numarasına göre
+  /// haritalanır ve oturum içi önbelleğe alınır. ID bulunamaz / istek
+  /// başarısız olursa boş harita döner (UI sessizce mevcut veriyle kalır).
+  Future<Map<int, ({String? name, String? overview})>> fetchTmdbSeasonEpisodes({
+    required String seriesName,
+    String? year,
+    required int season,
+  }) async {
+    final cacheKey =
+        'ep:${seriesName.trim().toLowerCase()}:${year ?? ''}:$season';
+    final cached = _seasonEpisodeCache[cacheKey];
+    if (cached != null) return cached;
+
+    final out = <int, ({String? name, String? overview})>{};
+    final tvId = await _resolveTmdbTvId(seriesName, year);
+    if (tvId == null) return _seasonEpisodeCache[cacheKey] = out;
+
+    try {
+      final resp = await _tmdbGet('/tv/$tvId/season/$season', {
+        'language': 'tr-TR',
+      });
+      if (resp?.statusCode == 200 && resp?.data['episodes'] is List) {
+        for (final e in (resp!.data['episodes'] as List)) {
+          if (e is! Map) continue;
+          final num = e['episode_number'];
+          if (num is! int) continue;
+          final nm = e['name']?.toString().trim();
+          final ov = e['overview']?.toString().trim();
+          out[num] = (
+            name: (nm != null && nm.isNotEmpty) ? nm : null,
+            overview: _plotUsable(ov) ? ov : null,
+          );
+        }
+      }
+
+      // TMDB verisi `tr-TR` çekildi; cihaz dili Türkçe değilse bölüm ad ve
+      // özetlerini cihaz diline çevir (paralel + kalıcı önbellek). Türkçe
+      // cihazda hiç çağrı yapılmaz.
+      if (_deviceLanguage != 'tr' && out.isNotEmpty) {
+        final entries = out.entries.toList();
+        final translated = <MapEntry<int, ({String? name, String? overview})>>[];
+        const chunkSize = 5;
+        for (var i = 0; i < entries.length; i += chunkSize) {
+          final end = i + chunkSize > entries.length ? entries.length : i + chunkSize;
+          final chunk = entries.sublist(i, end);
+          final chunkResults = await Future.wait(chunk.map((entry) async {
+            final epNo = entry.key;
+            final info = entry.value;
+            final results = await Future.wait([
+              _translateEpisodeText(info.name, '${tvId}_s${season}_e${epNo}_n'),
+              _translateEpisodeText(
+                  info.overview, '${tvId}_s${season}_e${epNo}_o'),
+            ]);
+            return MapEntry<int, ({String? name, String? overview})>(
+              epNo,
+              (name: results[0], overview: results[1]),
+            );
+          }));
+          translated.addAll(chunkResults);
+        }
+        out
+          ..clear()
+          ..addEntries(translated);
+      }
+    } catch (e) {
+      debugPrint('[MovieService] fetchTmdbSeasonEpisodes error: $e');
+    }
+    return _seasonEpisodeCache[cacheKey] = out;
+  }
+
+  /// TMDB detayından yaş sınırını çıkarır. Film: `release_dates`; dizi:
+  /// `content_ratings`. Bölge önceliği: TR → US → ilk dolu değer.
+  static String? _extractCertification(
+    Map<String, dynamic> detail,
+    bool isSeries,
+  ) {
+    try {
+      if (isSeries) {
+        final cr = detail['content_ratings'];
+        final results = cr is Map ? cr['results'] : null;
+        if (results is! List) return null;
+        String? pick(String region) {
+          for (final r in results) {
+            if (r is Map && r['iso_3166_1'] == region) {
+              final v = r['rating']?.toString().trim();
+              if (v != null && v.isNotEmpty) return v;
+            }
+          }
+          return null;
+        }
+
+        final tr = pick('TR');
+        if (tr != null) return tr;
+        final us = pick('US');
+        if (us != null) return us;
+        for (final r in results) {
+          if (r is Map) {
+            final v = r['rating']?.toString().trim();
+            if (v != null && v.isNotEmpty) return v;
+          }
+        }
+        return null;
+      }
+
+      final rd = detail['release_dates'];
+      final results = rd is Map ? rd['results'] : null;
+      if (results is! List) return null;
+      String? pick(String region) {
+        for (final r in results) {
+          if (r is Map && r['iso_3166_1'] == region) {
+            final dates = r['release_dates'];
+            if (dates is List) {
+              for (final d in dates) {
+                if (d is Map) {
+                  final v = d['certification']?.toString().trim();
+                  if (v != null && v.isNotEmpty) return v;
+                }
+              }
+            }
+          }
+        }
+        return null;
+      }
+
+      final tr = pick('TR');
+      if (tr != null) return tr;
+      final us = pick('US');
+      if (us != null) return us;
+      for (final r in results) {
+        if (r is Map) {
+          final dates = r['release_dates'];
+          if (dates is List) {
+            for (final d in dates) {
+              if (d is Map) {
+                final v = d['certification']?.toString().trim();
+                if (v != null && v.isNotEmpty) return v;
+              }
+            }
+          }
+        }
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
   }
 
   /// TMDB `videos` + isteğe bağlı Xtream YouTube fragmanı.
@@ -598,7 +971,7 @@ class MovieService extends GetxService {
         if (out.length >= 6) break;
       }
     } catch (e) {
-      print('[MovieService] Trailer fetch error: $e');
+      debugPrint('[MovieService] Trailer fetch error: $e');
     }
     return out;
   }
@@ -699,7 +1072,7 @@ class MovieService extends GetxService {
       }
       return (bio: bio, photo: photo, credits: credits.take(40).toList());
     } catch (e) {
-      print('[MovieService] Person fetch error: $e');
+      debugPrint('[MovieService] Person fetch error: $e');
       return (bio: null, photo: null, credits: <ActorCredit>[]);
     }
   }

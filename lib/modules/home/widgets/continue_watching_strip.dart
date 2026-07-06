@@ -1,3 +1,4 @@
+import 'dart:async' show unawaited;
 import 'dart:math' as math;
 
 import 'package:cached_network_image/cached_network_image.dart';
@@ -13,6 +14,7 @@ import '../../../core/layout/app_layout_mode.dart';
 import '../../../core/routes/app_routes.dart';
 import '../../../core/services/app_image_cache_service.dart';
 import '../../../core/services/app_settings_service.dart';
+import '../../../core/services/playlist_data_source.dart';
 import '../../../core/services/watch_progress_service.dart';
 import '../../../core/theme/app_scroll_physics.dart';
 import '../../../core/theme/glass_appearance.dart';
@@ -20,6 +22,7 @@ import '../../../domain/entities/m3u_result.dart';
 import '../../../domain/entities/series.dart';
 import '../../../domain/entities/vod.dart';
 import '../../../ui/tv_dpad_focus.dart';
+import '../../../ui/auto_scroll_text.dart';
 import 'watch_progress_circle.dart';
 
 /// İzlemeye Devam Et listesinde gösterilecek, kataloga çözülmüş öğe.
@@ -65,6 +68,7 @@ class _ContinueWatchingStripState extends State<ContinueWatchingStrip> {
   List<_ResolvedCwItem> _items = const [];
   Worker? _revisionListener;
   Worker? _cardScaleListener;
+  int _computeGen = 0;
 
   @override
   void initState() {
@@ -96,27 +100,52 @@ class _ContinueWatchingStripState extends State<ContinueWatchingStrip> {
   }
 
   void _compute() {
+    unawaited(_computeAsync());
+  }
+
+  Future<void> _computeAsync() async {
+    final gen = ++_computeGen;
     final watch = Get.find<WatchProgressService>();
     final entries = watch.continueWatching(max: widget.maxItems);
-    final vodById = {for (final v in widget.data.vod) v.id: v};
-    final seriesById = {for (final s in widget.data.series) s.id: s};
+    final ds = Get.find<PlaylistDataSource>();
 
     final resolved = <_ResolvedCwItem>[];
     for (final e in entries) {
       if (e.kind == ContinueWatchingKind.vod) {
-        final v = vodById[e.id];
+        VodItem? v;
+        if (ds.isDbBacked) {
+          v = await ds.vodById(e.id);
+        } else {
+          for (final item in widget.data.vod) {
+            if (item.id == e.id) {
+              v = item;
+              break;
+            }
+          }
+        }
+        if (v == null) {
+          unawaited(watch.removeEntry(e.id, ContinueWatchingKind.vod));
+          continue;
+        }
         resolved.add(_ResolvedCwItem(
           entry: e,
           vod: v,
-          title: v != null ? _filmTitle(v.name) : e.title,
-          posterUrl: v?.posterUrl ?? e.coverUrl,
+          title: _filmTitle(v.name),
+          posterUrl: v.posterUrl ?? e.coverUrl,
         ));
       } else {
-        final s = seriesById[e.id];
-        if (s == null) {
-          // Dizi katalogda bulunamadıysa kart açılamaz; atla.
-          continue;
+        SeriesItem? s;
+        if (ds.isDbBacked) {
+          s = await ds.seriesById(e.id);
+        } else {
+          for (final item in widget.data.series) {
+            if (item.id == e.id) {
+              s = item;
+              break;
+            }
+          }
         }
+        if (s == null) continue;
         resolved.add(_ResolvedCwItem(
           entry: e,
           series: s,
@@ -125,7 +154,7 @@ class _ContinueWatchingStripState extends State<ContinueWatchingStrip> {
         ));
       }
     }
-    if (!mounted) return;
+    if (!mounted || gen != _computeGen) return;
     setState(() => _items = resolved);
   }
 
@@ -409,13 +438,11 @@ class _ContinueWatchingCardState extends State<_ContinueWatchingCard> {
               left: 8,
               right: 8,
               bottom: 7,
-              child: Text(
-                item.title,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
+              child: AutoScrollText(
+                text: item.title,
                 style: const TextStyle(
                   color: Colors.white,
-                  fontSize: 12,
+                  fontSize: 10.5,
                   fontWeight: FontWeight.w800,
                   height: 1.1,
                   letterSpacing: 0.1,

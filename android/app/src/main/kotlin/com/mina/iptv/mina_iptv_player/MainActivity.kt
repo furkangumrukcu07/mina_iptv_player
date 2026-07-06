@@ -32,6 +32,7 @@ import android.util.Base64
 import android.util.Log
 import android.util.Rational
 import androidx.core.content.FileProvider
+import androidx.lifecycle.Lifecycle
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.io.FileInputStream
@@ -44,6 +45,7 @@ import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterFragmentActivity() {
     private var pipChannel: MethodChannel? = null
+    private var activityLifecycleChannel: MethodChannel? = null
 
     // -------- Audio Equalizer (BetterPlayer / ExoPlayer çıkışı) --------
     // Tek bir Equalizer örneği tutarız; Dart tarafı `bandLevelsMb`
@@ -81,6 +83,12 @@ class MainActivity : FlutterFragmentActivity() {
 
     /** Yalnızca PiP moduna girildiyse çıkışta görev sonlandırılır. */
     private var wasInPictureInPicture = false
+
+    /**
+     * Bazı cihazlarda PiP tam ekrana genişletilirken [onResume], [onPictureInPictureModeChanged]
+     * (false) öncesinde gelir. Bu bayrak o yarışta uygulamanın yanlışlıkla kapanmasını önler.
+     */
+    private var pipExpandResumeBeforePipModeExit = false
 
     // Samsung One UI başta olmak üzere bazı OEM'ler View.performHapticFeedback(CLOCK_TICK)
     // — Flutter'ın HapticFeedback.selectionClick() çağrısı — sabitini yok sayıyor. Cihazın
@@ -146,6 +154,25 @@ class MainActivity : FlutterFragmentActivity() {
                 }
             }
         }
+        MethodChannel(messenger, "mina.device/info").setMethodCallHandler { call, result ->
+            when (call.method) {
+                "getFirstInstallTime" -> {
+                    try {
+                        val packageInfo = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                            packageManager.getPackageInfo(packageName, PackageManager.PackageInfoFlags.of(0))
+                        } else {
+                            @Suppress("DEPRECATION")
+                            packageManager.getPackageInfo(packageName, 0)
+                        }
+                        result.success(packageInfo.firstInstallTime)
+                    } catch (e: Exception) {
+                        result.error("UNAVAILABLE", "Could not get first install time: ${e.message}", null)
+                    }
+                }
+                else -> result.notImplemented()
+            }
+        }
+        activityLifecycleChannel = MethodChannel(messenger, "mina.app/activity_lifecycle")
         // Adaptive haptics: Samsung/OEM'lerin View.performHapticFeedback(CLOCK_TICK)
         // sabitini yok saydığı cihazlarda Vibrator API'sini doğrudan tetikler.
         MethodChannel(messenger, "mina.device/haptics").setMethodCallHandler { call, result ->
@@ -197,29 +224,78 @@ class MainActivity : FlutterFragmentActivity() {
                     val man = Build.MANUFACTURER.lowercase(Locale.US)
                     val brand = Build.BRAND.lowercase(Locale.US)
                     val model = Build.MODEL.lowercase(Locale.US)
-                    val blob = "$hw $board $man $brand $model"
+                    val device = Build.DEVICE.lowercase(Locale.US)
+                    val blob = "$hw $board $man $brand $model $device"
+                    val digipollLike = listOf("digipoll").any { x ->
+                        man.contains(x) || brand.contains(x) || model.contains(x)
+                    }
                     val amlogic = blob.contains("amlogic") || blob.contains("meson")
                     val tclLike = listOf("tcl").any { x ->
                         man.contains(x) || brand.contains(x) || model.contains(x)
                     }
+                    val philipsLike = listOf("philips", "tpv", "pfl", "pus").any { x ->
+                        man.contains(x) || brand.contains(x) || model.contains(x)
+                    }
+                    val toshibaLike = listOf("toshiba", "regza").any { x ->
+                        man.contains(x) || brand.contains(x) || model.contains(x)
+                    }
+                    val hisenseLike = listOf("hisense", "vidaa").any { x ->
+                        man.contains(x) || brand.contains(x) || model.contains(x)
+                    }
+                    val vestelLike = listOf("vestel", "regal", "finlux").any { x ->
+                        man.contains(x) || brand.contains(x) || model.contains(x)
+                    }
                     val mediatekLike = listOf("mediatek", "mtk").any { x -> blob.contains(x) } ||
                         hw.startsWith("mt")
-                    val realtekLike = blob.contains("realtek")
+                    val realtekLike = blob.contains("realtek") || hw.startsWith("rtd")
+                    // Ucuz 4K Android kutular (Next Star, Atlas, Vestel vb.) çoğunlukla
+                    // Allwinner (sunxi: sun8i / sun50iw…) veya Rockchip (rk3318 / rk3328 /
+                    // rk3399) yonga seti kullanır. Bu zayıf kod çözücüler dengeli (mid)
+                    // tamponla kesik kesik oynatır; `playbackChallengedTv` ile `low`
+                    // profile (geniş tampon + VOD yazılım kod çözücü ilk deneme) inerler.
+                    val allwinnerLike = blob.contains("allwinner") ||
+                        hw.startsWith("sun") || board.startsWith("sun") || board.startsWith("exdroid")
+                    val rockchipLike = blob.contains("rockchip") ||
+                        hw.startsWith("rk3") || board.startsWith("rk3")
+                    val genericBudgetBoxLike = listOf(
+                        "x96", "x98", "t95", "t96", "t98", "h96", "h98", "h616", "h618",
+                        "tanix", "mxq", "tx3", "tx6", "transpeed", "bqeel", "vontar",
+                        "atlas", "next star", "nextstar",
+                    ).any { x -> model.contains(x) || brand.contains(x) || device.contains(x) }
+                    val budgetTvBoxSoc = allwinnerLike || rockchipLike || genericBudgetBoxLike
                     val cores = Runtime.getRuntime().availableProcessors()
                     val am = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
                     val mi = ActivityManager.MemoryInfo()
                     am.getMemoryInfo(mi)
                     val ram = mi.totalMem
+                    val oneGiB = 1024L * 1024 * 1024
+                    val twoGiB = 2L * oneGiB
+                    val threeGiB = 3L * oneGiB
                     val twoHalfGiB = (2.5 * 1024 * 1024 * 1024).toLong()
-                    // Düşük RAM veya az çekirdek: MediaKit (mpv) için daha agresif framedrop / thread sınırı.
-                    val weakMpv = ram < twoHalfGiB || cores <= 4
-                    val isTv = packageManager.hasSystemFeature(PackageManager.FEATURE_LEANBACK) ||
-                        packageManager.hasSystemFeature(PackageManager.FEATURE_TELEVISION) ||
-                        (resources.configuration.uiMode and Configuration.UI_MODE_TYPE_MASK) ==
-                        Configuration.UI_MODE_TYPE_TELEVISION
+                    val fourGiB = 4L * oneGiB
+                    val isTv = MinaRendererPolicy.isAndroidTvOrTvBox(this)
+                    val capableTwoGiBTvBox = ram >= twoGiB && ram < threeGiB && cores >= 4 &&
+                        !budgetTvBoxSoc &&
+                        listOf(
+                            "google", "chromecast", "sabrina", "oneday", "xiaomi", "mi box",
+                            "mitv", "mi tv stick", "onn", "mecool", "km9", "km2", "nvidia",
+                            "shield", "tivo", "formuler",
+                        ).any { x -> blob.contains(x) }
+                    val weakMpv = (ram < twoHalfGiB || cores <= 4) && !capableTwoGiBTvBox
+                    val amazonFireLike = isTv &&
+                        listOf("amazon", "fire tv", "aft", "sheldon", "mantis").any { x ->
+                            man.contains(x) || brand.contains(x) || model.contains(x) || device.contains(x)
+                        }
+                    val lowEndSmartTvLike = isTv &&
+                        (tclLike || philipsLike || toshibaLike || hisenseLike || vestelLike ||
+                            realtekLike || (mediatekLike && ram < fourGiB))
                     // TCL / Google TV (ör. C755): Exo MTK/Realtek ve mpv mediacodec-copy sık bozulur.
+                    // Allwinner/Rockchip ucuz 4K kutular da aynı zorlu kod çözücü sınıfına girer.
                     val playbackChallengedTv = isTv &&
-                        (amlogic || tclLike || mediatekLike || realtekLike)
+                        (amlogic || tclLike || philipsLike || toshibaLike || hisenseLike ||
+                            vestelLike || mediatekLike || realtekLike ||
+                            allwinnerLike || rockchipLike || genericBudgetBoxLike ||
+                            digipollLike || amazonFireLike || lowEndSmartTvLike || weakMpv)
                     val xiaomiFamily = listOf("xiaomi", "redmi", "poco", "black shark").any { x ->
                         man.contains(x) || brand.contains(x) || model.contains(x)
                     }
@@ -236,7 +312,19 @@ class MainActivity : FlutterFragmentActivity() {
                             "xiaomiFamily" to xiaomiFamily,
                             "playbackChallengedTv" to playbackChallengedTv,
                             "tclLike" to tclLike,
+                            "philipsLike" to philipsLike,
+                            "toshibaLike" to toshibaLike,
+                            "hisenseLike" to hisenseLike,
+                            "vestelLike" to vestelLike,
                             "mediatekLike" to mediatekLike,
+                            "allwinnerLike" to allwinnerLike,
+                            "rockchipLike" to rockchipLike,
+                            "genericBudgetBoxLike" to genericBudgetBoxLike,
+                            "budgetTvBoxSoc" to budgetTvBoxSoc,
+                            "lowEndSmartTvLike" to lowEndSmartTvLike,
+                            "capableTwoGiBTvBox" to capableTwoGiBTvBox,
+                            "amazonFireLike" to amazonFireLike,
+                            "digipollLike" to digipollLike,
                         ),
                     )
                 }
@@ -632,37 +720,81 @@ class MainActivity : FlutterFragmentActivity() {
         }
     }
 
-    override fun onResume() {
-        if (awaitingPipCloseOrExpand) {
-            awaitingPipCloseOrExpand = false
-            pipDismissFinishRunnable?.let { pipExitHandler.removeCallbacks(it) }
+    private fun cancelPipDismissFinish() {
+        awaitingPipCloseOrExpand = false
+        pipDismissFinishRunnable?.let { pipExitHandler.removeCallbacks(it) }
+        pipDismissFinishRunnable = null
+    }
+
+    private fun schedulePipDismissFinishIfStillBackground() {
+        cancelPipDismissFinish()
+        awaitingPipCloseOrExpand = true
+        val r = Runnable {
             pipDismissFinishRunnable = null
+            if (!awaitingPipCloseOrExpand) return@Runnable
+            awaitingPipCloseOrExpand = false
+            if (isFinishing || isDestroyed) return@Runnable
+            // Tam ekrana genişletmede bu noktada activity zaten ön plandadır.
+            if (lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) return@Runnable
+            if (hasWindowFocus()) return@Runnable
+            try {
+                finishAffinity()
+            } catch (e: Exception) {
+                Log.w("MainActivity", "finishAffinity after PiP dismiss: $e")
+            }
         }
+        pipDismissFinishRunnable = r
+        // PiP X ile kapatmada onResume gelmez; genişletmede gelir ve iptal edilir.
+        pipExitHandler.postDelayed(r, 600L)
+    }
+
+    private fun notifyActivityBackgrounded() {
+        try {
+            activityLifecycleChannel?.invokeMethod("background", null)
+        } catch (e: Exception) {
+            Log.w("MainActivity", "activity background notify: $e")
+        }
+    }
+
+    private fun notifyActivityForegrounded() {
+        try {
+            activityLifecycleChannel?.invokeMethod("foreground", null)
+        } catch (e: Exception) {
+            Log.w("MainActivity", "activity foreground notify: $e")
+        }
+    }
+
+    override fun onResume() {
+        if (wasInPictureInPicture) {
+            pipExpandResumeBeforePipModeExit = true
+        }
+        cancelPipDismissFinish()
         super.onResume()
         applyPipAutoEnterParams()
+        notifyActivityForegrounded()
+    }
+
+    override fun onWindowFocusChanged(hasFocus: Boolean) {
+        super.onWindowFocusChanged(hasFocus)
+        if (hasFocus) {
+            cancelPipDismissFinish()
+        }
     }
 
     override fun onPause() {
-        // API 26–30: ana ekrana geçerken asenkron Dart çağrısı çoğu zaman geç kalır; burada senkron dene.
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
-            Build.VERSION.SDK_INT < Build.VERSION_CODES.S &&
-            pipAutoEnterEligible &&
-            !isChangingConfigurations &&
-            !isFinishing
-        ) {
-            try {
-                val params = PictureInPictureParams.Builder()
-                    .setAspectRatio(Rational(16, 9))
-                    .build()
-                val ok = enterPictureInPictureMode(params)
-                if (!ok) {
-                    Log.w("MainActivity", "onPause enterPictureInPictureMode returned false")
-                }
-            } catch (e: Exception) {
-                Log.w("MainActivity", "onPause PiP: $e")
-            }
-        }
+        // PiP entry is now handled entirely by BetterPlayer package to avoid conflicts
+        // Only notify Dart about background state
         super.onPause()
+        if (!isChangingConfigurations && !isFinishing) {
+            notifyActivityBackgrounded()
+        }
+    }
+
+    override fun onStop() {
+        super.onStop()
+        if (!isChangingConfigurations && !isFinishing) {
+            notifyActivityBackgrounded()
+        }
     }
 
     override fun onPictureInPictureModeChanged(
@@ -672,34 +804,33 @@ class MainActivity : FlutterFragmentActivity() {
         super.onPictureInPictureModeChanged(isInPictureInPictureMode, newConfig)
         if (isInPictureInPictureMode) {
             wasInPictureInPicture = true
+            pipExpandResumeBeforePipModeExit = false
+            cancelPipDismissFinish()
             return
         }
         if (!wasInPictureInPicture) return
         wasInPictureInPicture = false
-        pipDismissFinishRunnable?.let { pipExitHandler.removeCallbacks(it) }
-        pipDismissFinishRunnable = null
-        awaitingPipCloseOrExpand = true
-        val r = Runnable {
-            pipDismissFinishRunnable = null
-            if (!awaitingPipCloseOrExpand) return@Runnable
-            awaitingPipCloseOrExpand = false
-            if (isFinishing || isDestroyed) return@Runnable
-            try {
-                finishAffinity()
-            } catch (e: Exception) {
-                Log.w("MainActivity", "finishAffinity after PiP dismiss: $e")
-            }
+
+        val expandingToFullScreen =
+            pipExpandResumeBeforePipModeExit ||
+                lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED) ||
+                hasWindowFocus()
+        pipExpandResumeBeforePipModeExit = false
+
+        if (expandingToFullScreen) {
+            cancelPipDismissFinish()
+            // Notify Dart that we're returning from PiP to ensure proper UI state
+            notifyActivityForegrounded()
+            return
         }
-        pipDismissFinishRunnable = r
-        // Tam ekrana genişletmede onResume gelir ve bu görev iptal edilir; PiP X ile kapatmada gelmez.
-        pipExitHandler.postDelayed(r, 400L)
+
+        schedulePipDismissFinishIfStillBackground()
     }
 
     override fun onDestroy() {
-        pipDismissFinishRunnable?.let { pipExitHandler.removeCallbacks(it) }
-        pipDismissFinishRunnable = null
-        awaitingPipCloseOrExpand = false
+        cancelPipDismissFinish()
         wasInPictureInPicture = false
+        pipExpandResumeBeforePipModeExit = false
         releaseNativeEqualizer()
         super.onDestroy()
     }

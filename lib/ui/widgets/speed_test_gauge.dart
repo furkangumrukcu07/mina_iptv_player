@@ -55,7 +55,7 @@ class SpeedTestGauge extends StatelessWidget {
     return CustomPaint(
       size: const Size(200, 200),
       painter: _GaugeBackgroundPainter(
-        color: colorScheme.surfaceVariant.withOpacity(0.3),
+        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.3),
         strokeWidth: strokeWidth,
       ),
     );
@@ -84,11 +84,11 @@ class SpeedTestGauge extends StatelessWidget {
           width: isTvMode ? 60 : 40,
           height: isTvMode ? 60 : 40,
           decoration: BoxDecoration(
-            color: Colors.white.withOpacity(0.9),
+            color: Colors.white.withValues(alpha: 0.9),
             borderRadius: BorderRadius.circular(isTvMode ? 12 : 8),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.1),
+                color: Colors.black.withValues(alpha: 0.1),
                 blurRadius: isTvMode ? 8 : 4,
                 offset: const Offset(0, 2),
               ),
@@ -248,7 +248,7 @@ class _TestAnimationPainter extends CustomPainter {
     final radius = (size.width - 20) / 2;
 
     final paint = Paint()
-      ..color = Colors.blue.withOpacity(0.6)
+      ..color = Colors.blue.withValues(alpha: 0.6)
       ..style = PaintingStyle.fill;
 
     // 3 adet donen nokta

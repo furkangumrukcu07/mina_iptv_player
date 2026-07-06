@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
@@ -6,6 +8,8 @@ import '../../core/layout/app_layout_mode.dart';
 import '../../core/theme/app_scroll_physics.dart';
 import '../../core/services/app_settings_service.dart';
 import '../../core/services/playlist_cache_service.dart';
+import '../../core/services/playlist_data_source.dart';
+import '../../data/local/playlist_sqlite_store.dart';
 import '../../domain/entities/channel.dart';
 import '../../domain/entities/m3u_result.dart';
 import '../../ui/glass_overlays.dart';
@@ -27,14 +31,25 @@ class _ChannelListEditorViewState extends State<ChannelListEditorView> {
 
   final Set<int> _hiddenIds = {};
   final Map<int, List<Channel>> _channelsByCategory = {};
+  List<ChannelCategory> _categories = const [];
   int? _selectedCategoryId;
 
   @override
   void initState() {
     super.initState();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (_prefKey != null) return;
+    unawaited(_bootstrapEditor());
+  }
+
+  Future<void> _bootstrapEditor() async {
     final cache = Get.find<PlaylistCacheService>();
     final app = Get.find<AppSettingsService>();
-    _raw = cache.rawPlaylist;
+    _raw = cache.rawPlaylist ?? cache.result.value;
     final xk = cache.xtreamPreferenceKey.value?.trim();
     final url = cache.sourceUrl.value?.trim() ?? '';
 
@@ -51,30 +66,65 @@ class _ChannelListEditorViewState extends State<ChannelListEditorView> {
 
     final d = _raw;
     final k = _prefKey;
-    if (d != null && k != null) {
-      _hiddenIds.addAll(app.liveChannelHiddenIds(k));
-      final savedOrder = app.liveChannelOrderByCategory(k);
-      for (final cat in d.channelCategories) {
-        final inCat = d.channels.where((c) => c.categoryId == cat.id).toList();
-        final visible = inCat.where((c) => !_hiddenIds.contains(c.id)).toList();
-        final order = savedOrder[cat.id];
-        if (order != null && order.isNotEmpty) {
-          final pos = {for (var i = 0; i < order.length; i++) order[i]: i};
-          visible.sort((a, b) {
-            final ia = pos[a.id];
-            final ib = pos[b.id];
-            if (ia != null && ib != null) return ia.compareTo(ib);
-            if (ia != null) return -1;
-            if (ib != null) return 1;
-            return 0;
-          });
-        }
-        _channelsByCategory[cat.id] = visible;
+    if (d == null || k == null) {
+      if (mounted) setState(() {});
+      return;
+    }
+
+    _hiddenIds.addAll(app.liveChannelHiddenIds(k));
+    final savedOrder = app.liveChannelOrderByCategory(k);
+
+    var categories = d.channelCategories;
+    final dbKey = cache.dbSourceKey.value?.trim();
+    if (categories.isEmpty &&
+        dbKey != null &&
+        dbKey.isNotEmpty &&
+        Get.isRegistered<PlaylistDataSource>()) {
+      categories = await Get.find<PlaylistDataSource>().channelCategories();
+    }
+
+    final channelsByCat = <int, List<Channel>>{};
+    if (dbKey != null &&
+        dbKey.isNotEmpty &&
+        Get.isRegistered<PlaylistDataSource>()) {
+      for (final cat in categories) {
+        final inCat = await PlaylistSqliteStore.channelsPageRaw(
+          dbKey,
+          categoryId: cat.id,
+          limit: 100000,
+        );
+        channelsByCat[cat.id] = inCat;
       }
-      if (d.channelCategories.isNotEmpty) {
-        _selectedCategoryId = d.channelCategories.first.id;
+    } else {
+      for (final cat in categories) {
+        channelsByCat[cat.id] =
+            d.channels.where((c) => c.categoryId == cat.id).toList();
       }
     }
+
+    for (final cat in categories) {
+      final inCat = channelsByCat[cat.id] ?? const <Channel>[];
+      final visible = inCat.where((c) => !_hiddenIds.contains(c.id)).toList();
+      final order = savedOrder[cat.id];
+      if (order != null && order.isNotEmpty) {
+        final pos = {for (var i = 0; i < order.length; i++) order[i]: i};
+        visible.sort((a, b) {
+          final ia = pos[a.id];
+          final ib = pos[b.id];
+          if (ia != null && ib != null) return ia.compareTo(ib);
+          if (ia != null) return -1;
+          if (ib != null) return 1;
+          return 0;
+        });
+      }
+      _channelsByCategory[cat.id] = visible;
+    }
+
+    _categories = categories;
+    if (categories.isNotEmpty) {
+      _selectedCategoryId = categories.first.id;
+    }
+    if (mounted) setState(() {});
   }
 
   List<Channel> get _currentList {
@@ -139,7 +189,7 @@ class _ChannelListEditorViewState extends State<ChannelListEditorView> {
     if (k == null || d == null) return;
     final app = Get.find<AppSettingsService>();
     final order = <int, List<int>>{};
-    for (final cat in d.channelCategories) {
+    for (final cat in _categories) {
       final rows = _channelsByCategory[cat.id] ?? [];
       order[cat.id] = rows.map((c) => c.id).toList();
     }
@@ -164,7 +214,7 @@ class _ChannelListEditorViewState extends State<ChannelListEditorView> {
     final settings = Get.find<AppSettingsService>();
     final tv = settings.layoutMode.value == AppLayoutMode.tv;
 
-    if (_raw == null || _prefKey == null || _raw!.channelCategories.isEmpty) {
+    if (_raw == null || _prefKey == null || _categories.isEmpty) {
       return Scaffold(
         backgroundColor: Colors.black,
         appBar: AppBar(
@@ -184,7 +234,7 @@ class _ChannelListEditorViewState extends State<ChannelListEditorView> {
       );
     }
 
-    final cats = _raw!.channelCategories;
+    final cats = _categories;
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -449,14 +499,8 @@ class _ChannelEditRowState extends State<_ChannelEditRow> {
           return KeyEventResult.ignored;
         }
         final k = event.logicalKey;
-        if (k == LogicalKeyboardKey.arrowUp) {
-          widget.onMove(widget.index, -1);
-          return KeyEventResult.handled;
-        }
-        if (k == LogicalKeyboardKey.arrowDown) {
-          widget.onMove(widget.index, 1);
-          return KeyEventResult.handled;
-        }
+        // TV modunda sadece sol/sağ tuşları sıralama için kullanılır
+        // Yukarı/aşağı tuşları odak gezintisi (focus traversal) için bırakılır
         if (k == LogicalKeyboardKey.arrowLeft) {
           widget.onMove(widget.index, -1);
           return KeyEventResult.handled;

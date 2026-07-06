@@ -1,5 +1,6 @@
 import 'package:better_player_plus/better_player_plus.dart';
 import 'package:flutter/material.dart';
+import 'package:media_kit_video/media_kit_video.dart';
 
 /// Liste detay sütunu: sabit yükseklikli 16:9 sessiz önizleme (taşmayı önler).
 ///
@@ -13,6 +14,7 @@ class GlassMiniStreamPreview extends StatelessWidget {
     this.layoutWidth,
     required this.loading,
     this.player,
+    this.mediaKitController,
     this.onSurfaceTap,
   });
 
@@ -23,6 +25,7 @@ class GlassMiniStreamPreview extends StatelessWidget {
   final double maxHeight;
   final bool loading;
   final BetterPlayerController? player;
+  final VideoController? mediaKitController;
 
   /// Dokunmatik: video yüzeyinin üzerinde şeffaf katman; tam ekran oynatıcıyı açmak için.
   final VoidCallback? onSurfaceTap;
@@ -62,17 +65,25 @@ class GlassMiniStreamPreview extends StatelessWidget {
                   ),
                 ),
               )
-            : player != null
+            : mediaKitController != null
                 ? ExcludeFocus(
-                    child: BetterPlayer(controller: player!),
-                  )
-                : Center(
-                    child: Icon(
-                      Icons.play_circle_outline_rounded,
-                      color: Colors.white.withValues(alpha: 0.2),
-                      size: 28,
+                    child: Video(
+                      controller: mediaKitController!,
+                      fit: BoxFit.contain,
+                      controls: null,
                     ),
-                  ),
+                  )
+                : player != null
+                    ? ExcludeFocus(
+                        child: BetterPlayer(controller: player!),
+                      )
+                    : Center(
+                        child: Icon(
+                          Icons.play_circle_outline_rounded,
+                          color: Colors.white.withValues(alpha: 0.2),
+                          size: 28,
+                        ),
+                      ),
       ),
     );
 

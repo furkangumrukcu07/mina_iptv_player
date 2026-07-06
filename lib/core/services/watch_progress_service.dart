@@ -234,6 +234,17 @@ class WatchProgressService extends GetxService {
     return all;
   }
 
+  /// 30 saniye alt sınırı veya yüzde üst sınırı olmaksızın en son izlenen içeriği döndürür.
+  ContinueWatchingEntry? getAbsoluteLastWatched() {
+    final all = <ContinueWatchingEntry>[
+      ..._vodIndex.values,
+      ..._seriesIndex.values,
+    ];
+    if (all.isEmpty) return null;
+    all.sort((a, b) => b.updatedMs.compareTo(a.updatedMs));
+    return all.first;
+  }
+
   bool get hasItems => continueWatching(max: 1).isNotEmpty;
 
   /// Profil değişimi / bulut geri yükleme sonrası «İzlemeye Devam Et» indeksini

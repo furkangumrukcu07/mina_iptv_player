@@ -30,7 +30,13 @@ class DownloadButton extends StatelessWidget {
     required this.onStart,
     this.compact = false,
     this.iconOnly = false,
+    this.expand = false,
     this.tint,
+    this.focusNode,
+    this.arrowUp,
+    this.arrowDown,
+    this.arrowLeft,
+    this.arrowRight,
   });
 
   /// Diskte indirilmiş veya devam eden item'ın id'si. null ise henüz hiç
@@ -39,7 +45,18 @@ class DownloadButton extends StatelessWidget {
   final Future<void> Function() onStart;
   final bool compact;
   final bool iconOnly;
+
+  /// `true` → chip yatayda mevcut genişliği doldurur ve içeriği ortalar
+  /// (örn. detay ekranında "İzle" butonuyla eşit ebatta yan yana kullanım).
+  final bool expand;
   final Color? tint;
+
+  /// TV/kumanda: D-pad odak düğümü ve komşu yön hedefleri.
+  final FocusNode? focusNode;
+  final FocusNode? arrowUp;
+  final FocusNode? arrowDown;
+  final FocusNode? arrowLeft;
+  final FocusNode? arrowRight;
 
   @override
   Widget build(BuildContext context) {
@@ -55,31 +72,55 @@ class DownloadButton extends StatelessWidget {
             progress: svc.progress[itemId],
             compact: compact,
             iconOnly: iconOnly,
+            expand: expand,
             tint: tint,
             onTap: () => _confirmCancel(context, svc, itemId),
+            focusNode: focusNode,
+            arrowUp: arrowUp,
+            arrowDown: arrowDown,
+            arrowLeft: arrowLeft,
+            arrowRight: arrowRight,
           );
         case DownloadStatus.completed:
           return _BuildCompleted(
             item: item!,
             compact: compact,
             iconOnly: iconOnly,
+            expand: expand,
             tint: tint,
             onTap: () => _confirmDelete(context, svc, itemId),
+            focusNode: focusNode,
+            arrowUp: arrowUp,
+            arrowDown: arrowDown,
+            arrowLeft: arrowLeft,
+            arrowRight: arrowRight,
           );
         case DownloadStatus.failed:
           return _BuildFailed(
             compact: compact,
             iconOnly: iconOnly,
+            expand: expand,
             tint: tint,
             onTap: () => _showErrorAndRetry(context, svc, item!),
+            focusNode: focusNode,
+            arrowUp: arrowUp,
+            arrowDown: arrowDown,
+            arrowLeft: arrowLeft,
+            arrowRight: arrowRight,
           );
         case DownloadStatus.cancelled:
         case null:
           return _BuildIdle(
             compact: compact,
             iconOnly: iconOnly,
+            expand: expand,
             tint: tint,
             onTap: onStart,
+            focusNode: focusNode,
+            arrowUp: arrowUp,
+            arrowDown: arrowDown,
+            arrowLeft: arrowLeft,
+            arrowRight: arrowRight,
           );
       }
     });
@@ -227,13 +268,25 @@ class _BuildIdle extends StatelessWidget {
   const _BuildIdle({
     required this.compact,
     required this.iconOnly,
+    required this.expand,
     required this.tint,
     required this.onTap,
+    this.focusNode,
+    this.arrowUp,
+    this.arrowDown,
+    this.arrowLeft,
+    this.arrowRight,
   });
   final bool compact;
   final bool iconOnly;
+  final bool expand;
   final Color? tint;
   final Future<void> Function() onTap;
+  final FocusNode? focusNode;
+  final FocusNode? arrowUp;
+  final FocusNode? arrowDown;
+  final FocusNode? arrowLeft;
+  final FocusNode? arrowRight;
 
   @override
   Widget build(BuildContext context) {
@@ -242,7 +295,13 @@ class _BuildIdle extends StatelessWidget {
       label: iconOnly ? null : 'downloads.action.download'.tr,
       tint: tint ?? Theme.of(context).colorScheme.primary,
       compact: compact,
+      expand: expand,
       onTap: onTap,
+      focusNode: focusNode,
+      arrowUp: arrowUp,
+      arrowDown: arrowDown,
+      arrowLeft: arrowLeft,
+      arrowRight: arrowRight,
     );
   }
 }
@@ -253,15 +312,27 @@ class _BuildActive extends StatelessWidget {
     required this.progress,
     required this.compact,
     required this.iconOnly,
+    required this.expand,
     required this.tint,
     required this.onTap,
+    this.focusNode,
+    this.arrowUp,
+    this.arrowDown,
+    this.arrowLeft,
+    this.arrowRight,
   });
   final DownloadItem item;
   final ({int received, int? total})? progress;
   final bool compact;
   final bool iconOnly;
+  final bool expand;
   final Color? tint;
   final VoidCallback onTap;
+  final FocusNode? focusNode;
+  final FocusNode? arrowUp;
+  final FocusNode? arrowDown;
+  final FocusNode? arrowLeft;
+  final FocusNode? arrowRight;
 
   @override
   Widget build(BuildContext context) {
@@ -278,7 +349,13 @@ class _BuildActive extends StatelessWidget {
       onTap: onTap,
       tint: tint ?? cs.primary,
       compact: compact,
+      expand: expand,
       label: label,
+      focusNode: focusNode,
+      arrowUp: arrowUp,
+      arrowDown: arrowDown,
+      arrowLeft: arrowLeft,
+      arrowRight: arrowRight,
       iconWidget: SizedBox(
         width: 18,
         height: 18,
@@ -300,14 +377,26 @@ class _BuildCompleted extends StatelessWidget {
     required this.item,
     required this.compact,
     required this.iconOnly,
+    required this.expand,
     required this.tint,
     required this.onTap,
+    this.focusNode,
+    this.arrowUp,
+    this.arrowDown,
+    this.arrowLeft,
+    this.arrowRight,
   });
   final DownloadItem item;
   final bool compact;
   final bool iconOnly;
+  final bool expand;
   final Color? tint;
   final VoidCallback onTap;
+  final FocusNode? focusNode;
+  final FocusNode? arrowUp;
+  final FocusNode? arrowDown;
+  final FocusNode? arrowLeft;
+  final FocusNode? arrowRight;
 
   @override
   Widget build(BuildContext context) {
@@ -316,7 +405,13 @@ class _BuildCompleted extends StatelessWidget {
       label: iconOnly ? null : 'downloads.action.downloaded'.tr,
       tint: tint ?? Colors.greenAccent.shade400,
       compact: compact,
+      expand: expand,
       onTap: onTap,
+      focusNode: focusNode,
+      arrowUp: arrowUp,
+      arrowDown: arrowDown,
+      arrowLeft: arrowLeft,
+      arrowRight: arrowRight,
     );
   }
 }
@@ -325,13 +420,25 @@ class _BuildFailed extends StatelessWidget {
   const _BuildFailed({
     required this.compact,
     required this.iconOnly,
+    required this.expand,
     required this.tint,
     required this.onTap,
+    this.focusNode,
+    this.arrowUp,
+    this.arrowDown,
+    this.arrowLeft,
+    this.arrowRight,
   });
   final bool compact;
   final bool iconOnly;
+  final bool expand;
   final Color? tint;
   final VoidCallback onTap;
+  final FocusNode? focusNode;
+  final FocusNode? arrowUp;
+  final FocusNode? arrowDown;
+  final FocusNode? arrowLeft;
+  final FocusNode? arrowRight;
 
   @override
   Widget build(BuildContext context) {
@@ -340,7 +447,13 @@ class _BuildFailed extends StatelessWidget {
       label: iconOnly ? null : 'downloads.action.retry'.tr,
       tint: tint ?? Colors.redAccent,
       compact: compact,
+      expand: expand,
       onTap: onTap,
+      focusNode: focusNode,
+      arrowUp: arrowUp,
+      arrowDown: arrowDown,
+      arrowLeft: arrowLeft,
+      arrowRight: arrowRight,
     );
   }
 }
@@ -355,6 +468,12 @@ class _GlassActionChip extends StatelessWidget {
     required this.tint,
     required this.onTap,
     required this.compact,
+    this.expand = false,
+    this.focusNode,
+    this.arrowUp,
+    this.arrowDown,
+    this.arrowLeft,
+    this.arrowRight,
   });
 
   final IconData? icon;
@@ -363,6 +482,12 @@ class _GlassActionChip extends StatelessWidget {
   final Color tint;
   final FutureOr<void> Function() onTap;
   final bool compact;
+  final bool expand;
+  final FocusNode? focusNode;
+  final FocusNode? arrowUp;
+  final FocusNode? arrowDown;
+  final FocusNode? arrowLeft;
+  final FocusNode? arrowRight;
 
   @override
   Widget build(BuildContext context) {
@@ -390,7 +515,8 @@ class _GlassActionChip extends StatelessWidget {
                 ),
               ),
               child: Row(
-                mainAxisSize: MainAxisSize.min,
+                mainAxisSize: expand ? MainAxisSize.max : MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   iconWidget ??
                       Icon(icon, size: iconSize, color: tint),
@@ -420,6 +546,11 @@ class _GlassActionChip extends StatelessWidget {
       onActivate: () => onTap(),
       borderRadius: 14,
       scaleOnFocus: 1.04,
+      focusNode: focusNode,
+      arrowUp: arrowUp,
+      arrowDown: arrowDown,
+      arrowLeft: arrowLeft,
+      arrowRight: arrowRight,
       child: chip,
     );
   }

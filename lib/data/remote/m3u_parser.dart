@@ -1,3 +1,5 @@
+import 'package:flutter/foundation.dart';
+
 import '../../core/error/app_exception.dart';
 import '../../core/player/iptv_playback_defaults.dart';
 import '../../domain/entities/channel.dart';
@@ -5,6 +7,8 @@ import '../../domain/entities/m3u_result.dart';
 import '../../domain/entities/series.dart';
 import '../../domain/entities/vod.dart';
 import '../recent_vod_selection.dart';
+import 'm3u_content_classifier.dart';
+import 'm3u_extinf_fields.dart';
 
 /// Parses extended M3U playlists into typed entities (aligned with izoiptv `M3uParser`).
 class M3uParser {
@@ -36,28 +40,48 @@ class M3uParser {
     var autoId = 1;
 
     String? pendingExtinf;
+    String? pendingGroup;
+    var extinfSeen = 0;
+    var emitted = 0;
 
     for (final raw in lines) {
       final line = raw.trim();
 
       if (line.startsWith(_extinf)) {
         pendingExtinf = line;
+        pendingGroup = null;
+        extinfSeen++;
         continue;
       }
 
       if (pendingExtinf == null) continue;
+      // #EXTINF ile URL arasına giren direktif satırları (#EXTVLCOPT,
+      // #EXTGRP, #KODIPROP, #EXTSUB, #EXT-X-…) ve boş satırlar girişi
+      // İPTAL ETMEZ — atlanır, pending EXTINF korunur. Aksi halde bu
+      // satırları içeren tüm girişler (ör. #EXTVLCOPT'lu film/diziler)
+      // sessizce düşüyordu.
       if (line.isEmpty || line.startsWith('#')) {
-        pendingExtinf = null;
+        if (line.startsWith('#EXTGRP:')) {
+          final g = line.substring('#EXTGRP:'.length).trim();
+          if (g.isNotEmpty) pendingGroup = g;
+        }
         continue;
       }
 
       final url = line;
       final info = _parseExtinf(pendingExtinf);
       pendingExtinf = null;
+      emitted++;
 
       final name = info['name'] ?? '';
       final logo = info['logo'];
-      final group = info['group'] ?? 'Uncategorised';
+      var group = info['group'] ?? 'Uncategorised';
+      if (group == 'Uncategorised' &&
+          pendingGroup != null &&
+          pendingGroup.isNotEmpty) {
+        group = pendingGroup;
+      }
+      pendingGroup = null;
       final tvgId = info['tvg_id'];
       final plot = info['plot'] ??
           info['description'] ??
@@ -66,8 +90,14 @@ class M3uParser {
 
       final lowerUrl = url.toLowerCase();
       final lowerGroup = group.toLowerCase();
+      final lowerName = name.toLowerCase();
 
-      if (_isSeries(lowerUrl, lowerGroup)) {
+      final kind = M3uContentClassifier.classify(
+        name: lowerName,
+        url: lowerUrl,
+        group: lowerGroup,
+      );
+      if (kind == M3uContentKind.series) {
         final catId = seriesCatNames.putIfAbsent(group, () => seriesCatId++);
         final id = tvgId != null ? (int.tryParse(tvgId) ?? autoId++) : autoId++;
         seriesList.add(SeriesItem(
@@ -78,7 +108,7 @@ class M3uParser {
           posterUrl: logo,
           plot: plot,
         ));
-      } else if (_isMovie(lowerUrl, lowerGroup)) {
+      } else if (kind == M3uContentKind.movie) {
         final catId = vodCatNames.putIfAbsent(group, () => vodCatId++);
         final ext = _extension(url);
         final id = tvgId != null ? (int.tryParse(tvgId) ?? autoId++) : autoId++;
@@ -124,6 +154,14 @@ class M3uParser {
     final recentVodIds = m3uRecentVodIdsFromListOrder(vod);
     final recentSeriesIds = m3uRecentSeriesIdsFromListOrder(seriesList);
 
+    final dropped = extinfSeen - emitted;
+    if (dropped > 0) {
+      debugPrint(
+        'mina_iptv: ⚠️ m3u parse drop — extinf=$extinfSeen emitted=$emitted '
+        'dropped=$dropped (URL eşleşmeyen giriş)',
+      );
+    }
+
     return M3uResult(
       channels: channels,
       channelCategories: channelCats,
@@ -144,61 +182,16 @@ class M3uParser {
 
     return {
       'name': name,
-      'tvg_id': _attr(attrSection, 'tvg-id'),
-      'logo': _attr(attrSection, 'tvg-logo'),
-      'group': _attr(attrSection, 'group-title') ?? 'Uncategorised',
-      'plot': _attr(attrSection, 'plot'),
-      'description': _attr(attrSection, 'description'),
-      'summary': _attr(attrSection, 'summary'),
-      'info': _attr(attrSection, 'info'),
+      'tvg_id': M3uExtinfFields.attr(attrSection, 'tvg-id'),
+      'logo': M3uExtinfFields.attr(attrSection, 'tvg-logo'),
+      'group': M3uExtinfFields.attr(attrSection, 'group-title') ??
+          'Uncategorised',
+      'plot': M3uExtinfFields.attr(attrSection, 'plot'),
+      'description': M3uExtinfFields.attr(attrSection, 'description'),
+      'summary': M3uExtinfFields.attr(attrSection, 'summary'),
+      'info': M3uExtinfFields.attr(attrSection, 'info'),
     };
   }
 
-  String? _attr(String s, String key) {
-    var match = RegExp('$key="([^"]*)"').firstMatch(s);
-    match ??= RegExp("$key='([^']*)'").firstMatch(s);
-    match ??= RegExp('$key=([^\\s,]+)').firstMatch(s);
-    final val = match?.group(1)?.trim();
-    return (val != null && val.isNotEmpty) ? val : null;
-  }
-
-  /// IMDb id kalıbı: `tt` + en az 6 rakam (ör. `/vs/tt8637498/`). Aggregator
-  /// film listeleri grup adında `film/movie/vod` kullanmadığından bu girişler
-  /// aksi halde "canlı kanal" sanılır. IMDb id güçlü bir VOD sinyalidir.
-  static final RegExp _imdbIdInUrl = RegExp(r'/tt\d{6,}');
-
-  bool _isMovie(String url, String group) {
-    if (group.contains('movie') ||
-        group.contains('vod') ||
-        group.contains('film')) {
-      return true;
-    }
-    if (url.contains('/movie/')) return true;
-    // IMDb id taşıyan girişleri Film (VOD) kategorisine al. Dizi grupları
-    // [_isSeries] içinde ÖNCE yakalandığından gerçek diziler etkilenmez.
-    if (_imdbIdInUrl.hasMatch(url)) return true;
-    return false;
-  }
-
-  bool _isSeries(String url, String group) {
-    if (group.contains('series') ||
-        group.contains('tv show') ||
-        group.contains('episode') ||
-        group.contains('dizi') ||
-        group.contains('sezon') ||
-        group.contains('season')) {
-      return true;
-    }
-    if (url.contains('/series/')) return true;
-    return false;
-  }
-
-  String? _extension(String url) {
-    final uri = Uri.tryParse(url);
-    if (uri == null) return null;
-    final path = uri.path;
-    final dot = path.lastIndexOf('.');
-    if (dot < 0 || dot == path.length - 1) return null;
-    return path.substring(dot + 1).toLowerCase();
-  }
+  String? _extension(String url) => M3uExtinfFields.extension(url);
 }

@@ -1,11 +1,13 @@
 import 'dart:async';
 
+import 'package:device_info_plus/device_info_plus.dart';
 import 'package:firebase_analytics/firebase_analytics.dart';
 import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 
 import '../layout/app_layout_mode.dart';
 import 'app_settings_service.dart';
+import 'auth_service.dart';
 import 'firebase_bootstrap.dart';
 
 /// **Firebase Analytics** tabanlı ürün telemetrisi.
@@ -27,6 +29,7 @@ class MinaTelemetryService extends GetxService {
 
   final FirebaseAnalytics? _analyticsOverride;
   FirebaseAnalytics? _analytics;
+  String? _deviceModel;
 
   bool get _enabled => gFirebaseReady && _analytics != null;
 
@@ -35,11 +38,27 @@ class MinaTelemetryService extends GetxService {
     try {
       _analytics = _analyticsOverride ?? FirebaseAnalytics.instance;
       await _analytics!.setAnalyticsCollectionEnabled(true);
+      await _loadDeviceModel();
     } catch (e) {
       debugPrint('mina_iptv: Telemetry init hata: $e');
       _analytics = null;
     }
     return this;
+  }
+
+  Future<void> _loadDeviceModel() async {
+    try {
+      final deviceInfo = DeviceInfoPlugin();
+      if (defaultTargetPlatform == TargetPlatform.android) {
+        final androidInfo = await deviceInfo.androidInfo;
+        _deviceModel = '${androidInfo.brand} ${androidInfo.model}';
+      } else if (defaultTargetPlatform == TargetPlatform.iOS) {
+        final iosInfo = await deviceInfo.iosInfo;
+        _deviceModel = '${iosInfo.model} ${iosInfo.systemVersion}';
+      }
+    } catch (e) {
+      debugPrint('mina_iptv: Device model alınamadı: $e');
+    }
   }
 
   /// Mevcut ayarların anlık görüntüsünü user properties olarak yazar ve bir
@@ -132,20 +151,56 @@ class MinaTelemetryService extends GetxService {
     } catch (_) {}
   }
 
+  /// Satın alma olayını kaydeder (başarılı/başarısız).
+  Future<void> logPurchase({
+    required String productId,
+    required bool success,
+    String? price,
+    String? currency,
+    String? errorMessage,
+  }) async {
+    if (!_enabled) return;
+    try {
+      final params = <String, Object>{
+        'product_id': _capValue(productId),
+        'success': success ? 'true' : 'false',
+        if (price != null) 'price': _capValue(price),
+        if (currency != null) 'currency': _capValue(currency),
+        if (errorMessage != null) 'error': _capValue(errorMessage),
+      };
+
+      // Google giriş durumu
+      final auth = Get.isRegistered<AuthService>() ? Get.find<AuthService>() : null;
+      final isLoggedIn = auth?.currentUser.value != null;
+      params['google_signed_in'] = isLoggedIn ? 'true' : 'false';
+
+      await _analytics!.logEvent(
+        name: 'purchase_attempt',
+        parameters: params,
+      );
+    } catch (e) {
+      debugPrint('mina_iptv: Purchase log hata: $e');
+    }
+  }
+
   Map<String, Object> _collect(AppSettingsService s) {
-    return <String, Object>{
+    final props = <String, Object>{
       'theme': _slug(s.themeLabel.value),
       'layout_mode': _layoutName(s.layoutMode.value),
       'app_language': s.languageCode.value,
       'video_engine_vod': s.useMediaKit.value ? 'media_kit' : 'exo',
       'video_engine_live': s.liveUseMediaKit.value ? 'media_kit' : 'exo',
-      'hide_adult': s.hideAdultContentEnabled.value,
+      'hide_adult': s.effectiveHideAdultContent,
       'reduce_blur': s.reduceBlur.value,
       'external_player': s.externalPlayerEnabled.value,
       'stream_preview': s.streamPreviewEnabled.value,
-      'auto_refresh_days': s.autoRefreshDays.value,
+      'auto_refresh_hours': s.autoRefreshHours.value,
       'cloud_backup_days': s.cloudAutoBackupDays.value,
     };
+    if (_deviceModel != null) {
+      props['device_model'] = _capValue(_deviceModel!);
+    }
+    return props;
   }
 
   static String _layoutName(AppLayoutMode m) => switch (m) {

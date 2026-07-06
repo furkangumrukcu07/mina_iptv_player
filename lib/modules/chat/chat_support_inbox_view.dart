@@ -11,19 +11,31 @@ import '../../ui/glass_overlays.dart';
 import '../../ui/settings_glass_panel.dart';
 import '../../ui/themed_settings_background.dart';
 import '../../ui/tv_dpad_focus.dart';
+import 'chat_support_thread_delete.dart';
 
 /// Admin'in kullanıcılardan gelen birebir "Yöneticiye Mesaj" thread'lerini
 /// gördüğü gelen kutusu. Yalnızca admin UID'si bu ekrana ulaşabilir (yönlendirme
 /// + Firestore kuralları ile zorlanır). Her satıra dokununca o kullanıcının
 /// konuşması açılır ve admin doğrudan yanıt verebilir.
-class ChatSupportInboxView extends StatelessWidget {
+class ChatSupportInboxView extends StatefulWidget {
   const ChatSupportInboxView({super.key});
+
+  @override
+  State<ChatSupportInboxView> createState() => _ChatSupportInboxViewState();
+}
+
+class _ChatSupportInboxViewState extends State<ChatSupportInboxView> {
+  late final ChatService _chat = Get.find<ChatService>();
+
+  /// Thread akışı **bir kez** oluşturulur (build içinde yeniden abone olmamak
+  /// için).
+  late final Stream<List<SupportThread>> _threadsStream =
+      _chat.supportThreadsStream();
 
   @override
   Widget build(BuildContext context) {
     final settings = Get.find<AppSettingsService>();
     final remote = settings.layoutMode.value.usesRemoteNavigationStyle;
-    final chat = Get.find<ChatService>();
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -32,6 +44,7 @@ class ChatSupportInboxView extends StatelessWidget {
         child: ThemedSettingsBackground(
           child: SafeArea(
             child: SettingsGlassPanel(
+              blurBackground: false,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -69,7 +82,7 @@ class ChatSupportInboxView extends StatelessWidget {
                   ),
                   Expanded(
                     child: StreamBuilder<List<SupportThread>>(
-                      stream: chat.supportThreadsStream(),
+                      stream: _threadsStream,
                       builder: (context, snapshot) {
                         if (snapshot.connectionState ==
                                 ConnectionState.waiting &&
@@ -100,6 +113,10 @@ class ChatSupportInboxView extends StatelessWidget {
                                   adminView: true,
                                 ),
                               ),
+                              onLongPress: () => showSupportThreadDeleteMenu(
+                                context,
+                                userUid: t.userId,
+                              ),
                             );
                           },
                         );
@@ -120,11 +137,13 @@ class _ThreadTile extends StatelessWidget {
   const _ThreadTile({
     required this.thread,
     required this.onTap,
+    this.onLongPress,
     this.autofocus = false,
   });
 
   final SupportThread thread;
   final VoidCallback onTap;
+  final VoidCallback? onLongPress;
   final bool autofocus;
 
   @override
@@ -151,6 +170,7 @@ class _ThreadTile extends StatelessWidget {
               ),
             ),
       onTap: onTap,
+      onLongPress: onLongPress,
     );
   }
 

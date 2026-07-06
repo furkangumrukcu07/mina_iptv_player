@@ -486,4 +486,140 @@ class ChatService extends GetxService {
       return false;
     }
   }
+
+  /// Bir kullanıcının admin ile olan destek thread'inin **tamamını** siler:
+  /// tüm mesajlar (`messages` alt koleksiyonu) + thread meta dökümanı.
+  ///
+  /// Yetki: kullanıcı yalnızca **kendi** thread'ini, admin **herhangi** bir
+  /// thread'i silebilir (Firestore kuralları tarafında da zorlanır). Mesajlar
+  /// Firestore batch limiti (500) altında dilimlenerek silinir.
+  /// Başarılıysa `true` döner.
+  Future<bool> deleteSupportThread(String userUid) async {
+    if (!isReady) return false;
+    final uid = currentUserId;
+    if (uid == null) return false;
+    if (uid != userUid && !isAdminUid(uid)) return false;
+    try {
+      final db = FirebaseFirestore.instance;
+      final snap = await _supportMessagesRef(userUid).get();
+      final docs = snap.docs;
+      const chunk = 450;
+      for (var i = 0; i < docs.length; i += chunk) {
+        final batch = db.batch();
+        for (final d in docs.skip(i).take(chunk)) {
+          batch.delete(d.reference);
+        }
+        await batch.commit();
+      }
+      await _supportThreadsRef().doc(userUid).delete();
+      return true;
+    } catch (e) {
+      debugPrint('[ChatService] deleteSupportThread error: $e');
+      return false;
+    }
+  }
+
+  // -------------------------------------------------------------------------
+  // Çevrimiçi varlık (presence) — sohbet bölümündeki "N Online" rozeti için.
+  //
+  // Realtime Database olmadığından Firestore tabanlı hafif bir yaklaşım:
+  // chat bölümündeki her aktif kullanıcı `presence/{uid}` dökümanına periyodik
+  // `lastSeen` (heartbeat) yazar. Çevrimiçi sayısı, son [_presenceStaleWindow]
+  // içinde görülmüş dökümanların aggregate `count()`'u ile hesaplanır (tüm
+  // dökümanları indirmez → ucuz). Bölümden çıkınca döküman silinir.
+  //
+  // Yalnızca chat ekranlarındayken çalışır: [acquirePresence] / [releasePresence]
+  // ref-count'u ile başlatılıp durdurulur → ana ekranda hiçbir trafik yok.
+  // -------------------------------------------------------------------------
+
+  static const String _presenceCollection = 'presence';
+  static const Duration _presenceHeartbeat = Duration(seconds: 25);
+  static const Duration _presenceStaleWindow = Duration(seconds: 75);
+  static const Duration _presenceOfflineGrace = Duration(seconds: 4);
+
+  /// O an çevrimiçi (son ~75 sn içinde görülmüş) kullanıcı sayısı. Rozet bunu
+  /// reaktif dinler; 0 iken rozet gizlenir.
+  final RxInt onlineCount = 0.obs;
+
+  int _presenceRefs = 0;
+  Timer? _presenceTimer;
+  Timer? _presenceOfflineTimer;
+
+  CollectionReference<Map<String, dynamic>> _presenceRef() =>
+      FirebaseFirestore.instance.collection(_presenceCollection);
+
+  /// Bir sohbet ekranı açılınca çağrılır. İlk referansta heartbeat + sayım
+  /// döngüsünü başlatır (idempotent).
+  void acquirePresence() {
+    _presenceOfflineTimer?.cancel();
+    _presenceOfflineTimer = null;
+    _presenceRefs++;
+    if (_presenceRefs == 1) _startPresence();
+  }
+
+  /// Sohbet ekranı kapanınca çağrılır. Son referans da bırakılınca, ekranlar
+  /// arası geçişte titremeyi önlemek için kısa bir gecikmeyle durdurur.
+  void releasePresence() {
+    if (_presenceRefs > 0) _presenceRefs--;
+    if (_presenceRefs == 0) {
+      _presenceOfflineTimer?.cancel();
+      _presenceOfflineTimer = Timer(_presenceOfflineGrace, _stopPresence);
+    }
+  }
+
+  void _startPresence() {
+    if (!gFirebaseReady) return;
+    _beat();
+    _presenceTimer?.cancel();
+    _presenceTimer = Timer.periodic(_presenceHeartbeat, (_) => _beat());
+  }
+
+  void _stopPresence() {
+    _presenceTimer?.cancel();
+    _presenceTimer = null;
+    final uid = currentUserId;
+    if (gFirebaseReady && uid != null) {
+      _presenceRef().doc(uid).delete().catchError((_) {});
+    }
+  }
+
+  /// Tek heartbeat: kendi presence dökümanını tazele + çevrimiçi sayısını
+  /// yeniden hesapla.
+  Future<void> _beat() async {
+    if (!isReady) return;
+    final uid = currentUserId;
+    if (uid == null) return;
+    try {
+      await _presenceRef().doc(uid).set(<String, dynamic>{
+        'lastSeen': FieldValue.serverTimestamp(),
+        'name': currentUserName,
+      }, SetOptions(merge: true));
+    } catch (e) {
+      debugPrint('[ChatService] presence beat error: $e');
+    }
+    await _refreshOnlineCount();
+  }
+
+  Future<void> _refreshOnlineCount() async {
+    if (!gFirebaseReady) return;
+    try {
+      final cutoff = Timestamp.fromDate(
+        DateTime.now().subtract(_presenceStaleWindow),
+      );
+      final agg = await _presenceRef()
+          .where('lastSeen', isGreaterThan: cutoff)
+          .count()
+          .get();
+      onlineCount.value = agg.count ?? onlineCount.value;
+    } catch (e) {
+      debugPrint('[ChatService] online count error: $e');
+    }
+  }
+
+  @override
+  void onClose() {
+    _presenceTimer?.cancel();
+    _presenceOfflineTimer?.cancel();
+    super.onClose();
+  }
 }

@@ -27,12 +27,66 @@ class AppTranslations extends Translations {
         'it_IT': mergeTranslations(_en, kLocalePartialIt),
         'pt_PT': mergeTranslations(_en, kLocalePartialPt),
         'id_ID': mergeTranslations(_en, kLocalePartialId),
+        'de_DE': mergeTranslations(_en, kLocalePartialDe),
+        'fa_IR': mergeTranslations(_en, kLocalePartialFa),
+        'pl_PL': mergeTranslations(_en, kLocalePartialPl),
+        'nl_NL': mergeTranslations(_en, kLocalePartialNl),
+        'uk_UA': mergeTranslations(_en, kLocalePartialUk),
+        'vi_VN': mergeTranslations(_en, kLocalePartialVi),
+        'el_GR': mergeTranslations(_en, kLocalePartialEl),
+        'ro_RO': mergeTranslations(_en, kLocalePartialRo),
+        'sq_AL': mergeTranslations(_en, kLocalePartialSq),
       };
 }
 
 const Map<String, String> _tr = {
   // App / home
   'app.title': 'Mina IPTV Player',
+  'paywall.title': 'Mina IPTV Premium',
+  'paywall.trial.expired': '2 günlük ücretsiz deneme süreniz sona erdi.',
+  'paywall.trial.active': 'Deneme sürenizin bitmesine @time kaldı.',
+  'paywall.feature.performance.title': 'Sayısız Tema ve Kişiselleştirme',
+  'paywall.feature.performance.subtitle': 'Uygulamanın görünümünü zevkinize göre özelleştirin, premium temalarla farkı hissedin.',
+  'paywall.feature.sync.title': 'Güçlü Medya Oynatıcı',
+  'paywall.feature.sync.subtitle': 'Gelişmiş donanım hızlandırma ve geniş format desteği ile kesintisiz oynatma deneyimi.',
+  'paywall.feature.keymapping.title': 'Tek Abonelik 3 Farklı Cihaz',
+  'paywall.feature.keymapping.subtitle': 'Tablet, TV ve mobil cihazlarınızda aynı abonelikle sınırsız kullanım.',
+  'paywall.feature.introcutter.title': 'Tüm Diğer Özellikler',
+  'paywall.feature.introcutter.subtitle': 'Vod Özel Bilgiler, Bulut Yedekleme, Farklı Tasarımlar, Ömür Boyu Güncelleme Garantisi.',
+  'paywall.button.buy': 'Satın Al',
+  'paywall.button.coffee': 'Bana Bir Kahve Ismarla ☕',
+  'paywall.coffee.success.title': 'Teşekkürler!',
+  'paywall.coffee.success.body': 'Desteğiniz için çok teşekkür ederiz, harikasınız!',
+  'paywall.button.connecting': 'Bağlanıyor...',
+  'paywall.button.restore': 'Satın Alımı Geri Yükle',
+  'paywall.button.restoring': 'Sorgulanıyor...',
+  'paywall.grandfather.prompt': '28 Haziran 2026 öncesi üye misiniz?',
+  'paywall.grandfather.button': 'Google ile Giriş Yapıp Muafiyeti Aktif Et',
+  'paywall.user.logged_in': 'Kullanıcı olarak giriş yapıldı: @email',
+  'paywall.error.title': 'Ödeme Başarısız',
+  'paywall.error.body': 'Google Play Market ile bağlantı kurulamadı veya ödeme iptal edildi.',
+  'paywall.restore.title': 'Satın Alım Bulunamadı',
+  'paywall.restore.body': 'Google Play hesabınızda aktif bir satın alım bulunamadı.',
+  'settings.tile.subscription': 'Abonelik Durumu',
+  'settings.tile.subscription.sub': 'Lisans ve deneme süresi detayları',
+  'settings.subscription.grandfathered': 'Ömür Boyu Ücretsiz (Eski Üye)',
+  'settings.subscription.premiumActive': 'Premium Aktif (Sınırsız)',
+  'settings.subscription.trialActive': 'Ücretsiz Deneme: @days Gün Kaldı',
+  'settings.subscription.trialExpired': 'Deneme Süresi Doldu',
+  'settings.subscription.dialog.title': 'Lisans Bilgileri',
+  'settings.subscription.dialog.status': 'Lisans Durumu: ',
+  'settings.subscription.dialog.installDate': 'İlk Kurulum Tarihi: ',
+  'settings.subscription.dialog.purchaseDate': 'Lisanslanma Tarihi: ',
+  'settings.subscription.dialog.trialEnd': 'Deneme Bitiş Tarihi: ',
+  'settings.subscription.dialog.type': 'Paket Türü: ',
+  'settings.subscription.dialog.grandfathered': 'Muafiyet Durumu: ',
+  'settings.subscription.dialog.grandfathered.yes': 'Evet (Eski Üye Muafiyeti)',
+  'settings.subscription.dialog.grandfathered.no': 'Hayır',
+  'dialog.exit.title': 'Uygulamadan Çıkılsın Mı ?',
+  'dialog.exit.body': 'Uygulamadan çıkılacak?',
+  'dialog.exit.seconds': 'saniye',
+  'dialog.exit.yes': 'Evet',
+  'dialog.exit.no': 'Hayır',
   'home.live': 'Canlı Yayınlar',
   'home.live.subtitle': 'Canlı TV',
   'home.films': 'Filmler',
@@ -43,6 +97,7 @@ const Map<String, String> _tr = {
   'home.recommendedFilms.subtitle': 'Keşfet',
   'home.refresh.done': 'İçerik yenilendi',
   'home.refresh.failed': 'Yenileme başarısız: @e',
+  'playlist.refreshing': 'Liste yenileniyor',
   'filmDizi.tab.films': 'Film',
   'filmDizi.tab.series': 'Dizi',
   'filmDizi.recentlyAddedFilms': 'Yeni eklenen filmler',
@@ -76,18 +131,20 @@ const Map<String, String> _tr = {
   'filmDizi.series.episodes': 'Bölümler',
   'filmDizi.series.episodeN': 'Bölüm @n',
   'filmDizi.series.episodeLine': '@show · Sezon @season · Bölüm @episode',
+  'filmDizi.series.downloadPick': 'İndirilecek bölümü seç',
   'filmDizi.series.release': 'Yayın: @date',
   'filmDizi.series.episodeCount': '@n Bölüm',
   'filmDizi.series.meta.language': '@lang',
   'filmDizi.series.noEpisodes': 'Bölüm bulunamadı.',
   'filmDizi.series.loadFail': 'Bölümler yüklenemedi.',
-  'home.favorites': 'Favori',
   'recommendedFilms.topRated': 'En İyiler',
   'recommendedFilms.recentlyAdded': 'Son Eklenen',
   'recommendedFilms.uhd4k': '4K / UHD',
   'recommendedFilms.nativeDub': 'Yerli Dil Dublajlı',
   'recommendedFilms.nativeSub': 'Yerli Dil Altyazılı',
   'recommendedFilms.seeAll': 'Tümünü Gör',
+  'recommendedFilms.last50Films': 'Son Eklenen 50 Film',
+  'recommendedFilms.last50Series': 'Son Eklenen 50 Dizi',
   'recommendedFilms.recentlyWatched.title': 'Son İzlenenler',
   'recommendedFilms.recentlyWatched.empty':
       'Henüz hiçbir şey izlemedin. İzlemeye başla, son izlediklerin burada listelensin.',
@@ -102,9 +159,16 @@ const Map<String, String> _tr = {
   'recommendedFilms.searchResults': '@count sonuç: «@query»',
   'home.epgMix': 'Tekrar & EPG Mix',
   'home.epgMix.subtitle': 'Geçmiş ve sıradaki yayınlar',
+  'home.minaAnalytics': 'Mina İzleme Analizi',
+  'home.minaAnalytics.subtitle': 'İzleme istatistiklerin ve özetin',
+  'home.dock.live': 'Canlı TV',
+  'home.dock.films': 'Film & Dizi',
+  'home.dock.replay': 'Tekrar & EPG',
+  'home.dock.wrapper': 'Mina Wrapper',
   'home.chat': 'Sohbet',
   'home.chat.subtitle': 'Dil odalarında canlı sohbet',
   'chat.title': 'Sohbet',
+  'chat.online': '@n Çevrimiçi',
   'chat.signIn.title': 'Sohbete katılmak için giriş yapın',
   'chat.signIn.body':
       'Sohbet odalarına katılmak ve mesaj yazabilmek için lütfen Google ile oturum açın ve yedeklemenizi aktif edin.',
@@ -141,6 +205,13 @@ const Map<String, String> _tr = {
   'chat.support.emptyUser':
       'Yöneticiye ilk mesajını yaz. Yalnızca sen ve yönetici görebilir.',
   'chat.support.emptyAdmin': 'Bu kullanıcıyla henüz mesaj yok.',
+  'chat.support.deleteThread': 'Sohbeti Sil',
+  'chat.support.deleteTitle': 'Sohbeti sil',
+  'chat.support.deleteBody':
+      'Bu konuşmadaki tüm mesajlar kalıcı olarak silinecek. Bu işlem geri alınamaz.',
+  'chat.support.deleteFailed': 'Sohbet silinemedi. Lütfen tekrar deneyin.',
+  'chat.support.deleteEmpty': 'Henüz silinecek bir konuşma yok.',
+  'chat.support.deleted': 'Sohbet silindi.',
   'chat.tag.title': 'Yayın durumu',
   'chat.tag.pick': 'Yayın durumu ekle',
   'chat.tag.clear': 'Etiketi kaldır',
@@ -198,6 +269,11 @@ const Map<String, String> _tr = {
       'Açık — efektler azaltıldı, performans öncelikli',
   'settings.lowEndMode.subOff':
       'Kapalı — tam görsel efektler (normal performans)',
+  'settings.tvLite.title': 'TV Lite (sade grafik)',
+  'settings.tvLite.subOn':
+      'Açık — blur/gölge kapalı, sade odak, hızlı animasyon (TV için)',
+  'settings.tvLite.subOff':
+      'Kapalı — tam cam tasarımı (blur, gölge, animasyonlar)',
   'lowEndMode.suggest.title': 'Performans sorunu algılandı',
   'lowEndMode.suggest.body':
       'Cihazınız uygulamayı akıcı çalıştırmakta zorlanıyor gibi görünüyor. Daha akıcı bir deneyim için «Düşük Donanımlı Cihaz Modu»na geçmelisiniz; görsel efektler azaltılır ve performans önceliklendirilir. Bu ayarı dilediğinizde Ayarlar › Diğer Araçlar bölümünden değiştirebilirsiniz.',
@@ -219,6 +295,7 @@ const Map<String, String> _tr = {
   'setup.epgCacheTitle': 'EPG güncelleme',
   'setup.epgCacheSub': 'Program rehberi kaç günde bir yenilensin',
   'setup.epgCacheDays': '@n gün',
+  'setup.epgCacheNever': 'Kapalı',
   'setup.stepAppFont': 'Uygulama fontu',
   'setup.appFontHint': 'Arayüz yazı tipini seçin.',
   'setup.featuresHint': 'Anahtarla açın veya kapatın.',
@@ -248,23 +325,30 @@ const Map<String, String> _tr = {
       'Ana ekranda rastgele canlı kanal şeridi',
   'epgMix.loading': 'EPG yükleniyor…',
   'home.mixed_live': 'Karışık Canlı TV',
+  'home.showcase.topRatedFilms': 'IMDB Yüksek Puanlı Filmler',
+  'home.showcase.mixedFilms': 'Karışık Filmler',
+  'home.showcase.mixedSeries': 'Karışık Diziler',
+  'home.showcase.trendFilms': 'Trend Filmler',
+  'home.showcase.trendSeries': 'Trend Diziler',
+  'home.showcase.favoriteSeries': 'Favori Diziler',
+  'home.showcase.favoriteChannels': 'Favori Kanallar',
+  'home.showcase.favoriteFilms': 'Favori Filmler',
+  'home.showcase.suggest.title': 'Yeni: Vitrin düzeni',
+  'home.showcase.suggest.body':
+      'Ana ekran için yeni Vitrin düzenini ekledik: dikey kayan poster şeritleri ve altta «damla cam» bir menü çubuğu. Şimdi denemek ister misiniz? İstediğiniz zaman Ayarlar > Ana Ekran\'dan geri dönebilirsiniz.',
+  'home.showcase.suggest.tryIt': 'Hemen dene',
   'home.upcomingMatches': 'Sıradaki Maçlar',
   'home.upcomingMatches.loading': 'Program rehberi yükleniyor…',
-  'marquee.monday':
-      'Haftaya enerjik bir başlangıç yapın! İyi haftalar dileriz.',
-  'marquee.tuesday': 'Haftanın temposu artıyor, keyifli seyirler dileriz.',
-  'marquee.wednesday':
-      'Haftanın ortasına geldik! En sevdiğiniz içeriklerle mola verin.',
-  'marquee.thursday':
-      'Hafta sonuna az kaldı, Mina IPTV ile günün yorgunluğunu atın.',
-  'marquee.friday': 'Mina İle Hafta sonu keyfi şimdiden başlasın.',
-  'marquee.saturday': 'Hafta sonu eğlencesi burada! İyi istirahatler.',
-  'marquee.sunday':
-      'Pazar keyfiniz bol olsun! Yeni haftaya hazırlanırken yanınızdayız.',
+  'marquee.monday': 'Yeni hafta, yeni bölümler! Mina ile keyifli başlangıçlar.',
+  'marquee.tuesday': 'Salı keyfi: favori dizileriniz Mina’da.',
+  'marquee.wednesday': 'Haftanın ortası, mola zamanı! Mina ile nefes alın.',
+  'marquee.thursday': 'Hafta sonuna az kaldı, listenizi hazırlayın.',
+  'marquee.friday': 'Cuma geldi! Bu akşam sinema keyfi Mina’da.',
+  'marquee.saturday': 'Cumartesi maç ve film günü, en iyisi Mina’da.',
+  'marquee.sunday': 'Pazar huzurla geçsin, keyifli seyirler!',
   'home.header.brandTop': 'Mina',
   'home.header.brandBottom': 'IPTV Player',
   'home.search.hint': 'Ara…',
-  'home.header.telegram': 'Mina Telegram kanalını aç',
   'home.search.dialogTitle': 'Ara',
   'home.search.typeToSeeResults': 'Sonuçlar için yazmaya başlayın.',
   'home.search.sectionLive': 'Canlı yayın',
@@ -276,11 +360,19 @@ const Map<String, String> _tr = {
   'splash.epg': 'Program rehberi hazırlanıyor…',
   'splash.finishing': 'Neredeyse hazır…',
   'setup.wizardTitle': 'Hoş geldiniz',
+  'setup.trialWelcome.title': 'Hoş Geldiniz!',
+  'setup.trialWelcome.message': 'Mina IPTV Player\'ı 2 gün boyunca tamamen ücretsiz ve sınırsız bir şekilde deneyebilir ve test edebilirsiniz. Memnun kalırsanız, 2 günün sonunda tek seferlik bir ödeme ile ömür boyu kullanım hakkına sahip olabilirsiniz. Dilediğiniz zaman Ayarlar > Abonelik Bilgisi bölümünden de şimdi satın alabilirsiniz.',
+  'setup.trialWelcome.autoClose': 'Bu uyarı @seconds saniye sonra otomatik kapanacaktır.',
   'setup.stepLanguage': 'Dil',
+  'setup.stepLayoutMode': 'Yerleşim modu',
   'setup.stepTheme': 'Görünüm',
   'setup.stepPlayer': 'Oynatıcı',
   'setup.stepPerformance': 'Performans',
   'setup.stepSource': 'Oynatma listesi',
+  'setup.layoutModeHint':
+      'Ana ekran düzenini seç. Vitrin düzeninde bazı kişiselleştirme seçenekleri (kart efektleri, çerçeve stili) devre dışı kalır.',
+  'setup.tvLayoutModeHint':
+      'TV ana ekran düzenini seç. TV modu sol menülü yeni kabuğu açar; kart düzeni klasik kartlı ana ekrandır.',
   'setup.performanceHint':
       'Cihazınızın gücüne göre bir mod seçin. 2 GB RAM ve altı cihazlarda Düşük Donanımlı Cihaz Modu daha akıcı çalışır.',
   'setup.perfNormalTitle': 'Normal Performans Modu',
@@ -309,8 +401,7 @@ const Map<String, String> _tr = {
   'cloud.signInFailed': 'Google ile giriş başarısız oldu.',
   'cloud.playServicesUnavailable':
       'Bu cihazda Google Servisleri bulunmadığı için yedekleme özelliği desteklenmemektedir.',
-  'cloud.signInBrowserOpening':
-      'Tarayıcıda Google ile oturum açılıyor…',
+  'cloud.signInBrowserOpening': 'Tarayıcıda Google ile oturum açılıyor…',
   'cloud.signInBrowserHint':
       'Bu cihazda Google hesabı tarayıcı üzerinden açılacaktır.',
   'cloud.signInUnavailable':
@@ -600,6 +691,7 @@ const Map<String, String> _tr = {
   'common.back': 'Geri',
   'common.close': 'Kapat',
   'common.cancel': 'Vazgeç',
+  'common.confirm': 'Onayla',
   'common.delete': 'Sil',
   'common.save': 'Kaydet',
   'common.refreshNow': 'Şimdi yenile',
@@ -607,6 +699,9 @@ const Map<String, String> _tr = {
   'common.done': 'Tamam',
   'common.retry': 'Tekrar dene',
   'common.ok': 'Tamam',
+  'common.later': 'Daha Sonra',
+  'common.success': 'Başarılı',
+  'common.error': 'Bir hata oluştu',
   'common.yes': 'Evet',
   'common.no': 'Hayır',
   'common.active': 'Aktif',
@@ -672,6 +767,15 @@ const Map<String, String> _tr = {
   'common.lang.it': 'İtalyanca',
   'common.lang.pt': 'Portekizce',
   'common.lang.id': 'Endonezce',
+  'common.lang.de': 'Almanca',
+  'common.lang.fa': 'Farsça',
+  'common.lang.pl': 'Lehçe',
+  'common.lang.nl': 'Felemenkçe',
+  'common.lang.uk': 'Ukraynaca',
+  'common.lang.vi': 'Vietnamca',
+  'common.lang.el': 'Yunanca',
+  'common.lang.ro': 'Rumence',
+  'common.lang.sq': 'Arnavutça',
 
   // Search hints
   'search.channel': 'Kanal ara…',
@@ -701,6 +805,15 @@ const Map<String, String> _tr = {
   'theme.semcTheme': 'SEMC Theme',
   'theme.flyUi': 'Fly UI',
   'theme.flyUi.sub': 'Flyme tarzı buzlu cam ve mavi vurgu',
+  'theme.tvLite': 'TV Lite',
+  'theme.ios27': 'OS27',
+  'theme.ios27.sub':
+      'iOS damla cam (Liquid Glass): saydam paneller, mavi vurgu, akışkan cam duvar kağıdı',
+  'theme.macTema': 'Mac Tema',
+  'theme.macTema.sub':
+      'macOS Tahoe: Apple koyu cam paneller, Apple mavisi vurgu, Tahoe dalga duvar kağıdı',
+  'theme.mint': 'Mint',
+  'theme.mint.sub': 'Linux Mint yeşil vurgulu, yarı saydam paneller',
 
   // Settings — sections & tiles
   'settings.title': 'Ayarlar',
@@ -728,11 +841,6 @@ const Map<String, String> _tr = {
   'settings.tile.parental': 'Ebeveyn denetimi',
   'settings.tile.parental.sub':
       'PIN ile koruma; Xtream kategorilerini gizleyin (canlı, film, dizi)',
-  'settings.tile.hideAdult': '+18 içerikleri gizle',
-  'settings.tile.hideAdult.sub':
-      'Canlı TV, filmler, diziler, arama ve ana ekranda +18 kanal ve içerikleri gizler',
-  'settings.hideAdult.applying.title': 'Tercih uygulanıyor',
-  'settings.hideAdult.applying.body': 'Listeler yeniden filtreleniyor…',
   'settings.tile.xtreamApiEpgOnly': 'Yalnızca Xtream API EPG',
   'settings.tile.xtreamApiEpgOnly.on':
       'Açık: panel XMLTV atlanıyor, yalnızca get_all_live_epg',
@@ -766,39 +874,29 @@ const Map<String, String> _tr = {
   'settings.tile.playback': 'Oynatma Ayarları',
   'settings.tile.playback.sub':
       'Oynatıcı motoru, donanım hızlandırma, video kod çözücü ve düşük gecikme buffer',
+  'settings.tile.keyMapping': 'Kumanda Tuş Atama',
+  'settings.tile.keyMapping.sub':
+      'Kumanda üzerindeki boş veya özel tuşlara hızlı eylemler atayın',
+  'settings.keyMapping.success.title': 'Başarılı',
+  'settings.keyMapping.success.msg': '"{action}" eylemine "{key}" tuşu atandı.',
   'playbackSettings.title': 'Oynatma Ayarları',
   'playbackSettings.hint':
       'Oynatıcı motoru ve düşük seviye video ayarları. Yayın takılırsa motoru değiştirip veya kod çözücüyü yazılıma alıp deneyebilirsin.',
+  'settings.tile.silentSync': 'Arka Planda Sessiz Senkronizasyon',
+  'settings.tile.silentSync.sub': 'Uygulama kapalıyken listeyi sessizce günceller',
+  'settings.tile.silentSync.enabled': 'Açık (Günde bir kez güncellenir)',
+  'settings.tile.silentSync.disabled': 'Kapalı',
   'settings.tile.otherTools': 'Diğer Araçlar',
   'settings.tile.otherTools.sub':
       'Uyku zamanlayıcısı, EPG, tema, yedekleme, hız testi, titreşim ve font',
   'otherTools.title': 'Diğer Araçlar',
   'otherTools.hint':
       'Daha seyrek kullanılan yardımcı araçlar tek bir yerde toplandı.',
-  'smartRoute.section.title': 'Akıllı CDN / Proxy Seçici',
-  'smartRoute.section.sub':
-      'Yurt dışı kaynaklı sunucularda akşam saatlerinde peering darboğazları yaşanabilir. Mina arka planda hafif TCP "ping" leri ile gecikme + jitter + paket kaybını izler ve gerekirse tamponu otomatik ayarlar.',
-  'smartRoute.toggle.title': 'Akıllı bağlantı izleme',
-  'smartRoute.toggle.sub':
-      'Sunucu IP\'sine düşük frekanslı TCP ölçümleri ile bağlantı kalitesini takip eder. Veri kullanımı ihmal edilebilir düzeydedir.',
-  'smartRoute.autoBuffer.title': 'Otomatik tampon optimizasyonu',
-  'smartRoute.autoBuffer.sub':
-      'Dalgalanma algılanırsa canlı tampon @target sn\'ye çıkar; ağ toparlanınca senin değerine geri döner.',
-  'smartRoute.status.title': 'Bağlantı durumu',
-  'smartRoute.status.unknown': 'Ölçülüyor…',
-  'smartRoute.status.excellent': 'Mükemmel',
-  'smartRoute.status.good': 'İyi',
-  'smartRoute.status.unstable': 'Dalgalı',
-  'smartRoute.status.poor': 'Zayıf',
-  'smartRoute.status.detail':
-      'Ortalama @avg ms · Jitter @jitter ms · Kayıp %@loss',
-  'smartRoute.status.detailNoData': 'Henüz ölçüm yok',
-  'smartRoute.status.autoActive': 'Otomatik tampon devrede',
-  'smartRoute.notify.title': 'Bağlantı optimize edildi',
-  'smartRoute.notify.body.auto':
-      'Bağlantında dalgalanma algılandı. Canlı tampon @from sn → @to sn olarak otomatik ayarlandı.',
-  'smartRoute.notify.body.advise':
-      'Bağlantında dalgalanma var. Ayarlardan canlı tamponu artırabilirsin.',
+  'otherTools.inAppPip.title': 'Uygulama İçi PiP',
+  'otherTools.inAppPip.subOn':
+      'Vitrin ana ekranında mini oynatıcı açık',
+  'otherTools.inAppPip.subOff':
+      'Ana ekrana dönünce yayın durur',
   'channelLayout.title': 'Kanal Kategori Düzeni',
   'channelLayout.hint':
       'Kategorileri gizleyebilir ve canlı kanal listenin sırasını/içeriğini düzenleyebilirsin. Her seçenek kendi düzenleyicisini açar; geri dönüldüğünde değişiklikler ana ekrana yansır.',
@@ -818,7 +916,7 @@ const Map<String, String> _tr = {
       'Yalnızca canlı TV: kategori seçip kanalları sıralayın veya çıkarın',
   'settings.tile.homeCardOrder': 'Ana ekran kart sırası',
   'settings.tile.homeCardOrder.sub':
-      'Canlı TV, film, dizi, önerilen filmler, EPG Mix ve favori kartlarının sırası',
+      'Canlı TV, film, dizi, Film & Dizi, EPG Mix ve Mina İzleme Analizi kartlarının sırası',
   'settings.tile.homeSettings': 'Ana Ekran Ayarları',
   'settings.tile.homeSettings.sub':
       'Kart sırası, karışık canlı TV ve sıradaki maçlar',
@@ -839,6 +937,27 @@ const Map<String, String> _tr = {
   'homeSettings.mixedLive.title': 'Karışık Canlı TV',
   'homeSettings.mixedLive.sub':
       'Açıkken ana ekrana farklı kategorilerden rastgele canlı kanallar şeridi eklenir',
+  'homeSettings.trendFilms.title': 'Trend Filmler',
+  'homeSettings.trendFilms.sub':
+      'Yalnızca vitrin düzeninde: IMDB 7 puan ve üzeri en iyi 50 filmi şerit olarak gösterir (nadir aralıklarla yenilenir)',
+  'homeSettings.trendSeries.title': 'Trend Diziler',
+  'homeSettings.trendSeries.sub':
+      'Yalnızca vitrin düzeninde: IMDB 7 puan ve üzeri en iyi 50 diziyi şerit olarak gösterir (nadir aralıklarla yenilenir)',
+  'homeSettings.favoriteFilms.title': 'Favori Filmler',
+  'homeSettings.favoriteFilms.sub':
+      'Yalnızca vitrin düzeninde: favorilere eklediğin filmleri ana ekranda şerit olarak gösterir',
+  'homeSettings.favoriteSeries.title': 'Favori Diziler',
+  'homeSettings.favoriteSeries.sub':
+      'Yalnızca vitrin düzeninde: favorilere eklediğin dizileri ana ekranda şerit olarak gösterir',
+  'homeSettings.mixedFilms.title': 'Karışık Filmler',
+  'homeSettings.mixedFilms.sub':
+      'Yalnızca vitrin düzeninde: tüm kategorilerden rastgele karışık filmleri ana ekranda şerit olarak gösterir',
+  'homeSettings.mixedSeries.title': 'Karışık Diziler',
+  'homeSettings.mixedSeries.sub':
+      'Yalnızca vitrin düzeninde: tüm kategorilerden rastgele karışık dizileri ana ekranda şerit olarak gösterir',
+  'homeSettings.lastWatchedButton.title': 'Son İzlenen Butonu',
+  'homeSettings.lastWatchedButton.sub':
+      'Vitrin düzeninde arama butonunun üzerindeki son izlenen dairesel butonu gösterir/gizler',
   'homeSettings.upcomingMatches.title': 'Sıradaki Maçlar',
   'homeSettings.upcomingMatches.sub':
       'Yaklaşan futbol/spor karşılaşmalarını ana ekranda kart şeridi olarak göster',
@@ -849,6 +968,9 @@ const Map<String, String> _tr = {
       'Yapay Zekâ Destekli Ana Ekran Önerileri',
   'homeSettings.aiRecommendations.sub':
       'Mina AI izleme alışkanlığını analiz eder; kategori ve saat dilimine göre 10 karma canlı/film/dizi önerir',
+  'homeSettings.reduceBlur.title': 'Bulanıklığı Azalt (Hız)',
+  'homeSettings.reduceBlur.sub':
+      'Arka plan ve cam yüzeylerdeki bulanıklığı kapatır. Açıkken işlemci yükü ve ısınma azalır, kaydırmalar daha akıcı olur. Düşük donanımlı cihazlarda önerilir.',
   'homeSettings.dailyQuote.title': 'Günün Sözü',
   'homeSettings.dailyQuote.sub':
       'Ana ekranın üst kısmında haftanın gününe göre değişen kısa karşılama mesajını göster. Kapatıldığında şerit ve çevresindeki boşluk kaldırılır.',
@@ -868,6 +990,15 @@ const Map<String, String> _tr = {
   'homeSettings.swipeEffect.rubberBand.title': 'Lastik Bandı',
   'homeSettings.swipeEffect.rubberBand.sub':
       'Kart sayfa sonuna geldiğinde elastik şekilde geri çekilir, snap-back overshoot uygulanır.',
+  'homeSettings.transitionEffect.title': 'Geçiş Efekti',
+  'homeSettings.transitionEffect.sub':
+      'Sayfalar arası geçiş animasyonunu seç.',
+  'homeSettings.transitionEffect.ios.title': 'iOS',
+  'homeSettings.transitionEffect.ios.sub':
+      'iOS tarzı sağdan sola kaydırma geçişi.',
+  'homeSettings.transitionEffect.fadeScale.title': 'Yumuşak',
+  'homeSettings.transitionEffect.fadeScale.sub':
+      'Yumuşak fade + scale geçişi.',
   'homeSettings.frameStyle.title': 'Çerçeve Stili',
   'homeSettings.frameStyle.sub':
       'Ana ekrandaki kategori kartları, izlemeye devam et, Mina AI ve yüksek puanlı filmler şeritlerine ortak çerçeve görünümü uygula.',
@@ -889,9 +1020,6 @@ const Map<String, String> _tr = {
   'setup.aiRecommendationsTitle': 'Yapay Zekâ Destekli Ana Ekran Önerileri',
   'setup.aiRecommendationsSub':
       'Geçmiş izlemelere göre kişiselleştirilmiş 10 öneri (canlı, film, dizi) göster',
-  'setup.hideAdultTitle': '+18 İçerikleri Gizle',
-  'setup.hideAdultSub':
-      'Ana ekran önerilerinde, karışık canlı şeridinde ve izlemeye devam et bölümünde +18 kanal, film ve dizileri gösterme',
   'setup.filmDiziMode.title': 'Film & Dizi modu',
   'setup.filmDiziMode.sub':
       'Ana ekranda film ve dizileri nasıl göstereceğini seç — sonrasında ayarlardan değiştirebilirsin',
@@ -907,6 +1035,77 @@ const Map<String, String> _tr = {
   'homeSettings.filmDiziMode.both.title': 'Her İkisi',
   'homeSettings.filmDiziMode.both.sub':
       'Hem «Film & Dizi» hem de ayrı «Filmler» + «Diziler» kartları aynı anda görünür',
+  'homeSettings.layoutStyle.title': 'Yerleşim modu',
+  'homeSettings.layoutStyle.sub':
+      'Ana ekranın görünümünü seç: tam özellikli kart düzeni ya da vitrin düzeni',
+  'homeSettings.layoutStyle.standard.title': 'Kart Düzeni',
+  'homeSettings.layoutStyle.standard.sub':
+      'Şeritler, devam et ve tüm kartlarla tam ana ekran',
+  'homeSettings.layoutStyle.showcase.title': 'Vitrin düzeni',
+  'homeSettings.layoutStyle.showcase.sub':
+      'Dikey kayan poster şeritleri + altta damla cam menü çubuğu (Canlı TV · Film & Dizi · EPG Mix · Mina Wrapped · Ayarlar). Yalnızca telefon/tablet.',
+  'homeSettings.tvLayout.hint':
+      'TV ana ekranında hangi düzeni kullanacağınızı seçin.',
+  'homeSettings.tvLayout.title': 'Ana ekran düzeni',
+  'homeSettings.tvLayout.sub':
+      'Kartlı ana ekran veya yeni TV kabuğu (sol menü + paneller)',
+  'homeSettings.tvLayout.classic.title': 'Kart Düzeni',
+  'homeSettings.tvLayout.classic.sub':
+      'Kategori kartları ve şeritlerle klasik ana ekran',
+  'homeSettings.tvLayout.shell.title': 'TV modu',
+  'homeSettings.tvLayout.shell.sub':
+      'Sol menüden Canlı TV, Filmler, Diziler ve ayarlara hızlı erişim',
+  'tvShell.section.search': 'Arama',
+  'tvShell.section.live': 'Canlı TV',
+  'tvShell.section.movies': 'Filmler',
+  'tvShell.section.series': 'Diziler',
+  'tvShell.section.playlists': 'Listeler',
+  'tvShell.section.continueWatching': 'İzlemeye Devam Et',
+  'tvShell.continueWatching.title': 'İzlemeye Devam Et',
+  'tvShell.continueWatching.subtitle': 'Kanallar, watchlist, devam edenler ve izlenenler',
+  'tvShell.continueWatching.empty': 'Yarıda bırakılmış film veya dizi bulunamadı.',
+  'tvShell.playlists.subtitle':
+      'Bir liste seçin; canlı TV, filmler ve diziler yalnızca o listenin içeriğini gösterir.',
+  'tvShell.playlists.empty':
+      'Henüz yüklü liste yok. Ayarlar → Playlist Yöneticisi bölümünden liste ekleyin.',
+  'tvShell.playlists.active': 'Aktif',
+  'tvShell.playlists.pleaseWait': 'Lütfen bekleyin…',
+  'tvShell.section.settings': 'Ayarlar',
+  'tvShell.rail.wrapper': 'Wrapper',
+  'tvShell.rail.repeat': 'Tekrar',
+  'tvShell.brand': 'Mina Player',
+  'tvShell.category.empty': 'Kategori bulunamadı',
+  'tvShell.category.allFilms': 'Tüm filmler',
+  'tvShell.category.allSeries': 'Tüm diziler',
+  'tvShell.category.favFilms': 'Favori filmler',
+  'tvShell.category.favSeries': 'Favori diziler',
+  'tvShell.category.popular50Films': 'Popüler 50 film',
+  'tvShell.category.popular50Series': 'Popüler 50 dizi',
+  'tvShell.hint.selectSection': 'Sol menüden bir bölüm seçin',
+  'tvShell.live.channels': 'Kanallar',
+  'tvShell.live.epg': 'EPG',
+  'tvShell.live.noDescription': 'Program açıklaması yok',
+  'tvShell.live.nextProgramme': 'Sıradaki',
+  'tvShell.live.noEpg': 'Bu kanal için EPG bilgisi yok',
+  'tvShell.live.pickChannel': 'Önizleme için bir kanal seçin',
+  'tvShell.live.epgNotYet': 'EPG henüz bulunmuyor',
+  'tvShell.touch.openMenu': 'Menü',
+  'tvShell.movies.pickFilm': 'Önizleme için bir film seçin',
+  'tvShell.movies.noFilms': 'Bu kategoride film yok',
+  'tvShell.movies.upNext': 'Sıradaki filmler',
+  'tvShell.movies.noPlot': 'Özet bilgisi yok',
+  'tvShell.movies.play': 'Oynat',
+  'tvShell.movies.externalPlayer': 'Harici oynatıcıda aç',
+  'tvShell.movies.addFavorite': 'Favorilere ekle',
+  'tvShell.series.pickSeries': 'Önizleme için bir dizi seçin',
+  'tvShell.series.noSeries': 'Bu kategoride dizi yok',
+  'tvShell.series.upNext': 'Sıradaki diziler',
+  'tvShell.sort.title': 'Sırala',
+  'tvShell.sort.alphabetical': 'Alfabetik',
+  'tvShell.sort.rating': 'Puana göre (IMDb)',
+  'tvShell.sort.random': 'Rastgele',
+  'tvShell.sort.addedDate': 'Eklenme tarihi',
+  'homeSettings.lockedByShowcase': 'Vitrin düzeninde kapalı',
   'home.continue_watching': 'İzlemeye Devam Et',
   'home.ai.title': 'Mina AI: Senin İçin Önerilenler',
   'home.ai.badge.live': 'Canlı',
@@ -927,8 +1126,7 @@ const Map<String, String> _tr = {
   'homeCardOrder.card.series': 'Diziler',
   'homeCardOrder.card.recommendedFilms': 'Film & Dizi',
   'homeCardOrder.card.epgMix': 'EPG Mix',
-  'homeCardOrder.card.favorites': 'Favoriler',
-  'homeCardOrder.card.chat': 'Sohbet',
+  'homeCardOrder.card.minaAnalytics': 'Mina İzleme Analizi',
   'analytics.title': 'Mina Wrapped & İzleme Analitiği',
   'analytics.toggle.title': 'Mina Wrapped & İzleme Analitiği',
   'analytics.toggle.sub':
@@ -983,6 +1181,41 @@ const Map<String, String> _tr = {
   'analytics.period.afternoon': 'öğleden sonra',
   'analytics.period.evening': 'akşam',
   'analytics.period.night': 'gece',
+  'analytics.wrapped.tag': 'MINA WRAPPED',
+  'analytics.wrapped.youAre': 'SEN BİR',
+  'analytics.wrapped.highlight': '@range toplam',
+  'analytics.persona.newcomer.title': 'Yeni Başlayan',
+  'analytics.persona.newcomer.tagline':
+      'Mina Wrapped seni tanımak için sabırsızlanıyor. Birkaç içerik izle, sana özel profilin tam burada belirsin!',
+  'analytics.persona.cinephile.title': 'Sinema Aşığı',
+  'analytics.persona.cinephile.tagline':
+      'Koca bir @hours’i filmlere ayırdın ve en çok @period saatlerinde perdeye kilitlendin. Tam bir sinema tutkunusun!',
+  'analytics.persona.binger.title': 'Dizi Maratoncusu',
+  'analytics.persona.binger.tagline':
+      'Bölüm bölüm, @hours’lik bir maraton! @period saatleri senin dizi vaktin.',
+  'analytics.persona.liveWire.title': 'Canlı Yayın Ustası',
+  'analytics.persona.liveWire.tagline':
+      'Canlı yayının nabzını tutuyorsun: @hours, çoğunlukla @period saatlerinde.',
+  'analytics.persona.nightOwl.title': 'Gece Kuşu',
+  'analytics.persona.nightOwl.tagline':
+      'Gece sessizliğinde tam @hours izledin. Sen gerçek bir gece kuşusun!',
+  'analytics.persona.explorer.title': 'Keşifçi İzleyici',
+  'analytics.persona.explorer.tagline':
+      'Canlı, film, dizi… hepsinden tadıyorsun. @hours boyunca sınır tanımadın!',
+  'analytics.insight.period':
+      'İzlemelerinin %@pct kadarı @period saatlerinde geçti.',
+  'analytics.insight.topChannel': 'En sadık olduğun kanal: @channel (@hours).',
+  'analytics.insight.peakDay': 'En aktif günün: @day.',
+  'analytics.insight.topCategory': 'Favori türün: @category.',
+  'analytics.timeline.title': 'İzleme Şeridi',
+  'analytics.timeline.empty':
+      'Henüz izleme geçmişin yok. İzledikçe burada belirecek.',
+  'analytics.time.justNow': 'az önce',
+  'analytics.time.minsAgo': '@n dk önce',
+  'analytics.time.hoursAgo': '@n saat önce',
+  'analytics.time.yesterday': 'dün',
+  'analytics.time.daysAgo': '@n gün önce',
+  'analytics.time.weeksAgo': '@n hafta önce',
   'settings.parental.title': 'Ebeveyn denetimi',
   'settings.parental.createIntro':
       '4–6 haneli bir PIN belirleyin. Kategori gizleme bu PIN ile açılır.',
@@ -1025,6 +1258,12 @@ const Map<String, String> _tr = {
   'settings.tile.subtitleOptions': 'Altyazı seçenekleri',
   'settings.tile.subtitleOptions.sub': '@pt pt',
   'settings.tile.subtitleOptions.summary': '@pt pt · @color · @font',
+  'settings.tile.vodInfoEngine': 'Film Dizi Bilgi Motoru',
+  'settings.tile.vodInfoEngine.hint':
+      'Film ve dizi bilgilerinin kaynağını seçin',
+  'settings.tile.vodInfoEngine.auto': 'Otomatik',
+  'settings.tile.vodInfoEngine.xtreamOnly': 'Xtream Bilgileri',
+  'settings.tile.vodInfoEngine.tmdbOmdbOnly': 'TMDB/OMDB Bilgileri',
   'settings.subtitle.title': 'Altyazı seçenekleri',
   'settings.subtitle.sectionAppearance': 'Görünüm',
   'settings.subtitle.sectionOpenSubtitles': 'OpenSubtitles hesabı',
@@ -1096,6 +1335,8 @@ const Map<String, String> _tr = {
   'settings.epg.refreshNow': 'Listeyi güncelle',
   'settings.epg.refreshFrequency': 'Rehber güncelleme sıklığı',
   'settings.epg.refreshFrequency.sub': '@n gün',
+  'settings.epg.refreshFrequency.never':
+      'Otomatik yenileme kapalı (yalnızca bir kez)',
   'settings.epg.timeFormat': 'Saat formatı',
   'settings.epg.timeFormat24': '24 saat',
   'settings.epg.timeFormat12': '12 saat (AM/PM)',
@@ -1147,6 +1388,8 @@ const Map<String, String> _tr = {
   'settings.dialog.epgCacheHint':
       'Tam EPG verisi yerelde saklanır; süre dolmadan yeniden indirilmez (veri tasarrufu).',
   'settings.dialog.epgCacheSlider': '@n gün',
+  'settings.dialog.epgCacheNever':
+      'Kapalı — rehber yalnızca bir kez yüklenir, otomatik yenilenmez',
   'settings.tile.adaptiveQuality': 'HLS kalite tavanı',
   'settings.dialog.adaptiveQualityTitle': 'Çoklu kalite (HLS)',
   'settings.adaptiveQuality.optionAuto':
@@ -1174,6 +1417,8 @@ const Map<String, String> _tr = {
       '{server} {username} {password} {stream_id} {duration} {start_utc_ymd_hms} {start_local_ymd_hms} {start_unix} {extension} — sağlayıcınızın biçimine göre düzenleyin.',
   'settings.tile.launchBoot': 'Cihaz Açıldığında Başlat',
   'settings.tile.bgPlayback': 'Arka Planda Oynatma',
+  'settings.tile.alarm': 'Alarm',
+  'settings.tile.alarm.sub': 'Uyku zamanlayıcısı ve alarm',
   'settings.tile.miniPlayerHome': 'Küçük ekran (PiP)',
   'settings.tile.miniPlayerHome.subTv': 'Yalnızca telefon yerleşiminde',
   'settings.tile.miniPlayerHome.hintTv':
@@ -1181,7 +1426,7 @@ const Map<String, String> _tr = {
   'settings.tile.miniPlayerHome.subOn':
       'Açık — ana ekrana dönünce küçük pencerede izle (sürükle). Better/Exo.',
   'settings.tile.miniPlayerHome.subOff':
-      'Kapalı — oynatıcıdan çıkınca PiP yok (Better/Exo, telefon yerleşimi).',
+      'Kapalı — otomatik PiP yok; oynatıcı OSD düğmesiyle manuel açılabilir.',
   'settings.tile.miniPlayerHome.subMk':
       'MediaKit ile otomatik PiP yok; varsayılan oynatıcıda kullanın.',
   'settings.tile.reduceBlur': 'Bulanıklığı Kapat',
@@ -1200,6 +1445,8 @@ const Map<String, String> _tr = {
       'Liste detayında sessiz önizleme (~1,8 sn sonra)',
   'settings.tile.streamPreview.off':
       'Kapalı — canlı / film / dizi listelerinde önizleme yok',
+  'settings.tile.streamPreview.blockedLowEnd':
+      'Açık — düşük donanım modu önizlemeyi devre dışı bırakıyor',
   'settings.tile.streamPreview.tvLocked':
       'TV’de de Ayarlar’dan açıp kapatabilirsiniz',
   'settings.tile.defaultPlayer': 'Varsayılan Oynatıcı',
@@ -1253,10 +1500,204 @@ const Map<String, String> _tr = {
   'settings.tile.help.sub': 'Resmi Telegram kanalımız',
   'settings.tile.reportIssue': 'Sorun Bildir',
   'settings.tile.reportIssue.sub': 'E-posta ile sorununuzu bize iletin',
+  'settings.tile.adminMessage': 'Admine Mesaj Gönder',
+  'settings.tile.adminMessage.sub': 'Uygulama içi sohbetten yöneticiye yaz',
   'settings.tile.contactUs': 'Bize Ulaşın',
   'settings.tile.contactUs.sub': 'Telegram kanalımız ve sorun bildirimi',
   'settings.tile.setupWizard': 'Kurulum Sihirbazını Başlat',
   'settings.tile.setupWizard.sub': 'İlk kurulum adımlarını yeniden çalıştır',
+  'settings.tile.faq': 'Sıkça Sorulan Sorular',
+  'settings.tile.faq.sub': 'Özellikler ve oynatma ayarları için rehber',
+  'faq.title': 'Sıkça Sorulan Sorular',
+  'faq.searchHint': 'Soru ara…',
+  'faq.empty': 'Aramanızla eşleşen soru bulunamadı.',
+  'faq.entry.tsMode.q': 'MPEG-TS moduna ne zaman geçmeliyim?',
+  'faq.entry.tsMode.a':
+      'MPEG-TS, yayını tek parça kesintisiz akış olarak çeker; açılış hızlıdır ve birçok TV box ile uyumludur. Kanallar geç açılıyorsa, donanım kod çözücü hataları görüyorsanız veya yayın hiç başlamıyorsa MPEG-TS deneyin. Düşük donanımlı cihazlarda ve TV box\'larda uygulama bu modu otomatik olarak seçer.',
+  'faq.entry.hlsMode.q': 'HLS (m3u8) moduna ne zaman geçmeliyim?',
+  'faq.entry.hlsMode.a':
+      'HLS yayını küçük parçalara (segment) böler ve çoğu panelde birden çok kalite (HD/FHD) sunar. İnternetiniz dalgalıysa HLS, kaliteyi otomatik düşürüp segment tamponu yaptığı için MPEG-TS\'e göre daha az donar. Çoklu kalite menüsü ve daha kararlı oynatma istiyorsanız HLS kullanın.',
+  'faq.entry.autoTs.q': 'Uygulama neden cihazımda otomatik MPEG-TS\'e geçti?',
+  'faq.entry.autoTs.a':
+      'Cihazınız TV box veya düşük donanımlı olarak algılandığında, HLS\'in segment/kalite yükü bu cihazlarda takılmaya yol açabildiği için canlı yayın biçimi bir kez otomatik olarak MPEG-TS\'e ayarlanır. İsterseniz Ayarlar > Oynatma bölümünden tekrar HLS\'e dönebilirsiniz; tercihiniz korunur.',
+  'faq.entry.buffer.q': 'Tampon (düşük gecikme) süresini neden ayarlamalıyım?',
+  'faq.entry.buffer.a':
+      'Tampon, oynatıcının önceden indirip beklettiği yayın süresidir. Düşük değer (1-2 sn) kanal geçişini hızlandırır ama dalgalı internette donma riskini artırır. Yüksek değer (5-10 sn) donmayı azaltır ama açılış ve zaplama biraz yavaşlar. İnternetiniz stabilse düşük, sık donuyorsa daha yüksek bir değer seçin.',
+  'faq.entry.freezing.q':
+      'Bir liste sürekli donuyor, başka liste sorunsuz. Neden?',
+  'faq.entry.freezing.a':
+      'Donmanın en sık nedeni sağlayıcının sunucusudur: yetersiz bant genişliği, uzak/yavaş sunucu, uzun segmentli yayın veya bağlantı limiti. Aynı cihaz ve internetle farklı bir liste sorunsuz çalışıyorsa, sorun büyük olasılıkla donan listenin altyapısındadır. Uygulama uzun segmentli/ABR\'siz yayınlarda tamponu otomatik artırarak yardımcı olur, ancak kaynak sunucu zayıfsa kalıcı çözüm sağlayıcı tarafındadır.',
+  'faq.entry.playbackStops.q': 'Canlı yayın aniden durursa ne oluyor?',
+  'faq.entry.playbackStops.a':
+      'Yayın koparsa veya bağlantı limiti nedeniyle (örn. aynı hesabı başkası açtığında) durursa, oynatıcı kullanıcı duraklatmadığı sürece otomatik olarak yeniden bağlanmayı dener. Gerekirse HLS↔MPEG-TS biçim değişimi ve farklı oynatma motoru da denenir.',
+  'faq.entry.engine.q':
+      'Better Player ve MediaKit motorları arasındaki fark nedir?',
+  'faq.entry.engine.a':
+      'Better Player (ExoPlayer) çoğu cihazda donanım hızlandırmalı ve verimlidir. MediaKit (libmpv) ise zorlu codec\'ler ve sorunlu yayınlarda daha esnektir. Better Player bir yayını açamazsa uygulama otomatik olarak MediaKit\'e geçer. Ayarlardan tercih ettiğiniz motoru da seçebilirsiniz.',
+  'faq.entry.softwareDecoder.q':
+      'Yazılımsal video kod çözücü ne zaman kullanılmalı?',
+  'faq.entry.softwareDecoder.a':
+      'Donanım kod çözücü bazı cihazlarda belirli codec\'lerde yeşil/mor ekran, takılma veya hata verebilir. Görüntüde bozulma yaşıyorsanız yazılımsal kod çözücü daha uyumludur, ancak işlemciyi daha çok yorar ve düşük cihazlarda kasabilir. Sorun yoksa donanım (varsayılan) modda kalın.',
+  'faq.entry.lowEndMode.q': 'Düşük Donanımlı Cihaz Modu ne yapar?',
+  'faq.entry.lowEndMode.a':
+      'Bu mod blur, gölge ve önizleme gibi ağır görsel efektleri kapatıp görsel önbellek sınırlarını düşürür; böylece zayıf cihazlarda arayüz daha akıcı çalışır ve bellek baskısı azalır. Uygulama çok takılıyorsa açmanızı önerir.',
+  'faq.entry.tvLite.q': 'TV Lite (sade TV arayüzü) nedir?',
+  'faq.entry.tvLite.a':
+      'TV Lite, TV box\'lar için sadeleştirilmiş, daha hafif bir ana ekran düzenidir. Zayıf donanımlı TV cihazlarında otomatik açılır ve gezinmeyi hızlandırır. Ayarlardan kapatabilirsiniz.',
+  'faq.entry.userAgent.q': 'User Agent ayarını ne zaman değiştirmeliyim?',
+  'faq.entry.userAgent.a':
+      'Bazı IPTV panelleri yalnızca belirli bir User-Agent başlığıyla yayın verir. Yayınlar açılmıyorsa veya panel sağlayıcınız özel bir User-Agent istiyorsa bu ayarı değiştirin. Emin değilseniz varsayılanı kullanın.',
+  'faq.entry.cardSize.q': 'Ana ekran kart boyutunu nasıl değiştiririm?',
+  'faq.entry.cardSize.a':
+      'Ayarlar > Ana Ekran bölümünden kart boyutu kaydırıcısıyla kartları %80 ile %120 arasında ölçekleyebilirsiniz. Varsayılan %110\'dur. Daha büyük kartlar uzaktan okumayı kolaylaştırır, daha küçük kartlar ekrana daha fazla içerik sığdırır.',
+  'faq.entry.epg.q': 'Program rehberi (EPG) nasıl çalışır?',
+  'faq.entry.epg.a':
+      'EPG, kanalların yayın akışını (şu an/sonraki program) gösterir. Veriler panelinizden veya eklediğiniz XMLTV kaynağından gelir. Rehber boş görünüyorsa Ayarlar > EPG bölümünden kaynağı ve yenileme sıklığını kontrol edin.',
+  'faq.entry.ignoreSsl.q': '«SSL sertifikasını yoksay» seçeneği ne işe yarar?',
+  'faq.entry.ignoreSsl.a':
+      'Bazı IPTV panelleri geçersiz veya kendinden imzalı SSL sertifikası kullanır; bu durumda «sertifika doğrulanamadı» hatası alırsınız. Bu seçenek açıkken uygulama sertifikayı doğrulamadan kabul eder ve bu panellerden yayın/poster/EPG indirebilir.',
+  'faq.entry.multiPlaylist.q':
+      'Birden fazla liste (playlist) ekleyebilir miyim?',
+  'faq.entry.multiPlaylist.a':
+      'Evet. Birden çok liste kaydedip üstteki «Listeler» barından aralarında geçiş yapabilirsiniz. Her seferinde yalnızca aktif liste belleğe yüklenir; bu, performansı korur.',
+  'faq.entry.backup.q': 'Ayarlarım yedeklenir mi? Yeni cihazda ne olur?',
+  'faq.entry.backup.a':
+      'Ayarlarınız Google yedeği ile bulutta saklanır ve yeni cihazda geri yüklenir. Ancak cihaza özel kararlar (TV box için MPEG-TS zorlaması, düşük donanım modu gibi) yeni cihazda o cihazın donanımına göre yeniden değerlendirilir; eski cihazın değerleri yeni cihazı ezmez.',
+  'faq.entry.catchUp.q': 'Geçmiş yayınları (Tekrar / Catch-up) nasıl izlerim?',
+  'faq.entry.catchUp.a':
+      'Ana ekrandaki «Tekrar & EPG Mix» bölümünden, sağlayıcınız destekliyorsa geçmiş programları geri sarıp izleyebilirsiniz. Tekrar özelliği panelin catch-up/timeshift desteğine bağlıdır; programın yanında tekrar simgesi görünmüyorsa o yayın için arşiv sunulmuyordur.',
+  'faq.entry.resumeAutoplay.q':
+      'Film/diziler kaldığım yerden devam ediyor mu? Sonraki bölüm otomatik oynuyor mu?',
+  'faq.entry.resumeAutoplay.a':
+      'Evet. Bir filme veya bölüme tekrar girdiğinizde kaldığınız yerden devam etmeniz veya baştan başlamanız sorulur. Bölüm bitince birkaç saniyelik geri sayımla sıradaki bölüm otomatik başlar; istemezseniz geri sayımı iptal edebilirsiniz.',
+  'faq.entry.smartCutter.q': '«Jeneriği Atla» (Akıllı Jenerik Atlatıcı) nedir?',
+  'faq.entry.smartCutter.a':
+      'Dizinin ilk bölümlerinde jeneriği elle ne kadar ileri sardığınızı öğrenir ve sonraki bölümlerde aynı noktada «Jeneriği Atla» düğmesi gösterir. Oynatma Ayarları bölümünden açıp kapatabilirsiniz.',
+  'faq.entry.subtitles.q':
+      'Altyazıları nasıl açar ve ayarlarım? OpenSubtitles nedir?',
+  'faq.entry.subtitles.a':
+      'Oynatıcıda altyazı düğmesinden gömülü veya harici altyazıları seçebilirsiniz. Altyazı Seçenekleri bölümünden yazı boyutu, rengi, yazı tipi ve kenarlığı ayarlanır. OpenSubtitles hesabınızla giriş yaparsanız çevrim içi altyazı arayıp indirebilirsiniz.',
+  'faq.entry.audioTrack.q':
+      'Yayının ses dilini (ses parçası) değiştirebilir miyim?',
+  'faq.entry.audioTrack.a':
+      'Yayında birden çok ses parçası varsa (örn. orijinal + dublaj) oynatıcıdaki ses parçası menüsünden dilediğinizi seçebilirsiniz. Tek ses parçası olan yayınlarda menü seçenek göstermez.',
+  'faq.entry.volumeBoost.q': 'Sesi %100\'ün üzerine çıkarabilir miyim?',
+  'faq.entry.volumeBoost.a':
+      'Evet, Ses Yükseltici ile sistem sesi %100\'e ulaştıktan sonra ek kazanç uygulanır (üst sınırı ayardan belirlersiniz). Bu özellik en iyi MediaKit motorunda çalışır; çok yükseltmek seste bozulmaya yol açabilir.',
+  'faq.entry.equalizer.q': 'Ekolayzer (ses dengeleyici) var mı?',
+  'faq.entry.equalizer.a':
+      'Evet, çok bantlı bir ekolayzer ve hazır profiller bulunur; oynatma sırasında gerçek zamanlı uygulanır. Oynatma Ayarları bölümünden açılır. Ekolayzer MediaKit motorunda etkilidir.',
+  'faq.entry.externalPlayer.q':
+      'Yayını VLC / MX Player gibi başka bir oynatıcıda açabilir miyim?',
+  'faq.entry.externalPlayer.a':
+      'Evet. Harici Oynatıcı seçeneğini açarsanız içerikler dahili oynatıcı yerine seçtiğiniz uygulamada açılır. Dahili özellikler (OSD, favori, kaldığın yerden devam) harici oynatıcıda çalışmaz.',
+  'faq.entry.cast.q':
+      'Yayını televizyona / başka cihaza gönderebilir miyim (Cast)?',
+  'faq.entry.cast.a':
+      'Oynatıcıdaki gönder simgesiyle yayın adresini BubbleUPnP, VLC gibi cast uygulamalarına aktarabilirsiniz. Bu, akışın URL\'sini harici cihaza iletir; uygulama içi DRM\'siz IPTV akışları için tasarlanmıştır.',
+  'faq.entry.pipBackground.q':
+      'Arka planda oynatma ve küçük ekran (PiP) nasıl çalışır?',
+  'faq.entry.pipBackground.a':
+      'Arka planda oynatma açıkken uygulamadan çıksanız da ses/görüntü devam eder. Küçük ekran (PiP) açıkken oynatıcıdan ana ekrana dönerken video küçük bir pencerede sürer (Android, destekleyen cihazlarda). İkisi de Oynatma Ayarları bölümündedir.',
+  'faq.entry.playbackSpeed.q': 'Oynatma hızını değiştirebilir miyim?',
+  'faq.entry.playbackSpeed.a':
+      'Film ve dizilerde oynatma hızını 0.5× ile 2× arasında ayarlayabilirsiniz. Canlı yayınlarda hız değişimi geçerli değildir.',
+  'faq.entry.zoomFit.q':
+      'Görüntü ekrana tam sığmıyor / siyah çubuklar var. Ne yapmalıyım?',
+  'faq.entry.zoomFit.a':
+      'Oynatıcıdaki görüntü sığdırma seçeneğiyle «sığdır / doldur / kapla» modları arasında geçebilirsiniz. Mobil ve tablette ayrıca iki parmakla yakınlaştırıp (pinch-zoom) görüntüyü kaydırabilirsiniz.',
+  'faq.entry.channelNumber.q':
+      'Kumandayla kanal numarasını yazıp doğrudan geçebilir miyim?',
+  'faq.entry.channelNumber.a':
+      'Evet. Canlı yayın izlerken kumandadan kanal numarasını yazdığınızda o kanala doğrudan geçilir. Numara girişi kısa bir süre ekranda görünür ve onaylanır.',
+  'faq.entry.favorites.q': 'Favorilere nasıl içerik eklerim?',
+  'faq.entry.favorites.a':
+      'Oynatıcıdaki kalp simgesiyle veya listelerdeki favori düğmesiyle kanal, film ve dizileri favorilere ekleyebilirsiniz. Favorileriniz Canlı TV ve Film/Dizi bölümlerindeki «Favoriler» sekmesinde toplanır.',
+  'faq.entry.continueWatching.q': '«İzlemeye Devam Et» şeridi nasıl çalışır?',
+  'faq.entry.continueWatching.a':
+      'Yarım bıraktığınız film ve diziler, ilerleme çubuğuyla ana ekrandaki «İzlemeye Devam Et» şeridinde görünür ve tek dokunuşla kaldığınız yerden devam edersiniz. Şeridi Ana Ekran Ayarları\'ndan gizleyebilirsiniz.',
+  'faq.entry.aiRecommend.q': 'Mina AI önerileri nedir, verilerim güvende mi?',
+  'faq.entry.aiRecommend.a':
+      'İzleme geçmişinize göre cihazınızda kişisel öneriler üretilir; bu işlem cihaz üzerinde yapılır. Öneri şeridini Ana Ekran Ayarları\'ndan kapatabilir, geçmişe dayalı önerileri sıfırlama menüsünden temizleyebilirsiniz.',
+  'faq.entry.globalSearch.q':
+      'Tüm içeriklerde tek seferde nasıl arama yaparım?',
+  'faq.entry.globalSearch.a':
+      'Ana ekrandaki arama ile canlı kanal, film ve dizilerde aynı anda arama yapabilirsiniz. Sonuçlar türlerine göre gruplanır; son aramalarınız da hatırlanır.',
+  'faq.entry.downloads.q':
+      'Film ve dizileri indirip çevrim dışı izleyebilir miyim?',
+  'faq.entry.downloads.a':
+      'Detay sayfasındaki indirme düğmesiyle film/bölümleri çevrim dışı izlemek için sıraya alabilirsiniz. İndirilenler «İndirilenler» bölümünde toplanır. Canlı yayınlar indirilemez; indirme sağlayıcının izin verdiği VOD içerikler için geçerlidir.',
+  'faq.entry.homeLayout.q':
+      'Ana ekran kartlarını yeniden sıralayıp gizleyebilir miyim?',
+  'faq.entry.homeLayout.a':
+      'Evet. Ana Ekran Ayarları\'ndan kart sırasını değiştirebilir, istemediğiniz kartları gizleyebilir; ayrıca varsayılan düzen ile vitrin düzeni arasında geçiş yapabilirsiniz.',
+  'faq.entry.filmDiziMode.q':
+      '«Film & Dizi» tek kart mı, ayrı Filmler/Diziler mi olsun?',
+  'faq.entry.filmDiziMode.a':
+      'Ana Ekran Ayarları\'ndan birleşik «Film & Dizi» kartını ya da ayrı «Filmler» ve «Diziler» kartlarını (klasik) seçebilir veya ikisini birlikte gösterebilirsiniz. Tercih tamamen görünüm içindir; içerikler aynıdır.',
+  'faq.entry.theme.q': 'Uygulama temasını / görünümünü değiştirebilir miyim?',
+  'faq.entry.theme.a':
+      'Ayarlardan farklı temalar (Cam Gri, AMOLED Siyah vb.) seçebilirsiniz. AMOLED ekranlarda siyah tema pil tasarrufu sağlar; zayıf cihazlarda blur azaltma ile daha akıcı bir görünüm tercih edilebilir.',
+  'faq.entry.analytics.q': 'Mina Analytics / Wrapped nedir?',
+  'faq.entry.analytics.a':
+      'İzleme alışkanlıklarınızın (toplam süre, en çok izlenen kanallar vb.) özetini gösterir. Veriler cihazınızda tutulur; istemiyorsanız analitik toplamayı ilgili ayardan kapatabilirsiniz.',
+  'faq.entry.profiles.q': 'Birden fazla profil oluşturabilir miyim?',
+  'faq.entry.profiles.a':
+      'Evet, her kullanıcı için ayrı tercih ve geçmişle profiller oluşturabilirsiniz. Profilleri PIN ile kilitleyebilir, PIN\'i unutursanız belirlediğiniz kurtarma kelimesiyle açabilirsiniz.',
+  'faq.entry.parental.q': 'Ebeveyn denetimi (PIN) nasıl kurulur?',
+  'faq.entry.parental.a':
+      'Ebeveyn Denetimi bölümünden 4-6 haneli bir PIN ve kurtarma kelimesi belirlersiniz. PIN, yetişkin içerik filtresi ve kategori gizleme gibi hassas ayarları korur. PIN\'i unutursanız kurtarma kelimesiyle sıfırlanır.',
+  'faq.entry.sleepTimer.q':
+      'Uyku zamanlayıcısı (belirli süre sonra kapat) var mı?',
+  'faq.entry.sleepTimer.a':
+      'Evet, «Diğer Araçlar» bölümünden uyku zamanlayıcısını ayarlarsanız seçtiğiniz süre sonunda oynatma durur. Gece uyurken yayının açık kalmaması için kullanışlıdır.',
+  'faq.entry.channelEdit.q':
+      'Kanal ve kategorileri düzenleyip gizleyebilir miyim?',
+  'faq.entry.channelEdit.a':
+      'Evet. Kategori göster/gizle ile istemediğiniz kategorileri listelerden kaldırabilir; Canlı Kanal Düzeni ile kanalları kategori içinde yeniden sıralayıp tek tek gizleyebilirsiniz. Bu, sağlayıcıdaki içeriği silmez; yalnızca sizin görünümünüzü düzenler.',
+  'faq.entry.epgSettings.q':
+      'Program rehberi (EPG) saatleri yanlış / boş. Nasıl düzeltirim?',
+  'faq.entry.epgSettings.a':
+      'EPG Ayarları\'ndan saat dilimi ofsetiyle kayan saatleri düzeltebilir, 12/24 saat biçimini seçebilir, yenileme sıklığını ayarlayabilir ve kendi XMLTV kaynağınızı ekleyebilirsiniz. Xtream hesaplarında API ile yedek kaynak arasında geçiş yapılabilir.',
+  'faq.entry.speedTest.q':
+      'Uygulama içinde internet hız testi yapabilir miyim?',
+  'faq.entry.speedTest.a':
+      'Evet, Hız Testi ekranından indirme/yükleme hızı ve gecikme (ping) ölçülür. Donma yaşıyorsanız bağlantınızın yayın için yeterli olup olmadığını görmek faydalıdır.',
+  'faq.entry.cloudSync.q':
+      'Ayarlarımı ve listelerimi bulutla eşitleyebilir miyim?',
+  'faq.entry.cloudSync.a':
+      'Google hesabınızla giriş yaparak ayarlarınızı ve listelerinizi buluta yedekleyip başka cihazda geri yükleyebilirsiniz. Son yedek tarihi ekranda görünür; yükleme (push) ve indirme (pull) işlemlerini elle yapabilirsiniz.',
+  'faq.entry.demoPlaylist.q':
+      'IPTV aboneliğim yok, uygulamayı deneyebilir miyim?',
+  'faq.entry.demoPlaylist.a':
+      'Evet, kurulum ekranındaki demo listeyle gerçek bir abonelik olmadan uygulamayı deneyebilirsiniz. Kendi içeriğiniz için M3U URL\'si, yerel dosya veya Xtream kullanıcı bilgileriyle liste ekleyebilirsiniz.',
+  'faq.entry.chatSupport.q': 'Sohbet ve destek nasıl çalışır?',
+  'faq.entry.chatSupport.a':
+      'Google ile giriş yaparak dil odalarındaki topluluk sohbetine katılabilir, yöneticiye özel destek mesajı gönderebilirsiniz. Yayın durumu (akıyor/donuyor) etiketleriyle de sorun bildirebilirsiniz.',
+  'faq.entry.language.q': 'Uygulama dilini değiştirebilir miyim?',
+  'faq.entry.language.a':
+      'Evet, Ayarlar\'daki dil seçiminden arayüz dilini değiştirebilirsiniz. Birçok dil desteklenir; film/dizi özetleri ve bölüm bilgileri de mümkün olduğunda cihaz dilinize çevrilir.',
+  'faq.entry.showcaseMode.q': 'Vitrin düzeni nedir, nasıl açarım?',
+  'faq.entry.showcaseMode.a':
+      'Vitrin, mobil ve tabletler için sade ve modern bir ana ekran düzenidir. İzlemeye devam et, karışık canlı TV, son eklenen filmler ve karışık içerikler liquid glass çerçevelerle dikey bir akışta sıralanır; altta iOS tarzı damla efektli bir gezinme çubuğu bulunur. Ayarlar → Ana Ekran düzeninden veya kurulum sihirbazından seçebilirsiniz. TV\'de kullanılmaz.',
+  'faq.entry.latestAdded.q':
+      'Son eklenen filmleri ve dizileri nereden görürüm?',
+  'faq.entry.latestAdded.a':
+      'Film & Dizi modern bölümünde, film sekmesinde «Son Eklenen 50 Film», dizi sekmesinde «Son Eklenen 50 Dizi» kategorisi bulunur. Vitrin düzeninin ana ekranında da bu liste yer alır. Her kategoride olduğu gibi «Tümünü Gör» ile tam listeye geçebilirsiniz.',
+  'faq.entry.imageSubtitles.q':
+      'Altyazı tuşuna basıyorum ama seçenek çıkmıyor. Neden?',
+  'faq.entry.imageSubtitles.a':
+      'Bazı VOD yayınlarında altyazı resim tabanlıdır (PGS/HDMV, VobSub, DVB). Varsayılan oynatıcı (Better/ExoPlayer) bu tür altyazıları çizemez ve listede göstermez. Bu durumda altyazı menüsü size MediaKit (mpv) oynatıcısına geçmeyi önerir; onayladığınızda altyazılar görüntülenir. Metin tabanlı (SRT/VTT) altyazılar her iki oynatıcıda da çalışır.',
+  'faq.entry.minaWrapper.q': 'Mina Wrapper nedir?',
+  'faq.entry.minaWrapper.a':
+      'Mina Wrapper, izleme geçmişinizi yapay zeka yardımıyla özetleyen kişisel bir bölümdür; en çok izlediğiniz türleri, zaman çizelgenizi ve size özel bir izleyici personası şık görsellerle sunar. Vitrin düzeninde alttaki gezinme çubuğundan, diğer düzenlerde ana ekrandan ulaşabilirsiniz.',
+  'faq.entry.onlineCount.q':
+      'Sohbette kaç kişinin çevrimiçi olduğunu görebilir miyim?',
+  'faq.entry.onlineCount.a':
+      'Evet, sohbet bölümünde anlık çevrimiçi kullanıcı sayısı küçük bir rozette gösterilir (örn. «55 Çevrimiçi»). Kişisel kimlikler paylaşılmaz; yalnızca toplam sayı görünür.',
+  'faq.entry.os27Theme.q': 'OS27 ve liquid glass temaları nedir?',
+  'faq.entry.os27Theme.a':
+      'OS27, iOS 27 esintili cam-damla (liquid glass) tasarımına sahip; mavi tonlu, parlak kenarlı şeffaf bir temadır ve yatay/dikey için ayrı duvar kâğıtları kullanır. TV\'ler için ise blur içermeyen, saf siyah AMOLED ve kırmızı vurgulu «TV Lite» teması önerilir. Temaları Ayarlar\'dan değiştirebilirsiniz.',
   'contactUs.title': 'Bize Ulaşın',
   'contactUs.hint':
       'Sorularınız ve sorun bildirimleriniz için aşağıdaki kanallardan bize ulaşabilirsiniz.',
@@ -1307,10 +1748,33 @@ const Map<String, String> _tr = {
   'settings.dialog.refresh.autoOff': 'Otomatik yenileme kapalı',
   'settings.dialog.refresh.every3': '3 günde bir yenile',
   'settings.dialog.refresh.every7': 'Haftada bir yenile',
+  'settings.dialog.refresh.every2h': '2 saatte bir yenile',
+  'settings.dialog.refresh.every1d': 'Günde bir yenile',
+  'settings.dialog.refresh.every2d': '2 günde bir yenile',
+  'settings.dialog.refresh.every3d': '3 günde bir yenile',
+  'settings.dialog.refresh.every1w': 'Haftada bir yenile',
   'settings.dialog.refresh.nowOnly': 'Sadece şimdi yenile',
   'settings.dialog.clearTitle': 'Tüm ayarları sil',
   'settings.dialog.clearBody':
       'Playlist bilgisi, önbellek, favoriler ve uygulama tercihleri sıfırlanacak. Emin misiniz?',
+  'settings.reset.menuTitle': 'Neyi sıfırlamak istersin?',
+  'settings.reset.menuHint':
+      'Aşağıdan tek tek sıfırlayabilir veya en alttan tümünü sıfırlayabilirsin.',
+  'settings.reset.watchHistory': 'Son izlenenler bilgisini sıfırla',
+  'settings.reset.watchHistory.sub':
+      'İzleme geçmişi ve "devam et" listesi temizlenir.',
+  'settings.reset.ai': 'Mina AI önerilerini sıfırla',
+  'settings.reset.ai.sub': '"Senin için önerilenler" yeniden oluşturulur.',
+  'settings.reset.playlist': 'Playlist bilgilerini sıfırla',
+  'settings.reset.playlist.sub':
+      'Kayıtlı liste ve içerik önbelleği silinir; listeyi yeniden eklersin.',
+  'settings.reset.everything': 'Tüm ayarları ve verileri sıfırla',
+  'settings.reset.everything.sub':
+      'Playlist, önbellek, favoriler ve tüm tercihler sıfırlanır.',
+  'settings.reset.confirmBody': 'Bu işlem geri alınamaz. Emin misiniz?',
+  'settings.reset.watchHistoryDone': 'Son izlenenler sıfırlandı.',
+  'settings.reset.aiDone': 'Mina AI önerileri sıfırlandı.',
+  'settings.reset.playlistDone': 'Playlist bilgileri sıfırlandı.',
   'settings.m3uEpg.defaultBadge': 'Varsayılan: iptv-org (guide.xml)',
   'settings.tile.m3uXmltvEpg': 'XMLTV (EPG rehberi)',
   'settings.dialog.xmltvTitle': 'XMLTV (EPG)',
@@ -1440,7 +1904,14 @@ const Map<String, String> _tr = {
   'settings.update.failTitle': 'Denetlenemedi',
   'settings.update.failBody':
       'Güncelleme bilgisi alınamadı. İnternet bağlantınızı kontrol edip tekrar deneyin.',
-  'settings.dialog.changelogBody': 'v2.2.0\n'
+  'settings.dialog.changelogBody': 'v2.12.68\n'
+      '• Yeni tema: «IOS 27» — iOS damla cam (Liquid Glass) tasarımı: saydam paneller, iOS mavisi vurgu, büyük yuvarlatılmış köşeler ve akışkan cam duvar kâğıdı (dikey + yatay). Kurulum sihirbazı ve Ayarlar → Tema\'dan seçilebilir\n'
+      '• Yeni ana ekran düzeni: «Vitrin» — yalnızca telefon/tablet. Dikey kayan poster şeritleri (İzlemeye Devam Et, Canlı TV, IMDB Yüksek Puanlı Filmler, Son Eklenen 50 Film, Karışık Filmler/Diziler, M3U kategorileri) + en altta damla cam menü çubuğu (Canlı TV · Film & Dizi · EPG Mix · Mina Wrapped · Ayarlar). Her şeritte «Tümünü Gör» ve üstte arama\n\n'
+      'v2.12.67\n'
+      '• Film & Dizi: Film sekmesine «Son Eklenen 50 Film», Dizi sekmesine «Son Eklenen 50 Dizi» kategorisi eklendi — «Tümünü Gör» ile en yeni 50 içerik en yeniden eskiye listelenir\n'
+      '• Altyazı: Desteklenmeyen yayınlarda «altyazı yok» uyarısı artık anında geliyor (eski 2-3 sn gecikme kaldırıldı)\n'
+      '• Altyazı: Artık varsayılan KAPALI; kullanıcı seçmeden otomatik açılmıyor (hem Better Player hem MediaKit). Bir dil seçtiğinizde diğer filmlerde de o dil mevcutsa otomatik hatırlanıp uygulanır; «Kapalı» seçilirse hatırlama temizlenir\n\n'
+      'v2.2.0\n'
       '• Play Store puanlama diyaloğu: «Daha sonra» + «Puan ver» düğmeleri dar ekranlarda taşmıyor. Sığmadığında dinamik olarak alt alta, sağa hizalı diziliyor; geniş ekranda eski yan yana düzen korunuyor\n'
       '• Film & Dizi detay — Hızlı Bilgi Paneli: fragmanların hemen altında Yönetmen + Tür satırları cam çerçevede tek bakışta görünüyor\n'
       '• Film & Dizi detay — İzle düğmesi: aynı ebatlarda kalıp arka planı poster bulanıklığı + tema gradient karışımıyla doluyor; her içerik kendi atmosferine uyumlu\n'
@@ -1634,6 +2105,8 @@ const Map<String, String> _tr = {
   'playlist.loadList': 'Listeyi Yükle',
   'playlist.m3uUrl': 'M3U URL',
   'playlist.m3uUrlHint': 'https://example.com/playlist.m3u',
+  'playlist.pasteUrl': 'Yapıştır',
+  'playlist.pasteEmpty': 'Panoda metin yok',
   'playlist.pickFile': 'Dosya Seç',
   'playlist.m3uXtreamRecommendation':
       'Daha iyi verim ve deneyim için Xtream ile giriş yapmanızı öneririz.',
@@ -1810,6 +2283,8 @@ const Map<String, String> _tr = {
 
   // Player (TV / controls)
   'player.liveBadge': 'CANLI',
+  'player.movieBadge': 'FİLM',
+  'player.seriesBadge': 'DİZİ',
   'player.epgLoading': 'EPG yükleniyor…',
   'player.skip_intro': 'Jeneriği Atla',
   'player.channelNumberOutOfRange': 'Kanal @n bulunamadı (1–@total)',
@@ -1935,6 +2410,12 @@ const Map<String, String> _tr = {
   'player.error.contentNotFound': 'İçerik sunucuda bulunamadı',
   'player.error.playbackGeneric': 'Yayın şu anda açılamıyor',
   'player.error.invalidStreamUrl': 'Geçersiz yayın adresi',
+  'player.pip.unavailable':
+      'Bu cihazda veya oynatıcıda küçük ekran (PiP) kullanılamıyor.',
+  'player.pip.failed':
+      'Küçük ekran (PiP) açılamadı. Sistem ayarlarından PiP iznini kontrol edin.',
+  'player.pip.mediaKit':
+      'MediaKit modunda PiP yok. Varsayılan oynatıcıya geçin.',
   'player.notReady': 'Oynatıcı hazır değil',
   'player.resume.title': 'Kaldığınız yerden devam?',
   'player.resume.body':
@@ -1952,6 +2433,14 @@ const Map<String, String> _tr = {
   'player.subtitle.noneShort': 'Bu yayın için altyazı seçeneği yok.',
   'player.subtitle.noneLong':
       'Manifestte veya akışta altyazı parçası yok; HLS/DASH ile sunulan altyazılar burada listelenir.',
+  'player.subtitle.imageBasedTitle': 'Resim tabanlı altyazı',
+  'player.subtitle.imageBasedBody':
+      'Bu içeriğin gömülü altyazıları resim tabanlı (PGS/VobSub). Mevcut oynatıcı bunları gösteremez. MediaKit oynatıcısına geçilsin mi? Geçiş yalnızca bu yayın için geçerlidir.',
+  'player.subtitle.imageBasedBodyTv':
+      'Bu içeriğin gömülü altyazıları resim tabanlı (PGS/VobSub). Mevcut oynatıcı bunları gösteremez. MediaKit oynatıcısına geçince altyazı düğmesinden seçebilirsiniz.',
+  'player.subtitle.switchToMediaKit': 'MediaKit\'e geç',
+  'player.subtitle.switchingForSubs':
+      'Altyazılar için MediaKit oynatıcısına geçiliyor…',
   'player.snackbar.audioChanged': 'Ses değiştirildi',
   'player.snackbar.subtitleChanged': 'Altyazı değiştirildi',
   'player.snackbar.qualityChanged': 'Kalite değiştirildi',
@@ -1978,8 +2467,54 @@ const Map<String, String> _tr = {
 
 const Map<String, String> _en = {
   'app.title': 'Mina IPTV Player',
+  'paywall.title': 'Mina IPTV Premium',
+  'paywall.trial.expired': 'Your 2-day free trial has expired.',
+  'paywall.trial.active': '@time remaining in your trial.',
+  'paywall.feature.performance.title': 'Countless Themes & Personalization',
+  'paywall.feature.performance.subtitle': 'Customize the look of the app to your taste, feel the difference with premium themes.',
+  'paywall.feature.sync.title': 'Powerful Media Player',
+  'paywall.feature.sync.subtitle': 'Uninterrupted playback experience with advanced hardware acceleration and wide format support.',
+  'paywall.feature.keymapping.title': 'One Subscription, 3 Devices',
+  'paywall.feature.keymapping.subtitle': 'Unlimited use on tablet, TV, and mobile devices with the same subscription.',
+  'paywall.feature.introcutter.title': 'All Other Features',
+  'paywall.feature.introcutter.subtitle': 'VOD Special Info, Cloud Backup, Different Designs, Lifetime Free Update Warranty.',
+  'paywall.button.buy': 'Buy',
+  'paywall.button.coffee': 'Buy Me a Coffee ☕',
+  'paywall.coffee.success.title': 'Thank You!',
+  'paywall.coffee.success.body': 'Thank you so much for your support, you are awesome!',
+  'paywall.button.connecting': 'Connecting...',
+  'paywall.button.restore': 'Restore Purchase',
+  'paywall.button.restoring': 'Querying...',
+  'paywall.grandfather.prompt': 'Member before June 28, 2026?',
+  'paywall.grandfather.button': 'Log in with Google to Activate Exemption',
+  'paywall.user.logged_in': 'Logged in as: @email',
+  'paywall.error.title': 'Payment Failed',
+  'paywall.error.body': 'Could not connect to Google Play Market or payment was cancelled.',
+  'paywall.restore.title': 'No Purchase Found',
+  'paywall.restore.body': 'No active purchase was found in your Google Play account.',
+  'settings.tile.subscription': 'Subscription Status',
+  'settings.tile.subscription.sub': 'License and trial period details',
+  'settings.subscription.grandfathered': 'Lifetime Free Exemption (Legacy)',
+  'settings.subscription.premiumActive': 'Mina Premium Active (Unlimited)',
+  'settings.subscription.trialActive': 'Free Trial: @days Days Remaining',
+  'settings.subscription.trialExpired': 'Trial Expired (Payment Required)',
+  'settings.subscription.dialog.title': 'License Details',
+  'settings.subscription.dialog.status': 'License Status: ',
+  'settings.subscription.dialog.installDate': 'First Install Date: ',
+  'settings.subscription.dialog.purchaseDate': 'License Date: ',
+  'settings.subscription.dialog.trialEnd': 'Trial End Date: ',
+  'settings.subscription.dialog.type': 'Package Type: ',
+  'settings.subscription.dialog.grandfathered': 'Exemption Status: ',
+  'settings.subscription.dialog.grandfathered.yes': 'Yes (Legacy Exemption)',
+  'settings.subscription.dialog.grandfathered.no': 'No',
+  'dialog.exit.title': 'Exit Application?',
+  'dialog.exit.body': 'Are you sure you want to exit?',
+  'dialog.exit.seconds': 'seconds',
+  'dialog.exit.yes': 'Yes',
+  'dialog.exit.no': 'No',
   'home.refresh.done': 'Playlist refreshed',
   'home.refresh.failed': 'Refresh failed: @e',
+  'playlist.refreshing': 'Refreshing playlist',
   'home.live': 'Live TV',
   'home.live.subtitle': 'Live broadcasts',
   'home.films': 'Movies',
@@ -2021,18 +2556,20 @@ const Map<String, String> _en = {
   'filmDizi.series.episodes': 'Episodes',
   'filmDizi.series.episodeN': 'Episode @n',
   'filmDizi.series.episodeLine': '@show · Season @season · Episode @episode',
+  'filmDizi.series.downloadPick': 'Select episode to download',
   'filmDizi.series.release': 'Release: @date',
   'filmDizi.series.episodeCount': '@n Episodes',
   'filmDizi.series.meta.language': '@lang',
   'filmDizi.series.noEpisodes': 'No episodes found.',
   'filmDizi.series.loadFail': 'Could not load episodes.',
-  'home.favorites': 'Favorites',
   'recommendedFilms.topRated': 'Top Rated',
   'recommendedFilms.recentlyAdded': 'Recently Added',
   'recommendedFilms.uhd4k': '4K / UHD',
   'recommendedFilms.nativeDub': 'Native Dubbed',
   'recommendedFilms.nativeSub': 'Native Subtitles',
   'recommendedFilms.seeAll': 'See All',
+  'recommendedFilms.last50Films': 'Last 50 Added Movies',
+  'recommendedFilms.last50Series': 'Last 50 Added Series',
   'recommendedFilms.recentlyWatched.title': 'Recently Watched',
   'recommendedFilms.recentlyWatched.empty':
       'You have not watched anything yet. Start watching and your recent picks will appear here.',
@@ -2047,9 +2584,16 @@ const Map<String, String> _en = {
   'recommendedFilms.searchResults': '@count results: «@query»',
   'home.epgMix': 'Replay & EPG Mix',
   'home.epgMix.subtitle': 'Past and upcoming on TV',
+  'home.minaAnalytics': 'Mina Watch Analytics',
+  'home.minaAnalytics.subtitle': 'Your viewing stats and recap',
+  'home.dock.live': 'Live TV',
+  'home.dock.films': 'Movies & Series',
+  'home.dock.replay': 'Replay & EPG',
+  'home.dock.wrapper': 'Mina Wrapper',
   'home.chat': 'Chat',
   'home.chat.subtitle': 'Live chat in language rooms',
   'chat.title': 'Chat',
+  'chat.online': '@n Online',
   'chat.signIn.title': 'Sign in to join the chat',
   'chat.signIn.body':
       'To join chat rooms and send messages, please sign in with Google and enable your backup.',
@@ -2085,6 +2629,13 @@ const Map<String, String> _en = {
   'chat.support.emptyUser':
       'Write your first message to the admin. Only you and the admin can see it.',
   'chat.support.emptyAdmin': 'No messages with this user yet.',
+  'chat.support.deleteThread': 'Delete chat',
+  'chat.support.deleteTitle': 'Delete chat',
+  'chat.support.deleteBody':
+      'All messages in this conversation will be permanently deleted. This cannot be undone.',
+  'chat.support.deleteFailed': 'Could not delete the chat. Please try again.',
+  'chat.support.deleteEmpty': 'There is no conversation to delete yet.',
+  'chat.support.deleted': 'Chat deleted.',
   'chat.tag.title': 'Stream status',
   'chat.tag.pick': 'Add stream status',
   'chat.tag.clear': 'Remove tag',
@@ -2142,6 +2693,11 @@ const Map<String, String> _en = {
   'settings.lowEndMode.subOn': 'On — effects reduced, performance first',
   'settings.lowEndMode.subOff':
       'Off — full visual effects (normal performance)',
+  'settings.tvLite.title': 'TV Lite (flat graphics)',
+  'settings.tvLite.subOn':
+      'On — blur/shadows off, flat focus, fast animations (for TV)',
+  'settings.tvLite.subOff':
+      'Off — full glass design (blur, shadows, animations)',
   'lowEndMode.suggest.title': 'Performance issue detected',
   'lowEndMode.suggest.body':
       'Your device seems to be struggling to run the app smoothly. For a smoother experience you should switch to "Low-End Device Mode"; visual effects are reduced and performance is prioritized. You can change this anytime under Settings › Other Tools.',
@@ -2163,6 +2719,7 @@ const Map<String, String> _en = {
   'setup.epgCacheTitle': 'EPG refresh',
   'setup.epgCacheSub': 'How often to refresh the TV guide',
   'setup.epgCacheDays': '@n d',
+  'setup.epgCacheNever': 'Off',
   'setup.stepAppFont': 'App font',
   'setup.appFontHint': 'Choose the interface typeface.',
   'setup.featuresHint': 'Use the switch to turn each option on or off.',
@@ -2191,22 +2748,30 @@ const Map<String, String> _en = {
   'settings.tile.mixedLiveTv.subtitle': 'Random live channel strip on home',
   'epgMix.loading': 'Loading EPG…',
   'home.mixed_live': 'Mixed Live TV',
+  'home.showcase.topRatedFilms': 'Top IMDB Rated Movies',
+  'home.showcase.mixedFilms': 'Mixed Movies',
+  'home.showcase.mixedSeries': 'Mixed Series',
+  'home.showcase.trendFilms': 'Trending Movies',
+  'home.showcase.trendSeries': 'Trending Series',
+  'home.showcase.favoriteSeries': 'Favorite Series',
+  'home.showcase.favoriteChannels': 'Favorite Channels',
+  'home.showcase.favoriteFilms': 'Favorite Movies',
+  'home.showcase.suggest.title': 'New: Showcase layout',
+  'home.showcase.suggest.body':
+      'We added a new Showcase layout for the home screen: vertically scrolling poster rows with a «liquid glass» menu bar at the bottom. Want to try it now? You can switch back anytime from Settings > Home screen.',
+  'home.showcase.suggest.tryIt': 'Try it now',
   'home.upcomingMatches': 'Upcoming Matches',
   'home.upcomingMatches.loading': 'Loading TV guide…',
-  'marquee.monday': 'Start the week with energy! Have a great week.',
-  'marquee.tuesday': 'The pace of the week is increasing, enjoy your viewing.',
-  'marquee.wednesday':
-      'We reached the middle of the week! Take a break with your favorite content.',
-  'marquee.thursday':
-      'Almost weekend, relieve the day\'s fatigue with Mina IPTV.',
-  'marquee.friday': 'Weekend fun starts now with Mina.',
-  'marquee.saturday': 'Weekend entertainment is here! Have a good rest.',
-  'marquee.sunday':
-      'Enjoy your Sunday! We are with you while preparing for the new week.',
+  'marquee.monday': 'New week, new episodes! Enjoy with Mina.',
+  'marquee.tuesday': 'Tuesday treat: your favorite series on Mina.',
+  'marquee.wednesday': 'Midweek break time! Unwind with Mina.',
+  'marquee.thursday': 'Weekend is near, get your watchlist ready.',
+  'marquee.friday': 'It\'s Friday! Movie night on Mina tonight.',
+  'marquee.saturday': 'Saturday: matches and movies, best on Mina.',
+  'marquee.sunday': 'Have a peaceful Sunday, enjoy the show!',
   'home.header.brandTop': 'Mina',
   'home.header.brandBottom': 'IPTV Player',
   'home.search.hint': 'Search…',
-  'home.header.telegram': 'Open Mina Telegram channel',
   'home.search.dialogTitle': 'Search',
   'home.search.typeToSeeResults': 'Type to see results.',
   'home.search.sectionLive': 'Live TV',
@@ -2218,11 +2783,19 @@ const Map<String, String> _en = {
   'splash.epg': 'Preparing TV guide…',
   'splash.finishing': 'Almost ready…',
   'setup.wizardTitle': 'Welcome',
+  'setup.trialWelcome.title': 'Welcome!',
+  'setup.trialWelcome.message': 'You can try and test Mina IPTV Player completely free for 2 days. If you wish, you can pay a one-time fee to use it lifetime. You can also purchase a premium license now or later from Settings > Subscription Info.',
+  'setup.trialWelcome.autoClose': 'This notification will close automatically in @seconds seconds.',
   'setup.stepLanguage': 'Language',
+  'setup.stepLayoutMode': 'Layout mode',
   'setup.stepTheme': 'Appearance',
   'setup.stepPlayer': 'Player',
   'setup.stepPerformance': 'Performance',
   'setup.stepSource': 'Playlist',
+  'setup.layoutModeHint':
+      'Choose the home screen layout. In the showcase layout some personalization options (card effects, frame style) are disabled.',
+  'setup.tvLayoutModeHint':
+      'Choose the TV home layout. TV mode opens the new rail shell; card layout is the classic card home screen.',
   'setup.performanceHint':
       'Choose a mode based on your device power. On devices with 2 GB RAM or less, Low-End Device Mode runs more smoothly.',
   'setup.perfNormalTitle': 'Normal Performance Mode',
@@ -2529,7 +3102,11 @@ const Map<String, String> _en = {
   'common.favorite': 'Favorite',
   'common.back': 'Back',
   'common.ok': 'OK',
+  'common.later': 'Later',
+  'common.success': 'Success',
+  'common.error': 'An error occurred',
   'common.cancel': 'Cancel',
+  'common.confirm': 'Confirm',
   'common.close': 'Close',
   'common.save': 'Save',
   'common.refreshNow': 'Refresh now',
@@ -2572,6 +3149,15 @@ const Map<String, String> _en = {
   'common.lang.it': 'Italian',
   'common.lang.pt': 'Portuguese',
   'common.lang.id': 'Indonesian',
+  'common.lang.de': 'German',
+  'common.lang.fa': 'Persian',
+  'common.lang.pl': 'Polish',
+  'common.lang.nl': 'Dutch',
+  'common.lang.uk': 'Ukrainian',
+  'common.lang.vi': 'Vietnamese',
+  'common.lang.el': 'Greek',
+  'common.lang.ro': 'Romanian',
+  'common.lang.sq': 'Albanian',
 
   // Speed Test
   'settings.speed_test.title': 'Speed Test',
@@ -2625,6 +3211,15 @@ const Map<String, String> _en = {
   'theme.semcTheme': 'SEMC Theme',
   'theme.flyUi': 'Fly UI',
   'theme.flyUi.sub': 'Flyme-style frosted glass and blue accent',
+  'theme.tvLite': 'TV Lite',
+  'theme.ios27': 'OS27',
+  'theme.ios27.sub':
+      'iOS Liquid Glass: translucent panels, blue accent, fluid glass wallpaper',
+  'theme.macTema': 'Mac Tema',
+  'theme.macTema.sub':
+      'macOS Tahoe: Apple dark glass panels, Apple blue accent, Tahoe wave wallpaper',
+  'theme.mint': 'Mint',
+  'theme.mint.sub': 'Linux Mint green accent, semi-transparent panels',
   'settings.title': 'Settings',
   'settings.language': 'App language',
   'settings.deviceMode': 'Device mode',
@@ -2648,11 +3243,6 @@ const Map<String, String> _en = {
   'settings.tile.parental': 'Parental controls',
   'settings.tile.parental.sub':
       'PIN protection; hide Xtream categories (live, movies, series)',
-  'settings.tile.hideAdult': 'Hide +18 content',
-  'settings.tile.hideAdult.sub':
-      'Hide +18 channels and content across Live TV, movies, series, search and home',
-  'settings.hideAdult.applying.title': 'Applying preference',
-  'settings.hideAdult.applying.body': 'Re-filtering lists…',
   'settings.tile.xtreamApiEpgOnly': 'Xtream API EPG only',
   'settings.tile.xtreamApiEpgOnly.on':
       'On: panel XMLTV skipped; get_all_live_epg only',
@@ -2686,38 +3276,29 @@ const Map<String, String> _en = {
   'settings.tile.playback': 'Playback Settings',
   'settings.tile.playback.sub':
       'Player engine, hardware acceleration, video decoder and low-latency buffer',
+  'settings.tile.keyMapping': 'Remote Key Mapping',
+  'settings.tile.keyMapping.sub':
+      'Assign quick actions to your remote control keys',
+  'settings.keyMapping.success.title': 'Success',
+  'settings.keyMapping.success.msg': 'Key "{key}" has been assigned to "{action}".',
   'playbackSettings.title': 'Playback Settings',
   'playbackSettings.hint':
       'Player engine and low-level video options. If a stream stutters, try switching the engine or forcing the software decoder.',
+  'settings.tile.silentSync': 'Silent Background Sync',
+  'settings.tile.silentSync.sub': 'Silently updates the playlist when app is closed',
+  'settings.tile.silentSync.enabled': 'Enabled (Updates once a day)',
+  'settings.tile.silentSync.disabled': 'Disabled',
   'settings.tile.otherTools': 'Other Tools',
   'settings.tile.otherTools.sub':
       'Sleep timer, EPG, theme, backup, speed test, haptics and font',
   'otherTools.title': 'Other Tools',
   'otherTools.hint':
       'Less frequently used helper tools, gathered in one place.',
-  'smartRoute.section.title': 'Smart CDN / Proxy Router',
-  'smartRoute.section.sub':
-      'IPTV servers hosted abroad can suffer peering bottlenecks during peak hours. Mina watches your link with lightweight TCP probes (latency, jitter, packet loss) and tunes the buffer automatically when needed.',
-  'smartRoute.toggle.title': 'Smart link monitoring',
-  'smartRoute.toggle.sub':
-      'Periodic low-frequency TCP probes to your server\'s IP. Data usage is negligible.',
-  'smartRoute.autoBuffer.title': 'Automatic buffer optimization',
-  'smartRoute.autoBuffer.sub':
-      'When jitter is detected the live buffer is raised to @target sec; it returns to your value once the link recovers.',
-  'smartRoute.status.title': 'Connection status',
-  'smartRoute.status.unknown': 'Measuring…',
-  'smartRoute.status.excellent': 'Excellent',
-  'smartRoute.status.good': 'Good',
-  'smartRoute.status.unstable': 'Unstable',
-  'smartRoute.status.poor': 'Poor',
-  'smartRoute.status.detail': 'Avg @avg ms · Jitter @jitter ms · Loss @loss%',
-  'smartRoute.status.detailNoData': 'No probe data yet',
-  'smartRoute.status.autoActive': 'Auto-buffer engaged',
-  'smartRoute.notify.title': 'Connection tuned',
-  'smartRoute.notify.body.auto':
-      'Link jitter detected. Live buffer raised from @from s → @to s automatically.',
-  'smartRoute.notify.body.advise':
-      'Link jitter detected. You can raise the live buffer from Settings.',
+  'otherTools.inAppPip.title': 'In-App PiP',
+  'otherTools.inAppPip.subOn':
+      'Mini player on showcase home while browsing',
+  'otherTools.inAppPip.subOff':
+      'Playback stops when returning to home',
   'channelLayout.title': 'Channel & Category Layout',
   'channelLayout.hint':
       'Hide categories and edit the order/contents of your live channel list. Each row opens its own editor; changes are reflected on the home screen when you go back.',
@@ -2733,7 +3314,7 @@ const Map<String, String> _en = {
   'channelEditor.idLabel': 'ID: @id',
   'settings.tile.homeCardOrder': 'Home screen card order',
   'settings.tile.homeCardOrder.sub':
-      'Order of Live TV, Movies, Series, Recommended Movies, EPG Mix and Favorites',
+      'Order of Live TV, Movies, Series, Movies & Series, EPG Mix and Mina Watch Analytics',
   'settings.tile.homeSettings': 'Home screen settings',
   'settings.tile.homeSettings.sub':
       'Card order, mixed live TV and upcoming matches',
@@ -2754,6 +3335,27 @@ const Map<String, String> _en = {
   'homeSettings.mixedLive.title': 'Mixed Live TV',
   'homeSettings.mixedLive.sub':
       'When on, the home screen gets a random strip of live channels from different categories',
+  'homeSettings.trendFilms.title': 'Trending Movies',
+  'homeSettings.trendFilms.sub':
+      'Showcase layout only: shows the top 50 movies rated IMDB 7 and above as a strip (refreshed at rare intervals)',
+  'homeSettings.trendSeries.title': 'Trending Series',
+  'homeSettings.trendSeries.sub':
+      'Showcase layout only: shows the top 50 series rated IMDB 7 and above as a strip (refreshed at rare intervals)',
+  'homeSettings.favoriteFilms.title': 'Favorite Movies',
+  'homeSettings.favoriteFilms.sub':
+      'Showcase layout only: shows the movies you favorited as a strip on the home screen',
+  'homeSettings.favoriteSeries.title': 'Favorite Series',
+  'homeSettings.favoriteSeries.sub':
+      'Showcase layout only: shows the series you favorited as a strip on the home screen',
+  'homeSettings.mixedFilms.title': 'Mixed Movies',
+  'homeSettings.mixedFilms.sub':
+      'Showcase layout only: shows a random mix of movies from all categories as a strip on the home screen',
+  'homeSettings.mixedSeries.title': 'Mixed Series',
+  'homeSettings.mixedSeries.sub':
+      'Showcase layout only: shows a random mix of series from all categories as a strip on the home screen',
+  'homeSettings.lastWatchedButton.title': 'Last Watched Button',
+  'homeSettings.lastWatchedButton.sub':
+      'Show/hide the last watched circular button above the search button in showcase layout',
   'homeSettings.upcomingMatches.title': 'Upcoming Matches',
   'homeSettings.upcomingMatches.sub':
       'Show upcoming football / sports fixtures as a card strip on the home screen',
@@ -2763,6 +3365,9 @@ const Map<String, String> _en = {
   'homeSettings.aiRecommendations.title': 'AI-Powered Home Recommendations',
   'homeSettings.aiRecommendations.sub':
       'Mina AI analyzes your viewing habits and suggests 10 mixed live / film / series picks based on category and time of day',
+  'homeSettings.reduceBlur.title': 'Reduce Blur (Speed)',
+  'homeSettings.reduceBlur.sub':
+      'Turns off blur on backgrounds and glass surfaces. When on, CPU load and heat drop and scrolling feels smoother. Recommended on low-end devices.',
   'homeSettings.dailyQuote.title': 'Daily Quote',
   'homeSettings.dailyQuote.sub':
       'Show the short daily greeting strip at the top of the home screen. Disabling it removes the strip and its surrounding spacing.',
@@ -2782,6 +3387,15 @@ const Map<String, String> _en = {
   'homeSettings.swipeEffect.rubberBand.title': 'Rubber Band',
   'homeSettings.swipeEffect.rubberBand.sub':
       'Elastic snap-back when reaching the page edges with a slight overshoot on settle.',
+  'homeSettings.transitionEffect.title': 'Transition Effect',
+  'homeSettings.transitionEffect.sub':
+      'Choose the page transition animation.',
+  'homeSettings.transitionEffect.ios.title': 'iOS',
+  'homeSettings.transitionEffect.ios.sub':
+      'iOS-style right-to-left swipe transition.',
+  'homeSettings.transitionEffect.fadeScale.title': 'Soft',
+  'homeSettings.transitionEffect.fadeScale.sub':
+      'Soft fade + scale transition.',
   'homeSettings.frameStyle.title': 'Frame Style',
   'homeSettings.frameStyle.sub':
       'Apply a unified frame look to category cards, Continue Watching, Mina AI and Top Rated Films strips on the home screen.',
@@ -2803,9 +3417,6 @@ const Map<String, String> _en = {
   'setup.aiRecommendationsTitle': 'AI-Powered Home Recommendations',
   'setup.aiRecommendationsSub':
       'Show 10 personalized picks (live, film, series) based on your viewing history',
-  'setup.hideAdultTitle': 'Hide +18 Content',
-  'setup.hideAdultSub':
-      'Exclude +18 channels, movies and series from home recommendations, mixed live strip and Continue Watching',
   'setup.filmDiziMode.title': 'Movies & Series mode',
   'setup.filmDiziMode.sub':
       'Choose how movies and series are shown on the home screen — you can change it later from Settings',
@@ -2821,6 +3432,77 @@ const Map<String, String> _en = {
   'homeSettings.filmDiziMode.both.title': 'Both',
   'homeSettings.filmDiziMode.both.sub':
       'Show «Movies & Series» plus separate «Movies» + «Series» cards together',
+  'homeSettings.layoutStyle.title': 'Layout mode',
+  'homeSettings.layoutStyle.sub':
+      'Choose how the home screen looks: the full-featured card layout or the showcase layout',
+  'homeSettings.layoutStyle.standard.title': 'Card Layout',
+  'homeSettings.layoutStyle.standard.sub':
+      'Full home screen with strips, continue watching and all cards',
+  'homeSettings.layoutStyle.showcase.title': 'Showcase layout',
+  'homeSettings.layoutStyle.showcase.sub':
+      'Vertically scrolling poster rows + a liquid-glass dock at the bottom (Live TV · Movies & Series · EPG Mix · Mina Wrapped · Settings). Phone/tablet only.',
+  'homeSettings.tvLayout.hint':
+      'Choose which layout to use for the TV home screen.',
+  'homeSettings.tvLayout.title': 'Home screen layout',
+  'homeSettings.tvLayout.sub':
+      'Card-based home or the new TV shell (left menu + panels)',
+  'homeSettings.tvLayout.classic.title': 'Card Layout',
+  'homeSettings.tvLayout.classic.sub':
+      'Classic home with category cards and content strips',
+  'homeSettings.tvLayout.shell.title': 'TV mode',
+  'homeSettings.tvLayout.shell.sub':
+      'Quick access to Live TV, Movies, Series and settings from the left menu',
+  'tvShell.section.search': 'Search',
+  'tvShell.section.live': 'Live TV',
+  'tvShell.section.movies': 'Movies',
+  'tvShell.section.series': 'Series',
+  'tvShell.section.playlists': 'Playlists',
+  'tvShell.section.continueWatching': 'Continue Watching',
+  'tvShell.continueWatching.title': 'Continue Watching',
+  'tvShell.continueWatching.subtitle': 'Channels, watchlist, continuing and watched titles',
+  'tvShell.continueWatching.empty': 'No unfinished movies or series found.',
+  'tvShell.playlists.subtitle':
+      'Select a list; Live TV, movies and series show only that list\'s content.',
+  'tvShell.playlists.empty':
+      'No playlists loaded yet. Add one in Settings → Playlist Manager.',
+  'tvShell.playlists.active': 'Active',
+  'tvShell.playlists.pleaseWait': 'Please wait…',
+  'tvShell.section.settings': 'Settings',
+  'tvShell.rail.wrapper': 'Wrapper',
+  'tvShell.rail.repeat': 'Repeat',
+  'tvShell.brand': 'Mina Player',
+  'tvShell.category.empty': 'No categories found',
+  'tvShell.category.allFilms': 'All movies',
+  'tvShell.category.allSeries': 'All series',
+  'tvShell.category.favFilms': 'Favorite movies',
+  'tvShell.category.favSeries': 'Favorite series',
+  'tvShell.category.popular50Films': 'Top 50 movies',
+  'tvShell.category.popular50Series': 'Top 50 series',
+  'tvShell.hint.selectSection': 'Select a section from the left menu',
+  'tvShell.live.channels': 'Channels',
+  'tvShell.live.epg': 'EPG',
+  'tvShell.live.noDescription': 'No programme description',
+  'tvShell.live.nextProgramme': 'Up next',
+  'tvShell.live.noEpg': 'No EPG data for this channel',
+  'tvShell.live.pickChannel': 'Select a channel to preview',
+  'tvShell.live.epgNotYet': 'EPG not available yet',
+  'tvShell.touch.openMenu': 'Menu',
+  'tvShell.movies.pickFilm': 'Select a movie to preview',
+  'tvShell.movies.noFilms': 'No movies in this category',
+  'tvShell.movies.upNext': 'Up next',
+  'tvShell.movies.noPlot': 'No synopsis available',
+  'tvShell.movies.play': 'Play',
+  'tvShell.movies.externalPlayer': 'Open in external player',
+  'tvShell.movies.addFavorite': 'Add to favorites',
+  'tvShell.series.pickSeries': 'Select a series to preview',
+  'tvShell.series.noSeries': 'No series in this category',
+  'tvShell.series.upNext': 'Up next',
+  'tvShell.sort.title': 'Sort',
+  'tvShell.sort.alphabetical': 'Alphabetical',
+  'tvShell.sort.rating': 'By rating (IMDb)',
+  'tvShell.sort.random': 'Random',
+  'tvShell.sort.addedDate': 'Date added',
+  'homeSettings.lockedByShowcase': 'Disabled in showcase layout',
   'home.continue_watching': 'Continue Watching',
   'home.ai.title': 'Mina AI: Picks for You',
   'home.ai.badge.live': 'Live',
@@ -2841,8 +3523,7 @@ const Map<String, String> _en = {
   'homeCardOrder.card.series': 'Series',
   'homeCardOrder.card.recommendedFilms': 'Movies & Series',
   'homeCardOrder.card.epgMix': 'EPG Mix',
-  'homeCardOrder.card.favorites': 'Favorites',
-  'homeCardOrder.card.chat': 'Chat',
+  'homeCardOrder.card.minaAnalytics': 'Mina Watch Analytics',
   'analytics.title': 'Mina Wrapped & Watch Analytics',
   'analytics.toggle.title': 'Mina Wrapped & Watch Analytics',
   'analytics.toggle.sub':
@@ -2895,6 +3576,41 @@ const Map<String, String> _en = {
   'analytics.period.afternoon': 'afternoon',
   'analytics.period.evening': 'evening',
   'analytics.period.night': 'night',
+  'analytics.wrapped.tag': 'MINA WRAPPED',
+  'analytics.wrapped.youAre': 'YOU ARE A',
+  'analytics.wrapped.highlight': '@range total',
+  'analytics.persona.newcomer.title': 'Just Getting Started',
+  'analytics.persona.newcomer.tagline':
+      'Mina Wrapped can’t wait to get to know you. Watch a few things and your personal profile will show up right here!',
+  'analytics.persona.cinephile.title': 'Cinephile',
+  'analytics.persona.cinephile.tagline':
+      'You poured a whole @hours into movies, mostly locking onto the screen in the @period. A true film lover!',
+  'analytics.persona.binger.title': 'Series Binger',
+  'analytics.persona.binger.tagline':
+      'Episode after episode — a @hours marathon! The @period is your binge time.',
+  'analytics.persona.liveWire.title': 'Live TV Pro',
+  'analytics.persona.liveWire.tagline':
+      'You keep your finger on the live pulse: @hours, mostly during the @period.',
+  'analytics.persona.nightOwl.title': 'Night Owl',
+  'analytics.persona.nightOwl.tagline':
+      'You watched a full @hours in the quiet of the night. A true night owl!',
+  'analytics.persona.explorer.title': 'Explorer',
+  'analytics.persona.explorer.tagline':
+      'Live, movies, series… you taste it all. @hours of boundless exploring!',
+  'analytics.insight.period':
+      'About @pct% of your watching happened in the @period.',
+  'analytics.insight.topChannel': 'Your most loyal channel: @channel (@hours).',
+  'analytics.insight.peakDay': 'Your most active day: @day.',
+  'analytics.insight.topCategory': 'Your favorite genre: @category.',
+  'analytics.timeline.title': 'Watch Timeline',
+  'analytics.timeline.empty':
+      'No watch history yet. It will appear here as you watch.',
+  'analytics.time.justNow': 'just now',
+  'analytics.time.minsAgo': '@n min ago',
+  'analytics.time.hoursAgo': '@n h ago',
+  'analytics.time.yesterday': 'yesterday',
+  'analytics.time.daysAgo': '@n days ago',
+  'analytics.time.weeksAgo': '@n weeks ago',
   'settings.tile.channelListEdit': 'Live channel layout',
   'settings.tile.channelListEdit.sub':
       'Live TV only: pick a category and reorder or remove channels',
@@ -2939,6 +3655,12 @@ const Map<String, String> _en = {
   'settings.tile.subtitleOptions': 'Subtitle options',
   'settings.tile.subtitleOptions.sub': '@pt pt',
   'settings.tile.subtitleOptions.summary': '@pt pt · @color · @font',
+  'settings.tile.vodInfoEngine': 'VOD Info Engine',
+  'settings.tile.vodInfoEngine.hint':
+      'Choose the source for movie and series information',
+  'settings.tile.vodInfoEngine.auto': 'Auto',
+  'settings.tile.vodInfoEngine.xtreamOnly': 'Xtream Info Only',
+  'settings.tile.vodInfoEngine.tmdbOmdbOnly': 'TMDB/OMDB Info Only',
   'settings.subtitle.title': 'Subtitle options',
   'settings.subtitle.sectionAppearance': 'Appearance',
   'settings.subtitle.sectionOpenSubtitles': 'OpenSubtitles account',
@@ -3010,6 +3732,7 @@ const Map<String, String> _en = {
   'settings.epg.refreshNow': 'Refresh guide',
   'settings.epg.refreshFrequency': 'Guide refresh interval',
   'settings.epg.refreshFrequency.sub': '@n days',
+  'settings.epg.refreshFrequency.never': 'Auto refresh off (load once only)',
   'settings.epg.timeFormat': 'Time format',
   'settings.epg.timeFormat24': '24-hour',
   'settings.epg.timeFormat12': '12-hour (AM/PM)',
@@ -3062,6 +3785,8 @@ const Map<String, String> _en = {
   'settings.dialog.epgCacheHint':
       'Full EPG is stored locally and is not downloaded again until this interval elapses.',
   'settings.dialog.epgCacheSlider': '@n days',
+  'settings.dialog.epgCacheNever':
+      'Off — guide loads once and never auto-refreshes',
   'settings.tile.adaptiveQuality': 'HLS quality ceiling',
   'settings.dialog.adaptiveQualityTitle': 'Multi-quality streams (HLS)',
   'settings.adaptiveQuality.optionAuto':
@@ -3089,6 +3814,8 @@ const Map<String, String> _en = {
       'Placeholders: {server} {username} {password} {stream_id} {duration} {start_utc_ymd_hms} {start_local_ymd_hms} {start_unix} {extension}. Match your provider.',
   'settings.tile.launchBoot': 'Launch when device starts',
   'settings.tile.bgPlayback': 'Background playback',
+  'settings.tile.alarm': 'Alarm',
+  'settings.tile.alarm.sub': 'Sleep timer and alarm',
   'settings.tile.miniPlayerHome': 'Mini player (PiP)',
   'settings.tile.miniPlayerHome.subTv': 'Phone layout only',
   'settings.tile.miniPlayerHome.hintTv':
@@ -3096,7 +3823,7 @@ const Map<String, String> _en = {
   'settings.tile.miniPlayerHome.subOn':
       'On — return home for a draggable mini window (Better/Exo).',
   'settings.tile.miniPlayerHome.subOff':
-      'Off — no PiP when leaving the player (Better/Exo, phone layout).',
+      'Off — no auto PiP; use the player OSD button for manual PiP.',
   'settings.tile.miniPlayerHome.subMk':
       'Auto PiP is not available with MediaKit; use the default player.',
   'settings.tile.reduceBlur': 'Reduce blur (speed)',
@@ -3115,6 +3842,8 @@ const Map<String, String> _en = {
       'Silent preview in list details (~after 1.8 s)',
   'settings.tile.streamPreview.off':
       'Off — no preview in live / movie / series lists',
+  'settings.tile.streamPreview.blockedLowEnd':
+      'On — low-end device mode disables preview',
   'settings.tile.streamPreview.tvLocked':
       'On TV you can turn this on or off in Settings',
   'settings.tile.defaultPlayer': 'Default Player',
@@ -3168,10 +3897,199 @@ const Map<String, String> _en = {
   'settings.tile.help.sub': 'Official Telegram channel',
   'settings.tile.reportIssue': 'Report an issue',
   'settings.tile.reportIssue.sub': 'Send us an email',
+  'settings.tile.adminMessage': 'Message the admin',
+  'settings.tile.adminMessage.sub': 'Chat with the admin inside the app',
   'settings.tile.contactUs': 'Contact Us',
   'settings.tile.contactUs.sub': 'Our Telegram channel and issue reporting',
   'settings.tile.setupWizard': 'Start Setup Wizard',
   'settings.tile.setupWizard.sub': 'Run the initial setup steps again',
+  'settings.tile.faq': 'Frequently Asked Questions',
+  'settings.tile.faq.sub': 'Guide for features and playback settings',
+  'faq.title': 'Frequently Asked Questions',
+  'faq.searchHint': 'Search questions…',
+  'faq.empty': 'No questions match your search.',
+  'faq.entry.tsMode.q': 'When should I switch to MPEG-TS mode?',
+  'faq.entry.tsMode.a':
+      'MPEG-TS streams the channel as a single continuous flow; it starts fast and is compatible with many TV boxes. Try MPEG-TS if channels open slowly, you see hardware decoder errors, or playback never starts. On low-end devices and TV boxes the app selects this mode automatically.',
+  'faq.entry.hlsMode.q': 'When should I switch to HLS (m3u8) mode?',
+  'faq.entry.hlsMode.a':
+      'HLS splits the stream into small segments and offers multiple qualities (HD/FHD) on most panels. If your internet is unstable, HLS freezes less than MPEG-TS because it can drop quality automatically and buffer segments. Use HLS if you want a multi-quality menu and more stable playback.',
+  'faq.entry.autoTs.q':
+      'Why did the app switch to MPEG-TS automatically on my device?',
+  'faq.entry.autoTs.a':
+      'When your device is detected as a TV box or low-end hardware, the live stream format is set to MPEG-TS once automatically, because HLS\'s segment/quality overhead can cause stuttering on these devices. You can switch back to HLS from Settings > Playback; your preference is preserved.',
+  'faq.entry.buffer.q':
+      'Why should I adjust the buffer (low latency) duration?',
+  'faq.entry.buffer.a':
+      'The buffer is how much stream the player downloads ahead of time. A low value (1-2 s) speeds up channel switching but increases the freeze risk on unstable internet. A high value (5-10 s) reduces freezing but makes startup and zapping a bit slower. Pick low if your internet is stable, higher if you freeze often.',
+  'faq.entry.freezing.q':
+      'One playlist keeps freezing while another works fine. Why?',
+  'faq.entry.freezing.a':
+      'The most common cause of freezing is the provider\'s server: insufficient bandwidth, a distant/slow server, long segments, or a connection limit. If a different playlist works fine on the same device and internet, the problem is most likely in the freezing playlist\'s infrastructure. The app helps by automatically increasing the buffer on long-segment/non-ABR streams, but if the source server is weak the lasting fix is on the provider side.',
+  'faq.entry.playbackStops.q': 'What happens if a live stream suddenly stops?',
+  'faq.entry.playbackStops.a':
+      'If the stream drops or stops due to a connection limit (for example when someone else opens the same account), the player automatically tries to reconnect as long as you did not pause it. If needed, an HLS↔MPEG-TS format swap and a different playback engine are also tried.',
+  'faq.entry.engine.q':
+      'What is the difference between the Better Player and MediaKit engines?',
+  'faq.entry.engine.a':
+      'Better Player (ExoPlayer) is hardware-accelerated and efficient on most devices. MediaKit (libmpv) is more flexible with difficult codecs and problematic streams. If Better Player cannot open a stream, the app automatically falls back to MediaKit. You can also choose your preferred engine in Settings.',
+  'faq.entry.softwareDecoder.q':
+      'When should I use the software video decoder?',
+  'faq.entry.softwareDecoder.a':
+      'The hardware decoder can produce a green/purple screen, stuttering, or errors with certain codecs on some devices. If you see visual artifacts, the software decoder is more compatible, but it taxes the CPU more and may stutter on low-end devices. If there is no issue, keep the hardware (default) mode.',
+  'faq.entry.lowEndMode.q': 'What does Low-End Device Mode do?',
+  'faq.entry.lowEndMode.a':
+      'This mode disables heavy visual effects such as blur, shadows, and previews and lowers image cache limits, so the interface runs more smoothly and memory pressure drops on weak devices. The app suggests enabling it if it stutters a lot.',
+  'faq.entry.tvLite.q': 'What is TV Lite (simplified TV interface)?',
+  'faq.entry.tvLite.a':
+      'TV Lite is a simplified, lighter home screen layout for TV boxes. It turns on automatically on weak TV devices and speeds up navigation. You can turn it off in Settings.',
+  'faq.entry.userAgent.q': 'When should I change the User Agent setting?',
+  'faq.entry.userAgent.a':
+      'Some IPTV panels only serve streams with a specific User-Agent header. Change this setting if streams will not open or your panel provider requires a custom User-Agent. If unsure, use the default.',
+  'faq.entry.cardSize.q': 'How do I change the home screen card size?',
+  'faq.entry.cardSize.a':
+      'In Settings > Home you can scale the cards between 80% and 120% with the card size slider. The default is 110%. Larger cards are easier to read from a distance; smaller cards fit more content on screen.',
+  'faq.entry.epg.q': 'How does the program guide (EPG) work?',
+  'faq.entry.epg.a':
+      'The EPG shows each channel\'s schedule (now/next program). The data comes from your panel or an XMLTV source you add. If the guide looks empty, check the source and refresh frequency under Settings > EPG.',
+  'faq.entry.ignoreSsl.q': 'What does the "Ignore SSL certificate" option do?',
+  'faq.entry.ignoreSsl.a':
+      'Some IPTV panels use an invalid or self-signed SSL certificate, which causes a "certificate could not be verified" error. When this option is on, the app accepts the certificate without verifying it and can download streams/posters/EPG from such panels.',
+  'faq.entry.multiPlaylist.q': 'Can I add more than one playlist?',
+  'faq.entry.multiPlaylist.a':
+      'Yes. You can save multiple playlists and switch between them from the "Playlists" bar at the top. Only the active playlist is loaded into memory at a time, which preserves performance.',
+  'faq.entry.backup.q':
+      'Are my settings backed up? What happens on a new device?',
+  'faq.entry.backup.a':
+      'Your settings are stored in the cloud via Google Backup and restored on a new device. However, device-specific decisions (such as the MPEG-TS enforcement for TV boxes or low-end mode) are re-evaluated on the new device based on its hardware; the old device\'s values do not override the new one.',
+  'faq.entry.catchUp.q': 'How do I watch past programs (Replay / Catch-up)?',
+  'faq.entry.catchUp.a':
+      'From the "Replay & EPG Mix" section on the home screen you can rewind and watch past programs, if your provider supports it. Catch-up depends on the panel\'s catch-up/timeshift support; if no replay icon appears next to a program, no archive is offered for that stream.',
+  'faq.entry.resumeAutoplay.q':
+      'Do movies/series resume where I left off? Does the next episode autoplay?',
+  'faq.entry.resumeAutoplay.a':
+      'Yes. When you reopen a movie or episode, you are asked to resume from where you left off or start over. When an episode ends, the next one starts automatically after a few-second countdown; you can cancel the countdown if you prefer.',
+  'faq.entry.smartCutter.q': 'What is "Skip Intro" (Smart Stream Cutter)?',
+  'faq.entry.smartCutter.a':
+      'It learns how far you manually skip the intro in a series\' early episodes and then shows a "Skip Intro" button at the same point in later episodes. You can turn it on or off under Playback Settings.',
+  'faq.entry.subtitles.q':
+      'How do I enable and adjust subtitles? What is OpenSubtitles?',
+  'faq.entry.subtitles.a':
+      'In the player you can select embedded or external subtitles from the subtitle button. Subtitle Options lets you set size, color, font, and outline. If you log in with an OpenSubtitles account, you can search and download subtitles online.',
+  'faq.entry.audioTrack.q':
+      'Can I change the audio language (audio track) of a stream?',
+  'faq.entry.audioTrack.a':
+      'If a stream has multiple audio tracks (e.g. original + dub), you can pick any from the audio track menu in the player. For streams with a single audio track, the menu shows no options.',
+  'faq.entry.volumeBoost.q': 'Can I raise the volume above 100%?',
+  'faq.entry.volumeBoost.a':
+      'Yes, with Volume Boost extra gain is applied once system volume reaches 100% (you set the upper limit in settings). This works best with the MediaKit engine; boosting too much may distort the audio.',
+  'faq.entry.equalizer.q': 'Is there an equalizer?',
+  'faq.entry.equalizer.a':
+      'Yes, there is a multi-band equalizer with presets applied in real time during playback. Open it from Playback Settings. The equalizer is effective on the MediaKit engine.',
+  'faq.entry.externalPlayer.q':
+      'Can I open streams in another player like VLC / MX Player?',
+  'faq.entry.externalPlayer.a':
+      'Yes. If you enable External Player, content opens in your chosen app instead of the built-in player. Built-in features (OSD, favorites, resume) do not work in an external player.',
+  'faq.entry.cast.q': 'Can I cast the stream to a TV / another device?',
+  'faq.entry.cast.a':
+      'With the cast icon in the player you can send the stream address to cast apps like BubbleUPnP or VLC. This forwards the stream URL to the external device and is intended for DRM-free IPTV streams.',
+  'faq.entry.pipBackground.q':
+      'How do background playback and Picture-in-Picture (PiP) work?',
+  'faq.entry.pipBackground.a':
+      'With background playback on, audio/video continues even if you leave the app. With PiP on, the video keeps playing in a small window when you return from the player to home (Android, on supported devices). Both are under Playback Settings.',
+  'faq.entry.playbackSpeed.q': 'Can I change the playback speed?',
+  'faq.entry.playbackSpeed.a':
+      'For movies and series you can set playback speed between 0.5× and 2×. Speed change does not apply to live streams.',
+  'faq.entry.zoomFit.q':
+      'The video does not fit the screen / there are black bars. What can I do?',
+  'faq.entry.zoomFit.a':
+      'Use the fit option in the player to cycle between "contain / fill / cover" modes. On phones and tablets you can also pinch to zoom and pan the video.',
+  'faq.entry.channelNumber.q':
+      'Can I type a channel number on the remote to jump directly?',
+  'faq.entry.channelNumber.a':
+      'Yes. While watching live TV, typing a channel number on the remote jumps directly to that channel. The number entry appears briefly on screen and is confirmed.',
+  'faq.entry.favorites.q': 'How do I add content to favorites?',
+  'faq.entry.favorites.a':
+      'You can add channels, movies, and series to favorites with the heart icon in the player or the favorite button in lists. Your favorites are collected under the "Favorites" tab in the Live TV and Films/Series sections.',
+  'faq.entry.continueWatching.q':
+      'How does the "Continue Watching" strip work?',
+  'faq.entry.continueWatching.a':
+      'Movies and series you left unfinished appear with a progress bar in the "Continue Watching" strip on the home screen, and you resume with one tap. You can hide the strip from Home Settings.',
+  'faq.entry.aiRecommend.q':
+      'What are Mina AI recommendations, and is my data safe?',
+  'faq.entry.aiRecommend.a':
+      'Personalized recommendations are generated on your device based on your watch history; this processing happens on-device. You can turn the strip off in Home Settings and clear history-based recommendations from the reset menu.',
+  'faq.entry.globalSearch.q': 'How do I search all content at once?',
+  'faq.entry.globalSearch.a':
+      'The search on the home screen lets you search live channels, movies, and series at the same time. Results are grouped by type, and your recent searches are remembered.',
+  'faq.entry.downloads.q': 'Can I download movies and series to watch offline?',
+  'faq.entry.downloads.a':
+      'With the download button on the detail page you can queue movies/episodes for offline viewing. Downloads are collected in the "Downloads" section. Live streams cannot be downloaded; downloading applies to VOD content the provider allows.',
+  'faq.entry.homeLayout.q': 'Can I reorder and hide the home screen cards?',
+  'faq.entry.homeLayout.a':
+      'Yes. In Home Settings you can change the card order, hide cards you do not want, and switch between the default layout and the showcase layout.',
+  'faq.entry.filmDiziMode.q':
+      'Should "Films & Series" be one card or separate Films/Series?',
+  'faq.entry.filmDiziMode.a':
+      'In Home Settings you can choose the unified "Films & Series" card, separate "Films" and "Series" cards (classic), or show both together. The choice is purely visual; the content is the same.',
+  'faq.entry.theme.q': 'Can I change the app theme / appearance?',
+  'faq.entry.theme.a':
+      'You can pick different themes (Glass Gray, AMOLED Black, etc.) in Settings. On AMOLED screens the black theme saves battery; on weak devices, reduced blur can give a smoother look.',
+  'faq.entry.analytics.q': 'What is Mina Analytics / Wrapped?',
+  'faq.entry.analytics.a':
+      'It shows a summary of your viewing habits (total time, most-watched channels, etc.). The data is kept on your device; if you prefer, you can turn off analytics collection in the related setting.',
+  'faq.entry.profiles.q': 'Can I create multiple profiles?',
+  'faq.entry.profiles.a':
+      'Yes, you can create profiles with separate preferences and history for each user. You can lock profiles with a PIN, and if you forget the PIN, unlock it with the recovery word you set.',
+  'faq.entry.parental.q': 'How do I set up parental control (PIN)?',
+  'faq.entry.parental.a':
+      'In Parental Control you set a 4-6 digit PIN and a recovery word. The PIN protects sensitive settings such as the adult content filter and category hiding. If you forget the PIN, it is reset with the recovery word.',
+  'faq.entry.sleepTimer.q': 'Is there a sleep timer (stop after a set time)?',
+  'faq.entry.sleepTimer.a':
+      'Yes, if you set the sleep timer under "Other Tools", playback stops at the end of the time you choose. Handy so the stream does not stay on while you sleep.',
+  'faq.entry.channelEdit.q': 'Can I edit and hide channels and categories?',
+  'faq.entry.channelEdit.a':
+      'Yes. With show/hide categories you can remove unwanted categories from lists; with Live Channel Layout you can reorder channels within a category and hide them individually. This does not delete content on the provider; it only arranges your view.',
+  'faq.entry.epgSettings.q':
+      'The program guide (EPG) times are wrong / empty. How do I fix it?',
+  'faq.entry.epgSettings.a':
+      'In EPG Settings you can correct shifted times with the timezone offset, choose 12/24-hour format, set the refresh frequency, and add your own XMLTV source. For Xtream accounts you can switch between the API and a fallback source.',
+  'faq.entry.speedTest.q': 'Can I run an internet speed test inside the app?',
+  'faq.entry.speedTest.a':
+      'Yes, the Speed Test screen measures download/upload speed and latency (ping). If you experience freezing, it helps to see whether your connection is sufficient for streaming.',
+  'faq.entry.cloudSync.q': 'Can I sync my settings and playlists to the cloud?',
+  'faq.entry.cloudSync.a':
+      'By signing in with your Google account you can back up your settings and playlists to the cloud and restore them on another device. The last backup date is shown on screen; you can push (upload) and pull (download) manually.',
+  'faq.entry.demoPlaylist.q': 'I have no IPTV subscription; can I try the app?',
+  'faq.entry.demoPlaylist.a':
+      'Yes, you can try the app with the demo playlist on the setup screen without a real subscription. For your own content, add a playlist via M3U URL, local file, or Xtream credentials.',
+  'faq.entry.chatSupport.q': 'How do chat and support work?',
+  'faq.entry.chatSupport.a':
+      'By signing in with Google you can join the community chat in language rooms and send a private support message to the admin. You can also report issues with stream status (flowing/freezing) tags.',
+  'faq.entry.language.q': 'Can I change the app language?',
+  'faq.entry.language.a':
+      'Yes, you can change the interface language from the language selection in Settings. Many languages are supported; movie/series overviews and episode info are also translated to your device language when possible.',
+  'faq.entry.showcaseMode.q':
+      'What is the Showcase layout and how do I enable it?',
+  'faq.entry.showcaseMode.a':
+      'Showcase is a clean, modern home layout for phones and tablets. Continue watching, mixed live TV, latest films and mixed content are arranged in a vertical feed with liquid glass frames, and a bottom navigation bar with an iOS-style droplet effect. You can choose it from Settings → Home layout or in the setup wizard. It is not used on TV.',
+  'faq.entry.latestAdded.q':
+      'Where can I see the latest added films and series?',
+  'faq.entry.latestAdded.a':
+      'In the Film & Series modern section, the films tab has a «Last 50 Added Films» category and the series tab has a «Last 50 Added Series» category. This list also appears on the Showcase home screen. As with every category, you can open the full list with «See All».',
+  'faq.entry.imageSubtitles.q':
+      'I press the subtitle button but no options appear. Why?',
+  'faq.entry.imageSubtitles.a':
+      'Some VOD streams have image-based subtitles (PGS/HDMV, VobSub, DVB). The default player (Better/ExoPlayer) cannot render these and does not list them. In that case the subtitle menu offers to switch to the MediaKit (mpv) player; once you confirm, the subtitles are displayed. Text-based (SRT/VTT) subtitles work in both players.',
+  'faq.entry.minaWrapper.q': 'What is Mina Wrapper?',
+  'faq.entry.minaWrapper.a':
+      'Mina Wrapper is a personal section that summarizes your watch history with AI; it presents your most-watched genres, a timeline and a personalized viewer persona with elegant visuals. You can reach it from the bottom navigation bar in Showcase layout, or from the home screen in other layouts.',
+  'faq.entry.onlineCount.q': 'Can I see how many people are online in chat?',
+  'faq.entry.onlineCount.a':
+      'Yes, the chat section shows the live number of online users in a small badge (e.g. «55 Online»). No personal identities are shared; only the total count is visible.',
+  'faq.entry.os27Theme.q': 'What are the OS27 and liquid glass themes?',
+  'faq.entry.os27Theme.a':
+      'OS27 is a translucent theme with an iOS 27-inspired liquid glass design, blue tones and bright edges, using separate wallpapers for landscape and portrait. For TVs, the blur-free, pure black AMOLED «TV Lite» theme with a red accent is recommended. You can switch themes from Settings.',
   'contactUs.title': 'Contact Us',
   'contactUs.hint':
       'For your questions and issue reports, you can reach us through the channels below.',
@@ -3220,7 +4138,30 @@ const Map<String, String> _en = {
   'settings.dialog.refresh.autoOff': 'Auto refresh off',
   'settings.dialog.refresh.every3': 'Refresh every 3 days',
   'settings.dialog.refresh.every7': 'Refresh every week',
+  'settings.dialog.refresh.every2h': 'Refresh every 2 hours',
+  'settings.dialog.refresh.every1d': 'Refresh every day',
+  'settings.dialog.refresh.every2d': 'Refresh every 2 days',
+  'settings.dialog.refresh.every3d': 'Refresh every 3 days',
+  'settings.dialog.refresh.every1w': 'Refresh every week',
   'settings.dialog.refresh.nowOnly': 'Refresh once now',
+  'settings.reset.menuTitle': 'What do you want to reset?',
+  'settings.reset.menuHint':
+      'Reset individual items below, or reset everything at the bottom.',
+  'settings.reset.watchHistory': 'Reset recently watched',
+  'settings.reset.watchHistory.sub':
+      'Clears watch history and the "continue watching" list.',
+  'settings.reset.ai': 'Reset Mina AI recommendations',
+  'settings.reset.ai.sub': 'Regenerates "recommended for you".',
+  'settings.reset.playlist': 'Reset playlist data',
+  'settings.reset.playlist.sub':
+      'Deletes the saved list and content cache; you re-add the list.',
+  'settings.reset.everything': 'Reset all settings and data',
+  'settings.reset.everything.sub':
+      'Resets playlist, cache, favorites and all preferences.',
+  'settings.reset.confirmBody': 'This cannot be undone. Are you sure?',
+  'settings.reset.watchHistoryDone': 'Recently watched reset.',
+  'settings.reset.aiDone': 'Mina AI recommendations reset.',
+  'settings.reset.playlistDone': 'Playlist data reset.',
   'settings.dialog.clearTitle': 'Erase all settings',
   'settings.dialog.clearBody':
       'Playlist data, cache, favorites, and preferences will be reset. Continue?',
@@ -3353,7 +4294,14 @@ const Map<String, String> _en = {
   'settings.update.failTitle': 'Check failed',
   'settings.update.failBody':
       'Could not retrieve update information. Check your internet connection and try again.',
-  'settings.dialog.changelogBody': 'v2.2.0\n'
+  'settings.dialog.changelogBody': 'v2.12.68\n'
+      '• New theme: "IOS 27" — iOS Liquid Glass design: translucent panels, iOS-blue accent, large rounded corners and a fluid glass wallpaper (portrait + landscape). Selectable from the setup wizard and Settings → Theme\n'
+      '• New home layout: "Showcase" — phone/tablet only. Vertically scrolling poster rows (Continue Watching, Live TV, IMDB Top Rated Movies, Last 50 Added Movies, Mixed Movies/Series, M3U categories) + a bottom liquid-glass dock (Live TV · Movies & Series · EPG Mix · Mina Wrapped · Settings). Every row has «See All» and a search button up top\n\n'
+      'v2.12.67\n'
+      '• Movies & Series: Added «Last 50 Added Movies» to the Movies tab and «Last 50 Added Series» to the Series tab — «See All» lists the newest 50 items, newest first\n'
+      '• Subtitles: The «no subtitles» notice now appears instantly on unsupported streams (previous 2-3s delay removed)\n'
+      '• Subtitles: Now OFF by default; they no longer turn on automatically (both Better Player and MediaKit). Once you pick a language it is remembered and re-applied on other movies when that language is available; choosing «Off» clears the memory\n\n'
+      'v2.2.0\n'
       '• Play Store rating dialog: "Later" + "Rate" buttons no longer overflow on narrow screens. When they don\'t fit on one row they stack vertically, right-aligned; wide screens keep the original side-by-side layout\n'
       '• Film & Series detail — Quick Info Panel: Director + Genre lines now appear right below the trailers in a clean glass frame, visible at a glance\n'
       '• Film & Series detail — Watch button: same dimensions, but the inner surface now blends a blurred poster projection with the theme gradient so each title gets its own colour mood\n'
@@ -3545,6 +4493,8 @@ const Map<String, String> _en = {
   'playlist.loadList': 'Load playlist',
   'playlist.m3uUrl': 'M3U URL',
   'playlist.m3uUrlHint': 'https://example.com/playlist.m3u',
+  'playlist.pasteUrl': 'Paste',
+  'playlist.pasteEmpty': 'Clipboard is empty',
   'playlist.pickFile': 'Choose file',
   'playlist.m3uXtreamRecommendation':
       'For better performance and features, we recommend signing in with Xtream.',
@@ -3716,6 +4666,8 @@ const Map<String, String> _en = {
       'Background merge failed. Pull to refresh on the home screen.',
 
   'player.liveBadge': 'LIVE',
+  'player.movieBadge': 'MOVIE',
+  'player.seriesBadge': 'SERIES',
   'player.epgLoading': 'Loading EPG…',
   'player.skip_intro': 'Skip Intro',
   'player.channelNumberOutOfRange': 'Channel @n not found (1–@total)',
@@ -3840,6 +4792,12 @@ const Map<String, String> _en = {
   'player.error.contentNotFound': 'Content was not found on the server',
   'player.error.playbackGeneric': 'Playback is unavailable right now',
   'player.error.invalidStreamUrl': 'Invalid stream address',
+  'player.pip.unavailable':
+      'Picture-in-Picture is not available on this device or player.',
+  'player.pip.failed':
+      'Could not start Picture-in-Picture. Check PiP permission in system settings.',
+  'player.pip.mediaKit':
+      'PiP is not available in MediaKit mode. Switch to the default player.',
   'player.notReady': 'Player is not ready',
   'player.resume.title': 'Resume where you left off?',
   'player.resume.body':
@@ -3857,6 +4815,14 @@ const Map<String, String> _en = {
   'player.subtitle.noneShort': 'No subtitle tracks for this stream.',
   'player.subtitle.noneLong':
       'No subtitle renditions in the manifest or stream; HLS/DASH subtitle tracks appear here when offered.',
+  'player.subtitle.imageBasedTitle': 'Image-based subtitles',
+  'player.subtitle.imageBasedBody':
+      'This title\'s embedded subtitles are image-based (PGS/VobSub). The current player can\'t display them. Switch to the MediaKit player? The switch applies to this stream only.',
+  'player.subtitle.imageBasedBodyTv':
+      'This title\'s embedded subtitles are image-based (PGS/VobSub). The current player can\'t display them. After switching to the MediaKit player, pick them from the subtitle button.',
+  'player.subtitle.switchToMediaKit': 'Switch to MediaKit',
+  'player.subtitle.switchingForSubs':
+      'Switching to the MediaKit player for subtitles…',
   'player.snackbar.audioChanged': 'Audio changed',
   'player.snackbar.subtitleChanged': 'Subtitles changed',
   'player.snackbar.qualityChanged': 'Quality changed',

@@ -9,6 +9,7 @@ import 'package:get/get.dart';
 import '../../core/i18n/localized_short_date.dart';
 import '../../core/layout/app_layout_mode.dart';
 import '../../core/routes/app_routes.dart';
+import '../../core/theme/app_performance.dart';
 import '../../core/theme/app_scroll_physics.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/glass_appearance.dart';
@@ -65,8 +66,13 @@ class ChannelsView extends GetView<ChannelsController> {
         ),
       ),
     );
+    // Portrait (dikey) modda tam ekran arka plan blur'u devre dışı — raster
+    // thread'i sürekli meşgul ediyordu (CPU). Yatay/TV'de mevcut davranış korunur.
+    final isPortrait =
+        MediaQuery.orientationOf(context) == Orientation.portrait;
     if (reduce ||
         sharpBg ||
+        isPortrait ||
         GlassAppearance.fromLabel(themeLabel).usesSyntheticGlassSurface) {
       return scaled;
     }
@@ -117,6 +123,8 @@ class ChannelsView extends GetView<ChannelsController> {
         },
         onTvNavigateDownFromTopBar:
             remoteNav ? controller.focusTvDownFromTopBar : null,
+        onTvNavigateLeftFromTopBar:
+            remoteNav ? controller.focusTvLeftFromTopBarToChannels : null,
         clockBuilder: () => Column(
           crossAxisAlignment: CrossAxisAlignment.end,
           mainAxisSize: MainAxisSize.min,
@@ -235,7 +243,7 @@ class ChannelsView extends GetView<ChannelsController> {
                                           CrossAxisAlignment.stretch,
                                       children: [
                                         Expanded(
-                                          flex: 24,
+                                          flex: 31,
                                           child: Obx(() {
                                             final mode =
                                                 Get.find<AppSettingsService>()
@@ -263,7 +271,7 @@ class ChannelsView extends GetView<ChannelsController> {
                                         ),
                                         const SizedBox(width: 10),
                                         Expanded(
-                                          flex: 38,
+                                          flex: 31,
                                           child: _DetailGlassPanel(
                                             controller: controller,
                                             fmtClock: _fmtClock,
@@ -422,44 +430,22 @@ class _PortraitLiveTvTabsState extends State<_PortraitLiveTvTabs>
     with TickerProviderStateMixin {
   late TabController _tabController;
 
-  /// Dikey modda "Detay" sekmesi gizli mi? Gizliyse sekme sayısı 3 olur
-  /// (Kategoriler / Kanallar / EPG) ve kanal seçilince doğrudan oynatılır.
-  bool _detailHidden = false;
-  Worker? _detailHiddenWorker;
-
   ChannelsController get controller => widget.controller;
 
-  int get _tabCount => _detailHidden ? 3 : 4;
+  /// Dikey modda "Detay" sekmesi tamamen kaldırıldı: sekmeler
+  /// Kategoriler / Kanallar / EPG (3) ve kanal seçilince doğrudan oynatılır.
+  static const int _tabCount = 3;
 
   @override
   void initState() {
     super.initState();
-    _detailHidden =
-        Get.find<AppSettingsService>().hideLivePortraitDetailTab.value;
     _tabController = TabController(length: _tabCount, vsync: this);
     controller.bindPortraitTabController(_tabController);
     _tabController.addListener(_onTabChanged);
-    // Ayar canlı TV açıkken değişirse sekme yapısını yeniden kur.
-    _detailHiddenWorker = ever<bool>(
-      Get.find<AppSettingsService>().hideLivePortraitDetailTab,
-      (v) {
-        if (!mounted || v == _detailHidden) return;
-        setState(() {
-          _detailHidden = v;
-          _tabController.removeListener(_onTabChanged);
-          controller.bindPortraitTabController(null);
-          _tabController.dispose();
-          _tabController = TabController(length: _tabCount, vsync: this);
-          controller.bindPortraitTabController(_tabController);
-          _tabController.addListener(_onTabChanged);
-        });
-      },
-    );
   }
 
   @override
   void dispose() {
-    _detailHiddenWorker?.dispose();
     _tabController.removeListener(_onTabChanged);
     controller.bindPortraitTabController(null);
     _tabController.dispose();
@@ -480,8 +466,10 @@ class _PortraitLiveTvTabsState extends State<_PortraitLiveTvTabs>
   }
 
   Widget _portraitColumn(BuildContext context) {
-    final layoutTv =
-        Get.find<AppSettingsService>().layoutMode.value == AppLayoutMode.tv;
+    final settings = Get.find<AppSettingsService>();
+    final layoutTv = settings.layoutMode.value == AppLayoutMode.tv;
+    final remoteNav =
+        remoteNavForScreenLayout(context, settings.layoutMode.value);
     return Column(
       children: [
         ExcludeFocus(
@@ -514,9 +502,8 @@ class _PortraitLiveTvTabsState extends State<_PortraitLiveTvTabs>
             ),
             child: ClipRRect(
               borderRadius: BorderRadius.circular(12),
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
-                child: TabBar(
+              child: Builder(builder: (context) {
+                final tabBar = TabBar(
                   controller: _tabController,
                   isScrollable: true,
                   tabAlignment: TabAlignment.start,
@@ -537,15 +524,6 @@ class _PortraitLiveTvTabsState extends State<_PortraitLiveTvTabs>
                         ),
                       ),
                     ),
-                    if (!_detailHidden)
-                      Tab(
-                        child: Center(
-                          child: Text(
-                            'channels.tab.detail'.tr,
-                            textAlign: TextAlign.center,
-                          ),
-                        ),
-                      ),
                     Tab(
                       child: Center(
                         child: Text(
@@ -566,8 +544,20 @@ class _PortraitLiveTvTabsState extends State<_PortraitLiveTvTabs>
                   ),
                   indicatorSize: TabBarIndicatorSize.tab,
                   dividerColor: Colors.transparent,
-                ),
-              ),
+                );
+                // TV düzeni / kumanda / blur-azalt / düşük donanım: gerçek-zamanlı
+                // BackdropFilter bir saveLayer (backdrop) geçişi tetikler ve zayıf
+                // TV GPU'larını yorar. Bu durumlarda blur'suz çiz (görünüm yine cam
+                // kapsül içinde; yalnız arka-plan bulanıklaştırması atlanır).
+                if (!AppPerformance.useRealtimeBackdropBlur(
+                    Get.find<AppSettingsService>())) {
+                  return tabBar;
+                }
+                return BackdropFilter(
+                  filter: ImageFilter.blur(sigmaX: 8, sigmaY: 8),
+                  child: tabBar,
+                );
+              }),
             ),
           ),
         ),
@@ -582,18 +572,15 @@ class _PortraitLiveTvTabsState extends State<_PortraitLiveTvTabs>
                 controller: controller,
                 onCategorySelected: () {
                   _animateToTab(1);
-                  final mode =
-                      Get.find<AppSettingsService>().layoutMode.value;
-                  final remoteNav =
-                      remoteNavForScreenLayout(context, mode);
+                  final mode = Get.find<AppSettingsService>().layoutMode.value;
+                  final remoteNav = remoteNavForScreenLayout(context, mode);
                   if (remoteNav && mode == AppLayoutMode.tv) {
                     WidgetsBinding.instance.addPostFrameCallback((_) {
                       Future<void>.delayed(
                         const Duration(milliseconds: 400),
                         () {
                           if (controller
-                              .channelsListFocusNode
-                              .canRequestFocus) {
+                              .channelsListFocusNode.canRequestFocus) {
                             controller.channelsListFocusNode.requestFocus();
                           }
                         },
@@ -604,16 +591,9 @@ class _PortraitLiveTvTabsState extends State<_PortraitLiveTvTabs>
               ),
               _ChannelsGlassPanel(
                 controller: controller,
-                // Detay gizliyse kanala dokununca doğrudan tam ekran oynat;
-                // değilse Detay sekmesine geç.
-                openChannelOnTap: _detailHidden,
-                onChannelSelected: () => _animateToTab(2),
+                openChannelOnTap: !remoteNav,
+                onChannelSelected: () => _animateToTab(1),
               ),
-              if (!_detailHidden)
-                _DetailGlassPanel(
-                  controller: controller,
-                  fmtClock: widget.fmtClock,
-                ),
               ChannelsEpgTimelineBody(controller: controller),
             ],
           ),
@@ -723,13 +703,6 @@ class _CategoriesGlassPanelState extends State<_CategoriesGlassPanel>
               const SizedBox(height: 10),
               Expanded(
                 child: Obx(() {
-                  // Liste değişiminde paneli yeniden çiz.
-                  controller.playlistRevision.value;
-                  // 2+ liste varsa üst çubuktaki "Listeler" ikonu görünür;
-                  // ilk kategori satırından yukarı ok ile o ikona çıkılır.
-                  // Tek liste varsa yukarı yutulur.
-                  final showListsBar =
-                      Get.find<ActivePlaylistService>().hasMultiple;
                   final mode = Get.find<AppSettingsService>().layoutMode.value;
                   final remoteNav = remoteNavForScreenLayout(context, mode);
                   final moveFocusToChannelList =
@@ -763,55 +736,67 @@ class _CategoriesGlassPanelState extends State<_CategoriesGlassPanel>
                     child: ListView.builder(
                       controller: _listScroll,
                       physics: AppScrollPhysics.list(context: context),
+                      itemExtent: remoteNav ? kTvGlassListRowExtent : null,
                       itemCount: itemCount,
                       itemBuilder: (context, index) {
                         if (index == 0) {
+                          final rowCount = counts.allVisibleCount;
+                          final canEnterChannels =
+                              enterChannelsOnRight && rowCount > 0;
                           return GlassCategoryRow(
                             key: const ValueKey<String>('ch_cat_all'),
                             label: 'channels.allChannels'.tr,
-                            count: counts.allVisibleCount,
+                            count: rowCount,
                             selected: sel == null,
                             emphasizeSelection:
                                 remoteNav && trap && sel == null,
                             tvSuppressFocusRingUnlessSelected:
                                 remoteNav && trap,
                             onTvFocusGained: remoteNav
-                                ? () => controller
-                                    .syncTvCategoryFocusFromRow(null)
+                                ? () =>
+                                    controller.syncTvCategoryFocusFromRow(null)
                                 : null,
-                            tvArrowRightEntersChannels: enterChannelsOnRight,
-                            tvBlockArrowRight: false,
-                            onBeforeFocusMoveRight: remoteNav
-                                ? () => controller.selectCategory(
-                                      null,
-                                      moveFocusToChannels:
-                                          enterChannelsOnRight,
-                                    )
-                                : null,
+                            tvArrowRightEntersChannels: canEnterChannels,
+                            tvBlockArrowRight: remoteNav && rowCount == 0,
+                            onBeforeFocusMoveRight:
+                                remoteNav && canEnterChannels
+                                    ? () => controller.selectCategory(
+                                          null,
+                                          moveFocusToChannels: true,
+                                        )
+                                    : null,
                             focusNode: remoteNav && sel == null
                                 ? controller.categoryFocusNode
                                 : null,
                             tvIsFirstRow: remoteNav,
-                            tvBlockArrowUp: remoteNav && !showListsBar,
-                            tvArrowUpFocusTarget: showListsBar
-                                ? controller.listsBarFocusNode
-                                : null,
+                            tvBlockArrowUp: remoteNav,
+                            tvArrowUpFocusTarget: null,
                             tvBlockArrowDown: false,
+                            tvStrictVerticalCategories: remoteNav,
+                            tvCategoryIndex: 0,
+                            tvCategoryCount: itemCount,
+                            tvOnCategoryNudge: remoteNav && sel == null
+                                ? controller.tvNudgeLiveCategory
+                                : null,
                             onTap: () {
                               controller.selectCategory(
                                 null,
-                                moveFocusToChannels: moveFocusToChannelList,
+                                moveFocusToChannels:
+                                    moveFocusToChannelList && rowCount > 0,
                               );
                               widget.onCategorySelected?.call();
                             },
                           );
                         }
                         if (index == 1) {
+                          final rowCount = counts.favoritesVisibleCount;
+                          final canEnterChannels =
+                              enterChannelsOnRight && rowCount > 0;
                           return GlassCategoryRow(
                             key: const ValueKey<String>('ch_cat_favorites'),
                             label: 'channels.favoritesCategory'.tr,
                             leadingIcon: Icons.favorite_rounded,
-                            count: counts.favoritesVisibleCount,
+                            count: rowCount,
                             selected: sel == kFavoritesVirtualCategoryId,
                             emphasizeSelection: remoteNav &&
                                 trap &&
@@ -823,39 +808,48 @@ class _CategoriesGlassPanelState extends State<_CategoriesGlassPanel>
                                       kFavoritesVirtualCategoryId,
                                     )
                                 : null,
-                            tvArrowRightEntersChannels: enterChannelsOnRight,
-                            tvBlockArrowRight: false,
-                            onBeforeFocusMoveRight: remoteNav
-                                ? () => controller.selectCategory(
-                                      kFavoritesVirtualCategoryId,
-                                      moveFocusToChannels:
-                                          enterChannelsOnRight,
-                                    )
-                                : null,
-                            focusNode: remoteNav &&
-                                    sel == kFavoritesVirtualCategoryId
-                                ? controller.categoryFocusNode
-                                : null,
+                            tvArrowRightEntersChannels: canEnterChannels,
+                            tvBlockArrowRight: remoteNav && rowCount == 0,
+                            onBeforeFocusMoveRight:
+                                remoteNav && canEnterChannels
+                                    ? () => controller.selectCategory(
+                                          kFavoritesVirtualCategoryId,
+                                          moveFocusToChannels: true,
+                                        )
+                                    : null,
+                            focusNode:
+                                remoteNav && sel == kFavoritesVirtualCategoryId
+                                    ? controller.categoryFocusNode
+                                    : null,
                             tvIsFirstRow: false,
-                            tvBlockArrowDown:
-                                remoteNav && favoritesIsLast,
+                            tvBlockArrowDown: remoteNav && favoritesIsLast,
+                            tvStrictVerticalCategories: remoteNav,
+                            tvCategoryIndex: 1,
+                            tvCategoryCount: itemCount,
+                            tvOnCategoryNudge:
+                                remoteNav && sel == kFavoritesVirtualCategoryId
+                                    ? controller.tvNudgeLiveCategory
+                                    : null,
                             onTap: () {
                               controller.selectCategory(
                                 kFavoritesVirtualCategoryId,
-                                moveFocusToChannels: moveFocusToChannelList,
+                                moveFocusToChannels:
+                                    moveFocusToChannelList && rowCount > 0,
                               );
                               widget.onCategorySelected?.call();
                             },
                           );
                         }
                         if (showRecentlyWatched && index == 2) {
+                          final rowCount = counts.recentlyWatchedVisibleCount;
+                          final canEnterChannels =
+                              enterChannelsOnRight && rowCount > 0;
                           return GlassCategoryRow(
                             key: const ValueKey<String>('ch_cat_recent'),
                             label: 'channels.recentlyWatchedCategory'.tr,
                             leadingIcon: Icons.history_rounded,
-                            count: counts.recentlyWatchedVisibleCount,
-                            selected:
-                                sel == kRecentlyWatchedVirtualCategoryId,
+                            count: rowCount,
+                            selected: sel == kRecentlyWatchedVirtualCategoryId,
                             emphasizeSelection: remoteNav &&
                                 trap &&
                                 sel == kRecentlyWatchedVirtualCategoryId,
@@ -866,26 +860,33 @@ class _CategoriesGlassPanelState extends State<_CategoriesGlassPanel>
                                       kRecentlyWatchedVirtualCategoryId,
                                     )
                                 : null,
-                            tvArrowRightEntersChannels: enterChannelsOnRight,
-                            tvBlockArrowRight: false,
-                            onBeforeFocusMoveRight: remoteNav
-                                ? () => controller.selectCategory(
-                                      kRecentlyWatchedVirtualCategoryId,
-                                      moveFocusToChannels:
-                                          enterChannelsOnRight,
-                                    )
-                                : null,
+                            tvArrowRightEntersChannels: canEnterChannels,
+                            tvBlockArrowRight: remoteNav && rowCount == 0,
+                            onBeforeFocusMoveRight:
+                                remoteNav && canEnterChannels
+                                    ? () => controller.selectCategory(
+                                          kRecentlyWatchedVirtualCategoryId,
+                                          moveFocusToChannels: true,
+                                        )
+                                    : null,
                             focusNode: remoteNav &&
                                     sel == kRecentlyWatchedVirtualCategoryId
                                 ? controller.categoryFocusNode
                                 : null,
                             tvIsFirstRow: false,
-                            tvBlockArrowDown:
-                                remoteNav && categories.isEmpty,
+                            tvBlockArrowDown: remoteNav && categories.isEmpty,
+                            tvStrictVerticalCategories: remoteNav,
+                            tvCategoryIndex: 2,
+                            tvCategoryCount: itemCount,
+                            tvOnCategoryNudge: remoteNav &&
+                                    sel == kRecentlyWatchedVirtualCategoryId
+                                ? controller.tvNudgeLiveCategory
+                                : null,
                             onTap: () {
                               controller.selectCategory(
                                 kRecentlyWatchedVirtualCategoryId,
-                                moveFocusToChannels: moveFocusToChannelList,
+                                moveFocusToChannels:
+                                    moveFocusToChannelList && rowCount > 0,
                               );
                               widget.onCategorySelected?.call();
                             },
@@ -894,38 +895,44 @@ class _CategoriesGlassPanelState extends State<_CategoriesGlassPanel>
                         final catIndex = index - fixedRowCount;
                         final c = categories[catIndex];
                         final isLast = catIndex == categories.length - 1;
+                        final rowCount = counts.categoryCounts[c.id] ?? 0;
+                        final canEnterChannels =
+                            enterChannelsOnRight && rowCount > 0;
                         return GlassCategoryRow(
                           key: ValueKey<int>(c.id),
                           label: c.name,
-                          count: counts.categoryCounts[c.id] ?? 0,
+                          count: rowCount,
                           selected: sel == c.id,
-                          emphasizeSelection:
-                              remoteNav && trap && sel == c.id,
-                          tvSuppressFocusRingUnlessSelected:
-                              remoteNav && trap,
+                          emphasizeSelection: remoteNav && trap && sel == c.id,
+                          tvSuppressFocusRingUnlessSelected: remoteNav && trap,
                           onTvFocusGained: remoteNav
-                              ? () => controller
-                                  .syncTvCategoryFocusFromRow(c.id)
+                              ? () =>
+                                  controller.syncTvCategoryFocusFromRow(c.id)
                               : null,
-                          tvArrowRightEntersChannels: enterChannelsOnRight,
-                          tvBlockArrowRight: false,
-                          onBeforeFocusMoveRight: remoteNav
+                          tvArrowRightEntersChannels: canEnterChannels,
+                          tvBlockArrowRight: remoteNav && rowCount == 0,
+                          onBeforeFocusMoveRight: remoteNav && canEnterChannels
                               ? () => controller.selectCategory(
                                     c.id,
-                                    moveFocusToChannels:
-                                        enterChannelsOnRight,
+                                    moveFocusToChannels: true,
                                   )
                               : null,
-                          focusNode:
-                              remoteNav && sel == c.id
-                                  ? controller.categoryFocusNode
-                                  : null,
+                          focusNode: remoteNav && sel == c.id
+                              ? controller.categoryFocusNode
+                              : null,
                           tvIsFirstRow: false,
                           tvBlockArrowDown: remoteNav && isLast,
+                          tvStrictVerticalCategories: remoteNav,
+                          tvCategoryIndex: index,
+                          tvCategoryCount: itemCount,
+                          tvOnCategoryNudge: remoteNav && sel == c.id
+                              ? controller.tvNudgeLiveCategory
+                              : null,
                           onTap: () {
                             controller.selectCategory(
                               c.id,
-                              moveFocusToChannels: moveFocusToChannelList,
+                              moveFocusToChannels:
+                                  moveFocusToChannelList && rowCount > 0,
                             );
                             widget.onCategorySelected?.call();
                           },
@@ -991,8 +998,6 @@ class _ChannelsGlassPanelState extends State<_ChannelsGlassPanel>
   Widget build(BuildContext context) {
     super.build(context);
     final controller = widget.controller;
-    final portrait =
-        MediaQuery.orientationOf(context) == Orientation.portrait;
     return GlassTvSheet(
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1010,9 +1015,6 @@ class _ChannelsGlassPanelState extends State<_ChannelsGlassPanel>
             child: Obx(() {
               // Liste değişiminde kanal listesini yeniden çiz.
               controller.playlistRevision.value;
-              final epg = Get.find<EpgService>();
-              epg.loadGeneration.value;
-              epg.isLoading.value;
               // Favoriler sanal kategorisi seçiliyken kalp toggle'ı kanal
               // listesini anında güncellesin diye favori RxList'i dinleriz.
               Get.find<FavoritesService>().channelIds.length;
@@ -1039,26 +1041,27 @@ class _ChannelsGlassPanelState extends State<_ChannelsGlassPanel>
                   itemBuilder: (context, index) {
                     final ch = list[index];
                     final numStr = (index + 1).toString().padLeft(3, '0');
-                    final displayName = EpgChannelDisplay.liveChannelName(ch.name);
-                    final prog = portrait
-                        ? epg.getCurrentProgrammeForLiveChannel(ch)
-                        : null;
-                    final progTitle = prog?.title.trim();
+                    final displayName =
+                        EpgChannelDisplay.liveChannelName(ch.name);
                     final rowFocused = ch.id == selId;
                     return RepaintBoundary(
                       child: GlassListNumberTile(
                         key: ValueKey<int>(ch.id),
                         number: numStr,
                         title: displayName,
-                        titleContent: portrait
-                            ? ChannelListEpgTitleLine(
-                                channelName: displayName,
-                                programmeTitle: progTitle,
-                                programmeStart: prog?.start,
-                                marqueeEnabled: _epgMarqueeEnabled,
-                                highlighted: rowFocused,
-                              )
-                            : null,
+                        titleContent: Obx(() {
+                          final epg = Get.find<EpgService>();
+                          epg.loadGeneration.value;
+                          final prog = epg.getCurrentProgrammeForLiveChannel(ch);
+                          final progTitle = prog?.title.trim();
+                          return ChannelListEpgTitleLine(
+                            channelName: displayName,
+                            programmeTitle: progTitle,
+                            programmeStart: prog?.start,
+                            marqueeEnabled: _epgMarqueeEnabled,
+                            highlighted: rowFocused,
+                          );
+                        }),
                         focusNode: index == focusRowIndex
                             ? controller.channelsListFocusNode
                             : null,
@@ -1084,13 +1087,6 @@ class _ChannelsGlassPanelState extends State<_ChannelsGlassPanel>
                               }
                             : null,
                         onPlay: () => controller.openChannel(ch),
-                        tvGateDetailColumn: remoteNav,
-                        tvUnlockDetailColumn: () =>
-                            controller.unlockTvDetailColumn(),
-                        tvIsDetailColumnUnlocked: () =>
-                            controller.tvDetailColumnUnlocked.value,
-                        tvRequestDetailPanelFocus: () =>
-                            controller.focusTvDetailPreview(),
                         tvStrictVerticalList: remoteNav && trapList,
                         tvListIndex: index,
                         tvListLength: list.length,
@@ -1107,12 +1103,14 @@ class _ChannelsGlassPanelState extends State<_ChannelsGlassPanel>
                             ? controller.stopTvChannelListVerticalHold
                             : null,
                         tvBlockArrowLeft: remoteNav && trapList,
-                        tvOnArrowLeft:
-                            remoteNav && widget.onChannelSelected == null
-                                ? () => controller
-                                    .releaseTvListFocusToCategories()
-                                : null,
-                        tvBlockArrowRight: false,
+                        tvOnArrowLeft: remoteNav &&
+                                widget.onChannelSelected == null
+                            ? () => controller.releaseTvListFocusToCategories()
+                            : null,
+                        tvBlockArrowRight: remoteNav && trapList,
+                        tvOnArrowRight: remoteNav && trapList
+                            ? controller.focusTvRightFromChannelsToTopBar
+                            : null,
                         tvAcceleratedListScroll: false,
                         tvBlockArrowUp: remoteNav && trapList && index == 0,
                         tvBlockArrowDown:
@@ -1233,24 +1231,38 @@ class _DetailGlassPanel extends StatelessWidget {
                       }
                       return KeyEventResult.ignored;
                     },
-                    child: Material(
-                      color: Colors.transparent,
-                      child: InkWell(
-                        onTap: () => controller.toggleFavorite(ch),
-                        borderRadius: BorderRadius.circular(22),
-                        child: Padding(
-                          padding: const EdgeInsets.all(8),
-                          child: Icon(
-                            on
-                                ? Icons.bookmark_rounded
-                                : Icons.bookmark_border_rounded,
-                            color: on
-                                ? primary
-                                : Colors.white.withValues(alpha: 0.9),
-                            size: 28,
+                    child: Builder(
+                      builder: (focusCtx) {
+                        final hasFocus = Focus.of(focusCtx).hasFocus;
+                        return AnimatedContainer(
+                          duration: const Duration(milliseconds: 120),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(22),
+                            border: hasFocus
+                                ? Border.all(color: primary, width: 2)
+                                : null,
                           ),
-                        ),
-                      ),
+                          child: Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              onTap: () => controller.toggleFavorite(ch),
+                              borderRadius: BorderRadius.circular(22),
+                              child: Padding(
+                                padding: const EdgeInsets.all(8),
+                                child: Icon(
+                                  on
+                                      ? Icons.bookmark_rounded
+                                      : Icons.bookmark_border_rounded,
+                                  color: on
+                                      ? primary
+                                      : Colors.white.withValues(alpha: 0.9),
+                                  size: 28,
+                                ),
+                              ),
+                            ),
+                          ),
+                        );
+                      },
                     ),
                   ),
                 );
@@ -1321,9 +1333,8 @@ class _DetailGlassPanel extends StatelessWidget {
                         maxHeight: videoMaxHeight,
                         loading: c.isPreviewLoading.value,
                         player: c.previewController,
-                        onSurfaceTap: portrait
-                            ? () => controller.openSelectedPlayer()
-                            : null,
+                        mediaKitController: c.previewVideoMediaKit,
+                        onSurfaceTap: () => controller.openSelectedPlayer(),
                       ),
                     ),
                     if (pv)
@@ -1331,7 +1342,8 @@ class _DetailGlassPanel extends StatelessWidget {
                         child: IgnorePointer(
                           child: DecoratedBox(
                             decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(previewRadius),
+                              borderRadius:
+                                  BorderRadius.circular(previewRadius),
                               border: Border.all(
                                 color: Colors.white.withValues(alpha: 0.88),
                                 width: 2,
@@ -1350,7 +1362,7 @@ class _DetailGlassPanel extends StatelessWidget {
         return LayoutBuilder(
           builder: (context, lc) {
             final landscapeVideoH =
-                !portrait ? (lc.maxHeight * 0.4).clamp(72.0, 440.0) : 92.0;
+                !portrait ? (lc.maxHeight * 0.4).clamp(72.0, 300.0) : 92.0;
             return Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -1394,14 +1406,15 @@ class _DetailGlassPanel extends StatelessWidget {
                                           begin: Alignment.topCenter,
                                           end: Alignment.bottomCenter,
                                           colors: [
-                                            Colors.black.withValues(alpha: 0.55),
+                                            Colors.black
+                                                .withValues(alpha: 0.55),
                                             Colors.black.withValues(alpha: 0.0),
                                           ],
                                         ),
                                       ),
                                       child: Padding(
-                                        padding:
-                                            const EdgeInsets.fromLTRB(6, 6, 6, 20),
+                                        padding: const EdgeInsets.fromLTRB(
+                                            6, 6, 6, 20),
                                         child: headerRow(),
                                       ),
                                     ),
@@ -1472,9 +1485,8 @@ class _DetailGlassPanel extends StatelessWidget {
                       );
                     },
                   ),
-                  const SizedBox(height: 8),
                 ],
-                const SizedBox(height: 6),
+                const SizedBox(height: 4),
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
@@ -1510,8 +1522,53 @@ class _DetailGlassPanel extends StatelessWidget {
                     ),
                   ],
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 4),
+                Obx(() {
+                  final epg = Get.find<EpgService>();
+                  final prog = epg.getCurrentProgrammeForLiveChannel(ch);
+                  final startStr =
+                      prog != null ? fmtClock(prog.start) : start;
+                  final endStr = prog != null ? fmtClock(prog.end) : end;
+                  final pv = prog?.progress ?? 0.0;
+                  return Row(
+                    key: ValueKey(
+                      '${epg.loadGeneration.value}_${prog?.title ?? ''}',
+                    ),
+                    children: [
+                      Text(
+                        startStr,
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.55),
+                          fontSize: 10,
+                        ),
+                      ),
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 10),
+                          child: ClipRRect(
+                            borderRadius: BorderRadius.circular(4),
+                            child: LinearProgressIndicator(
+                              value: pv.clamp(0.0, 1.0),
+                              minHeight: 4,
+                              backgroundColor:
+                                  Colors.white.withValues(alpha: 0.12),
+                              color: primary.withValues(alpha: 0.8),
+                            ),
+                          ),
+                        ),
+                      ),
+                      Text(
+                        endStr,
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.55),
+                          fontSize: 10,
+                        ),
+                      ),
+                    ],
+                  );
+                }),
                 if (portrait) ...[
+                  const SizedBox(height: 4),
                   SizedBox(
                     height: 72,
                     child: ExcludeFocus(
@@ -1535,52 +1592,45 @@ class _DetailGlassPanel extends StatelessWidget {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: 4),
+                  // Upcoming Programmes
                   Obx(() {
                     final epg = Get.find<EpgService>();
-                    final prog = epg.getCurrentProgrammeForLiveChannel(ch);
-                    final startStr = prog != null ? fmtClock(prog.start) : start;
-                    final endStr = prog != null ? fmtClock(prog.end) : end;
-                    final pv = prog?.progress ?? 0.0;
-                    return Row(
-                      key: ValueKey(
-                        '${epg.loadGeneration.value}_${prog?.title ?? ''}',
-                      ),
+                    final now = DateTime.now();
+                    final all = epg.getFullDayProgrammesForLiveChannel(ch);
+                    final currentIdx = all.indexWhere(
+                        (p) => !now.isBefore(p.start) && now.isBefore(p.end));
+                    final upcoming = currentIdx >= 0
+                        ? all.sublist(currentIdx + 1)
+                        : all.where((p) => p.start.isAfter(now)).toList();
+                    if (upcoming.isEmpty) return const SizedBox.shrink();
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text(
-                          startStr,
+                          'EPG',
                           style: TextStyle(
                             color: Colors.white.withValues(alpha: 0.55),
-                            fontSize: 10,
+                            fontSize: 11.5,
+                            fontWeight: FontWeight.w700,
                           ),
                         ),
-                        Expanded(
-                          child: Padding(
-                            padding:
-                                const EdgeInsets.symmetric(horizontal: 10),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(4),
-                              child: LinearProgressIndicator(
-                                value: pv.clamp(0.0, 1.0),
-                                minHeight: 4,
-                                backgroundColor:
-                                    Colors.white.withValues(alpha: 0.12),
-                                color: primary.withValues(alpha: 0.8),
+                        const SizedBox(height: 4),
+                        ...upcoming.take(5).map((p) => Padding(
+                              padding: const EdgeInsets.only(bottom: 2),
+                              child: Text(
+                                '${fmtClock(p.start)} - ${fmtClock(p.end)}  ${p.title}',
+                                style: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.78),
+                                  fontSize: 11,
+                                  height: 1.3,
+                                ),
                               ),
-                            ),
-                          ),
-                        ),
-                        Text(
-                          endStr,
-                          style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.55),
-                            fontSize: 10,
-                          ),
-                        ),
+                            )),
                       ],
                     );
                   }),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 8),
                   Builder(
                     builder: (context) {
                       final cat = controller.categoryNameFor(ch);
@@ -1598,7 +1648,7 @@ class _DetailGlassPanel extends StatelessWidget {
                       );
                     },
                   ),
-                  const SizedBox(height: 6),
+                  const SizedBox(height: 4),
                   Expanded(
                     child: _DetailSameCategoryChannelList(
                       controller: controller,
@@ -1606,73 +1656,65 @@ class _DetailGlassPanel extends StatelessWidget {
                     ),
                   ),
                 ] else ...[
+                  const SizedBox(height: 4),
                   Expanded(
                     child: ExcludeFocus(
                       excluding: true,
                       child: SingleChildScrollView(
                         child: Obx(() {
                           final epg = Get.find<EpgService>();
-                          return Text(
-                            epg.describeLiveChannelDetail(ch),
-                            key: ValueKey(
-                              '${epg.loadGeneration.value}_${epg.isLoading.value}',
-                            ),
-                            style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.78),
-                              fontSize: 11.5,
-                              height: 1.35,
-                            ),
+                          final now = DateTime.now();
+                          final all =
+                              epg.getFullDayProgrammesForLiveChannel(ch);
+                          final currentIdx = all.indexWhere((p) =>
+                              !now.isBefore(p.start) && now.isBefore(p.end));
+                          final upcoming = currentIdx >= 0
+                              ? all.sublist(currentIdx + 1)
+                              : all.where((p) => p.start.isAfter(now)).toList();
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                epg.describeLiveChannelDetail(ch),
+                                key: ValueKey(
+                                  '${epg.loadGeneration.value}_${epg.isLoading.value}',
+                                ),
+                                style: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.78),
+                                  fontSize: 11.5,
+                                  height: 1.35,
+                                ),
+                              ),
+                              if (upcoming.isNotEmpty) ...[
+                                const SizedBox(height: 8),
+                                Text(
+                                  'EPG',
+                                  style: TextStyle(
+                                    color: Colors.white.withValues(alpha: 0.55),
+                                    fontSize: 11.5,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                ...upcoming.take(5).map((p) => Padding(
+                                      padding: const EdgeInsets.only(bottom: 2),
+                                      child: Text(
+                                        '${fmtClock(p.start)} - ${fmtClock(p.end)}  ${p.title}',
+                                        style: TextStyle(
+                                          color: Colors.white
+                                              .withValues(alpha: 0.78),
+                                          fontSize: 11,
+                                          height: 1.3,
+                                        ),
+                                      ),
+                                    )),
+                              ],
+                            ],
                           );
                         }),
                       ),
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  Obx(() {
-                    final epg = Get.find<EpgService>();
-                    final prog = epg.getCurrentProgrammeForLiveChannel(ch);
-                    final startStr = prog != null ? fmtClock(prog.start) : start;
-                    final endStr = prog != null ? fmtClock(prog.end) : end;
-                    final pv = prog?.progress ?? 0.0;
-                    return Row(
-                      key: ValueKey(
-                        '${epg.loadGeneration.value}_${prog?.title ?? ''}',
-                      ),
-                      children: [
-                        Text(
-                          startStr,
-                          style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.55),
-                            fontSize: 10,
-                          ),
-                        ),
-                        Expanded(
-                          child: Padding(
-                            padding:
-                                const EdgeInsets.symmetric(horizontal: 10),
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(4),
-                              child: LinearProgressIndicator(
-                                value: pv.clamp(0.0, 1.0),
-                                minHeight: 4,
-                                backgroundColor:
-                                    Colors.white.withValues(alpha: 0.12),
-                                color: primary.withValues(alpha: 0.8),
-                              ),
-                            ),
-                          ),
-                        ),
-                        Text(
-                          endStr,
-                          style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.55),
-                            fontSize: 10,
-                          ),
-                        ),
-                      ],
-                    );
-                  }),
-                  const SizedBox(height: 8),
                 ],
               ],
             );

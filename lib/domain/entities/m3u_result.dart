@@ -24,6 +24,42 @@ class M3uResult {
   final List<int> recentVodIds;
   final List<int> recentSeriesIds;
   final UserInfo? userInfo;
+
+  /// Film/dizi nesnelerini bellekten çıkarır; kategoriler, meta ve kanallar
+  /// kalır. SQLite doluysa VOD/dizi tüketicileri [PlaylistDataSource] üzerinden
+  /// okumaya devam eder.
+  M3uResult withoutVodSeriesInMemory() {
+    if (vod.isEmpty && series.isEmpty) return this;
+    return M3uResult(
+      channels: channels,
+      channelCategories: channelCategories,
+      vod: const [],
+      vodCategories: vodCategories,
+      series: const [],
+      seriesCategories: seriesCategories,
+      recentVodIds: recentVodIds,
+      recentSeriesIds: recentSeriesIds,
+      userInfo: userInfo,
+    );
+  }
+
+  /// SQLite önbelleği için film/dizi/kanal listelerini bellekten çıkarır;
+  /// kategoriler ve meta kalır. Canlı kanallar [PlaylistDataSource] üzerinden
+  /// diskten okunur.
+  M3uResult slimForSqliteCache() {
+    if (vod.isEmpty && series.isEmpty && channels.isEmpty) return this;
+    return M3uResult(
+      channels: const [],
+      channelCategories: channelCategories,
+      vod: const [],
+      vodCategories: vodCategories,
+      series: const [],
+      seriesCategories: seriesCategories,
+      recentVodIds: recentVodIds,
+      recentSeriesIds: recentSeriesIds,
+      userInfo: userInfo,
+    );
+  }
 }
 
 class UserInfo {

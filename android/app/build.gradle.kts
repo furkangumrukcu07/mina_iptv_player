@@ -111,8 +111,8 @@ android {
         applicationId = "com.mina.iptv.mina_iptv_player"
         // You can update the following values to match your application needs.
         // For more information, see: https://flutter.dev/to/review-gradle-config.
-        // Firebase Auth / Firestore en az API 23 (Android 6) gerektirir.
-        minSdk = maxOf(23, flutter.minSdkVersion)
+        // Firebase Auth / Firestore en az API 23 (Android 6) gerektirir, ancak uygulama en az API 26 (Android 8) destekler.
+        minSdk = maxOf(26, flutter.minSdkVersion)
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
@@ -142,6 +142,12 @@ android {
         jniLibs {
             // androidx/media3 decoder_ffmpeg AAR eklendiğinde çakışmayı önler.
             pickFirsts.add("lib/**/libffmpegJNI.so")
+            // x86 / x86_64 yalnızca emülatörler içindir; gerçek telefon ve TV
+            // box'ların tamamı ARM. Flutter'ın `ndk.abiFilters`'ı evrensel APK
+            // paketlemesinde dikkate almadığı eklenti native kütüphanelerini
+            // (ör. x86_64 libmpv ~15.8 MB) burada paketleme aşamasında zorla
+            // dışlıyoruz. Hem APK hem AAB için, derleme bayrağından bağımsız.
+            excludes += listOf("**/x86/**", "**/x86_64/**")
         }
     }
 }

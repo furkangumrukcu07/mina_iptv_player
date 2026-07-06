@@ -167,6 +167,16 @@ class BetterPlayerController {
   ///Current app lifecycle state.
   AppLifecycleState _appLifecycleState = AppLifecycleState.resumed;
 
+  /// Uygulama arka plana geçince otomatik duraklatmayı dışarıdan kapatır
+  /// (Mina IPTV «arka planda oynat» açıkken).
+  bool _suppressLifecycleAutoPause = false;
+
+  /// Arka planda oynatma açıkken yaşam döngüsü / görünürlük kaynaklı
+  /// otomatik duraklatmayı devre dışı bırakır.
+  void setSuppressLifecycleAutoPause(bool suppress) {
+    _suppressLifecycleAutoPause = suppress;
+  }
+
   ///Flag which determines if controls (UI interface) is shown. When false,
   ///UI won't be shown (show only player surface).
   bool _controlsEnabled = true;
@@ -972,6 +982,7 @@ class BetterPlayerController {
 
   ///Check if player can be played/paused automatically
   bool _isAutomaticPlayPauseHandled() =>
+      !_suppressLifecycleAutoPause &&
       !(_betterPlayerDataSource?.notificationConfiguration?.showNotification ?? false) &&
       betterPlayerConfiguration.handleLifecycle;
 
@@ -1067,7 +1078,8 @@ class BetterPlayerController {
           play();
         }
       }
-      if (appLifecycleState == AppLifecycleState.paused) {
+      if (appLifecycleState == AppLifecycleState.paused ||
+          appLifecycleState == AppLifecycleState.hidden) {
         _wasPlayingBeforePause ??= isPlaying();
         pause();
       }

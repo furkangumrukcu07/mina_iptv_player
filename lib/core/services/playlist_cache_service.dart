@@ -6,6 +6,8 @@ import '../../domain/entities/m3u_result.dart';
 import 'app_settings_service.dart';
 import 'iptv_logo_cache_service.dart';
 import 'playlist_live_channel_layout.dart';
+import 'playlist_channel_layout_sync.dart';
+import 'playlist_data_source.dart';
 
 /// In-memory playlist snapshot shared across modules (replaces passing large args on routes).
 class PlaylistCacheService extends GetxService {
@@ -26,6 +28,11 @@ class PlaylistCacheService extends GetxService {
   /// [AppSettingsService.xtreamPreferenceKey] — yalnızca birincil kaynak Xtream ise dolu.
   final RxnString xtreamPreferenceKey = RxnString();
 
+  /// Aktif slot'un [PlaylistSqliteStore] `source_key` parmak izi. Tüketiciler
+  /// büyük kanal/film/dizi listelerini RAM yerine bu anahtarla diskten
+  /// (sayfalı) sorgular. DB henüz dolmadıysa veya kaynak yoksa null.
+  final RxnString dbSourceKey = RxnString();
+
   int? _layoutCacheKey;
   M3uResult? _layoutCachedResult;
 
@@ -34,6 +41,7 @@ class PlaylistCacheService extends GetxService {
     required String url,
     String? xtreamPreferenceKey,
     String? m3uLayoutKey,
+    String? dbSourceKey,
   }) {
     rawPlaylist = value;
     _layoutCacheKey = null;
@@ -43,14 +51,32 @@ class PlaylistCacheService extends GetxService {
     lastUpdated.value = DateTime.now();
     this.xtreamPreferenceKey.value = xtreamPreferenceKey;
     this.m3uLayoutKey.value = m3uLayoutKey;
+    this.dbSourceKey.value = dbSourceKey;
     layoutRevision.value++;
     if (Get.isRegistered<IptvLogoCacheService>()) {
-      unawaited(
-        Get.find<IptvLogoCacheService>().prefetchChannelLogos(
-          result.value?.channels ?? value.channels,
-        ),
-      );
+      final logos = result.value?.channels ?? value.channels;
+      if (logos.isNotEmpty) {
+        unawaited(
+          Get.find<IptvLogoCacheService>().prefetchChannelLogos(logos),
+        );
+      } else if (this.dbSourceKey.value != null &&
+          Get.isRegistered<PlaylistDataSource>()) {
+        unawaited(_prefetchLogosFromDb());
+      }
     }
+  }
+
+  Future<void> _prefetchLogosFromDb() async {
+    if (!Get.isRegistered<PlaylistDataSource>()) return;
+    final ds = Get.find<PlaylistDataSource>();
+    if (!ds.isDbBacked) return;
+    try {
+      final page = await ds.channelsForScan(limit: 500);
+      if (page.isEmpty) return;
+      if (Get.isRegistered<IptvLogoCacheService>()) {
+        await Get.find<IptvLogoCacheService>().prefetchChannelLogos(page);
+      }
+    } catch (_) {}
   }
 
   int _layoutKeyFor(
@@ -123,11 +149,26 @@ class PlaylistCacheService extends GetxService {
     final mk = m3uLayoutKey.value?.trim();
     _layoutCacheKey = null;
     _layoutCachedResult = null;
-    final next = _withLayoutApplied(raw, xk, mk);
-    if (!identical(result.value, next)) {
-      result.value = next;
+
+    final dbKey = dbSourceKey.value?.trim();
+    if (dbKey != null && dbKey.isNotEmpty) {
+      unawaited(
+        PlaylistChannelLayoutSync.syncActiveSlot().whenComplete(() {
+          layoutRevision.value++;
+        }),
+      );
     }
-    layoutRevision.value++;
+
+    // Bellek yedek / kanallar hâlâ RAM'deyse düzeni orada da uygula (DB yedekte kanallar RAM'de tutulmaz).
+    if (raw.channels.isNotEmpty && (dbKey == null || dbKey.isEmpty)) {
+      final next = _withLayoutApplied(raw, xk, mk);
+      if (!identical(result.value, next)) {
+        result.value = next;
+      }
+    }
+    if (dbKey == null || dbKey.isEmpty) {
+      layoutRevision.value++;
+    }
   }
 
   @Deprecated('Use reapplyLiveChannelLayout')
@@ -140,6 +181,7 @@ class PlaylistCacheService extends GetxService {
     lastUpdated.value = null;
     xtreamPreferenceKey.value = null;
     m3uLayoutKey.value = null;
+    dbSourceKey.value = null;
     _layoutCacheKey = null;
     _layoutCachedResult = null;
     layoutRevision.value++;

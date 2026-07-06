@@ -128,9 +128,11 @@ class _IptvChannelLogoBodyState extends State<_IptvChannelLogoBody> {
     final n = widget.imageUrl.trim();
     if (n != _url) {
       _url = n;
-      _file = null;
-      _failed = false;
-      _busy = true;
+      setState(() {
+        _file = null;
+        _failed = false;
+        _busy = true;
+      });
       _resolve();
     }
   }

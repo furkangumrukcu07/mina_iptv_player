@@ -52,10 +52,10 @@ class MinaAnalyticsService extends GetxService {
   bool _loaded = false;
   Completer<void>? _loading;
 
-  /// Kullanıcı kapatabilir → ayarlar > gizlilik. **Varsayılan kapalı** —
-  /// kullanıcı Ana Ekran Ayarları'ndan veya Kurulum Sihirbazı'ndan
-  /// bilinçli olarak açana kadar tick toplama devre dışı.
-  bool _enabled = false;
+  /// Kullanıcı kapatabilir → ayarlar > gizlilik. **Varsayılan açık** —
+  /// kurulum sihirbazında ve normal modda tick toplama açık gelir; kullanıcı
+  /// Ana Ekran Ayarları'ndan veya Kurulum Sihirbazı'ndan kapatabilir.
+  bool _enabled = true;
   bool get enabled => _enabled;
 
   /// Dış tetik (UI tab değişimi vb.) için reaktif sürüm sayacı —
@@ -75,7 +75,7 @@ class MinaAnalyticsService extends GetxService {
     _loading = Completer<void>();
     try {
       final prefs = await SharedPreferences.getInstance();
-      _enabled = prefs.getBool(_kEnabledKey) ?? false;
+      _enabled = prefs.getBool(_kEnabledKey) ?? true;
       final raw = prefs.getString(_kKey);
       if (raw != null && raw.isNotEmpty) {
         try {

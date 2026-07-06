@@ -1,3 +1,6 @@
+// Bu bir komut satırı (CLI) üretici betiğidir; terminale çıktı için `print`
+// kullanımı yerindedir.
+// ignore_for_file: avoid_print
 import 'dart:io';
 
 void main() {

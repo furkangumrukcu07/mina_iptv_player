@@ -1,5 +1,6 @@
 import 'dart:async' show unawaited;
 
+import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 
 import '../../../core/home/film_dizi_catalog.dart';
@@ -13,17 +14,31 @@ import '../../../core/routes/app_routes.dart';
 import '../../../core/services/favorites_service.dart';
 import '../../../core/services/movie_service.dart';
 import '../../../core/services/playlist_cache_service.dart';
+import '../../../core/services/playlist_data_source.dart';
 import '../../../domain/entities/movie_model.dart';
+import '../../../domain/entities/m3u_result.dart';
 import '../../../domain/entities/series.dart';
 import '../../../domain/entities/series_episode_option.dart';
 import '../../../domain/entities/vod.dart';
 import '../../../domain/repositories/playlist_repository.dart';
+import '../../player/player_navigation.dart';
 import '../../player/player_route_args.dart';
 
 class FilmDiziSeriesDetailController extends GetxController {
+  FilmDiziSeriesDetailController({
+    this.injectedArgs,
+  });
+
+  /// Rota argümanları yerine doğrudan enjekte edilen argüman.
+  final FilmDiziSeriesDetailArgs? injectedArgs;
+
   late final FilmDiziSeriesDetailArgs args;
 
   final isLoading = true.obs;
+
+  /// Yerel veri gösterildikten sonra TMDB/Xtream metadata (özet, tür vb.) hâlâ
+  /// arka planda geliyorsa `true`. İlgili UI alanları iskelet gösterir.
+  final metaEnriching = false.obs;
   final episodesLoading = true.obs;
   final episodesError = RxnString();
   final meta = Rxn<MovieModel>();
@@ -48,7 +63,7 @@ class FilmDiziSeriesDetailController extends GetxController {
   @override
   void onInit() {
     super.onInit();
-    final arg = Get.arguments;
+    final arg = injectedArgs ?? Get.arguments;
     if (arg is FilmDiziSeriesDetailArgs) {
       final data = Get.find<PlaylistCacheService>().result.value;
       if (arg.seriesCluster == null && data != null) {
@@ -66,6 +81,19 @@ class FilmDiziSeriesDetailController extends GetxController {
         arg,
         playlistData: data,
       );
+    } else if (arg is Map<String, dynamic>) {
+      final series = arg['series'] as SeriesItem?;
+      if (series != null) {
+        final data = Get.find<PlaylistCacheService>().result.value;
+        args = FilmDiziSeriesDetailArgs.fromSeries(
+          series,
+          playlistData: data,
+        );
+      } else {
+        args = const FilmDiziSeriesDetailArgs(
+          series: SeriesItem(id: 0, name: '', categoryId: 0),
+        );
+      }
     } else {
       args = const FilmDiziSeriesDetailArgs(
         series: SeriesItem(id: 0, name: '', categoryId: 0),
@@ -108,11 +136,44 @@ class FilmDiziSeriesDetailController extends GetxController {
   }
 
   String? get posterUrl {
+    // Kullanıcı isteği: TMDB posterleri öncelikli.
+    final tmdb = meta.value?.tmdbPoster?.trim();
+    if (tmdb != null && tmdb.isNotEmpty) return tmdb;
     final x = xtreamMeta.value?.coverUrl;
     if (x != null && x.trim().isNotEmpty) return x.trim();
     final m = meta.value?.poster;
     if (m != null && m.trim().isNotEmpty && m != 'N/A') return m.trim();
     return series.posterUrl;
+  }
+
+  /// Hero/blur arka planı için TMDB backdrop; yoksa poster.
+  String? get backdropUrl {
+    final b = meta.value?.tmdbBackdrop?.trim();
+    if (b != null && b.isNotEmpty) return b;
+    return posterUrl;
+  }
+
+  /// TMDB oy ortalaması (örn. "7.8").
+  String? get tmdbRatingLabel {
+    final r = meta.value?.tmdbRating;
+    if (r == null || r <= 0) return null;
+    return r.toStringAsFixed(1);
+  }
+
+  /// Yaş sınırı / sertifika (TMDB).
+  String? get certificationLabel {
+    final c = meta.value?.certification?.trim();
+    if (_usableMeta(c)) return c;
+    final r = meta.value?.rated?.trim();
+    if (_usableMeta(r)) return r;
+    return null;
+  }
+
+  /// Yapım ülkesi (TMDB).
+  String? get countryLabel {
+    final c = meta.value?.country?.trim();
+    if (_usableMeta(c)) return c;
+    return null;
   }
 
   String get synopsis {
@@ -133,8 +194,8 @@ class FilmDiziSeriesDetailController extends GetxController {
     return t.isNotEmpty && t.toUpperCase() != 'N/A';
   }
 
-  List<FilmDiziMediaPill> get genrePills =>
-      FilmDiziMediaPills.genrePills(meta.value?.genre ?? xtreamMeta.value?.genre);
+  List<FilmDiziMediaPill> get genrePills => FilmDiziMediaPills.genrePills(
+      meta.value?.genre ?? xtreamMeta.value?.genre);
 
   String? get imdbRating {
     final x = xtreamMeta.value?.imdbRating?.trim();
@@ -187,6 +248,9 @@ class FilmDiziSeriesDetailController extends GetxController {
 
   bool get hasHeaderMeta =>
       imdbRating != null ||
+      tmdbRatingLabel != null ||
+      certificationLabel != null ||
+      countryLabel != null ||
       releaseYear != null ||
       languageLabel != null ||
       genreLine != null ||
@@ -201,7 +265,93 @@ class FilmDiziSeriesDetailController extends GetxController {
 
   void togglePlot() => plotExpanded.value = !plotExpanded.value;
 
-  void selectSeason(int s) => selectedSeason.value = s;
+  void selectSeason(int s) {
+    selectedSeason.value = s;
+    ensureTmdbSeasonInfo(s);
+    // Seçilen sezonda bölüm yoksa, bölüm olan ilk sezona geç
+    if (episodesInSeason.isEmpty && seasons.isNotEmpty) {
+      for (final season in seasons) {
+        final seasonEpisodes =
+            episodes.where((e) => e.season == season).toList();
+        if (seasonEpisodes.isNotEmpty) {
+          selectedSeason.value = season;
+          ensureTmdbSeasonInfo(season);
+          break;
+        }
+      }
+    }
+  }
+
+  /// TMDB bölüm bilgisi (ad/özet): "sezon:bölüm" → bilgi. Sezon görüntülenince
+  /// arka planda dolar; UI `Obx` ile bu haritayı dinler.
+  final episodeTmdbInfo = <String, ({String? name, String? overview})>{}.obs;
+  final _loadedTmdbSeasons = <int>{};
+
+  String _epKey(SeriesEpisodeOption o) {
+    // Güvenli anahtar üretimi: Null ve negatif değerleri varsayılanlarla değiştir
+    final season = o.season > 0 ? o.season : 1;
+    final episodeNumber = o.episodeNumber > 0 ? o.episodeNumber : 1;
+    return '$season:$episodeNumber';
+  }
+
+  /// Bölümün TMDB tanıtım adı. Jenerik "Bölüm N" / "Episode N" ise gizlenir
+  /// (liste başlığında zaten sezon/bölüm numarası var).
+  String? episodeTmdbName(SeriesEpisodeOption o) {
+    try {
+      final n = episodeTmdbInfo[_epKey(o)]?.name?.trim();
+      if (n == null || n.isEmpty) return null;
+      final lower = n.toLowerCase();
+      if (RegExp(r'^(bölüm|bolum|episode|ep|chapter)\.?\s*\d+$')
+          .hasMatch(lower)) {
+        return null;
+      }
+      return n;
+    } catch (e) {
+      debugPrint('[episodeTmdbName] Error: $e');
+      return null;
+    }
+  }
+
+  /// Bölümün TMDB kısa özeti (Xtream `plot` yoksa kullanılır).
+  String? episodeTmdbOverview(SeriesEpisodeOption o) {
+    try {
+      final ov = episodeTmdbInfo[_epKey(o)]?.overview?.trim();
+      if (ov == null || ov.isEmpty) return null;
+      return ov;
+    } catch (e) {
+      debugPrint('[episodeTmdbOverview] Error: $e');
+      return null;
+    }
+  }
+
+  /// Görüntülenen sezon için TMDB bölüm bilgisini (ad + özet) bir kez yükler.
+  void ensureTmdbSeasonInfo(int season) {
+    if (_loadedTmdbSeasons.contains(season)) return;
+    _loadedTmdbSeasons.add(season);
+    unawaited(_loadTmdbSeasonInfo(season));
+  }
+
+  Future<void> _loadTmdbSeasonInfo(int season) async {
+    try {
+      final ms = Get.find<MovieService>();
+      final year = RecommendedFilmsCatalog.cleanTitleAndYear(displayTitle).$2;
+      final map = await ms.fetchTmdbSeasonEpisodes(
+        seriesName: displayTitle,
+        year: year,
+        season: season,
+      );
+      if (isClosed || map.isEmpty) return;
+      final merged =
+          Map<String, ({String? name, String? overview})>.from(episodeTmdbInfo);
+      map.forEach((epNum, info) {
+        merged['$season:$epNum'] = info;
+      });
+      episodeTmdbInfo.value = merged;
+    } catch (_) {
+      // Tekrar denenebilsin diye sezonu kilitten çıkar.
+      _loadedTmdbSeasons.remove(season);
+    }
+  }
 
   void toggleFavorite() => Get.find<FavoritesService>().toggleSeries(series.id);
 
@@ -224,11 +374,101 @@ class FilmDiziSeriesDetailController extends GetxController {
     episodesError.value = null;
 
     final data = Get.find<PlaylistCacheService>().result.value;
-    final ms = Get.find<MovieService>();
     final cleaned = RecommendedFilmsCatalog.cleanTitleAndYear(displayTitle);
-    final localPlot = SeriesNameGrouping.bestPlotFromCluster(_seriesCluster) ??
-        series.plot;
+    final localPlot =
+        SeriesNameGrouping.bestPlotFromCluster(_seriesCluster) ?? series.plot;
 
+    // Yerel veriyle anında göster.
+    meta.value = MovieModel(
+      title: displayTitle,
+      plot: localPlot,
+      poster: series.posterUrl,
+    );
+    if (data != null) {
+      final ds = Get.find<PlaylistDataSource>();
+      if (ds.isDbBacked) {
+        unawaited(_loadSimilarFromDb(data, ds));
+      } else {
+        similar.assignAll(
+          FilmDiziCatalog.allSeriesInCategory(data, series.categoryId)
+              .where((s) => s.id != series.id)
+              .take(24)
+              .toList(),
+        );
+      }
+    }
+    isLoading.value = false;
+    metaEnriching.value = true;
+
+    final ms = Get.find<MovieService>();
+    // Bölüm listesi + TMDB metadata paralel.
+    final episodesFuture = SeriesEpisodeLoader.load(
+      series: series,
+      playlist: Get.find<PlaylistRepository>(),
+      playlistData: data,
+      seriesCluster: _seriesCluster,
+      displayTitle: displayTitle,
+    );
+    final metaFuture = _fetchSeriesMetadata(ms, cleaned, localPlot);
+
+    late final ({
+      List<SeriesEpisodeOption> episodes,
+      XtreamSeriesBrowseDetail? xtreamMeta,
+      String? errorKey,
+    }) loaded;
+    late final MovieModel movieMeta;
+    await Future.wait<void>([
+      episodesFuture.then((r) => loaded = r),
+      metaFuture.then((m) => movieMeta = m),
+    ]);
+    episodes.assignAll(loaded.episodes);
+    xtreamMeta.value = loaded.xtreamMeta;
+
+    // Debug: Episode season distribution
+    final seasonGroups = <int, List<SeriesEpisodeOption>>{};
+    debugPrint('[FilmDiziSeriesDetailController] All loaded episodes:');
+    for (int i = 0; i < loaded.episodes.length; i++) {
+      final ep = loaded.episodes[i];
+      debugPrint(
+          '[FilmDiziSeriesDetailController]  $i: S${ep.season}E${ep.episodeNumber} (channelId: ${ep.channel.id}, title: ${ep.channel.name})');
+      seasonGroups.putIfAbsent(ep.season, () => []).add(ep);
+    }
+    final seasonInfo = seasonGroups.entries
+        .map((e) => 'S${e.key}: ${e.value.length}')
+        .join(', ');
+    debugPrint(
+        '[FilmDiziSeriesDetailController] Loaded ${loaded.episodes.length} episodes with season distribution: $seasonInfo');
+
+    if (loaded.errorKey != null) {
+      episodesError.value = loaded.errorKey!.tr;
+    }
+    final ss = seasons;
+    debugPrint('[FilmDiziSeriesDetailController] Available seasons: $ss');
+    selectedSeason.value = ss.isNotEmpty ? ss.first : null;
+    debugPrint(
+        '[FilmDiziSeriesDetailController] Selected season: ${selectedSeason.value}');
+    debugPrint(
+        '[FilmDiziSeriesDetailController] Episodes in selected season: ${episodesInSeason.length}');
+    for (int i = 0; i < episodesInSeason.length; i++) {
+      final ep = episodesInSeason[i];
+      debugPrint(
+          '[FilmDiziSeriesDetailController]  Season ${selectedSeason.value} ep $i: S${ep.season}E${ep.episodeNumber} (${ep.channel.name})');
+    }
+    episodesLoading.value = false;
+    meta.value = movieMeta;
+    metaEnriching.value = false;
+    if (selectedSeason.value != null) {
+      ensureTmdbSeasonInfo(selectedSeason.value!);
+    }
+
+    unawaited(_loadTrailers(ms, cleaned.$2, loaded.xtreamMeta?.trailerUrl));
+  }
+
+  Future<MovieModel> _fetchSeriesMetadata(
+    MovieService ms,
+    (String, String?) cleaned,
+    String? localPlot,
+  ) async {
     var movieMeta = await ms.getMovieWithFallback(
       name: displayTitle,
       localPlot: localPlot,
@@ -238,8 +478,7 @@ class FilmDiziSeriesDetailController extends GetxController {
     );
     if (!_hasPlot(movieMeta.plot) && !_hasPlot(localPlot)) {
       final alt = TurkishTitleUtils.cleanTitleForSearch(displayTitle);
-      if (alt.isNotEmpty &&
-          alt.toLowerCase() != displayTitle.toLowerCase()) {
+      if (alt.isNotEmpty && alt.toLowerCase() != displayTitle.toLowerCase()) {
         final retry = await ms.getMovieWithFallback(
           name: alt,
           localPlot: localPlot,
@@ -250,41 +489,37 @@ class FilmDiziSeriesDetailController extends GetxController {
         if (_hasPlot(retry.plot)) movieMeta = retry;
       }
     }
-    meta.value = movieMeta;
-    isLoading.value = false;
+    return movieMeta;
+  }
 
-    final loaded = await SeriesEpisodeLoader.load(
-      series: series,
-      playlist: Get.find<PlaylistRepository>(),
-      playlistData: data,
-      seriesCluster: _seriesCluster,
-      displayTitle: displayTitle,
-    );
-    episodes.assignAll(loaded.episodes);
-    xtreamMeta.value = loaded.xtreamMeta;
-    if (loaded.errorKey != null) {
-      episodesError.value = loaded.errorKey!.tr;
-    }
-    final ss = seasons;
-    selectedSeason.value = ss.isNotEmpty ? ss.first : null;
-    episodesLoading.value = false;
-
+  Future<void> _loadTrailers(
+    MovieService ms,
+    String? year,
+    String? xtreamTrailerUrl,
+  ) async {
     final trailerList = await ms.fetchTrailers(
       name: displayTitle,
-      year: cleaned.$2,
+      year: year,
       isSeries: true,
-      xtreamTrailerUrl: loaded.xtreamMeta?.trailerUrl,
+      xtreamTrailerUrl: xtreamTrailerUrl,
     );
+    if (isClosed) return;
     trailers.assignAll(trailerList);
+  }
 
-    if (data != null) {
-      similar.assignAll(
-        FilmDiziCatalog.allSeriesInCategory(data, series.categoryId)
-            .where((s) => s.id != series.id)
-            .take(24)
-            .toList(),
-      );
-    }
+  Future<void> _loadSimilarFromDb(
+    M3uResult data,
+    PlaylistDataSource ds,
+  ) async {
+    final all = await FilmDiziCatalog.allSeriesInCategoryFromDb(
+      data,
+      ds,
+      series.categoryId,
+    );
+    if (isClosed) return;
+    similar.assignAll(
+      all.where((s) => s.id != series.id).take(24).toList(growable: false),
+    );
   }
 
   void openSimilarSeries(SeriesItem s) {
@@ -331,21 +566,22 @@ class FilmDiziSeriesDetailController extends GetxController {
     return meta.value?.year;
   }
 
-  void playEpisode(SeriesEpisodeOption opt) {
-    final tape = episodesInSeason.isNotEmpty ? episodesInSeason : episodes.toList();
-    Get.toNamed(
-      AppRoutes.player,
-      arguments: PlayerScreenArgs(
-        channel: opt.channel,
-        playingSeriesInTape: series,
-        episodeBrowseTape: tape,
-      ),
+  Future<void> playEpisode(SeriesEpisodeOption opt) async {
+    final tape =
+        episodesInSeason.isNotEmpty ? episodesInSeason : episodes.toList();
+    final args = PlayerScreenArgs(
+      channel: opt.channel,
+      playingSeriesInTape: series,
+      episodeBrowseTape: tape,
+      // Bölümün Xtream ses kodeği (ör. ac3) → proaktif motor seçimi.
+      audioCodecHint: opt.audioCodec,
     );
+    await openPlayerRoute(args);
   }
 
-  void playFirstEpisode() {
+  Future<void> playFirstEpisode() async {
     final ep = firstEpisode;
-    if (ep != null) playEpisode(ep);
+    if (ep != null) await playEpisode(ep);
   }
 
   void openActor(CastMember member) {

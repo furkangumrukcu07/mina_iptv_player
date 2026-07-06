@@ -11,14 +11,78 @@ import '../../core/theme/glass_appearance.dart';
 import '../../domain/entities/playlist_source.dart';
 import '../../ui/glass_overlays.dart';
 import '../../ui/tv_dpad_focus.dart';
+import '../../ui/tv_settings_subpage.dart';
 import 'playlists_manager_controller.dart';
 
 class PlaylistsManagerView extends GetView<PlaylistsManagerController> {
-  const PlaylistsManagerView({super.key});
+  const PlaylistsManagerView({
+    super.key,
+    this.embeddedInTvShell = false,
+    this.onRemoteLeft,
+    this.registerRowFocusHandler,
+  });
+
+  /// TV kabuğu sağ panelinde gömülü mod: ayrı sayfa açılmaz.
+  final bool embeddedInTvShell;
+
+  /// Kumanda ◀: sol menüye dön.
+  final VoidCallback? onRemoteLeft;
+
+  /// İlk liste satırına odak vermek için kayıt (TV kabuğu).
+  final void Function(void Function()? handler)? registerRowFocusHandler;
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final body = Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _Header(cs: cs, embeddedInTvShell: embeddedInTvShell),
+        Expanded(
+          child: _PlaylistsSlotList(
+            embeddedInTvShell: embeddedInTvShell,
+            onRemoteLeft: onRemoteLeft,
+            registerRowFocusHandler: registerRowFocusHandler,
+          ),
+        ),
+        Obx(() {
+          if (!controller.isReloadingMerged.value) {
+            return const SizedBox.shrink();
+          }
+          final statusText = 'playlistsManager.syncing'.tr;
+          return Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+            child: Row(
+              children: [
+                SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: cs.primary,
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    statusText,
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.78),
+                      fontSize: 13,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          );
+        }),
+      ],
+    );
+
+    if (embeddedInTvShell) {
+      return body;
+    }
+
     return Scaffold(
       backgroundColor: Colors.black,
       body: Stack(
@@ -34,75 +98,7 @@ class PlaylistsManagerView extends GetView<PlaylistsManagerController> {
               ),
             );
           }),
-          SafeArea(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _Header(cs: cs),
-                Expanded(
-                  child: Obx(() {
-                    final list = controller.slots.toList();
-                    if (list.isEmpty) {
-                      return const Center(
-                        child: SizedBox(
-                          width: 28,
-                          height: 28,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        ),
-                      );
-                    }
-                    return ListView.separated(
-                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
-                      itemCount: list.length,
-                      separatorBuilder: (_, __) => const SizedBox(height: 10),
-                      itemBuilder: (context, i) {
-                        final state = list[i];
-                        // Boş slot ve listenin son elemanıysa "Yeni liste
-                        // ekle" davetkâr kartı render et.
-                        final isAddSlot =
-                            state.isEmpty && i == list.length - 1;
-                        if (isAddSlot) {
-                          return _AddSlotCard(slot: state.slot);
-                        }
-                        return _SlotCard(state: state);
-                      },
-                    );
-                  }),
-                ),
-                Obx(() {
-                  if (!controller.isReloadingMerged.value) {
-                    return const SizedBox.shrink();
-                  }
-                  final statusText = 'playlistsManager.syncing'.tr;
-                  return Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                    child: Row(
-                      children: [
-                        SizedBox(
-                          width: 16,
-                          height: 16,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: cs.primary,
-                          ),
-                        ),
-                        const SizedBox(width: 10),
-                        Expanded(
-                          child: Text(
-                            statusText,
-                            style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.78),
-                              fontSize: 13,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  );
-                }),
-              ],
-            ),
-          ),
+          SafeArea(child: body),
         ],
       ),
     );
@@ -110,9 +106,10 @@ class PlaylistsManagerView extends GetView<PlaylistsManagerController> {
 }
 
 class _Header extends StatelessWidget {
-  const _Header({required this.cs});
+  const _Header({required this.cs, this.embeddedInTvShell = false});
 
   final ColorScheme cs;
+  final bool embeddedInTvShell;
 
   @override
   Widget build(BuildContext context) {
@@ -121,21 +118,22 @@ class _Header extends StatelessWidget {
       Get.find<AppSettingsService>().layoutMode.value,
     );
     return Padding(
-      padding: const EdgeInsets.fromLTRB(8, 4, 16, 8),
+      padding: EdgeInsets.fromLTRB(embeddedInTvShell ? 20 : 8, 8, 16, 8),
       child: Row(
         children: [
-          remote
-              ? TvIconButton(
-                  icon: Icons.arrow_back_rounded,
-                  onPressed: Get.back,
-                  tooltip: 'common.back'.tr,
-                  autofocus: true,
-                )
-              : IconButton(
-                  onPressed: Get.back,
-                  icon: const Icon(Icons.arrow_back_rounded,
-                      color: Colors.white),
-                ),
+          if (!embeddedInTvShell && !tvSettingsLayoutIsTv())
+            remote
+                ? TvIconButton(
+                    icon: Icons.arrow_back_rounded,
+                    onPressed: Get.back,
+                    tooltip: 'common.back'.tr,
+                    autofocus: true,
+                  )
+                : IconButton(
+                    onPressed: Get.back,
+                    icon: const Icon(Icons.arrow_back_rounded,
+                        color: Colors.white),
+                  ),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
@@ -167,10 +165,285 @@ class _Header extends StatelessWidget {
   }
 }
 
+class _PlaylistsSlotList extends StatefulWidget {
+  const _PlaylistsSlotList({
+    required this.embeddedInTvShell,
+    this.onRemoteLeft,
+    this.registerRowFocusHandler,
+  });
+
+  final bool embeddedInTvShell;
+  final VoidCallback? onRemoteLeft;
+  final void Function(void Function()? handler)? registerRowFocusHandler;
+
+  @override
+  State<_PlaylistsSlotList> createState() => _PlaylistsSlotListState();
+}
+
+enum _PlaylistRowTarget { body, toggle, refresh, edit, delete }
+
+/// TV kabuğu gömülü modda satır içi D-pad sarmalayıcısı.
+class _PlaylistTvFocusScope {
+  const _PlaylistTvFocusScope({required this.wrap});
+
+  final Widget Function({
+    required _PlaylistRowTarget target,
+    required Widget child,
+    VoidCallback? onActivate,
+    double borderRadius,
+  }) wrap;
+}
+
+class _PlaylistsSlotListState extends State<_PlaylistsSlotList> {
+  final _targetFocusNodes = <String, FocusNode>{};
+  Worker? _slotsWorker;
+  bool _pendingFirstRowFocus = false;
+
+  FocusNode _targetFocus(int row, _PlaylistRowTarget target) =>
+      _targetFocusNodes.putIfAbsent(
+        '$row-${target.name}',
+        () => FocusNode(debugLabel: 'playlistRow${row}_${target.name}'),
+      );
+
+  List<_PlaylistRowTarget> _targetsFor(PlaylistSlotState state) {
+    final targets = <_PlaylistRowTarget>[_PlaylistRowTarget.body];
+    if (state.canToggleDisabled) {
+      targets.add(_PlaylistRowTarget.toggle);
+    }
+    if (!state.isEmpty && state.kind != PlaylistSourceKind.m3uLocal) {
+      targets.add(_PlaylistRowTarget.refresh);
+    }
+    targets.add(_PlaylistRowTarget.edit);
+    if (!state.isEmpty) {
+      targets.add(_PlaylistRowTarget.delete);
+    }
+    return targets;
+  }
+
+  FocusNode _peerFocus(
+    int row,
+    _PlaylistRowTarget preferred,
+    List<PlaylistSlotState> list,
+  ) {
+    final chain = _targetsFor(list[row]);
+    final target =
+        chain.contains(preferred) ? preferred : _PlaylistRowTarget.body;
+    return _targetFocus(row, target);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    widget.registerRowFocusHandler?.call(_focusFirstRow);
+    if (widget.embeddedInTvShell) {
+      final c = Get.find<PlaylistsManagerController>();
+      _slotsWorker = ever(c.slots, (_) {
+        if (!mounted || c.slots.isEmpty) return;
+        if (_pendingFirstRowFocus) {
+          _pendingFirstRowFocus = false;
+          _focusFirstRow();
+        }
+      });
+    }
+  }
+
+  @override
+  void dispose() {
+    _slotsWorker?.dispose();
+    widget.registerRowFocusHandler?.call(null);
+    for (final n in _targetFocusNodes.values) {
+      n.dispose();
+    }
+    super.dispose();
+  }
+
+  void _focusFirstRow() {
+    if (!mounted) return;
+    final c = Get.find<PlaylistsManagerController>();
+    if (c.slots.isEmpty) {
+      _pendingFirstRowFocus = true;
+      return;
+    }
+    scheduleTvFocusRestore(_targetFocus(0, _PlaylistRowTarget.body));
+  }
+
+  bool _usesTvRowNav(BuildContext context) {
+    if (!widget.embeddedInTvShell) return false;
+    return remoteNavForScreenLayout(
+      context,
+      Get.find<AppSettingsService>().layoutMode.value,
+    );
+  }
+
+  _PlaylistTvFocusScope? _tvScopeForRow({
+    required BuildContext context,
+    required int rowIndex,
+    required int itemCount,
+    required List<PlaylistSlotState> allStates,
+    required PlaylistSlotState state,
+  }) {
+    if (!_usesTvRowNav(context)) return null;
+    return _PlaylistTvFocusScope(
+      wrap: ({
+        required _PlaylistRowTarget target,
+        required Widget child,
+        VoidCallback? onActivate,
+        double borderRadius = 16,
+      }) =>
+          _wrapTarget(
+        context: context,
+        rowIndex: rowIndex,
+        itemCount: itemCount,
+        allStates: allStates,
+        state: state,
+        target: target,
+        borderRadius: borderRadius,
+        onActivate: onActivate,
+        child: child,
+      ),
+    );
+  }
+
+  Widget _wrapTarget({
+    required BuildContext context,
+    required int rowIndex,
+    required int itemCount,
+    required List<PlaylistSlotState> allStates,
+    required PlaylistSlotState state,
+    required _PlaylistRowTarget target,
+    required Widget child,
+    VoidCallback? onActivate,
+    double borderRadius = 16,
+  }) {
+    final chain = _targetsFor(state);
+    final idx = chain.indexOf(target);
+    final left =
+        idx > 0 ? _targetFocus(rowIndex, chain[idx - 1]) : null;
+    final right = idx < chain.length - 1
+        ? _targetFocus(rowIndex, chain[idx + 1])
+        : null;
+    return TvDpadFocus(
+      focusNode: _targetFocus(rowIndex, target),
+      borderRadius: borderRadius,
+      onActivate: onActivate,
+      arrowUp: rowIndex > 0
+          ? _peerFocus(rowIndex - 1, target, allStates)
+          : null,
+      arrowDown: rowIndex < itemCount - 1
+          ? _peerFocus(rowIndex + 1, target, allStates)
+          : null,
+      arrowLeft: left,
+      arrowRight: right,
+      blockUp: rowIndex == 0,
+      blockDown: rowIndex == itemCount - 1,
+      onKeyEvent: (event) {
+        if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+          return KeyEventResult.ignored;
+        }
+        if (event is KeyRepeatEvent) {
+          return KeyEventResult.handled;
+        }
+        final k = event.logicalKey;
+        if (k == LogicalKeyboardKey.arrowLeft &&
+            left == null &&
+            target == chain.first) {
+          widget.onRemoteLeft?.call();
+          return KeyEventResult.handled;
+        }
+        return KeyEventResult.ignored;
+      },
+      child: child,
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final c = Get.find<PlaylistsManagerController>();
+    return Obx(() {
+      final list = c.slots.toList();
+      if (list.isEmpty) {
+        return const Center(
+          child: SizedBox(
+            width: 28,
+            height: 28,
+            child: CircularProgressIndicator(strokeWidth: 2),
+          ),
+        );
+      }
+
+      return ListView.separated(
+        padding: EdgeInsets.fromLTRB(
+          widget.embeddedInTvShell ? 20 : 16,
+          8,
+          widget.embeddedInTvShell ? 20 : 16,
+          28,
+        ),
+        itemCount: list.length,
+        separatorBuilder: (_, __) => const SizedBox(height: 10),
+        itemBuilder: (context, i) {
+          final state = list[i];
+          final tvScope = _tvScopeForRow(
+            context: context,
+            rowIndex: i,
+            itemCount: list.length,
+            allStates: list,
+            state: state,
+          );
+          final isAddSlot = state.isEmpty && i == list.length - 1;
+          if (isAddSlot) {
+            final card = _AddSlotCard(
+              slot: state.slot,
+              onActivate: () => _openAddEditor(context, slot: state.slot),
+            );
+            if (tvScope == null) return card;
+            return tvScope.wrap(
+              target: _PlaylistRowTarget.body,
+              onActivate: () => _openAddEditor(context, slot: state.slot),
+              child: card,
+            );
+          }
+          return _SlotCard(
+            state: state,
+            tvScope: tvScope,
+            onOpenEditor: () => _openSlotEditor(context, state: state),
+          );
+        },
+      );
+    });
+  }
+
+  Future<void> _openAddEditor(BuildContext context, {required int slot}) async {
+    await Get.to<void>(
+      () => _SlotEditorPage(
+        initial: PlaylistSlotState(slot: slot, source: null),
+      ),
+      fullscreenDialog: true,
+      transition: Transition.rightToLeft,
+    );
+  }
+
+  Future<void> _openSlotEditor(
+    BuildContext context, {
+    required PlaylistSlotState state,
+  }) async {
+    await Get.to<void>(
+      () => _SlotEditorPage(initial: state),
+      fullscreenDialog: true,
+      transition: Transition.rightToLeft,
+    );
+  }
+}
+
 class _SlotCard extends StatelessWidget {
-  const _SlotCard({required this.state});
+  const _SlotCard({
+    required this.state,
+    this.tvScope,
+    this.onOpenEditor,
+  });
 
   final PlaylistSlotState state;
+  final _PlaylistTvFocusScope? tvScope;
+  final VoidCallback? onOpenEditor;
 
   @override
   Widget build(BuildContext context) {
@@ -178,6 +451,78 @@ class _SlotCard extends StatelessWidget {
     final settings = Get.find<AppSettingsService>();
     final ga = GlassAppearance.fromLabel(settings.themeLabel.value);
     final isPrimary = state.slot == 1;
+    final isPortrait =
+        MediaQuery.orientationOf(context) == Orientation.portrait;
+
+    final avatar = CircleAvatar(
+      radius: 18,
+      backgroundColor: isPrimary
+          ? cs.primary.withValues(alpha: 0.25)
+          : Colors.white.withValues(alpha: 0.08),
+      child: Text(
+        '${state.slot}',
+        style: TextStyle(
+          color: Colors.white.withValues(alpha: 0.92),
+          fontWeight: FontWeight.w700,
+          fontSize: 14,
+        ),
+      ),
+    );
+
+    final info = _info(isPrimary);
+
+    Widget bodyRow({required bool actionsBelow}) {
+      final body = Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          avatar,
+          const SizedBox(width: 12),
+          Expanded(child: info),
+        ],
+      );
+      final wrappedBody = tvScope == null
+          ? body
+          : tvScope!.wrap(
+              target: _PlaylistRowTarget.body,
+              onActivate: onOpenEditor,
+              child: body,
+            );
+      if (actionsBelow) {
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Expanded(child: wrappedBody),
+                if (state.canToggleDisabled) ...[
+                  const SizedBox(width: 4),
+                  _SlotToggle(state: state, tvScope: tvScope),
+                ],
+              ],
+            ),
+            const SizedBox(height: 4),
+            _SlotActions(state: state, horizontal: true, tvScope: tvScope),
+          ],
+        );
+      }
+      return Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
+        children: [
+          Expanded(child: wrappedBody),
+          const SizedBox(width: 8),
+          if (state.canToggleDisabled) ...[
+            _SlotToggle(state: state, tvScope: tvScope),
+            const SizedBox(width: 4),
+          ],
+          _SlotActions(state: state, horizontal: true, tvScope: tvScope),
+        ],
+      );
+    }
+
+    final content = isPortrait
+        ? bodyRow(actionsBelow: true)
+        : bodyRow(actionsBelow: false);
 
     return DecoratedBox(
       decoration: ga.handheldCinematicListRowDecoration(
@@ -187,93 +532,73 @@ class _SlotCard extends StatelessWidget {
       child: Opacity(
         opacity: state.disabled ? 0.48 : 1.0,
         child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 14, 12, 14),
-          child: Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              CircleAvatar(
-                radius: 18,
-                backgroundColor: isPrimary
-                    ? cs.primary.withValues(alpha: 0.25)
-                    : Colors.white.withValues(alpha: 0.08),
-                child: Text(
-                  '${state.slot}',
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.92),
-                    fontWeight: FontWeight.w700,
-                    fontSize: 14,
-                  ),
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            state.displayName ??
-                                (isPrimary
-                                    ? 'playlistsManager.slot.primary'.tr
-                                    : 'playlistsManager.slot.extra'
-                                        .trParams({'n': '${state.slot}'})),
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.94),
-                              fontSize: 15,
-                              fontWeight: FontWeight.w700,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 8),
-                        _KindBadge(kind: state.kind),
-                        if (state.disabled) ...[
-                          const SizedBox(width: 8),
-                          _DisabledBadge(),
-                        ],
-                      ],
-                    ),
-                    // Kullanıcı bir ad yazdıysa varsayılan başlığı (Birincil
-                    // liste / Liste #N) ikincil satır olarak göster — slot
-                    // numarası referansı kaybolmasın.
-                    if (state.displayName != null) ...[
-                      const SizedBox(height: 2),
-                      Text(
-                        isPrimary
-                            ? 'playlistsManager.slot.primary'.tr
-                            : 'playlistsManager.slot.extra'
-                                .trParams({'n': '${state.slot}'}),
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.55),
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.w500,
-                          letterSpacing: 0.2,
-                        ),
-                      ),
-                    ],
-                    const SizedBox(height: 6),
-                    Text(
-                      _summaryText(state),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.72),
-                        fontSize: 13,
-                        height: 1.35,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              _SlotActions(state: state),
-            ],
-          ),
+          padding: const EdgeInsets.fromLTRB(16, 12, 12, 12),
+          child: content,
         ),
       ),
+    );
+  }
+
+  Widget _info(bool isPrimary) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          children: [
+            Expanded(
+              child: Text(
+                state.displayName ??
+                    (isPrimary
+                        ? 'playlistsManager.slot.primary'.tr
+                        : 'playlistsManager.slot.extra'
+                            .trParams({'n': '${state.slot}'})),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.94),
+                  fontSize: 15,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+            const SizedBox(width: 8),
+            _KindBadge(kind: state.kind),
+            if (state.disabled) ...[
+              const SizedBox(width: 8),
+              _DisabledBadge(),
+            ],
+          ],
+        ),
+        // Kullanıcı bir ad yazdıysa varsayılan başlığı (Birincil
+        // liste / Liste #N) ikincil satır olarak göster — slot
+        // numarası referansı kaybolmasın.
+        if (state.displayName != null) ...[
+          const SizedBox(height: 2),
+          Text(
+            isPrimary
+                ? 'playlistsManager.slot.primary'.tr
+                : 'playlistsManager.slot.extra'
+                    .trParams({'n': '${state.slot}'}),
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.55),
+              fontSize: 11.5,
+              fontWeight: FontWeight.w500,
+              letterSpacing: 0.2,
+            ),
+          ),
+        ],
+        const SizedBox(height: 6),
+        Text(
+          _summaryText(state),
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.72),
+            fontSize: 13,
+            height: 1.35,
+          ),
+        ),
+      ],
     );
   }
 
@@ -289,75 +614,88 @@ class _SlotCard extends StatelessWidget {
 /// Listenin sonunda "Yeni liste ekle" davetkâr kartı. Dolu slotlara
 /// dokunmadan ek slot oluşturmanın tek yolu.
 class _AddSlotCard extends StatelessWidget {
-  const _AddSlotCard({required this.slot});
+  const _AddSlotCard({
+    required this.slot,
+    this.onActivate,
+  });
 
   final int slot;
+  final VoidCallback? onActivate;
 
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    return tvDpadActivateWrap(
-      context,
-      onActivate: () => _openEditor(context),
-      borderRadius: 16,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(16),
-          onTap: () => _openEditor(context),
-          child: DottedFrame(
-            color: cs.primary.withValues(alpha: 0.55),
-            radius: 16,
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(16, 18, 16, 18),
-              child: Row(
-                children: [
-                  CircleAvatar(
-                    radius: 18,
-                    backgroundColor: cs.primary.withValues(alpha: 0.18),
-                    child: Icon(
-                      Icons.add_rounded,
-                      color: cs.primary,
-                      size: 22,
-                    ),
+    final remote = onActivate == null &&
+        remoteNavForScreenLayout(
+          context,
+          Get.find<AppSettingsService>().layoutMode.value,
+        );
+    final card = Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: onActivate ?? () => _openEditor(context),
+        child: DottedFrame(
+          color: cs.primary.withValues(alpha: 0.55),
+          radius: 16,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 18, 16, 18),
+            child: Row(
+              children: [
+                CircleAvatar(
+                  radius: 18,
+                  backgroundColor: cs.primary.withValues(alpha: 0.18),
+                  child: Icon(
+                    Icons.add_rounded,
+                    color: cs.primary,
+                    size: 22,
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          'playlistsManager.addNew.title'.tr,
-                          style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.96),
-                            fontSize: 15,
-                            fontWeight: FontWeight.w700,
-                          ),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        'playlistsManager.addNew.title'.tr,
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.96),
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
                         ),
-                        const SizedBox(height: 4),
-                        Text(
-                          'playlistsManager.addNew.body'
-                              .trParams({'n': '$slot'}),
-                          style: TextStyle(
-                            color: Colors.white.withValues(alpha: 0.7),
-                            fontSize: 12.5,
-                            height: 1.3,
-                          ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'playlistsManager.addNew.body'
+                            .trParams({'n': '$slot'}),
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.7),
+                          fontSize: 12.5,
+                          height: 1.3,
                         ),
-                      ],
-                    ),
+                      ),
+                    ],
                   ),
-                  Icon(
-                    Icons.chevron_right_rounded,
-                    color: Colors.white.withValues(alpha: 0.6),
-                  ),
-                ],
-              ),
+                ),
+                Icon(
+                  Icons.chevron_right_rounded,
+                  color: Colors.white.withValues(alpha: 0.6),
+                ),
+              ],
             ),
           ),
         ),
       ),
     );
+    if (remote) {
+      return tvDpadActivateWrap(
+        context,
+        onActivate: () => _openEditor(context),
+        borderRadius: 16,
+        child: card,
+      );
+    }
+    return card;
   }
 
   Future<void> _openEditor(BuildContext context) async {
@@ -366,7 +704,7 @@ class _AddSlotCard extends StatelessWidget {
         initial: PlaylistSlotState(slot: slot, source: null),
       ),
       fullscreenDialog: true,
-      transition: Transition.cupertino,
+      transition: Transition.rightToLeft,
     );
   }
 }
@@ -513,126 +851,197 @@ class _DisabledBadge extends StatelessWidget {
   }
 }
 
-class _SlotActions extends StatelessWidget {
-  const _SlotActions({required this.state});
+/// Slot aç/kapa anahtarı — kart başlık satırında (portre) veya sağ sütunda
+/// (yatay) gösterilir. İşlemde iken iyimser olarak hedef konuma döner.
+class _SlotToggle extends StatelessWidget {
+  const _SlotToggle({
+    required this.state,
+    this.tvScope,
+  });
 
   final PlaylistSlotState state;
+  final _PlaylistTvFocusScope? tvScope;
 
   @override
   Widget build(BuildContext context) {
     final c = Get.find<PlaylistsManagerController>();
     final cs = Theme.of(context).colorScheme;
-    final remote = remoteNavForScreenLayout(
-      context,
-      Get.find<AppSettingsService>().layoutMode.value,
-    );
+    final remote = tvScope == null &&
+        remoteNavForScreenLayout(
+          context,
+          Get.find<AppSettingsService>().layoutMode.value,
+        );
+    if (!state.canToggleDisabled) return const SizedBox.shrink();
+    return Obx(() {
+      final isToggling = c.togglingSlot.value == state.slot;
+      final shownEnabled =
+          isToggling ? c.togglingToEnabled.value : !state.disabled;
+      final locked = c.togglingSlot.value != null;
+      final sw = Switch.adaptive(
+        value: shownEnabled,
+        onChanged:
+            locked ? null : (_) => c.toggleSlotDisabled(slot: state.slot),
+        activeTrackColor: cs.primary,
+      );
+      final activate = locked
+          ? null
+          : () => c.toggleSlotDisabled(slot: state.slot);
+      Widget control = sw;
+      if (tvScope != null) {
+        control = tvScope!.wrap(
+          target: _PlaylistRowTarget.toggle,
+          borderRadius: 24,
+          onActivate: activate,
+          child: ExcludeFocus(child: sw),
+        );
+      } else if (remote) {
+        control = tvDpadActivateWrap(
+          context,
+          onActivate: activate ?? () {},
+          borderRadius: 24,
+          child: ExcludeFocus(child: sw),
+        );
+      }
+      return Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Tooltip(
+            message: state.disabled
+                ? 'playlistsManager.enable'.tr
+                : 'playlistsManager.disable'.tr,
+            child: control,
+          ),
+          if (isToggling)
+            Padding(
+              padding: const EdgeInsets.only(top: 2),
+              child: Text(
+                c.togglingToEnabled.value
+                    ? 'playlistsManager.status.enabling'.tr
+                    : 'playlistsManager.status.disabling'.tr,
+                style: TextStyle(
+                  color: cs.primary,
+                  fontSize: 10,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+        ],
+      );
+    });
+  }
+}
 
-    // TV/kumanda: IconButton'ları görsel odak çerçevesi + OK destekli
-    // TvIconButton'a çevir (eski IconButton'lar kumandada belirsizdi).
+class _SlotActions extends StatelessWidget {
+  const _SlotActions({
+    required this.state,
+    this.horizontal = false,
+    this.tvScope,
+  });
+
+  final PlaylistSlotState state;
+  final bool horizontal;
+  final _PlaylistTvFocusScope? tvScope;
+
+  @override
+  Widget build(BuildContext context) {
+    final c = Get.find<PlaylistsManagerController>();
+    final remote = tvScope == null &&
+        remoteNavForScreenLayout(
+          context,
+          Get.find<AppSettingsService>().layoutMode.value,
+        );
+
     Widget actionIcon({
       required IconData icon,
       required String tooltip,
       required VoidCallback? onPressed,
       Color color = Colors.white,
+      _PlaylistRowTarget? tvTarget,
     }) {
-      if (remote) {
-        return TvIconButton(
+      Widget iconButton;
+      if (tvScope != null && tvTarget != null) {
+        iconButton = tvScope!.wrap(
+          target: tvTarget,
+          onActivate: onPressed,
+          borderRadius: 14,
+          child: Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: onPressed,
+              borderRadius: BorderRadius.circular(14),
+              child: Padding(
+                padding: const EdgeInsets.all(8),
+                child: Icon(
+                  icon,
+                  color: onPressed == null
+                      ? color.withValues(alpha: 0.4)
+                      : color,
+                  size: 24,
+                ),
+              ),
+            ),
+          ),
+        );
+      } else if (remote) {
+        iconButton = TvIconButton(
           icon: icon,
           onPressed: onPressed ?? () {},
           tooltip: tooltip,
           iconColor:
               onPressed == null ? color.withValues(alpha: 0.4) : color,
         );
+      } else {
+        iconButton = IconButton(
+          tooltip: tooltip,
+          onPressed: onPressed,
+          visualDensity: horizontal ? VisualDensity.compact : null,
+          icon: Icon(icon, color: color),
+        );
       }
-      return IconButton(
-        tooltip: tooltip,
-        onPressed: onPressed,
-        icon: Icon(icon, color: color),
-      );
+      return iconButton;
     }
 
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        if (state.canToggleDisabled)
-          Obx(() {
-            final isToggling = c.togglingSlot.value == state.slot;
-            // İşlem sürerken anahtarı iyimser olarak hedef konuma çevir,
-            // aksi halde slot'un gerçek durumunu göster.
-            final shownEnabled =
-                isToggling ? c.togglingToEnabled.value : !state.disabled;
-            // Bu slot işlemdeyken yalnızca onu kilitle; başka bir slot
-            // işlemdeyse de güvenlik için kilitli kalsın.
-            final locked = c.togglingSlot.value != null;
-            final sw = Switch.adaptive(
-              value: shownEnabled,
-              onChanged: locked
-                  ? null
-                  : (_) => c.toggleSlotDisabled(slot: state.slot),
-              activeTrackColor: cs.primary,
-            );
-            return Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Tooltip(
-                  message: state.disabled
-                      ? 'playlistsManager.enable'.tr
-                      : 'playlistsManager.disable'.tr,
-                  // TV: tüm anahtarı tek D-pad odak hedefi yap; OK ile aç/kapat.
-                  child: remote
-                      ? tvDpadActivateWrap(
-                          context,
-                          onActivate: locked
-                              ? () {}
-                              : () => c.toggleSlotDisabled(slot: state.slot),
-                          borderRadius: 24,
-                          child: ExcludeFocus(child: sw),
-                        )
-                      : sw,
-                ),
-                if (isToggling)
-                  Padding(
-                    padding: const EdgeInsets.only(top: 2),
-                    child: Text(
-                      c.togglingToEnabled.value
-                          ? 'playlistsManager.status.enabling'.tr
-                          : 'playlistsManager.status.disabling'.tr,
-                      style: TextStyle(
-                        color: cs.primary,
-                        fontSize: 10,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-              ],
-            );
-          }),
-        if (!state.isEmpty && state.kind != PlaylistSourceKind.m3uLocal)
-          actionIcon(
-            icon: Icons.refresh_rounded,
-            tooltip: 'playlistsManager.refresh'.tr,
-            onPressed: c.isLoading.value
-                ? null
-                : () => c.refreshSlot(slot: state.slot),
-            color: Colors.white70,
-          ),
+    final children = <Widget>[
+      if (!state.isEmpty && state.kind != PlaylistSourceKind.m3uLocal)
         actionIcon(
-          icon: state.isEmpty ? Icons.add_rounded : Icons.edit_rounded,
-          tooltip: 'playlistsManager.edit'.tr,
+          icon: Icons.refresh_rounded,
+          tooltip: 'playlistsManager.refresh'.tr,
           onPressed: c.isLoading.value
               ? null
-              : () => _openEditor(context, state: state),
+              : () => c.refreshSlot(slot: state.slot),
+          color: Colors.white70,
+          tvTarget: _PlaylistRowTarget.refresh,
         ),
-        if (!state.isEmpty)
-          actionIcon(
-            icon: Icons.delete_outline_rounded,
-            tooltip: 'playlistsManager.remove'.tr,
-            onPressed: c.isLoading.value
-                ? null
-                : () => _confirmRemove(context, slot: state.slot),
-            color: Colors.white70,
-          ),
-      ],
+      actionIcon(
+        icon: state.isEmpty ? Icons.add_rounded : Icons.edit_rounded,
+        tooltip: 'playlistsManager.edit'.tr,
+        onPressed: c.isLoading.value
+            ? null
+            : () => _openEditor(context, state: state),
+        tvTarget: _PlaylistRowTarget.edit,
+      ),
+      if (!state.isEmpty)
+        actionIcon(
+          icon: Icons.delete_outline_rounded,
+          tooltip: 'playlistsManager.remove'.tr,
+          onPressed: c.isLoading.value
+              ? null
+              : () => _confirmRemove(context, slot: state.slot),
+          color: Colors.white70,
+          tvTarget: _PlaylistRowTarget.delete,
+        ),
+    ];
+
+    if (horizontal) {
+      return Row(
+        mainAxisSize: MainAxisSize.min,
+        mainAxisAlignment: MainAxisAlignment.end,
+        children: children,
+      );
+    }
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: children,
     );
   }
 
@@ -643,7 +1052,7 @@ class _SlotActions extends StatelessWidget {
     await Get.to<void>(
       () => _SlotEditorPage(initial: state),
       fullscreenDialog: true,
-      transition: Transition.cupertino,
+      transition: Transition.rightToLeft,
     );
   }
 
@@ -862,6 +1271,13 @@ class _RemoveConfirmDialogState extends State<_RemoveConfirmDialog> {
   }
 }
 
+/// Klavye ensureVisible kaydırması — mobilde küçük tut; klavye ile alan arası
+/// gereksiz boşluk oluşmasın (playlist_source_setup_form ile aynı değerler).
+EdgeInsets _editorFieldScrollPadding(bool tvDeferred) {
+  if (tvDeferred) return const EdgeInsets.only(bottom: 80);
+  return const EdgeInsets.only(bottom: 24);
+}
+
 /// Liste ekle / düzenle — **tam ekran** cam tasarımlı sayfa (alttan fırlayan
 /// sheet değil). TV/kumanda için D-pad odak akışı: tür seçici → alanlar →
 /// Kaydet. Mobil/tablet için dokunmatik.
@@ -920,10 +1336,58 @@ class _SlotEditorPageState extends State<_SlotEditorPage> {
       xtreamPass.text = src.password;
       _kind = _SourceKind.xtream;
     }
+
+    // Yatay modda Xtream alanları odaklanınca klavye altında kalmasın diye
+    // hafif kaydır (kurulum sihirbazı ile aynı davranış).
+    _xtreamBaseFocus.addListener(_onXtreamBaseFocus);
+    _xtreamUserFocus.addListener(_onXtreamUserFocus);
+    _xtreamPassFocus.addListener(_onXtreamPassFocus);
+  }
+
+  void _onXtreamBaseFocus() =>
+      _ensureXtreamFieldVisible(_xtreamBaseFocus, alignment: 0.05);
+
+  void _onXtreamUserFocus() =>
+      _ensureXtreamFieldVisible(_xtreamUserFocus, alignment: 0.22);
+
+  void _onXtreamPassFocus() =>
+      _ensureXtreamFieldVisible(_xtreamPassFocus, alignment: 0.38);
+
+  /// Xtream metin alanı odaklandığında (yalnızca mobil/tablet yatay) aktif
+  /// satırı klavyenin üstüne hafifçe kaydırır.
+  void _ensureXtreamFieldVisible(
+    FocusNode node, {
+    required double alignment,
+  }) {
+    if (!node.hasFocus) return;
+    if (_tvDeferredKeyboard) return;
+    if (!mounted) return;
+    if (MediaQuery.orientationOf(context) != Orientation.landscape) return;
+    if (_kind != _SourceKind.xtream) return;
+
+    void run() {
+      if (!mounted || !node.hasFocus) return;
+      final ctx = node.context;
+      if (ctx == null) return;
+      Scrollable.ensureVisible(
+        ctx,
+        alignment: alignment,
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOutCubic,
+      );
+    }
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      run();
+      Future<void>.delayed(const Duration(milliseconds: 280), run);
+    });
   }
 
   @override
   void dispose() {
+    _xtreamBaseFocus.removeListener(_onXtreamBaseFocus);
+    _xtreamUserFocus.removeListener(_onXtreamUserFocus);
+    _xtreamPassFocus.removeListener(_onXtreamPassFocus);
     m3uUrl.dispose();
     xtreamBase.dispose();
     xtreamUser.dispose();
@@ -999,7 +1463,10 @@ class _SlotEditorPageState extends State<_SlotEditorPage> {
 
     return Scaffold(
       backgroundColor: Colors.black,
-      resizeToAvoidBottomInset: true,
+      // Klavye açılınca gövdeyi sıkıştırmak + büyük scrollPadding kaydırması
+      // yatayda URL alanını klavyeden çok yukarı itiyordu (kurulum sihirbazı
+      // ile aynı düzeltme).
+      resizeToAvoidBottomInset: false,
       body: Stack(
         fit: StackFit.expand,
         children: [
@@ -1025,7 +1492,7 @@ class _SlotEditorPageState extends State<_SlotEditorPage> {
                         16,
                         4,
                         16,
-                        MediaQuery.viewInsetsOf(context).bottom + 24,
+                        MediaQuery.viewInsetsOf(context).bottom + 16,
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1037,9 +1504,14 @@ class _SlotEditorPageState extends State<_SlotEditorPage> {
                             hint: 'playlistsManager.name.hint'.tr,
                             helper: 'playlistsManager.name.helper'.tr,
                             icon: Icons.label_outline_rounded,
+                            keyboard: TextInputType.text,
                             action: TextInputAction.next,
                             cs: cs,
                             deferredKeyboard: _tvDeferredKeyboard,
+                            enableSuggestions: true,
+                            autocorrect: true,
+                            autofillHints: const [AutofillHints.name],
+                            textCapitalization: TextCapitalization.words,
                             onSubmitted: () =>
                                 _currentKindFocus()?.requestFocus(),
                             onArrowDown: () =>
@@ -1119,6 +1591,7 @@ class _SlotEditorPageState extends State<_SlotEditorPage> {
           action: TextInputAction.done,
           cs: cs,
           deferredKeyboard: tvKeyboard,
+          showPaste: true,
           onSubmitted: () => _saveFocus.requestFocus(),
           onArrowUp: () => _currentKindFocus()?.requestFocus(),
           onArrowDown: () => _saveFocus.requestFocus(),
@@ -1204,6 +1677,7 @@ class _SlotEditorPageState extends State<_SlotEditorPage> {
               action: TextInputAction.next,
               cs: cs,
               deferredKeyboard: tvKeyboard,
+              showPaste: true,
               onSubmitted: () => _xtreamUserFocus.requestFocus(),
               onArrowUp: () => _currentKindFocus()?.requestFocus(),
               onArrowDown: () => _xtreamUserFocus.requestFocus(),
@@ -1217,6 +1691,7 @@ class _SlotEditorPageState extends State<_SlotEditorPage> {
               action: TextInputAction.next,
               cs: cs,
               deferredKeyboard: tvKeyboard,
+              showPaste: true,
               onSubmitted: () => _xtreamPassFocus.requestFocus(),
               onArrowUp: () => _xtreamBaseFocus.requestFocus(),
               onArrowDown: () => _xtreamPassFocus.requestFocus(),
@@ -1227,10 +1702,11 @@ class _SlotEditorPageState extends State<_SlotEditorPage> {
               focusNode: _xtreamPassFocus,
               label: 'playlist.xtream.pass'.tr,
               icon: Icons.lock_outline_rounded,
-              obscure: true,
+              obscure: false,
               action: TextInputAction.done,
               cs: cs,
               deferredKeyboard: tvKeyboard,
+              showPaste: true,
               onSubmitted: () => _saveFocus.requestFocus(),
               onArrowUp: () => _xtreamUserFocus.requestFocus(),
               onArrowDown: () => _saveFocus.requestFocus(),
@@ -1255,9 +1731,14 @@ class _SlotEditorPageState extends State<_SlotEditorPage> {
     String? helper,
     IconData? icon,
     bool obscure = false,
+    bool showPaste = false,
     TextInputType? keyboard,
     TextInputAction action = TextInputAction.next,
     bool deferredKeyboard = false,
+    bool enableSuggestions = false,
+    bool autocorrect = false,
+    Iterable<String>? autofillHints,
+    TextCapitalization textCapitalization = TextCapitalization.none,
     VoidCallback? onSubmitted,
     VoidCallback? onArrowUp,
     VoidCallback? onArrowDown,
@@ -1280,13 +1761,31 @@ class _SlotEditorPageState extends State<_SlotEditorPage> {
       prefixIcon: icon == null
           ? null
           : Icon(icon, color: Colors.white.withValues(alpha: 0.6)),
+      suffixIcon: showPaste
+          ? IconButton(
+              tooltip: 'playlist.pasteUrl'.tr,
+              icon: Icon(
+                Icons.content_paste_rounded,
+                color: cs.primary,
+              ),
+              onPressed: () async {
+                final data = await Clipboard.getData(Clipboard.kTextPlain);
+                final text = data?.text?.trim();
+                if (text != null && text.isNotEmpty) {
+                  controller.text = text;
+                  controller.selection =
+                      TextSelection.collapsed(offset: controller.text.length);
+                }
+              },
+            )
+          : null,
       contentPadding:
           const EdgeInsets.symmetric(horizontal: 14, vertical: 16),
       border: border(Colors.white.withValues(alpha: 0.16), 1),
       enabledBorder: border(Colors.white.withValues(alpha: 0.16), 1),
       focusedBorder: border(cs.primary, 1.6),
     );
-    final scrollPadding = EdgeInsets.only(bottom: deferredKeyboard ? 80 : 280);
+    final scrollPadding = _editorFieldScrollPadding(deferredKeyboard);
     return TvDeferredKeyboardField(
       enabled: deferredKeyboard,
       focusNode: focusNode,
@@ -1300,8 +1799,10 @@ class _SlotEditorPageState extends State<_SlotEditorPage> {
         enableInteractiveSelection: !readOnly,
         obscureText: obscure,
         keyboardType: keyboard,
-        autocorrect: false,
-        enableSuggestions: false,
+        autocorrect: autocorrect,
+        enableSuggestions: enableSuggestions,
+        autofillHints: autofillHints,
+        textCapitalization: textCapitalization,
         textInputAction: action,
         cursorColor: cs.primary,
         style: const TextStyle(

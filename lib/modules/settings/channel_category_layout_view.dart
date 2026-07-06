@@ -7,7 +7,7 @@ import '../../core/services/app_settings_service.dart';
 import '../../core/theme/app_scroll_physics.dart';
 import '../../ui/settings_glass_panel.dart';
 import '../../ui/themed_settings_background.dart';
-import '../../ui/tv_dpad_focus.dart';
+import '../../ui/tv_settings_subpage.dart';
 
 /// Ayarlar → «Kanal Kategori Düzeni» alt-sayfası.
 ///
@@ -21,68 +21,38 @@ class ChannelCategoryLayoutView extends StatelessWidget {
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
     final primary = scheme.primary;
-    final remote = remoteNavForScreenLayout(
-      context,
-      Get.find<AppSettingsService>().layoutMode.value,
-    );
+    final tvDpad =
+        Get.find<AppSettingsService>().layoutMode.value == AppLayoutMode.tv;
 
     return Scaffold(
       backgroundColor: Colors.black,
-      body: FocusTraversalGroup(
-        policy: OrderedTraversalPolicy(),
-        child: ThemedSettingsBackground(
-          child: SafeArea(
-            child: SettingsGlassPanel(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
-                    child: Row(
-                      children: [
-                        remote
-                            ? TvIconButton(
-                                icon: Icons.arrow_back_rounded,
-                                onPressed: () => Get.back<void>(),
-                                tooltip: 'common.back'.tr,
-                                autofocus: true,
-                              )
-                            : IconButton(
-                                onPressed: () => Get.back<void>(),
-                                icon: const Icon(Icons.arrow_back_rounded),
-                                color: Colors.white,
-                                tooltip: 'common.back'.tr,
-                              ),
-                        Expanded(
-                          child: Text(
-                            'channelLayout.title'.tr,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 18,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ),
-                      ],
+      body: ThemedSettingsBackground(
+        child: SafeArea(
+          child: SettingsGlassPanel(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                tvSettingsSubpageHeader(context, 'channelLayout.title'.tr),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
+                  child: Text(
+                    'channelLayout.hint'.tr,
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.65),
+                      fontSize: 12.5,
+                      height: 1.35,
                     ),
                   ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
-                    child: Text(
-                      'channelLayout.hint'.tr,
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.65),
-                        fontSize: 12.5,
-                        height: 1.35,
-                      ),
-                    ),
-                  ),
-                  Expanded(
+                ),
+                Expanded(
+                  child: TvSettingsDpadScope(
+                    enabled: tvDpad,
                     child: ListView(
                       physics: AppScrollPhysics.list(),
                       padding: const EdgeInsets.fromLTRB(12, 4, 12, 16),
                       children: [
                         _ChannelLayoutNavRow(
+                          tvDpadIndex: 0,
                           icon: Icons.visibility_off_rounded,
                           primary: primary,
                           title: 'settings.tile.categoryHide'.tr,
@@ -93,6 +63,7 @@ class ChannelCategoryLayoutView extends StatelessWidget {
                         ),
                         const SizedBox(height: 12),
                         _ChannelLayoutNavRow(
+                          tvDpadIndex: 1,
                           icon: Icons.sort_rounded,
                           primary: primary,
                           title: 'settings.tile.channelListEdit'.tr,
@@ -103,6 +74,7 @@ class ChannelCategoryLayoutView extends StatelessWidget {
                         ),
                         const SizedBox(height: 12),
                         _ChannelLayoutNavRow(
+                          tvDpadIndex: 2,
                           icon: Icons.child_care_rounded,
                           primary: primary,
                           title: 'settings.tile.parental'.tr,
@@ -114,8 +86,8 @@ class ChannelCategoryLayoutView extends StatelessWidget {
                       ],
                     ),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ),
@@ -126,12 +98,15 @@ class ChannelCategoryLayoutView extends StatelessWidget {
 
 class _ChannelLayoutNavRow extends StatelessWidget {
   const _ChannelLayoutNavRow({
+    required this.tvDpadIndex,
     required this.icon,
     required this.primary,
     required this.title,
     required this.subtitle,
     required this.onTap,
   });
+
+  final int tvDpadIndex;
 
   final IconData icon;
   final Color primary;
@@ -141,8 +116,9 @@ class _ChannelLayoutNavRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return tvDpadActivateWrap(
+    return tvSettingsDpadWrap(
       context,
+      index: tvDpadIndex,
       onActivate: onTap,
       borderRadius: 18,
       child: Container(

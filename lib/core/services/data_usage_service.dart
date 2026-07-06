@@ -7,6 +7,8 @@ import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'app_lifecycle_poll_gate.dart';
+
 /// **Veri Kullanım Detayı servisi.**
 ///
 /// Android `TrafficStats.getUidRxBytes(myUid)` / `getUidTxBytes(myUid)`
@@ -115,6 +117,7 @@ class DataUsageService extends GetxService {
   }
 
   Future<void> _tick() async {
+    if (!AppLifecyclePollGate.shouldRunBackgroundPolls) return;
     if (!Platform.isAndroid) return;
     final stats = await _readNativeStats();
     if (stats == null) return;

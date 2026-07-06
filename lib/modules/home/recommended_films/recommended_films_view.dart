@@ -5,7 +5,7 @@ import 'package:get/get.dart';
 
 import '../../../core/home/film_dizi_detail_args.dart';
 import '../../../core/routes/app_routes.dart';
-import '../../../core/layout/app_layout_mode.dart';
+import '../../../core/layout/app_layout_mode.dart' show AppLayoutMode, filmDiziRemoteNavEnabled;
 import '../../../core/services/app_settings_service.dart';
 import '../../../core/services/active_playlist_service.dart';
 import '../../../ui/tv_dpad_focus.dart';
@@ -40,8 +40,7 @@ class _GlassBackPillState extends State<_GlassBackPill> {
 
   @override
   Widget build(BuildContext context) {
-    final remote = remoteNavForScreenLayout(
-      context,
+    final remote = filmDiziRemoteNavEnabled(
       Get.find<AppSettingsService>().layoutMode.value,
     );
     return Obx(() {
@@ -115,8 +114,7 @@ class _GlassListSwitchPillState extends State<_GlassListSwitchPill> {
       return const SizedBox.shrink();
     }
     final active = Get.find<ActivePlaylistService>();
-    final remote = remoteNavForScreenLayout(
-      context,
+    final remote = filmDiziRemoteNavEnabled(
       Get.find<AppSettingsService>().layoutMode.value,
     );
     return Obx(() {
@@ -265,24 +263,17 @@ class RecommendedFilmsView extends GetView<RecommendedFilmsController> {
                       : (constraints.maxWidth >= 900
                           ? 920.0
                           : constraints.maxWidth);
-                  return SingleChildScrollView(
-                    physics: AppScrollPhysics.list(),
-                    padding: EdgeInsets.fromLTRB(
-                      0,
-                      isTv ? 72 : 56,
-                      0,
-                      24 + MediaQuery.paddingOf(context).bottom,
-                    ),
-                    child: Center(
-                      child: ConstrainedBox(
-                        constraints: BoxConstraints(maxWidth: maxContent),
-                        child: Obx(
-                          () => RecommendedFilmsSection(
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      SizedBox(height: isTv ? 72 : 56),
+                      Expanded(
+                        child: Center(
+                          child: ConstrainedBox(
+                            constraints: BoxConstraints(maxWidth: maxContent),
+                            child: RecommendedFilmsSection(
+                            controller: controller,
                             data: data,
-                            tab: controller.tab.value,
-                            filmsFeed: controller.filmsFeed.value,
-                            seriesFeed: controller.seriesFeed.value,
-                            onTabChanged: controller.setTab,
                             onSearchTap: () =>
                                 showPortraitHomeUnifiedSearchDialog(
                               context,
@@ -315,6 +306,7 @@ class RecommendedFilmsView extends GetView<RecommendedFilmsController> {
                         ),
                       ),
                     ),
+                    ],
                   );
                 },
               );

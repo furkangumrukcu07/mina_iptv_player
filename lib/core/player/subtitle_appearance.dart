@@ -60,7 +60,7 @@ bool isValidSubtitleColorKey(String key) {
   return false;
 }
 
-int colorToArgb(Color c) => c.value;
+int colorToArgb(Color c) => c.toARGB32();
 
 Color colorFromArgb(int argb) => Color(argb);
 

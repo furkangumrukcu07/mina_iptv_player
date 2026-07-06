@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
+import '../../../core/layout/app_layout_mode.dart' show filmDiziRemoteNavEnabled;
 import '../../../core/services/app_settings_service.dart';
 import '../../../core/theme/glass_appearance.dart';
 import '../../../ui/tv_dpad_focus.dart';
@@ -72,17 +73,22 @@ class RecommendedFilmsCategoryView
                           ),
                         );
                       }
+                      // Son izlenenler ve "Son eklenen 50" listelerinde kaynak
+                      // sıra (en yeni önce) korunmalı; grid yeniden sıralamasın.
+                      final preserveOrder = controller.args.isRecentlyWatched ||
+                          controller.args.isLast50Films ||
+                          controller.args.isLast50Series;
                       if (controller.isFilms) {
                         return FilmDiziCategoryGrid.films(
                           films: controller.displayFilms,
                           categoryName: controller.title,
-                          preserveOrder: controller.args.isRecentlyWatched,
+                          preserveOrder: preserveOrder,
                         );
                       }
                       return FilmDiziCategoryGrid.series(
                         series: controller.displaySeries,
                         categoryName: controller.title,
-                        preserveOrder: controller.args.isRecentlyWatched,
+                        preserveOrder: preserveOrder,
                       );
                     }),
                   ),
@@ -117,6 +123,9 @@ class _SearchTrailing extends StatelessWidget {
         context,
         onActivate: open,
         borderRadius: 22,
+        useRemoteNav: filmDiziRemoteNavEnabled(
+          Get.find<AppSettingsService>().layoutMode.value,
+        ),
         child: IconButton(
           icon: Badge(
             isLabelVisible: hasFilter,

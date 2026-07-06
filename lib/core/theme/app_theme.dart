@@ -25,8 +25,19 @@ abstract final class AppTheme {
     return _bgDir;
   }
 
+  /// 2x/3x kopyaları 1x ile birebir aynı olan (gerçek yüksek çözünürlük varyantı
+  /// olmayan) arka planlar. Bunlar için DPR klasörü atlanır; APK'da yalnızca
+  /// kökteki tek dosya tutulur (2x/3x kopyaları silindi → ~6.5 MB tasarruf).
+  static const _singleResBgBases = <String>{
+    _darkFlatBackgroundBase,
+    _glassGriBackgroundBase,
+    _flatBlackBackgroundBase,
+    _glassmorphismBackgroundBase,
+  };
+
   static String _bgAssetFor(BuildContext context, String fileBaseName) {
-    final dir = _dprDirFor(context);
+    final dir =
+        _singleResBgBases.contains(fileBaseName) ? _bgDir : _dprDirFor(context);
     return '$dir/$fileBaseName.$_bgExt';
   }
 
@@ -65,6 +76,21 @@ abstract final class AppTheme {
   static const _amoledLandscapeAsset = '$_bgDir/blackyatay.webp';
   static const _amoledPortraitAsset = '$_bgDir/blackdikey.webp';
 
+  /// [GlassThemeLabels.tvLite]: AMOLED saf siyah duvar kâğıdı, köşede/tabanda
+  /// zarif kırmızı (#E3201C) parıltı (yatay 1920×1080 / dikey 1080×1920 PNG).
+  /// Çözünürlük düşürülmeden kullanılır.
+  static const _tvLiteLandscapeAsset = '$_bgDir/tv_lite_landscape.png';
+  static const _tvLitePortraitAsset = '$_bgDir/tv_lite_portrait.png';
+
+  /// [GlassThemeLabels.ios27]: akışkan "Liquid Glass" damla cam duvar kağıdı
+  /// (yatay / dikey, tam çözünürlük). Telif sorunu olmayan özgün üretim görselleri.
+  static const _ios27LandscapeAsset = '$_bgDir/ios27_landscape.png';
+  static const _ios27PortraitAsset = '$_bgDir/ios27_portrait.png';
+
+  /// [GlassThemeLabels.macTema]: macOS 26 Tahoe wallpapers (yatay / dikey).
+  static const _macLandscapeAsset = '$_bgDir/mac_landscape.jpg';
+  static const _macPortraitAsset = '$_bgDir/mac_portrait.jpg';
+
   /// [themeLabel]: [AppSettingsService.themeLabel] (örn. `GlassThemeLabels.koyuCam`).
   static String homeBackgroundAsset(
     BuildContext context, {
@@ -102,6 +128,21 @@ abstract final class AppTheme {
       return MediaQuery.orientationOf(context) == Orientation.portrait
           ? _amoledPortraitAsset
           : _amoledLandscapeAsset;
+    }
+    if (themeLabel == GlassThemeLabels.tvLite) {
+      return MediaQuery.orientationOf(context) == Orientation.portrait
+          ? _tvLitePortraitAsset
+          : _tvLiteLandscapeAsset;
+    }
+    if (themeLabel == GlassThemeLabels.ios27) {
+      return MediaQuery.orientationOf(context) == Orientation.portrait
+          ? _ios27PortraitAsset
+          : _ios27LandscapeAsset;
+    }
+    if (themeLabel == GlassThemeLabels.macTema) {
+      return MediaQuery.orientationOf(context) == Orientation.portrait
+          ? _macPortraitAsset
+          : _macLandscapeAsset;
     }
     if (themeLabel == GlassThemeLabels.semcTheme) {
       return MediaQuery.orientationOf(context) == Orientation.portrait
@@ -152,6 +193,9 @@ abstract final class AppTheme {
         themeLabel == GlassThemeLabels.glassGri ||
         themeLabel == GlassThemeLabels.glassmorphism ||
         themeLabel == GlassThemeLabels.minaGlass ||
+        themeLabel == GlassThemeLabels.tvLite ||
+        themeLabel == GlassThemeLabels.ios27 ||
+        themeLabel == GlassThemeLabels.macTema ||
         themeLabel == GlassThemeLabels.flyUi) {
       return (
         zoom: 1.0,
@@ -169,13 +213,15 @@ abstract final class AppTheme {
     final dpr = MediaQuery.devicePixelRatioOf(context);
     final sz = MediaQuery.sizeOf(context);
     // Yüksek DPI ekranlar için optimize edilmiş cache hesaplaması
-    final maxCacheSize = dpr >= 2.0 ? 8192 : 4096; // 2x+ için 8K, diğerleri için 4K
+    final maxCacheSize =
+        dpr >= 2.0 ? 8192 : 4096; // 2x+ için 8K, diğerleri için 4K
     return (
       zoom: zoomWhenNotKoyu,
       cacheWidth:
           (sz.width * dpr * decodeWidthFactor).round().clamp(64, maxCacheSize),
-      cacheHeight:
-          (sz.height * dpr * decodeHeightFactor).round().clamp(64, maxCacheSize),
+      cacheHeight: (sz.height * dpr * decodeHeightFactor)
+          .round()
+          .clamp(64, maxCacheSize),
     );
   }
 
@@ -334,6 +380,93 @@ abstract final class AppTheme {
       onSurfaceVariant: const Color(0xFF9E9E9E),
       outline: const Color(0xFF383838),
       outlineVariant: const Color(0xFF282828),
+    );
+  }
+
+  /// [GlassThemeLabels.tvLite]: saf siyah yüzeyler, kırmızı birincil/ikincil vurgu.
+  /// Blursuz, sade; eski TV box ve zayıf cihazlarda okunaklı yüksek kontrast.
+  static ColorScheme _colorSchemeTvLite() {
+    final base = ColorScheme.fromSeed(
+      seedColor: const Color(0xFFE3201C),
+      brightness: Brightness.dark,
+      surface: const Color(0xFF000000),
+    );
+    return base.copyWith(
+      primary: const Color(0xFFE3201C),
+      onPrimary: Colors.white,
+      primaryContainer: const Color(0xFF6E0E0C),
+      onPrimaryContainer: const Color(0xFFFFE3E1),
+      secondary: const Color(0xFFFF5A4D),
+      onSecondary: const Color(0xFF1A0000),
+      surface: const Color(0xFF000000),
+      surfaceContainerLow: const Color(0xFF0A0A0A),
+      surfaceContainer: const Color(0xFF121212),
+      surfaceContainerHigh: const Color(0xFF1A1A1A),
+      surfaceContainerHighest: const Color(0xFF242424),
+      onSurface: const Color(0xFFF5F5F5),
+      onSurfaceVariant: const Color(0xFF9CA3AF),
+      outline: const Color(0xFF3F3F3F),
+      outlineVariant: const Color(0xFF2D2D2D),
+    );
+  }
+
+  /// [GlassThemeLabels.ios27]: iOS sistem mavisi vurgu, akışkan cam paneller.
+
+  /// [GlassThemeLabels.macTema]: macOS 26 Tahoe — Apple system blue/indigo accents,
+  /// dark slate/graphite macOS style window colors.
+  static ColorScheme _colorSchemeMacTema() {
+    const appleBlue = Color(0xFF0A84FF);
+    final base = ColorScheme.fromSeed(
+      seedColor: appleBlue,
+      brightness: Brightness.dark,
+      surface: const Color(0xFF14141E),
+    );
+    return base.copyWith(
+      primary: appleBlue,
+      onPrimary: Colors.white,
+      primaryContainer: const Color(0xFF004399),
+      onPrimaryContainer: const Color(0xFFD6E4FF),
+      secondary: const Color(0xFF5E5CE6),
+      onSecondary: Colors.white,
+      tertiary: const Color(0xFFFF453A),
+      surface: const Color(0xFF14141E),
+      surfaceContainerLow: const Color(0xFF181824),
+      surfaceContainer: const Color(0xFF1F1F2F),
+      surfaceContainerHigh: const Color(0xFF26263A),
+      surfaceContainerHighest: const Color(0xFF2E2E46),
+      onSurface: const Color(0xFFF2F2F7),
+      onSurfaceVariant: const Color(0xFFAEAEB2),
+      outline: const Color(0xFF3A3A4C),
+      outlineVariant: const Color(0xFF2C2C3E),
+    );
+  }
+
+  /// [GlassThemeLabels.ios27]: iOS "Liquid Glass" — sistem mavisi vurgu,
+  /// hafif soğuk koyu yüzeyler (damla cam panelleri arka planın üstünde durur).
+  static ColorScheme _colorSchemeIos27() {
+    const iosBlue = Color(0xFF0A84FF);
+    final base = ColorScheme.fromSeed(
+      seedColor: iosBlue,
+      brightness: Brightness.dark,
+      surface: const Color(0xFF0B1020),
+    );
+    return base.copyWith(
+      primary: iosBlue,
+      onPrimary: Colors.white,
+      primaryContainer: const Color(0xFF0A3A78),
+      onPrimaryContainer: const Color(0xFFD6E9FF),
+      secondary: const Color(0xFF5E5CE6),
+      onSecondary: Colors.white,
+      tertiary: const Color(0xFFFF375F),
+      surface: const Color(0xFF0B1020),
+      surfaceContainerLow: const Color(0xFF121829),
+      surfaceContainer: const Color(0xFF16203A),
+      surfaceContainerHigh: const Color(0xFF1C2740),
+      surfaceContainerHighest: const Color(0xFF24304C),
+      onSurface: const Color(0xFFF5F7FF),
+      onSurfaceVariant: const Color(0xFFB9C2D6),
+      outline: const Color(0xFF3A4665),
+      outlineVariant: const Color(0xFF28324C),
     );
   }
 
@@ -574,11 +707,13 @@ abstract final class AppTheme {
             const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
         border: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.6)),
+          borderSide:
+              BorderSide(color: cs.outlineVariant.withValues(alpha: 0.6)),
         ),
         enabledBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
-          borderSide: BorderSide(color: cs.outlineVariant.withValues(alpha: 0.45)),
+          borderSide:
+              BorderSide(color: cs.outlineVariant.withValues(alpha: 0.45)),
         ),
         focusedBorder: OutlineInputBorder(
           borderRadius: BorderRadius.circular(14),
@@ -787,6 +922,198 @@ abstract final class AppTheme {
         const Color(0xFFE2E8F0).withValues(alpha: 0.40),
       );
 
+  /// TV Lite: düz siyah yüzeyler, kırmızı odak; blursuz sade dil.
+  static ThemeData get tvLite {
+    final cs = _colorSchemeTvLite();
+    final base = _darkTheme(
+      cs,
+      const Color(0xFFE3201C).withValues(alpha: 0.55),
+    );
+    return base.copyWith(
+      iconTheme: IconThemeData(
+        color: cs.onSurfaceVariant,
+        size: 22,
+      ),
+      cardTheme: CardThemeData(
+        elevation: 0,
+        color: cs.surfaceContainer,
+        surfaceTintColor: Colors.black.withValues(alpha: 0.12),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: cs.outlineVariant),
+        ),
+        clipBehavior: Clip.antiAlias,
+      ),
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(
+          padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 16),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+          elevation: 0,
+        ),
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: cs.surfaceContainerHigh.withValues(alpha: 0.9),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide:
+              BorderSide(color: cs.outlineVariant.withValues(alpha: 0.85)),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide:
+              BorderSide(color: cs.outlineVariant.withValues(alpha: 0.65)),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(16),
+          borderSide: BorderSide(color: cs.primary, width: 2),
+        ),
+      ),
+    );
+  }
+
+  /// [GlassThemeLabels.macTema]: macOS 26 Tahoe — Apple dark slate glass panels,
+  /// Apple system blue highlights, elegant rounded corners.
+  static ThemeData get macTema {
+    final cs = _colorSchemeMacTema();
+    final base = _darkTheme(
+      cs,
+      const Color(0xFF0A84FF).withValues(alpha: 0.35),
+    );
+    return base.copyWith(
+      cardTheme: CardThemeData(
+        elevation: 0,
+        color: cs.surfaceContainer.withValues(alpha: 0.45),
+        surfaceTintColor: Colors.white.withValues(alpha: 0.04),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(20),
+          side: BorderSide(color: Colors.white.withValues(alpha: 0.18)),
+        ),
+        clipBehavior: Clip.antiAlias,
+      ),
+      chipTheme: ChipThemeData(
+        backgroundColor: cs.surfaceContainerHigh.withValues(alpha: 0.55),
+        selectedColor: cs.primary.withValues(alpha: 0.28),
+        disabledColor: cs.surfaceContainerHighest.withValues(alpha: 0.4),
+        labelStyle: TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.w500,
+          color: cs.onSurface,
+        ),
+        secondaryLabelStyle: TextStyle(
+          fontSize: 14,
+          color: cs.onPrimaryContainer,
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 0),
+        side: BorderSide(color: Colors.white.withValues(alpha: 0.22)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+        ),
+        showCheckmark: false,
+      ),
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(
+          padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 15),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(18),
+          ),
+          elevation: 0,
+        ),
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: cs.surfaceContainerHigh.withValues(alpha: 0.5),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(18),
+          borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.22)),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(18),
+          borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.18)),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(18),
+          borderSide: BorderSide(color: cs.primary, width: 2),
+        ),
+      ),
+    );
+  }
+
+  /// iOS 27 "Liquid Glass": çok yuvarlatılmış köşeler, saydam damla cam kartlar,
+  /// iOS sistem mavisi odak. Buzlu cam ailesi yüzey dilini kullanır.
+  static ThemeData get ios27 {
+    final cs = _colorSchemeIos27();
+    final base = _darkTheme(
+      cs,
+      const Color(0xFF0A84FF).withValues(alpha: 0.30),
+    );
+    return base.copyWith(
+      cardTheme: CardThemeData(
+        elevation: 0,
+        color: cs.surfaceContainer.withValues(alpha: 0.42),
+        surfaceTintColor: Colors.white.withValues(alpha: 0.04),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(26),
+          side: BorderSide(color: Colors.white.withValues(alpha: 0.16)),
+        ),
+        clipBehavior: Clip.antiAlias,
+      ),
+      chipTheme: ChipThemeData(
+        backgroundColor: cs.surfaceContainerHigh.withValues(alpha: 0.55),
+        selectedColor: cs.primary.withValues(alpha: 0.28),
+        disabledColor: cs.surfaceContainerHighest.withValues(alpha: 0.4),
+        labelStyle: TextStyle(
+          fontSize: 14,
+          fontWeight: FontWeight.w500,
+          color: cs.onSurface,
+        ),
+        secondaryLabelStyle: TextStyle(
+          fontSize: 14,
+          color: cs.onPrimaryContainer,
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 0),
+        side: BorderSide(color: Colors.white.withValues(alpha: 0.22)),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(22),
+        ),
+        showCheckmark: false,
+      ),
+      filledButtonTheme: FilledButtonThemeData(
+        style: FilledButton.styleFrom(
+          padding: const EdgeInsets.symmetric(horizontal: 28, vertical: 15),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+          ),
+          elevation: 0,
+        ),
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: cs.surfaceContainerHigh.withValues(alpha: 0.5),
+        contentPadding:
+            const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+        border: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(22),
+          borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.22)),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(22),
+          borderSide: BorderSide(color: Colors.white.withValues(alpha: 0.18)),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderRadius: BorderRadius.circular(22),
+          borderSide: BorderSide(color: cs.primary, width: 2),
+        ),
+      ),
+    );
+  }
+
   /// Flyme: yuvarlatılmış kartlar, mavi odak, hafif cam yüzeyler.
   static ThemeData get flyUi {
     final cs = _colorSchemeFlyUi();
@@ -945,6 +1272,12 @@ abstract final class AppTheme {
       base = flatBlack;
     } else if (themeLabel == GlassThemeLabels.glassGri) {
       base = glassGri;
+    } else if (themeLabel == GlassThemeLabels.tvLite) {
+      base = tvLite;
+    } else if (themeLabel == GlassThemeLabels.ios27) {
+      base = ios27;
+    } else if (themeLabel == GlassThemeLabels.macTema) {
+      base = macTema;
     } else if (themeLabel == GlassThemeLabels.semcTheme) {
       base = semcTheme;
     } else if (themeLabel == GlassThemeLabels.flyUi) {

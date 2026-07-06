@@ -9,6 +9,8 @@ import '../../ui/settings_glass_panel.dart';
 import '../../ui/themed_settings_background.dart';
 import '../../ui/tv_dpad_focus.dart';
 import 'chat_controller.dart';
+import 'chat_online_badge.dart';
+import 'chat_support_thread_delete.dart';
 
 /// Sohbet bölümünün giriş ekranı. Önce oturum/senkron durumu kontrol edilir;
 /// uygun değilse giriş kapısı, uygunsa dil odalarının listesi gösterilir.
@@ -29,6 +31,7 @@ class ChatRoomsView extends GetView<ChatController> {
         child: ThemedSettingsBackground(
           child: SafeArea(
             child: SettingsGlassPanel(
+              blurBackground: false,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
@@ -61,6 +64,7 @@ class ChatRoomsView extends GetView<ChatController> {
                             ),
                           ),
                         ),
+                        const ChatOnlineBadge(),
                       ],
                     ),
                   ),
@@ -205,6 +209,16 @@ class _RoomListState extends State<_RoomList> {
             trailing: const Icon(Icons.chevron_right_rounded,
                 color: Colors.white54),
             onTap: controller.openSupport,
+            // Admin için ilk satır gelen kutusudur (tek bir thread değil),
+            // bu yüzden silme yalnızca normal kullanıcının kendi konuşmasına
+            // uygulanır.
+            onLongPress: isAdmin
+                ? null
+                : () {
+                    final uid = controller.chat.currentUserId;
+                    if (uid == null) return;
+                    showSupportThreadDeleteMenu(context, userUid: uid);
+                  },
           );
         }
         final index = rawIndex - 1;

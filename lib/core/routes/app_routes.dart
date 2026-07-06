@@ -17,7 +17,6 @@ abstract final class AppRoutes {
   static const chatRoom = '/chat-room';
   static const chatSupportInbox = '/chat-support-inbox';
   static const channels = '/channels';
-  static const browse = '/browse';
   static const settings = '/settings';
   static const epgSettings = '/epg-settings';
   static const epgSourceManage = '/epg-source-manage';
@@ -31,6 +30,7 @@ abstract final class AppRoutes {
   static const playbackSettings = '/playback-settings';
   static const otherTools = '/other-tools';
   static const contactUs = '/contact-us';
+  static const faq = '/faq';
   static const subtitleOptions = '/subtitle-options';
   static const parentalControl = '/parental-control';
   static const profiles = '/profiles';
@@ -38,4 +38,6 @@ abstract final class AppRoutes {
   static const minaAnalytics = '/mina-analytics';
   static const dataUsage = '/data-usage';
   static const downloads = '/downloads';
+  static const tvKeyMapping = '/tv-key-mapping';
+  static const paywall = '/paywall';
 }

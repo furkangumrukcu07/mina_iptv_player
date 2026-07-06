@@ -9,6 +9,7 @@ import 'package:intl/intl.dart';
 import '../../core/layout/app_layout_mode.dart';
 import '../../core/services/app_settings_service.dart';
 import '../../core/services/chat_service.dart';
+import 'chat_online_badge.dart';
 import '../../ui/glass_overlays.dart';
 import '../../ui/settings_glass_panel.dart';
 import '../../ui/themed_settings_background.dart';
@@ -41,6 +42,11 @@ class _ChatRoomViewState extends State<ChatRoomView> {
   /// Seçili yayın durumu etiketi (composer'da chip olarak görünür).
   ChatStatusTag? _statusTag;
 
+  /// Aktif mesaj akışı — **bir kez** oluşturulur. Eskiden `build` içinde her
+  /// çağrıda yeni `Stream` üretiliyordu; klavye/reply/gönder gibi her yeniden
+  /// çizimde `StreamBuilder` Firestore'a yeniden abone oluyordu.
+  late final Stream<List<ChatMessage>> _messagesStream;
+
   @override
   void initState() {
     super.initState();
@@ -53,12 +59,10 @@ class _ChatRoomViewState extends State<ChatRoomView> {
           ? args
           : const ChatRoom(langCode: 'en', nativeName: 'English');
     }
+    _messagesStream = _isSupport
+        ? _chat.supportMessagesStream(_support!.threadUid)
+        : _chat.messagesStream(_room.langCode);
   }
-
-  /// Aktif mesaj akışı: destek modunda thread, normalde dil odası.
-  Stream<List<ChatMessage>> _stream() => _isSupport
-      ? _chat.supportMessagesStream(_support!.threadUid)
-      : _chat.messagesStream(_room.langCode);
 
   @override
   void dispose() {
@@ -199,6 +203,7 @@ class _ChatRoomViewState extends State<ChatRoomView> {
       body: ThemedSettingsBackground(
         child: SafeArea(
           child: SettingsGlassPanel(
+            blurBackground: false,
             child: Column(
               children: [
                 Padding(
@@ -252,12 +257,16 @@ class _ChatRoomViewState extends State<ChatRoomView> {
                           ],
                         ),
                       ),
+                      if (!_isSupport) ...[
+                        const SizedBox(width: 8),
+                        const ChatOnlineBadge(),
+                      ],
                     ],
                   ),
                 ),
                 Expanded(
                   child: StreamBuilder<List<ChatMessage>>(
-                    stream: _stream(),
+                    stream: _messagesStream,
                     builder: (context, snapshot) {
                       if (snapshot.connectionState == ConnectionState.waiting &&
                           !snapshot.hasData) {

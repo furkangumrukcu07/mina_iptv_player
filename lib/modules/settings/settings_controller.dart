@@ -13,15 +13,20 @@ import '../../core/i18n/theme_label_localized.dart';
 import '../../core/routes/app_routes.dart';
 import '../../core/services/active_playlist_service.dart';
 import '../../core/services/app_settings_service.dart';
+import '../../core/services/epg_service.dart';
+import '../../core/services/mina_stream_cutter_service.dart';
+import '../../core/services/search_history_service.dart';
 import '../../core/services/auth_service.dart';
+import '../../core/services/licensing_service.dart';
+import '../../ui/glass_overlays.dart';
 import '../../core/services/backup_service.dart';
+import '../../core/services/chat_service.dart';
 import '../../core/services/equalizer_service.dart';
 import '../../core/services/crash_reporting.dart';
 import '../../core/services/support_diagnostics.dart';
 import '../../core/player/adaptive_stream_quality_ceiling.dart';
 import '../../core/player/playback_user_agent.dart';
 import '../../core/epg/catch_up_url_template.dart';
-import '../../core/services/epg_service.dart';
 import '../../core/epg/global_epg_service.dart';
 import '../../data/local/epg_snapshot_keys.dart';
 import '../../data/remote/xtream_api.dart';
@@ -29,18 +34,23 @@ import '../../core/services/favorites_service.dart';
 import '../../core/services/iptv_logo_cache_service.dart';
 import '../../core/services/mina_telemetry_service.dart';
 import '../../core/services/playlist_cache_service.dart';
+import '../../core/services/watch_progress_service.dart';
+import '../../services/user_history_service.dart';
+import '../home/widgets/ai_recommendations_strip.dart';
 import '../../core/layout/app_layout_mode.dart';
 import '../../core/player/subtitle_font_family.dart';
 import '../../core/theme/glass_appearance.dart';
 import '../../domain/entities/playlist_source.dart';
 import '../../domain/repositories/playlist_repository.dart';
-import '../browse/browse_controller.dart';
 import '../channels/channels_controller.dart';
 import '../../ui/glass_overlays.dart';
 import 'equalizer_dialog.dart' as eq_dialog;
 import 'subtitle_font_picker_dialog.dart';
 import 'subtitle_font_family_picker_dialog.dart';
 import 'xtream_account_info_body.dart';
+
+/// "Tüm ayarları sil" menüsündeki sıfırlama seçenekleri.
+enum _ResetChoice { watchHistory, ai, playlist, everything }
 
 class SettingsController extends GetxController {
   final _repo = Get.find<PlaylistRepository>();
@@ -117,8 +127,9 @@ class SettingsController extends GetxController {
       if (Get.isRegistered<ChannelsController>()) {
         Get.find<ChannelsController>().clearStreamPreview();
       }
-      if (Get.isRegistered<BrowseController>()) {
-        Get.find<BrowseController>().clearStreamPreview();
+    } else {
+      if (Get.isRegistered<ChannelsController>()) {
+        Get.find<ChannelsController>().refreshStreamPreviewFromSettings();
       }
     }
   }
@@ -246,7 +257,18 @@ class SettingsController extends GetxController {
       return;
     }
 
-    final days = await Get.dialog<int>(
+    // İçerik otomatik yenileme aralığı seçenekleri (**saat** cinsinden):
+    // 0 = Kapalı, 2 = 2 saat, 24 = 1 gün, 48 = 2 gün, 72 = 3 gün, 168 = 1 hafta.
+    // «-1» dönüşü: yalnızca şimdi yenile (aralık değişmeden).
+    final options = <int, String>{
+      2: 'settings.dialog.refresh.every2h'.tr,
+      24: 'settings.dialog.refresh.every1d'.tr,
+      48: 'settings.dialog.refresh.every2d'.tr,
+      72: 'settings.dialog.refresh.every3d'.tr,
+      168: 'settings.dialog.refresh.every1w'.tr,
+      0: 'settings.dialog.refresh.autoOff'.tr,
+    };
+    final hours = await Get.dialog<int>(
       GlassAlertDialog(
         title: Text('settings.dialog.refreshTitle'.tr),
         content: Column(
@@ -259,30 +281,15 @@ class SettingsController extends GetxController {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  GlassListTile(
-                    title: Text('settings.dialog.refresh.autoOff'.tr),
-                    trailing: _app.autoRefreshDays.value == 0
-                        ? const Icon(Icons.check_rounded, color: Colors.white)
-                        : null,
-                    selected: _app.autoRefreshDays.value == 0,
-                    onTap: () => Navigator.pop(Get.context!, 0),
-                  ),
-                  GlassListTile(
-                    title: Text('settings.dialog.refresh.every3'.tr),
-                    trailing: _app.autoRefreshDays.value == 3
-                        ? const Icon(Icons.check_rounded, color: Colors.white)
-                        : null,
-                    selected: _app.autoRefreshDays.value == 3,
-                    onTap: () => Navigator.pop(Get.context!, 3),
-                  ),
-                  GlassListTile(
-                    title: Text('settings.dialog.refresh.every7'.tr),
-                    trailing: _app.autoRefreshDays.value == 7
-                        ? const Icon(Icons.check_rounded, color: Colors.white)
-                        : null,
-                    selected: _app.autoRefreshDays.value == 7,
-                    onTap: () => Navigator.pop(Get.context!, 7),
-                  ),
+                  for (final entry in options.entries)
+                    GlassListTile(
+                      title: Text(entry.value),
+                      trailing: _app.autoRefreshHours.value == entry.key
+                          ? const Icon(Icons.check_rounded, color: Colors.white)
+                          : null,
+                      selected: _app.autoRefreshHours.value == entry.key,
+                      onTap: () => Navigator.pop(Get.context!, entry.key),
+                    ),
                 ],
               ),
             ),
@@ -302,9 +309,9 @@ class SettingsController extends GetxController {
       ),
     );
 
-    if (days == null) return;
-    if (days >= 0) {
-      await _app.setAutoRefreshDays(days);
+    if (hours == null) return;
+    if (hours >= 0) {
+      await _app.setAutoRefreshHours(hours);
     }
 
     isRefreshing.value = true;
@@ -386,6 +393,41 @@ class SettingsController extends GetxController {
     Get.toNamed(AppRoutes.contactUs);
   }
 
+  void openFaq() {
+    Get.toNamed(AppRoutes.faq);
+  }
+
+  /// «Admine Mesaj Gönder» — uygulama içi sohbetteki yönetici (destek) bölümüne
+  /// doğrudan yönlendirir. Oturum açılmamışsa sohbet listesindeki giriş kapısına
+  /// düşer; admin kullanıcı için gelen kutusu, normal kullanıcı için kendi
+  /// birebir admin konuşması açılır.
+  void openAdminMessage() {
+    if (!Get.isRegistered<ChatService>()) {
+      Get.lazyPut<ChatService>(() => ChatService(), fenix: true);
+    }
+    final chat = Get.find<ChatService>();
+    if (!chat.isReady) {
+      Get.toNamed<void>(AppRoutes.chat);
+      return;
+    }
+    if (chat.isCurrentUserAdmin) {
+      Get.toNamed<void>(AppRoutes.chatSupportInbox);
+      return;
+    }
+    final uid = chat.currentUserId;
+    if (uid == null) {
+      Get.toNamed<void>(AppRoutes.chat);
+      return;
+    }
+    Get.toNamed<void>(
+      AppRoutes.chatRoom,
+      arguments: ChatSupportTarget(
+        threadUid: uid,
+        title: 'chat.support.adminName'.tr,
+      ),
+    );
+  }
+
   /// Kurulum sihirbazını yeniden başlat. Tek sihirbaz (mobil tasarım) hem
   /// dokunmatik hem TV/kumanda için kullanılır. Sihirbaz bittiğinde kurulum
   /// yeniden tamamlandı olarak işaretlenip ana ekrana döner; geri tuşuyla
@@ -436,6 +478,10 @@ class SettingsController extends GetxController {
   /// yazılım fallback ve canlı buffer süresi.
   void openPlaybackSettings() {
     Get.toNamed(AppRoutes.playbackSettings);
+  }
+
+  void openTvKeyMapping() {
+    Get.toNamed(AppRoutes.tvKeyMapping);
   }
 
   void openSubtitleOptions() {
@@ -501,7 +547,7 @@ class SettingsController extends GetxController {
     }
   }
 
-  void setAutoRefreshDays(int days) => _app.setAutoRefreshDays(days);
+  void setAutoRefreshHours(int hours) => _app.setAutoRefreshHours(hours);
 
   void goBack() => Get.back();
 
@@ -611,50 +657,45 @@ class SettingsController extends GetxController {
       context: ctx,
       builder: (dialogContext) => StatefulBuilder(
         builder: (context, setDialogState) => GlassAlertDialog(
-          scrollable: false,
+          scrollable: remoteNav,
           tvOsdStyle: remoteNav,
           title: Text('settings.dialog.osdHideTitle'.tr),
-          content: FocusTraversalGroup(
-            policy: OrderedTraversalPolicy(),
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(
-                    'settings.dialog.osdHideBody'.tr,
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.9),
-                      fontSize: 13,
-                      height: 1.35,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  GlassDialogListPanel(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        for (final sec
-                            in AppSettingsService.tvOsdAutoHideSecondsOptions)
-                          GlassListTile(
-                            dense: true,
-                            title: Text(
-                              'settings.dialog.osdHideSeconds'
-                                  .trParams({'n': '$sec'}),
-                            ),
-                            selected: pending == sec,
-                            trailing: pending == sec
-                                ? const Icon(Icons.check_rounded,
-                                    color: Colors.white)
-                                : null,
-                            onTap: () => setDialogState(() => pending = sec),
-                          ),
-                      ],
-                    ),
-                  ),
-                ],
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'settings.dialog.osdHideBody'.tr,
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.9),
+                  fontSize: 13,
+                  height: 1.35,
+                ),
               ),
-            ),
+              const SizedBox(height: 12),
+              GlassDialogListPanel(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    for (final sec
+                        in AppSettingsService.tvOsdAutoHideSecondsOptions)
+                      GlassListTile(
+                        dense: true,
+                        title: Text(
+                          'settings.dialog.osdHideSeconds'
+                              .trParams({'n': '$sec'}),
+                        ),
+                        selected: pending == sec,
+                        trailing: pending == sec
+                            ? const Icon(Icons.check_rounded,
+                                color: Colors.white)
+                            : null,
+                        onTap: () => setDialogState(() => pending = sec),
+                      ),
+                  ],
+                ),
+              ),
+            ],
           ),
           actions: glassDialogPickerActions(
             dialogContext,
@@ -759,38 +800,238 @@ class SettingsController extends GetxController {
     );
   }
 
-  Future<void> confirmClearAllSettings() async {
+  /// Ayarlar diyalogları için güvenilir [BuildContext] — `Get.context` bazen
+  /// modal kapandıktan sonra null/bağlantısız kalıyordu ve onay diyalogu açılmıyordu.
+  BuildContext? _settingsDialogAnchor() {
+    final navCtx = Get.key.currentState?.context;
+    if (navCtx != null && navCtx.mounted) return navCtx;
     final ctx = Get.context;
-    if (ctx == null) return;
+    if (ctx != null && ctx.mounted) return ctx;
+    return null;
+  }
 
-    final ok = await showDialog<bool>(
-      context: ctx,
+  /// "Tüm ayarları sil" tile'ı artık bir **sıfırlama seçenekleri** menüsü açar.
+  /// Kullanıcı tek tek (son izlenenler / Mina AI önerileri / playlist) ya da en
+  /// alttan "tümünü ve tüm verileri" sıfırlayabilir. Menü TV kumandasıyla da
+  /// kullanılabilir (GlassListTile D-pad odaklanır).
+  Future<void> confirmClearAllSettings() async {
+    final anchor = _settingsDialogAnchor();
+    if (anchor == null) return;
+    final remoteNav = _app.layoutMode.value.usesRemoteNavigationStyle;
+
+    final choice = await showDialog<_ResetChoice>(
+      context: anchor,
+      useRootNavigator: true,
+      barrierDismissible: false,
       builder: (c) => GlassAlertDialog(
-        title: Text('settings.dialog.clearTitle'.tr),
-        content: Text('settings.dialog.clearBody'.tr),
+        tvOsdStyle: remoteNav,
+        scrollable: true,
+        title: Text('settings.reset.menuTitle'.tr),
+        content: GlassDialogListPanel(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              GlassListTile(
+                autofocus: true,
+                leading: const Icon(Icons.history_rounded, color: Colors.white),
+                title: Text('settings.reset.watchHistory'.tr),
+                subtitle: Text(
+                  'settings.reset.watchHistory.sub'.tr,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                onTap: () => Navigator.pop(c, _ResetChoice.watchHistory),
+              ),
+              GlassListTile(
+                leading:
+                    const Icon(Icons.auto_awesome_rounded, color: Colors.white),
+                title: Text('settings.reset.ai'.tr),
+                subtitle: Text(
+                  'settings.reset.ai.sub'.tr,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                onTap: () => Navigator.pop(c, _ResetChoice.ai),
+              ),
+              GlassListTile(
+                leading: const Icon(Icons.playlist_remove_rounded,
+                    color: Colors.white),
+                title: Text('settings.reset.playlist'.tr),
+                subtitle: Text(
+                  'settings.reset.playlist.sub'.tr,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                onTap: () => Navigator.pop(c, _ResetChoice.playlist),
+              ),
+              GlassListTile(
+                leading: const Icon(Icons.delete_forever_rounded,
+                    color: Color(0xFFFFB74D)),
+                title: Text('settings.reset.everything'.tr),
+                subtitle: Text(
+                  'settings.reset.everything.sub'.tr,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                onTap: () => Navigator.pop(c, _ResetChoice.everything),
+              ),
+            ],
+          ),
+        ),
         actions: [
           GlassDialogActionButton(
             label: 'common.cancel'.tr,
-            onPressed: () => Navigator.pop(c, false),
-          ),
-          GlassDialogActionButton(
-            label: 'common.delete'.tr,
-            primary: true,
-            onPressed: () => Navigator.pop(c, true),
+            onDarkSurface: remoteNav,
+            onPressed: () => Navigator.pop(c),
           ),
         ],
       ),
     );
 
-    if (ok != true) return;
+    if (choice == null) return;
+    final confirmAnchor = _settingsDialogAnchor();
+    if (confirmAnchor == null || !confirmAnchor.mounted) return;
+    switch (choice) {
+      case _ResetChoice.watchHistory:
+        await _resetWatchHistory(confirmAnchor);
+      case _ResetChoice.ai:
+        await _resetAiRecommendations(confirmAnchor);
+      case _ResetChoice.playlist:
+        await _resetPlaylistData(confirmAnchor);
+      case _ResetChoice.everything:
+        await _resetEverything(confirmAnchor);
+    }
+  }
 
+  /// Tekil sıfırlama onayı — başlık seçilen seçeneğin etiketi, gövde ortak
+  /// "geri alınamaz" uyarısı. Onaylanırsa `true`.
+  Future<bool> _confirmReset(BuildContext anchor, String titleKey) async {
+    if (!anchor.mounted) return false;
+    final remoteNav = _app.layoutMode.value.usesRemoteNavigationStyle;
+    final ok = await showDialog<bool>(
+      context: anchor,
+      useRootNavigator: true,
+      barrierDismissible: false,
+      builder: (c) => GlassAlertDialog(
+        tvOsdStyle: remoteNav,
+        title: Text(titleKey.tr),
+        content: Text('settings.reset.confirmBody'.tr),
+        actions: [
+          GlassDialogActionButton(
+            label: 'common.cancel'.tr,
+            onDarkSurface: remoteNav,
+            onPressed: () => Navigator.pop(c, false),
+          ),
+          GlassDialogActionButton(
+            label: 'common.delete'.tr,
+            primary: true,
+            autofocus: true,
+            onDarkSurface: remoteNav,
+            onPressed: () => Navigator.pop(c, true),
+          ),
+        ],
+      ),
+    );
+    return ok == true;
+  }
+
+  void _resetSnack(String messageKey) {
+    GlassSnackbar.show(
+      'settings.snackbar.settings'.tr,
+      messageKey.tr,
+      snackPosition: SnackPosition.BOTTOM,
+    );
+  }
+
+  Future<void> _clearWatchAndAiUserData() async {
+    await Get.find<UserHistoryService>().clear();
+    await Get.find<WatchProgressService>().clearAll();
+    AiRecommendationsStrip.invalidateCache();
+    if (Get.isRegistered<MinaStreamCutterService>()) {
+      await Get.find<MinaStreamCutterService>().clearAll();
+    }
+  }
+
+  Future<void> _clearSearchHistory() async {
+    if (!Get.isRegistered<SearchHistoryService>()) return;
+    final sh = Get.find<SearchHistoryService>();
+    for (final scope in SearchHistoryScope.values) {
+      await sh.clear(scope);
+    }
+  }
+
+  /// Playlist silindikten sonra bellek içi önbellekleri de boşalt — aksi halde
+  /// [ActivePlaylistService] eski [M3uResult]'ı geri yükleyebiliyordu.
+  Future<void> _syncAfterPlaylistWipe() async {
+    _cache.clear();
+    if (Get.isRegistered<ActivePlaylistService>()) {
+      final active = Get.find<ActivePlaylistService>();
+      active.invalidateAll();
+      await active.refreshAvailable();
+    }
+    if (Get.isRegistered<EpgService>()) {
+      Get.find<EpgService>().clear();
+    }
+  }
+
+  void _navigateToPlaylistSetupWithSnack(String messageKey) {
+    Get.offAllNamed(AppRoutes.playlist);
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      _resetSnack(messageKey);
+    });
+  }
+
+  /// Son izlenenler: izleme geçmişi + "devam et" listesi temizlenir. AI profili
+  /// geçmişe dayalı olduğu için öneri önbelleği de geçersiz kılınır.
+  Future<void> _resetWatchHistory(BuildContext anchor) async {
+    if (!await _confirmReset(anchor, 'settings.reset.watchHistory')) return;
+    try {
+      await _clearWatchAndAiUserData();
+      _resetSnack('settings.reset.watchHistoryDone');
+    } catch (e, st) {
+      debugPrint('SettingsController._resetWatchHistory failed: $e\n$st');
+      _resetSnack('settings.snackbar.clearFailed');
+    }
+  }
+
+  /// Mina AI önerileri: ayrı bir kalıcı depo yoktur (geçmişten türetilir);
+  /// öneri önbelleği temizlenir, açık ana ekranda yeniden hesaplanır.
+  Future<void> _resetAiRecommendations(BuildContext anchor) async {
+    if (!await _confirmReset(anchor, 'settings.reset.ai')) return;
+    AiRecommendationsStrip.invalidateCache();
+    _resetSnack('settings.reset.aiDone');
+  }
+
+  /// Playlist bilgileri: kayıtlı kaynak + içerik önbelleği + logo önbelleği
+  /// silinir. Kullanıcı liste ekleme ekranına yönlendirilir.
+  Future<void> _resetPlaylistData(BuildContext anchor) async {
+    if (!await _confirmReset(anchor, 'settings.reset.playlist')) return;
     try {
       await _repo.clearSavedSource();
-      _cache.clear();
+      await _syncAfterPlaylistWipe();
       if (Get.isRegistered<IptvLogoCacheService>()) {
-        unawaited(Get.find<IptvLogoCacheService>().wipeDisk());
+        await Get.find<IptvLogoCacheService>().wipeDisk();
       }
+      _navigateToPlaylistSetupWithSnack('settings.reset.playlistDone');
+    } catch (e, st) {
+      debugPrint('SettingsController._resetPlaylistData failed: $e\n$st');
+      _resetSnack('settings.snackbar.clearFailed');
+    }
+  }
+
+  /// Tümünü sıfırla: playlist + önbellek + favoriler + tüm tercihler + geçmiş.
+  Future<void> _resetEverything(BuildContext anchor) async {
+    if (!await _confirmReset(anchor, 'settings.reset.everything')) return;
+    try {
+      await _repo.clearSavedSource();
+      await _clearWatchAndAiUserData();
+      await _clearSearchHistory();
       _fav.clearAll();
+      await _syncAfterPlaylistWipe();
+      if (Get.isRegistered<IptvLogoCacheService>()) {
+        await Get.find<IptvLogoCacheService>().wipeDisk();
+      }
       await _app.resetToDefaults();
       Get.updateLocale(
         materialLocaleFromLanguageCode(_app.languageCode.value),
@@ -803,7 +1044,8 @@ class SettingsController extends GetxController {
           snackPosition: SnackPosition.BOTTOM,
         );
       });
-    } catch (e) {
+    } catch (e, st) {
+      debugPrint('SettingsController._resetEverything failed: $e\n$st');
       GlassSnackbar.show(
         'settings.snackbar.settings'.tr,
         'settings.snackbar.clearFailed'.trParams({'e': '$e'}),
@@ -830,6 +1072,15 @@ class SettingsController extends GetxController {
     ('it', 'common.lang.it'),
     ('pt', 'common.lang.pt'),
     ('id', 'common.lang.id'),
+    ('de', 'common.lang.de'),
+    ('fa', 'common.lang.fa'),
+    ('pl', 'common.lang.pl'),
+    ('nl', 'common.lang.nl'),
+    ('uk', 'common.lang.uk'),
+    ('vi', 'common.lang.vi'),
+    ('el', 'common.lang.el'),
+    ('ro', 'common.lang.ro'),
+    ('sq', 'common.lang.sq'),
   ];
 
   Future<void> showLanguageDialog() async {
@@ -958,6 +1209,10 @@ class SettingsController extends GetxController {
       }
     }
 
+    final themes = GlassThemeLabels.selectableThemesForLayout(
+      tv: _app.layoutMode.value == AppLayoutMode.tv,
+    );
+
     await showDialog<void>(
       context: ctx,
       barrierDismissible: true,
@@ -974,7 +1229,7 @@ class SettingsController extends GetxController {
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  for (final t in GlassThemeLabels.selectableThemeLabels)
+                  for (final t in themes)
                     GlassListTile(
                       title: Text(localizedThemeStorageLabel(t)),
                       subtitle: t == GlassThemeLabels.flyUi
@@ -985,7 +1240,15 @@ class SettingsController extends GetxController {
                                 fontSize: 12,
                               ),
                             )
-                          : null,
+                          : t == GlassThemeLabels.ios27
+                              ? Text(
+                                  'theme.ios27.sub'.tr,
+                                  style: TextStyle(
+                                    color: Colors.white.withValues(alpha: 0.72),
+                                    fontSize: 12,
+                                  ),
+                                )
+                              : null,
                       trailing: pending == t
                           ? const Icon(Icons.check_rounded, color: Colors.white)
                           : null,
@@ -1221,24 +1484,22 @@ class SettingsController extends GetxController {
     if (mode == AppSettingsService.liveStreamFormatTs) {
       return 'settings.streamFormat.tsShort'.tr;
     }
-    if (mode == AppSettingsService.liveStreamFormatHls) {
-      return 'settings.streamFormat.hlsShort'.tr;
-    }
-    // auto — çözülen biçimi de göster
-    final resolved = _app.prefersTsLiveStreamFormat
-        ? 'settings.streamFormat.tsShort'.tr
-        : 'settings.streamFormat.hlsShort'.tr;
-    return 'settings.streamFormat.autoShort'.trParams({'fmt': resolved});
+    // HLS (varsayılan) — eski "auto" değeri de buraya düşer.
+    return 'settings.streamFormat.hlsShort'.tr;
   }
 
-  /// Canlı yayın taşıma biçimini (Otomatik / HLS / MPEG-TS) seçtirir.
+  /// Canlı yayın taşıma biçimini (HLS / MPEG-TS) seçtirir. "Otomatik" kaldırıldı;
+  /// varsayılan HLS, HLS açılmazsa oynatıcı otomatik MPEG-TS'e fallback yapar.
   Future<void> showLiveStreamFormatDialog() async {
     final ctx = Get.context;
     if (ctx == null) return;
 
-    var pending = _app.liveStreamFormat.value;
+    // Eski kurulumdan "auto" gelmiş olabilir → diyalogda HLS seçili görünsün.
+    var pending =
+        _app.liveStreamFormat.value == AppSettingsService.liveStreamFormatTs
+            ? AppSettingsService.liveStreamFormatTs
+            : AppSettingsService.liveStreamFormatHls;
     const options = <String>[
-      AppSettingsService.liveStreamFormatAuto,
       AppSettingsService.liveStreamFormatHls,
       AppSettingsService.liveStreamFormatTs,
     ];
@@ -1515,6 +1776,7 @@ class SettingsController extends GetxController {
     if (Get.isRegistered<EqualizerService>()) {
       await EqualizerService.to.ensureLoaded();
     }
+    if (!ctx.mounted) return;
     await eq_dialog.showEqualizerDialog(ctx);
   }
 
@@ -1759,6 +2021,47 @@ class SettingsController extends GetxController {
   }
 
   /// Google hesabı bağlı değilse oturum açar; bağlıysa true döner.
+  /// Oturum açma çekirdeği — `isCloudBusy` guard'ı **kontrol etmez** ve busy
+  /// bayrağını **yönetmez**. Çağıran (yedekle/geri yükle/sil) zaten busy=true
+  /// yaptığı için bu metodu kullanır; aksi halde busy guard yüzünden işlem
+  /// hiç başlamadan iptal olurdu (buton "tepkisiz" görünüyordu).
+  Future<bool> _ensureSignedInForCloudCore() async {
+    final auth = _auth;
+    if (auth == null || !auth.isAvailable) {
+      GlassSnackbar.show(
+        'cloud.title'.tr,
+        'cloud.notConfigured'.tr,
+        snackPosition: SnackPosition.BOTTOM,
+      );
+      return false;
+    }
+    if (auth.isSignedIn) return true;
+    final result = await auth.signInWithGoogle();
+    switch (result.outcome) {
+      case GoogleSignInOutcome.success:
+        return true;
+      case GoogleSignInOutcome.cancelled:
+        return false;
+      case GoogleSignInOutcome.notConfigured:
+        GlassSnackbar.show(
+          'cloud.title'.tr,
+          'cloud.notConfigured'.tr,
+          snackPosition: SnackPosition.BOTTOM,
+        );
+        return false;
+      case GoogleSignInOutcome.failed:
+        GlassSnackbar.show(
+          'cloud.title'.tr,
+          result.messageKey.tr,
+          snackPosition: SnackPosition.BOTTOM,
+        );
+        return false;
+    }
+  }
+
+  /// Doğrudan UI'dan (giriş bölümü) çağrılır; busy guard + busy yönetimini
+  /// kendisi yapar. Yedekle/geri yükle/sil eylemleri busy'yi kendileri
+  /// yönettiği için [_ensureSignedInForCloudCore] kullanır.
   Future<bool> ensureSignedInForCloud() async {
     if (isCloudBusy.value) return false;
     final auth = _auth;
@@ -1773,27 +2076,7 @@ class SettingsController extends GetxController {
     if (auth.isSignedIn) return true;
     isCloudBusy.value = true;
     try {
-      final result = await auth.signInWithGoogle();
-      switch (result.outcome) {
-        case GoogleSignInOutcome.success:
-          return true;
-        case GoogleSignInOutcome.cancelled:
-          return false;
-        case GoogleSignInOutcome.notConfigured:
-          GlassSnackbar.show(
-            'cloud.title'.tr,
-            'cloud.notConfigured'.tr,
-            snackPosition: SnackPosition.BOTTOM,
-          );
-          return false;
-        case GoogleSignInOutcome.failed:
-          GlassSnackbar.show(
-            'cloud.title'.tr,
-            result.messageKey.tr,
-            snackPosition: SnackPosition.BOTTOM,
-          );
-          return false;
-      }
+      return await _ensureSignedInForCloudCore();
     } finally {
       isCloudBusy.value = false;
     }
@@ -1804,7 +2087,7 @@ class SettingsController extends GetxController {
     if (isCloudBusy.value) return;
     isCloudBusy.value = true;
     try {
-      if (!await ensureSignedInForCloud()) return;
+      if (!await _ensureSignedInForCloudCore()) return;
       // Çakışma koruması: bulutta bu cihazın son yedeğinden daha yeni bir
       // yedek varsa (büyük olasılıkla başka bir cihazdan), üzerine yazmadan
       // önce kullanıcıya sor.
@@ -1849,7 +2132,7 @@ class SettingsController extends GetxController {
     // ele.
     if (cloudMs <= localMs + 120000) return true;
     final ctx = Get.context;
-    if (ctx == null) return true;
+    if (ctx == null || !ctx.mounted) return true;
     final remoteNav = _app.layoutMode.value.usesRemoteNavigationStyle;
     final when = DateTime.fromMillisecondsSinceEpoch(cloudMs);
     final stamp =
@@ -1910,7 +2193,7 @@ class SettingsController extends GetxController {
 
     isCloudBusy.value = true;
     try {
-      if (!await ensureSignedInForCloud()) return;
+      if (!await _ensureSignedInForCloudCore()) return;
       final cloud = await _auth!
           .loadUserSettingsFromCloud()
           .timeout(const Duration(seconds: 30), onTimeout: () => null);
@@ -2035,7 +2318,7 @@ class SettingsController extends GetxController {
     if (ok != true) return;
     isCloudBusy.value = true;
     try {
-      if (!await ensureSignedInForCloud()) return;
+      if (!await _ensureSignedInForCloudCore()) return;
       final done = await auth
           .deleteCloudData()
           .timeout(const Duration(seconds: 30), onTimeout: () => false);
@@ -2189,9 +2472,13 @@ class SettingsController extends GetxController {
     await showDialog<void>(
       context: ctx,
       builder: (dialogContext) {
-        var local = _app.epgDiskCacheRefreshDays.value.clamp(1, 5);
+        var local = _app.epgDiskCacheRefreshDays.value.clamp(0, 5);
         return StatefulBuilder(
           builder: (context, setDialogState) {
+            // 0 = otomatik yenileme kapalı (yalnızca bir kez indir).
+            final valueText = local <= 0
+                ? 'settings.dialog.epgCacheNever'.tr
+                : 'settings.dialog.epgCacheSlider'.trParams({'n': '$local'});
             return GlassAlertDialog(
               scrollable: false,
               tvOsdStyle: remoteNav,
@@ -2211,11 +2498,7 @@ class SettingsController extends GetxController {
                       ),
                     ),
                     const SizedBox(height: 12),
-                    Text(
-                      'settings.dialog.epgCacheSlider'.trParams({
-                        'n': '$local',
-                      }),
-                    ),
+                    Text(valueText),
                     const SizedBox(height: 8),
                     if (remoteNav) ...[
                       Row(
@@ -2226,9 +2509,9 @@ class SettingsController extends GetxController {
                             child: IconButton.filledTonal(
                               autofocus: true,
                               icon: const Icon(Icons.remove_rounded),
-                              onPressed: local > 1
+                              onPressed: local > 0
                                   ? () => setDialogState(() {
-                                        local = (local - 1).clamp(1, 5);
+                                        local = (local - 1).clamp(0, 5);
                                       })
                                   : null,
                             ),
@@ -2253,7 +2536,7 @@ class SettingsController extends GetxController {
                               icon: const Icon(Icons.add_rounded),
                               onPressed: local < 5
                                   ? () => setDialogState(() {
-                                        local = (local + 1).clamp(1, 5);
+                                        local = (local + 1).clamp(0, 5);
                                       })
                                   : null,
                             ),
@@ -2265,13 +2548,13 @@ class SettingsController extends GetxController {
                         order: const NumericFocusOrder(1),
                         child: Slider(
                           autofocus: true,
-                          min: 1,
+                          min: 0,
                           max: 5,
-                          divisions: 4,
-                          value: local.clamp(1, 5).toDouble(),
+                          divisions: 5,
+                          value: local.clamp(0, 5).toDouble(),
                           onChanged: (nv) {
                             setDialogState(() {
-                              local = nv.round().clamp(1, 5);
+                              local = nv.round().clamp(0, 5);
                             });
                           },
                         ),
@@ -2446,6 +2729,7 @@ class SettingsController extends GetxController {
       return;
     }
 
+    if (!ctx.mounted) return;
     var pending = _app.xtreamEpgSourceMode.value;
     final remoteNav = _app.layoutMode.value.usesRemoteNavigationStyle;
 
@@ -2640,22 +2924,22 @@ class SettingsController extends GetxController {
             return GlassAlertDialog(
               tvOsdStyle: remoteNav,
               title: Text('settings.epg.timeFormat'.tr),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  RadioListTile<bool>(
-                    title: Text('settings.epg.timeFormat24'.tr),
-                    value: true,
-                    groupValue: use24,
-                    onChanged: (v) => setState(() => use24 = true),
-                  ),
-                  RadioListTile<bool>(
-                    title: Text('settings.epg.timeFormat12'.tr),
-                    value: false,
-                    groupValue: use24,
-                    onChanged: (v) => setState(() => use24 = false),
-                  ),
-                ],
+              content: RadioGroup<bool>(
+                groupValue: use24,
+                onChanged: (v) => setState(() => use24 = v ?? use24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    RadioListTile<bool>(
+                      title: Text('settings.epg.timeFormat24'.tr),
+                      value: true,
+                    ),
+                    RadioListTile<bool>(
+                      title: Text('settings.epg.timeFormat12'.tr),
+                      value: false,
+                    ),
+                  ],
+                ),
               ),
               actions: [
                 GlassDialogActionButton(
@@ -2725,23 +3009,25 @@ class SettingsController extends GetxController {
               title: Text('settings.epg.offset'.tr),
               content: SizedBox(
                 width: double.maxFinite,
-                child: ListView(
-                  shrinkWrap: true,
-                  children: [
-                    for (final m in options)
-                      RadioListTile<int>(
-                        title: Text(
-                          m == 0
-                              ? 'settings.epg.offset.zero'.tr
-                              : '${m > 0 ? '+' : ''}${m ~/ 60}h ${(m.abs() % 60).toString().padLeft(2, '0')}m',
+                child: RadioGroup<int>(
+                  groupValue: selected,
+                  onChanged: (v) {
+                    if (v != null) setState(() => selected = v);
+                  },
+                  child: ListView(
+                    shrinkWrap: true,
+                    children: [
+                      for (final m in options)
+                        RadioListTile<int>(
+                          title: Text(
+                            m == 0
+                                ? 'settings.epg.offset.zero'.tr
+                                : '${m > 0 ? '+' : ''}${m ~/ 60}h ${(m.abs() % 60).toString().padLeft(2, '0')}m',
+                          ),
+                          value: m,
                         ),
-                        value: m,
-                        groupValue: selected,
-                        onChanged: (v) {
-                          if (v != null) setState(() => selected = v);
-                        },
-                      ),
-                  ],
+                    ],
+                  ),
                 ),
               ),
               actions: [
@@ -2988,14 +3274,15 @@ class SettingsController extends GetxController {
     showDialog<void>(
       context: ctx,
       builder: (c) => GlassAlertDialog(
+        // İçeriği SingleChildScrollView'a sarma: GlassAlertDialog `scrollable`
+        // ile zaten kaydırma sağlıyor. İç içe iki dikey kaydırma jest'i yutup
+        // sürüklemeyi engelliyordu (kullanıcı "yukarı/aşağı sürükleyemiyorum").
         title: Text('settings.dialog.changelogTitle'.tr),
-        content: SingleChildScrollView(
-          child: Text(
-            'settings.dialog.changelogBody'.tr,
-            style: TextStyle(
-              color: Theme.of(c).colorScheme.onSurface.withValues(alpha: 0.9),
-              height: 1.45,
-            ),
+        content: Text(
+          'settings.dialog.changelogBody'.tr,
+          style: TextStyle(
+            color: Theme.of(c).colorScheme.onSurface.withValues(alpha: 0.9),
+            height: 1.45,
           ),
         ),
         actions: [
@@ -3174,65 +3461,62 @@ class SettingsController extends GetxController {
             title: Text('settings.dialog.userAgent.title'.tr),
             content: SizedBox(
               width: 380,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Text(
-                    'settings.dialog.userAgent.hint'.tr,
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.65),
-                      fontSize: 12.5,
-                      height: 1.35,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  for (final preset in kPlaybackUserAgentPresets)
-                    RadioListTile<String>(
-                      value: preset.id,
-                      groupValue: selectedId,
-                      contentPadding: EdgeInsets.zero,
-                      dense: true,
-                      title: Text(preset.label),
-                      subtitle: preset.description != null
-                          ? Text(
-                              preset.description!,
-                              style: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.55),
-                                fontSize: 11.5,
-                              ),
-                            )
-                          : null,
-                      onChanged: (v) {
-                        if (v == null) return;
-                        setDialogState(() => selectedId = v);
-                      },
-                    ),
-                  RadioListTile<String>(
-                    value: kPlaybackUserAgentCustomId,
-                    groupValue: selectedId,
-                    contentPadding: EdgeInsets.zero,
-                    dense: true,
-                    title: Text('settings.dialog.userAgent.custom'.tr),
-                    onChanged: (v) {
-                      if (v == null) return;
-                      setDialogState(() => selectedId = v);
-                    },
-                  ),
-                  if (selectedId == kPlaybackUserAgentCustomId) ...[
-                    const SizedBox(height: 8),
-                    TextField(
-                      controller: customController,
-                      maxLines: 3,
-                      minLines: 2,
-                      decoration: InputDecoration(
-                        labelText: 'settings.dialog.userAgent.customLabel'.tr,
-                        hintText: 'settings.dialog.userAgent.customHint'.tr,
-                        border: const OutlineInputBorder(),
+              child: RadioGroup<String>(
+                groupValue: selectedId,
+                onChanged: (v) {
+                  if (v == null) return;
+                  setDialogState(() => selectedId = v);
+                },
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Text(
+                      'settings.dialog.userAgent.hint'.tr,
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.65),
+                        fontSize: 12.5,
+                        height: 1.35,
                       ),
                     ),
+                    const SizedBox(height: 12),
+                    for (final preset in kPlaybackUserAgentPresets)
+                      RadioListTile<String>(
+                        value: preset.id,
+                        contentPadding: EdgeInsets.zero,
+                        dense: true,
+                        title: Text(preset.label),
+                        subtitle: preset.description != null
+                            ? Text(
+                                preset.description!,
+                                style: TextStyle(
+                                  color: Colors.white.withValues(alpha: 0.55),
+                                  fontSize: 11.5,
+                                ),
+                              )
+                            : null,
+                      ),
+                    RadioListTile<String>(
+                      value: kPlaybackUserAgentCustomId,
+                      contentPadding: EdgeInsets.zero,
+                      dense: true,
+                      title: Text('settings.dialog.userAgent.custom'.tr),
+                    ),
+                    if (selectedId == kPlaybackUserAgentCustomId) ...[
+                      const SizedBox(height: 8),
+                      TextField(
+                        controller: customController,
+                        maxLines: 3,
+                        minLines: 2,
+                        decoration: InputDecoration(
+                          labelText: 'settings.dialog.userAgent.customLabel'.tr,
+                          hintText: 'settings.dialog.userAgent.customHint'.tr,
+                          border: const OutlineInputBorder(),
+                        ),
+                      ),
+                    ],
                   ],
-                ],
+                ),
               ),
             ),
             actions: [
@@ -3266,5 +3550,364 @@ class SettingsController extends GetxController {
     );
 
     customController.dispose();
+  }
+  void showSubscriptionStatusDialog() {
+    final ctx = Get.context;
+    if (ctx == null) return;
+    
+    final licensing = LicensingService.to;
+
+    showDialog<void>(
+      context: ctx,
+      builder: (c) {
+        bool buying = false;
+        bool restoring = false;
+        bool buyingCoffee = false;
+
+        // Satın alım başarılı olursa splash'e git
+        ever<bool>(licensing.purchaseCompleted, (completed) {
+          if (completed && c.mounted) {
+            Navigator.pop(c);
+            Get.offAllNamed(AppRoutes.splash);
+          }
+        });
+
+        return StatefulBuilder(
+          builder: (context, setState) {
+            final isTv = _app.layoutMode.value == AppLayoutMode.tv;
+
+            return GlassAlertDialog(
+              title: Text('settings.subscription.dialog.title'.tr),
+              content: Container(
+                constraints: const BoxConstraints(maxWidth: 480),
+                child: SingleChildScrollView(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Obx(() => _buildDialogInfoRow(
+                        'settings.subscription.dialog.status'.tr,
+                        licensing.isPremium.value
+                            ? (licensing.isGrandfathered.value
+                                ? 'settings.subscription.grandfathered'.tr
+                                : 'settings.subscription.premiumActive'.tr)
+                            : (licensing.isTrialActive.value
+                                ? licensing.trialRemainingFormatted
+                                : 'settings.subscription.trialExpired'.tr),
+                        licensing.isPremium.value ? Colors.greenAccent : Colors.redAccent,
+                      )),
+                      const SizedBox(height: 12),
+                      Obx(() => _buildDialogInfoRow(
+                        'settings.subscription.dialog.grandfathered'.tr,
+                        licensing.isGrandfathered.value
+                            ? 'settings.subscription.dialog.grandfathered.yes'.tr
+                            : 'settings.subscription.dialog.grandfathered.no'.tr,
+                        licensing.isGrandfathered.value ? Colors.greenAccent : Colors.white70,
+                      )),
+                      Obx(() {
+                        if (licensing.isPremium.value && licensing.purchaseDate.value != null) {
+                          final date = licensing.purchaseDate.value!.toLocal();
+                          final formattedDate = '${date.day}.${date.month}.${date.year} ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
+                          return Padding(
+                            padding: const EdgeInsets.only(top: 12),
+                            child: _buildDialogInfoRow(
+                              'settings.subscription.dialog.purchaseDate'.tr,
+                              formattedDate,
+                              Colors.white70,
+                            ),
+                          );
+                        }
+                        return const SizedBox.shrink();
+                      }),
+                      Obx(() {
+                        if (!licensing.isPremium.value && licensing.trialExpirationDate.value != null) {
+                          final expireDate = licensing.trialExpirationDate.value!.toLocal();
+                          final formattedDate = '${expireDate.day}.${expireDate.month}.${expireDate.year} ${expireDate.hour.toString().padLeft(2, '0')}:${expireDate.minute.toString().padLeft(2, '0')}';
+                          return Padding(
+                            padding: const EdgeInsets.only(top: 12),
+                            child: _buildDialogInfoRow(
+                              'settings.subscription.dialog.trialEnd'.tr,
+                              formattedDate,
+                              Colors.white70,
+                            ),
+                          );
+                        }
+                        return const SizedBox.shrink();
+                      }),
+                      Obx(() {
+                        if (licensing.isPremium.value) {
+                          if (buyingCoffee) {
+                            return const Center(
+                              child: Padding(
+                                padding: EdgeInsets.all(12.0),
+                                child: CircularProgressIndicator(
+                                  color: Colors.greenAccent,
+                                  strokeWidth: 3,
+                                ),
+                              ),
+                            );
+                          }
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              const SizedBox(height: 16),
+                              const Divider(color: Colors.white12, height: 1),
+                              const SizedBox(height: 12),
+                              ElevatedButton.icon(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.amber.withValues(alpha: 0.15),
+                                  foregroundColor: Colors.amberAccent,
+                                  side: const BorderSide(color: Colors.amber, width: 1),
+                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                                icon: const Icon(Icons.coffee_rounded, size: 18),
+                                label: Text(
+                                  'paywall.button.coffee'.tr,
+                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                                ),
+                                onPressed: () async {
+                                  setState(() => buyingCoffee = true);
+                                  try {
+                                    final success = await licensing.buyCoffeeProduct();
+                                    if (success) {
+                                      Get.snackbar(
+                                        'paywall.coffee.success.title'.tr,
+                                        'paywall.coffee.success.body'.tr,
+                                        snackPosition: SnackPosition.BOTTOM,
+                                        backgroundColor: Colors.green.withValues(alpha: 0.85),
+                                        colorText: Colors.white,
+                                      );
+                                    } else {
+                                      Get.snackbar(
+                                        'paywall.error.title'.tr,
+                                        'paywall.error.body'.tr,
+                                        snackPosition: SnackPosition.BOTTOM,
+                                        backgroundColor: Colors.red.withValues(alpha: 0.85),
+                                        colorText: Colors.white,
+                                      );
+                                    }
+                                  } finally {
+                                    if (context.mounted) {
+                                      setState(() => buyingCoffee = false);
+                                    }
+                                  }
+                                },
+                              ),
+                            ],
+                          );
+                        }
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            const SizedBox(height: 16),
+                            const Divider(color: Colors.white12, height: 1),
+                            const SizedBox(height: 12),
+                            Text(
+                              'paywall.title'.tr,
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontWeight: FontWeight.bold,
+                                fontSize: isTv ? 15 : 14,
+                              ),
+                            ),
+                            const SizedBox(height: 8),
+                            _buildDialogFeatureRow(Icons.check_circle_rounded, 'paywall.feature.performance.title'.tr),
+                            _buildDialogFeatureRow(Icons.check_circle_rounded, 'paywall.feature.sync.title'.tr),
+                            _buildDialogFeatureRow(Icons.check_circle_rounded, 'paywall.feature.keymapping.title'.tr),
+                            _buildDialogFeatureRow(Icons.check_circle_rounded, 'paywall.feature.introcutter.title'.tr),
+                            const SizedBox(height: 16),
+                            if (buying || restoring || buyingCoffee)
+                              const Center(
+                                child: Padding(
+                                  padding: EdgeInsets.all(12.0),
+                                  child: CircularProgressIndicator(
+                                    color: Colors.greenAccent,
+                                    strokeWidth: 3,
+                                  ),
+                                ),
+                              )
+                            else
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  ElevatedButton.icon(
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.greenAccent.withValues(alpha: 0.15),
+                                      foregroundColor: Colors.greenAccent,
+                                      side: const BorderSide(color: Colors.greenAccent, width: 1),
+                                      padding: const EdgeInsets.symmetric(vertical: 12),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                    ),
+                                    icon: const Icon(Icons.workspace_premium_rounded, size: 18),
+                                    label: Text(
+                                      'paywall.button.buy'.tr,
+                                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                                    ),
+                                    onPressed: () async {
+                                      setState(() => buying = true);
+                                      try {
+                                        final success = await licensing.buyPremiumProduct();
+                                        if (!success && c.mounted) {
+                                          Get.snackbar(
+                                            'paywall.error.title'.tr,
+                                            'paywall.error.body'.tr,
+                                            snackPosition: SnackPosition.BOTTOM,
+                                            backgroundColor: Colors.red.withValues(alpha: 0.85),
+                                            colorText: Colors.white,
+                                          );
+                                        }
+                                      } finally {
+                                        if (context.mounted) {
+                                          setState(() => buying = false);
+                                        }
+                                      }
+                                    },
+                                  ),
+                                  const SizedBox(height: 8),
+                                  OutlinedButton.icon(
+                                    style: OutlinedButton.styleFrom(
+                                      foregroundColor: Colors.white70,
+                                      side: const BorderSide(color: Colors.white24),
+                                      padding: const EdgeInsets.symmetric(vertical: 10),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                    ),
+                                    icon: const Icon(Icons.restore_rounded, size: 16),
+                                    label: Text(
+                                      'paywall.button.restore'.tr,
+                                      style: const TextStyle(fontSize: 13),
+                                    ),
+                                    onPressed: () async {
+                                      setState(() => restoring = true);
+                                      try {
+                                        await licensing.triggerRestore();
+                                        await Future<void>.delayed(const Duration(seconds: 3));
+                                        if (licensing.isPremium.value) {
+                                          if (c.mounted) Navigator.pop(c);
+                                          Get.offAllNamed(AppRoutes.splash);
+                                        } else {
+                                          Get.snackbar(
+                                            'paywall.restore.title'.tr,
+                                            'paywall.restore.body'.tr,
+                                            snackPosition: SnackPosition.BOTTOM,
+                                            backgroundColor: Colors.white.withValues(alpha: 0.1),
+                                            colorText: Colors.white,
+                                          );
+                                        }
+                                      } finally {
+                                        if (context.mounted) {
+                                          setState(() => restoring = false);
+                                        }
+                                      }
+                                    },
+                                  ),
+                                  const SizedBox(height: 8),
+                                  ElevatedButton.icon(
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: Colors.amber.withValues(alpha: 0.15),
+                                      foregroundColor: Colors.amberAccent,
+                                      side: const BorderSide(color: Colors.amber, width: 1),
+                                      padding: const EdgeInsets.symmetric(vertical: 12),
+                                      shape: RoundedRectangleBorder(
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                    ),
+                                    icon: const Icon(Icons.coffee_rounded, size: 18),
+                                    label: Text(
+                                      'paywall.button.coffee'.tr,
+                                      style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                                    ),
+                                    onPressed: () async {
+                                      setState(() => buyingCoffee = true);
+                                      try {
+                                        final success = await licensing.buyCoffeeProduct();
+                                        if (success) {
+                                          Get.snackbar(
+                                            'paywall.coffee.success.title'.tr,
+                                            'paywall.coffee.success.body'.tr,
+                                            snackPosition: SnackPosition.BOTTOM,
+                                            backgroundColor: Colors.green.withValues(alpha: 0.85),
+                                            colorText: Colors.white,
+                                          );
+                                        } else {
+                                          Get.snackbar(
+                                            'paywall.error.title'.tr,
+                                            'paywall.error.body'.tr,
+                                            snackPosition: SnackPosition.BOTTOM,
+                                            backgroundColor: Colors.red.withValues(alpha: 0.85),
+                                            colorText: Colors.white,
+                                          );
+                                        }
+                                      } finally {
+                                        if (context.mounted) {
+                                          setState(() => buyingCoffee = false);
+                                        }
+                                      }
+                                    },
+                                  ),
+                                ],
+                              ),
+                          ],
+                        );
+                      }),
+                    ],
+                  ),
+                ),
+              ),
+              actions: [
+                GlassDialogActionButton(
+                  label: 'common.close'.tr,
+                  onPressed: () => Navigator.pop(c),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Widget _buildDialogFeatureRow(IconData icon, String text) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(
+        children: [
+          Icon(icon, color: Colors.greenAccent, size: 14),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              text,
+              style: const TextStyle(color: Colors.white, fontSize: 13),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDialogInfoRow(String label, String value, Color valueColor) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(color: Colors.white70, fontSize: 14),
+        ),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Text(
+            value,
+            textAlign: TextAlign.end,
+            style: TextStyle(color: valueColor, fontWeight: FontWeight.bold, fontSize: 14),
+          ),
+        ),
+      ],
+    );
   }
 }

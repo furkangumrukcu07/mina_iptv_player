@@ -1,5 +1,6 @@
 import 'dart:math';
 
+import '../../domain/entities/channel.dart';
 import '../../domain/entities/m3u_result.dart';
 import '../services/app_settings_service.dart';
 import '../services/epg_service.dart';
@@ -14,6 +15,7 @@ const kUpcomingMatchesMaxChips = 36;
 abstract final class UpcomingMatchesCatalog {
   static List<EpgMixEntry> build({
     required M3uResult data,
+    required Iterable<Channel> channels,
     required AppSettingsService app,
     required PlaylistCacheService cache,
     required EpgService epg,
@@ -21,6 +23,7 @@ abstract final class UpcomingMatchesCatalog {
   }) {
     final buckets = EpgMixCatalog.build(
       data: data,
+      channels: channels,
       app: app,
       cache: cache,
       epg: epg,

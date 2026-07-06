@@ -15,6 +15,9 @@ String localizedThemeStorageLabel(String stored) {
     GlassThemeLabels.minaGlass => 'theme.minaGlass'.tr,
     GlassThemeLabels.semcTheme => 'theme.semcTheme'.tr,
     GlassThemeLabels.flyUi => 'theme.flyUi'.tr,
+    GlassThemeLabels.tvLite => 'theme.tvLite'.tr,
+    GlassThemeLabels.ios27 => 'theme.ios27'.tr,
+    GlassThemeLabels.macTema => 'theme.macTema'.tr,
     _ => stored,
   };
 }

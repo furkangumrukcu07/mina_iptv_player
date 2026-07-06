@@ -146,6 +146,24 @@ abstract class PlaylistRepository {
   /// null. Disk anlık görüntüsü tercih edilmez — her zaman ağdan/dosyadan taze.
   Future<M3uResult?> loadSlotPlaylist(int slot);
 
+  /// Slot için SQLite (`PlaylistSqliteStore`) `source_key` parmak izi. Slotta
+  /// kayıtlı kaynak yoksa null. Tüketiciler büyük listeleri bu anahtarla
+  /// diskten (sayfalı) sorgular.
+  Future<String?> slotDbKey(int slot);
+
+  /// [loadMergedPlaylist] son çağrısında birleşik sonucun yazıldığı SQLite
+  /// `source_key`'i. Birleştirme yapılmadıysa / DB'ye yazılamadıysa null.
+  /// Çağıran taraf, cache'i bu anahtarla "slim" (film/dizi RAM'de değil)
+  /// olarak besleyebilir.
+  String? get lastMergedDbSourceKey;
+
+  /// Artık hiçbir aktif slota karşılık gelmeyen (silinmiş / düzenlenmiş /
+  /// compact edilmiş kaynaklara ait) SQLite playlist verilerini temizler.
+  /// 20+ liste senaryosunda `mina_playlist.sqlite`'ın sınırsız büyümesini
+  /// önler. [keepExtra] verilirse o anahtar(lar) korunur (ör. cache'in o an
+  /// kullandığı birleşik anahtar).
+  Future<void> pruneOrphanPlaylistDbSources({Set<String> keepExtra});
+
   // ---------------------------------------------------------------------------
   // Slot-tabanlı API (4'e kadar playlist için). Slot 1 = birincil, 2..N = ek.
   // ---------------------------------------------------------------------------
@@ -159,6 +177,17 @@ abstract class PlaylistRepository {
 
   /// Slot'u temizler (kayıt, varsa yerel m3u dosyası, snapshot).
   Future<void> clearSourceAt(int slot);
+
+  /// Dolu slotları boşlukları kapatacak şekilde 1..N olarak yeniden numaralar.
+  ///
+  /// Örn. kullanıcı 5 listeden 3.'yü silince geriye 1,2,4,5 kalır; bu metot
+  /// 4→3 ve 5→4 taşıyarak 1,2,3,4 yapar. Kaynak, kullanıcı etiketi, devre dışı
+  /// bayrağı ve (yerel m3u ise) dosya birlikte taşınır.
+  ///
+  /// Dönüş: taşınan slotlar için `{eskiSlot: yeniSlot}` haritası. Hiçbir şey
+  /// taşınmadıysa (zaten ardışık) boş harita döner. Çağıran taraf aktif slot
+  /// referansını bu harita ile güncellemelidir.
+  Future<Map<int, int>> compactSlots();
 
   /// Slot için yerel M3U gövdesini diske yazar ve kaynağı sentinel'le işaretler.
   Future<M3uResult> persistM3uLocalContentAt(int slot, String content);

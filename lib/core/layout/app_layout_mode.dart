@@ -45,6 +45,14 @@ bool remoteNavForScreenLayout(BuildContext context, AppLayoutMode mode) {
   );
 }
 
+/// Film & Dizi poster ızgarasında kumanda/D-pad odak sarmalayıcıları.
+///
+/// Mobil yatayda [remoteNavForScreenLayout] true olsa bile poster başına
+/// [TvDpadFocus] binlerce odak düğümü kurup stack overflow / çökmeye yol
+/// açıyordu; dokunmatik yeterli. Tablet ve TV profillerinde kumanda açık kalır.
+bool filmDiziRemoteNavEnabled(AppLayoutMode mode) =>
+    mode.usesRemoteNavigationStyle;
+
 extension AppLayoutModeLabels on AppLayoutMode {
   String get title => switch (this) {
         AppLayoutMode.mobile => 'layout.mobile'.tr,

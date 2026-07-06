@@ -18,20 +18,20 @@ import '../../core/routes/app_routes.dart';
 import '../../core/services/app_bootstrap_service.dart';
 import '../../core/services/app_settings_service.dart';
 import '../../core/services/active_playlist_service.dart';
+import '../../core/services/licensing_service.dart';
 import '../../core/services/app_image_cache_service.dart';
 import '../../core/services/epg_service.dart';
 import '../../core/services/epg_deferred_load_service.dart';
-import '../../core/services/network_quality_monitor_service.dart';
 import '../../core/services/network_reachability.dart';
 import '../../core/services/iptv_logo_cache_service.dart';
 import '../../core/services/playlist_cache_service.dart';
+import '../../core/services/playlist_data_source.dart';
+import '../home/home_card_counts.dart';
 import '../../data/local/epg_snapshot_keys.dart';
 import '../../data/local/epg_snapshot_store.dart';
 import '../../data/local/vod_xtream_info_cache_store.dart';
 import '../../domain/entities/m3u_result.dart';
 import '../../domain/repositories/playlist_repository.dart';
-import '../../ui/glass_overlays.dart';
-
 class SplashController extends GetxController {
   final _repo = Get.find<PlaylistRepository>();
   final _cache = Get.find<PlaylistCacheService>();
@@ -39,7 +39,10 @@ class SplashController extends GetxController {
   final _epg = Get.find<EpgService>();
 
   /// Splash en az bu kadar görünür (ani geçiş + ana ekran takılması hissi azalır).
-  static const _minSplashDuration = Duration(milliseconds: 1400);
+  static const _minSplashDuration = Duration(milliseconds: 500);
+
+  /// Disk snapshot + SQLite isabetinde daha kısa minimum splash.
+  static const _minSplashDurationSnapshotHit = Duration(milliseconds: 200);
 
   /// EPG şeritleri en geç bu süre sonra açılır (defer uzun sürerse).
   static const _homeEpgUiMaxDefer = Duration(seconds: 4);
@@ -54,7 +57,7 @@ class SplashController extends GetxController {
   @override
   void onInit() {
     super.onInit();
-    _failSafe = Timer(const Duration(seconds: 50), () {
+    _failSafe = Timer(const Duration(minutes: 3), () {
       if (_finished) return;
       debugPrint('mina_iptv: Splash fail-safe → setup');
       _goSetup(clearCache: true);
@@ -69,11 +72,26 @@ class SplashController extends GetxController {
     });
   }
 
-  Future<void> _ensureMinSplash(DateTime started) async {
+  /// "Neredeyse hazır" durumu en az bu kadar görünür kalır. Bu boşta bekleme
+  /// sırasında UI thread serbest olduğundan alttaki nabız (yanıp sönme) akıcı
+  /// döner; ekran aniden donup geçmek yerine yumuşak biter.
+  static const _finishingMinVisible = Duration(milliseconds: 80);
+
+  Future<void> _ensureMinSplash(
+    DateTime started, {
+    bool fastPath = false,
+  }) async {
+    _appBoot.setSplashStatus('splash.finishing');
+    final minDuration =
+        fastPath ? _minSplashDurationSnapshotHit : _minSplashDuration;
     final elapsed = DateTime.now().difference(started);
-    if (elapsed < _minSplashDuration) {
-      _appBoot.setSplashStatus('splash.finishing');
-      await Future<void>.delayed(_minSplashDuration - elapsed);
+    final remaining = minDuration - elapsed;
+    if (remaining.inMilliseconds > 0) {
+      final wait =
+          remaining > _finishingMinVisible ? remaining : _finishingMinVisible;
+      await Future<void>.delayed(wait);
+    } else {
+      await Future<void>.delayed(const Duration(milliseconds: 50));
     }
   }
 
@@ -114,11 +132,6 @@ class SplashController extends GetxController {
         }),
       );
     }
-    // Akıllı CDN / Proxy seçici — splash sonrası ağı izlemeye başla.
-    // Playlist artık yüklü, kaynakların host'larını okuyabiliriz.
-    if (Get.isRegistered<NetworkQualityMonitorService>()) {
-      Get.find<NetworkQualityMonitorService>().bootstrap();
-    }
   }
 
   Future<void> _bootstrap() async {
@@ -126,6 +139,17 @@ class SplashController extends GetxController {
     final splashStarted = DateTime.now();
     _appBoot.setSplashStatus('splash.preparing');
     try {
+      if (Get.isRegistered<LicensingService>()) {
+        final licensing = Get.find<LicensingService>();
+        await licensing.initialization.timeout(const Duration(seconds: 5), onTimeout: () {});
+        if (!licensing.isTrialActive.value && !licensing.isPremium.value) {
+          _finished = true;
+          _failSafe?.cancel();
+          Get.offAllNamed(AppRoutes.paywall);
+          return;
+        }
+      }
+
       if (!_app.isSetupCompleted.value) {
         await _app.maybeMarkLegacyUserCompleteIfHasPlaylist(_repo);
       }
@@ -184,20 +208,27 @@ class SplashController extends GetxController {
       // taze veri de çeker. 60 sn ağ timeout'u.
       final parsed = await activeSvc
           .loadActiveIntoCache(preferSnapshot: true)
-          .timeout(const Duration(seconds: 60));
+          .timeout(const Duration(seconds: 90));
 
       if (parsed == null) {
-        debugPrint('mina_iptv: Active slot load returned null → setup');
-        _goSetup(clearCache: true);
+        debugPrint('mina_iptv: Active slot load returned null');
+        _handleBootstrapError('playlist.error.url.network'.tr, clearCache: false);
         return;
       }
+
+      final snapshotHit = activeSvc.lastLoadFromSnapshot;
+      final dbBacked = Get.isRegistered<PlaylistDataSource>() &&
+          Get.find<PlaylistDataSource>().isDbBacked;
+      final fastSplash = snapshotHit && dbBacked;
 
       if (shouldRefresh) {
         debugPrint('mina_iptv: Auto-refresh triggered…');
         await _app.updateLastRefreshTime();
       }
 
-      unawaited(_precacheInitialImages(parsed));
+      unawaited(
+        _precacheInitialImages(parsed, skipEtag: snapshotHit),
+      );
       _appBoot.setSplashStatus('splash.epg');
       final epgDefer = await _prepareEpgOnSplash(activeSource, parsed)
           .timeout(_splashEpgPrepareTimeout, onTimeout: () {
@@ -216,7 +247,14 @@ class SplashController extends GetxController {
         await _applyRemoteConfig(remote.value);
       }
 
-      await _ensureMinSplash(splashStarted);
+      // Ana ekran kart sayıları (canlı / film / dizi) hazır olana kadar splash
+      // "hazırlanıyor"da kalır; böylece ana ekran rozetleri "0" görünüp
+      // dolmadan, tam hazır halde açılır. Uzun sürerse zaman aşımıyla yine de
+      // devam edilir (home async olarak doldurur).
+      _appBoot.setSplashStatus('splash.preparing');
+      await _precomputeHomeCounts(parsed);
+
+      await _ensureMinSplash(splashStarted, fastPath: fastSplash);
       _goHome(
         source: activeSource,
         playlist: parsed,
@@ -226,28 +264,13 @@ class SplashController extends GetxController {
       _afterHomeRemoteConfigTasks(remote?.value);
     } on AppException catch (e) {
       debugPrint('mina_iptv: AppException: ${e.message}');
-      _goSetup(clearCache: true);
-      Future.microtask(() {
-        GlassSnackbar.show('Playlist', e.message,
-            snackPosition: SnackPosition.BOTTOM);
-      });
+      _handleBootstrapError(e.message, clearCache: false);
     } on TimeoutException {
-      debugPrint('mina_iptv: Load TimeoutException → setup');
-      _goSetup(clearCache: true);
-      Future.microtask(() {
-        GlassSnackbar.show(
-          'Bağlantı',
-          'Yükleme zaman aşımına uğradı. Kurulumu tekrarlayın.',
-          snackPosition: SnackPosition.BOTTOM,
-        );
-      });
+      debugPrint('mina_iptv: Load TimeoutException');
+      _handleBootstrapError('playlist.error.url.timeout'.tr, clearCache: false);
     } catch (e, st) {
       debugPrint('mina_iptv: Error: $e\n$st');
-      _goSetup(clearCache: true);
-      Future.microtask(() {
-        GlassSnackbar.show('Playlist', e.toString(),
-            snackPosition: SnackPosition.BOTTOM);
-      });
+      _handleBootstrapError(e.toString(), clearCache: false);
     }
   }
 
@@ -349,11 +372,40 @@ class SplashController extends GetxController {
     }
   }
 
-  Future<void> _precacheInitialImages(M3uResult result) async {
+  /// Ana ekran kart sayılarını splash'te hesaplar ve stash'ler. Home controller
+  /// ilk frame'de bunları senkron kullanır. Hesap uzun sürerse (devasa DB)
+  /// zaman aşımıyla sessizce geçilir; o durumda home eski davranışla (async)
+  /// rozetleri doldurur.
+  Future<void> _precomputeHomeCounts(M3uResult parsed) async {
+    try {
+      final ds = Get.find<PlaylistDataSource>();
+      final counts = await computeHomeCardCounts(
+        d: parsed,
+        app: _app,
+        cache: _cache,
+        ds: ds,
+      ).timeout(const Duration(seconds: 8));
+      _appBoot.setPreloadedHomeCounts(
+        scopeKey: homeCardCountsScopeKey(parsed, _app, _cache),
+        live: counts.live,
+        films: counts.films,
+        series: counts.series,
+      );
+    } catch (e) {
+      debugPrint('mina_iptv: home counts precompute skipped: $e');
+    }
+  }
+
+  Future<void> _precacheInitialImages(
+    M3uResult result, {
+    bool skipEtag = false,
+  }) async {
     if (!Get.isRegistered<AppImageCacheService>()) return;
     try {
-      await Get.find<AppImageCacheService>()
-          .precacheInitialPlaylistImages(result);
+      await Get.find<AppImageCacheService>().precacheInitialPlaylistImages(
+        result,
+        skipEtag: skipEtag,
+      );
     } catch (_) {}
   }
 
@@ -460,6 +512,63 @@ class SplashController extends GetxController {
       }
     }
     Get.offAllNamed(AppRoutes.playlist);
+  }
+
+  void _handleBootstrapError(String message, {bool clearCache = true}) {
+    if (_finished) return;
+    
+    // Eğer kurulum tamamlanmamışsa veya kaynak yoksa, her halükarda kuruluma yönlendir.
+    if (!_app.isSetupCompleted.value) {
+      _goSetup(clearCache: clearCache);
+      return;
+    }
+
+    final ctx = Get.context;
+    if (ctx == null) {
+      _goSetup(clearCache: false);
+      return;
+    }
+
+    showDialog<void>(
+      context: ctx,
+      barrierDismissible: false,
+      builder: (dialogCtx) {
+        return PopScope(
+          canPop: false,
+          child: AlertDialog(
+            backgroundColor: const Color(0xFF1E1E2C),
+            title: Text(
+              'common.error'.tr,
+              style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+            ),
+            content: Text(
+              message,
+              style: const TextStyle(color: Colors.white70),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () {
+                  Navigator.of(dialogCtx).pop();
+                  _goSetup(clearCache: false); // Düzenleme ekranına git (verileri silme)
+                },
+                child: Text(
+                  'playlistsManager.edit'.tr,
+                  style: const TextStyle(color: Colors.blueAccent),
+                ),
+              ),
+              FilledButton(
+                onPressed: () {
+                  Navigator.of(dialogCtx).pop();
+                  // Tekrar dene
+                  unawaited(_bootstrap());
+                },
+                child: Text('common.retry'.tr),
+              ),
+            ],
+          ),
+        );
+      },
+    );
   }
 
   @override

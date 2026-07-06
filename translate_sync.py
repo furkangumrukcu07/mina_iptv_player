@@ -75,6 +75,15 @@ LANG_MAP: Dict[str, Dict[str, str]] = {
     "it": {"file": PARTIALS_FILE, "var": "kLocalePartialIt", "code": "it"},
     "pt": {"file": PARTIALS_FILE, "var": "kLocalePartialPt", "code": "pt"},
     "id": {"file": PARTIALS_FILE, "var": "kLocalePartialId", "code": "id"},
+    "de": {"file": PARTIALS_FILE, "var": "kLocalePartialDe", "code": "de"},
+    "fa": {"file": PARTIALS_FILE, "var": "kLocalePartialFa", "code": "fa"},
+    "pl": {"file": PARTIALS_FILE, "var": "kLocalePartialPl", "code": "pl"},
+    "nl": {"file": PARTIALS_FILE, "var": "kLocalePartialNl", "code": "nl"},
+    "uk": {"file": PARTIALS_FILE, "var": "kLocalePartialUk", "code": "uk"},
+    "vi": {"file": PARTIALS_FILE, "var": "kLocalePartialVi", "code": "vi"},
+    "el": {"file": PARTIALS_FILE, "var": "kLocalePartialEl", "code": "el"},
+    "ro": {"file": PARTIALS_FILE, "var": "kLocalePartialRo", "code": "ro"},
+    "sq": {"file": PARTIALS_FILE, "var": "kLocalePartialSq", "code": "sq"},
     "es": {"file": ES_FILE, "var": "kLocalePartialEs", "code": "es"},
     "ja": {"file": JA_FILE, "var": "kLocalePartialJa", "code": "ja"},
 }
@@ -318,7 +327,9 @@ def inject_new_keys(file_path: str, var_name: str, new_items: Dict[str, str]) ->
     if not pattern.search(content):
         log(f"   ❌ {var_name} açılışı bulunamadı: {file_path}")
         return
-    updated = pattern.sub(rf"\1\n{block}", content, count=1)
+    # re.sub replacement string'inde `\n` yorumlanır; Dart literal içindeki `\n`
+    # kaçışları fiziksel satır sonuna dönüşmesin diye lambda kullan.
+    updated = pattern.sub(lambda m: m.group(1) + "\n" + block, content, count=1)
     with open(file_path, "w", encoding="utf-8") as f:
         f.write(updated)
     log(f"   ✅ {var_name} → {len(new_items)} yeni anahtar yazıldı ({file_path})")

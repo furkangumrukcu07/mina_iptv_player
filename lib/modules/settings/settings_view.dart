@@ -2,20 +2,51 @@ import 'dart:io';
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 
 import '../../core/haptics/adaptive_haptics_service.dart';
+import '../../core/i18n/theme_label_localized.dart';
 import '../../core/layout/app_layout_mode.dart';
 import '../../core/services/app_settings_service.dart';
 import '../../core/services/auth_service.dart';
+import '../../core/services/licensing_service.dart';
 import '../../core/services/profiles_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/glass_appearance.dart';
-import '../../ui/tv_dpad_focus.dart';
+import '../../ui/tv_dpad_focus.dart'
+    show TvDpadFocus, TvFocusableInkWell, tvHandleDpadKeys, tvKeyIsBack;
+import '../tv_shell/tv_shell_controller.dart';
+import '../tv_shell/widgets/tv_shell_interactive.dart' show tvShellTouchableInk;
 import 'settings_controller.dart';
 
+/// TV kabuğu ayar panelinde karolar arası D-pad sırası (tek sütun).
+abstract final class _ShellDpad {
+  static const playlist = 0;
+  static const channelLayout = 1;
+  static const homeSettings = 2;
+  static const playback = 3;
+  static const keyMapping = 4;
+  static const refresh = 5;
+  static const theme = 6;
+  static const otherTools = 7;
+  static const language = 8;
+  static const profiles = 9;
+  static const cloud = 10;
+  static const downloads = 11;
+  static const clearAll = 12;
+  static const about = 13;
+  static const contact = 14;
+  static const setup = 15;
+  static const account = 16;
+  static const subscription = 17;
+}
+
 class SettingsView extends GetView<SettingsController> {
-  const SettingsView({super.key});
+  const SettingsView({super.key, this.embeddedInTvShell = false});
+
+  /// TV kabuğu sağ panelinde gömülü mod: üst başlık/geri gizlenir.
+  final bool embeddedInTvShell;
 
   static TextStyle get _subtitleStyle => const TextStyle(
         color: Colors.white70,
@@ -70,6 +101,7 @@ class SettingsView extends GetView<SettingsController> {
             );
             if (reduce ||
                 tv ||
+                isPortrait ||
                 GlassAppearance.fromLabel(themeLabel)
                     .usesSyntheticGlassSurface) {
               return scaled;
@@ -97,52 +129,95 @@ class SettingsView extends GetView<SettingsController> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  _SettingsTopBar(
-                    onBack: controller.goBack,
-                    clockBuilder: () => Obx(
-                      () => Text(
-                        _fmtClock(controller.now.value),
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 15,
-                          fontWeight: FontWeight.w600,
+                  if (!embeddedInTvShell) ...[
+                    _SettingsTopBar(
+                      onBack: controller.goBack,
+                      clockBuilder: () => Obx(
+                        () => Text(
+                          _fmtClock(controller.now.value),
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ),
                     ),
-                  ),
-                  const SizedBox(height: 16),
+                    const SizedBox(height: 16),
+                  ],
                   Expanded(
-                    child: FocusTraversalGroup(
-                      policy: WidgetOrderTraversalPolicy(),
-                      child: SingleChildScrollView(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            _SectionLabel(text: 'settings.section.general'.tr),
-                            const SizedBox(height: 10),
-                            Obx(() {
-                              controller.now.value;
-                              controller.isRefreshing.value;
-                              controller.isFetchingInfo.value;
-                              final xt = controller.isXtream.value;
-                              final sleepEnd =
-                                  controller.app.sleepTimerEndMs.value;
-                              final _ = sleepEnd;
-                              var n = 0;
-                              String idx() => (++n).toString().padLeft(2, '0');
-                              return _SettingsGrid(
-                                children: [
-                                  _GlassTile(
-                                    index: idx(),
-                                    title: 'settings.tile.playlist'.tr,
-                                    subtitle: Text(
-                                      'settings.tile.playlist.sub'.tr,
-                                      style: _subtitleStyle,
+                    child: _TvShellSettingsHost(
+                      enabled: embeddedInTvShell,
+                      child: embeddedInTvShell
+                          ? SingleChildScrollView(
+                              child: _settingsScrollColumn(
+                                context: context,
+                                embeddedInTvShell: embeddedInTvShell,
+                                primary: primary,
+                              ),
+                            )
+                          : FocusTraversalGroup(
+                              policy: WidgetOrderTraversalPolicy(),
+                              child: SingleChildScrollView(
+                                child: _settingsScrollColumn(
+                                  context: context,
+                                  embeddedInTvShell: embeddedInTvShell,
+                                  primary: primary,
+                                ),
+                              ),
+                            ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _settingsScrollColumn({
+    required BuildContext context,
+    required bool embeddedInTvShell,
+    required Color primary,
+  }) {
+    return Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              _SectionLabel(
+                                text: 'settings.section.general'.tr,
+                              ),
+                              const SizedBox(height: 10),
+                              Obx(() {
+                                controller.now.value;
+                                controller.isRefreshing.value;
+                                controller.isFetchingInfo.value;
+                                final sleepEnd =
+                                    controller.app.sleepTimerEndMs.value;
+                                final _ = sleepEnd;
+                                _TvShellSettingsFocus.maybeOf(context)
+                                    ?.coordinator
+                                    .beginBuild();
+                                var n = 0;
+                                String idx() =>
+                                    (++n).toString().padLeft(2, '0');
+                                return _SettingsGrid(
+                                  tvDpad: embeddedInTvShell,
+                                  children: [
+                                    _GlassTile(
+                                      index: idx(),
+                                      shellDpadIndex: _ShellDpad.playlist,
+                                      primaryShellTile: embeddedInTvShell,
+                                      title: 'settings.tile.playlist'.tr,
+                                      subtitle: Text(
+                                        'settings.tile.playlist.sub'.tr,
+                                        style: _subtitleStyle,
+                                      ),
+                                      icon: Icons.playlist_play_rounded,
+                                      iconColor: primary,
+                                      onTap: controller.openPlaylistList,
                                     ),
-                                    icon: Icons.playlist_play_rounded,
-                                    iconColor: primary,
-                                    onTap: controller.openPlaylistList,
-                                  ),
                                   // «Liste Yönetimi» tile'ı kaldırıldı —
                                   // aynı navigasyon `PlaylistView` içindeki
                                   // `_PlaylistsManagerEntryCard` üzerinden
@@ -152,6 +227,7 @@ class SettingsView extends GetView<SettingsController> {
                                   // alt-sayfasında birleştirildi.
                                   _GlassTile(
                                     index: idx(),
+                                    shellDpadIndex: _ShellDpad.channelLayout,
                                     title: 'settings.tile.channelLayout'.tr,
                                     subtitle: Text(
                                       'settings.tile.channelLayout.sub'.tr,
@@ -164,6 +240,7 @@ class SettingsView extends GetView<SettingsController> {
                                   ),
                                   _GlassTile(
                                     index: idx(),
+                                    shellDpadIndex: _ShellDpad.homeSettings,
                                     title: 'settings.tile.homeSettings'.tr,
                                     subtitle: Text(
                                       'settings.tile.homeSettings.sub'.tr,
@@ -182,6 +259,7 @@ class SettingsView extends GetView<SettingsController> {
                                   // «Kanal Öneki».
                                   _GlassTile(
                                     index: idx(),
+                                    shellDpadIndex: _ShellDpad.playback,
                                     title: 'settings.tile.playback'.tr,
                                     subtitle: Text(
                                       'settings.tile.playback.sub'.tr,
@@ -191,12 +269,67 @@ class SettingsView extends GetView<SettingsController> {
                                     iconColor: primary,
                                     onTap: controller.openPlaybackSettings,
                                   ),
+                                  if (controller.app.layoutMode.value == AppLayoutMode.tv)
+                                    _GlassTile(
+                                      index: idx(),
+                                      shellDpadIndex: _ShellDpad.keyMapping,
+                                      title: 'settings.tile.keyMapping'.tr,
+                                      subtitle: Text(
+                                        'settings.tile.keyMapping.sub'.tr,
+                                        style: _subtitleStyle,
+                                      ),
+                                      icon: Icons.settings_remote_rounded,
+                                      iconColor: primary,
+                                      onTap: controller.openTvKeyMapping,
+                                    ),
+                                  // «İçerikleri Yenile» — kullanıcı isteğiyle
+                                  // Oynatma Ayarları alt-sayfasından ana Ayarlar
+                                  // listesine geri taşındı. Aralık seçenekleri:
+                                  // 2 saat / 1 gün / 2 gün / 3 gün / 1 hafta /
+                                  // Kapalı (+ «şimdi yenile» aksiyonu).
+                                  _GlassTile(
+                                    index: idx(),
+                                    shellDpadIndex: _ShellDpad.refresh,
+                                    title: 'settings.tile.refresh'.tr,
+                                    subtitle: Obx(
+                                      () => Text(
+                                        controller.isRefreshing.value
+                                            ? 'settings.tile.refresh.loading'.tr
+                                            : controller.app.autoRefreshSummary,
+                                        style: _subtitleStyle,
+                                      ),
+                                    ),
+                                    icon: Icons.cloud_download_rounded,
+                                    iconColor: primary,
+                                    onTap: () {
+                                      if (controller.isRefreshing.value) return;
+                                      controller.refreshContent();
+                                    },
+                                  ),
+                                  // «Tema» — Oynatma Ayarları'nın hemen altında.
+                                  _GlassTile(
+                                    index: idx(),
+                                    shellDpadIndex: _ShellDpad.theme,
+                                    title: 'settings.tile.theme'.tr,
+                                    subtitle: Obx(
+                                      () => Text(
+                                        localizedThemeStorageLabel(
+                                          controller.app.themeLabel.value,
+                                        ),
+                                        style: _subtitleStyle,
+                                      ),
+                                    ),
+                                    icon: Icons.palette_rounded,
+                                    iconColor: primary,
+                                    onTap: controller.showThemeDialog,
+                                  ),
                                   // «Diğer Araçlar» (5. sıra): uyku
                                   // zamanlayıcısı, EPG, tema, yedekleme/geri
                                   // yükleme, hız testi, adaptif titreşim ve
                                   // uygulama fontu bu alt-sayfaya taşındı.
                                   _GlassTile(
                                     index: idx(),
+                                    shellDpadIndex: _ShellDpad.otherTools,
                                     title: 'settings.tile.otherTools'.tr,
                                     subtitle: Text(
                                       'settings.tile.otherTools.sub'.tr,
@@ -213,6 +346,7 @@ class SettingsView extends GetView<SettingsController> {
                                   // Ayarları» alt-sayfasına taşındı.
                                   _GlassTile(
                                     index: idx(),
+                                    shellDpadIndex: _ShellDpad.language,
                                     title: 'settings.language'.tr,
                                     subtitle: Obx(
                                       () => Text(
@@ -240,6 +374,7 @@ class SettingsView extends GetView<SettingsController> {
                                           });
                                     return _GlassTile(
                                       index: idx(),
+                                      shellDpadIndex: _ShellDpad.profiles,
                                       title: 'settings.tile.profiles'.tr,
                                       subtitle: Text(
                                         sub,
@@ -278,6 +413,7 @@ class SettingsView extends GetView<SettingsController> {
                                           });
                                     return _GlassTile(
                                       index: idx(),
+                                      shellDpadIndex: _ShellDpad.cloud,
                                       title: 'settings.tile.cloudSync'.tr,
                                       subtitle: Text(
                                         subtitle,
@@ -292,26 +428,13 @@ class SettingsView extends GetView<SettingsController> {
                                       onTap: controller.openCloudSync,
                                     );
                                   }),
-                                  // Veri Kullanım Detayı — bu cihazda
-                                  // uygulamanın kullandığı toplam wifi /
-                                  // mobil veri trafiği. Yalnız Android'de
-                                  // anlamlı (TrafficStats), diğer
-                                  // platformlarda tile yine açılabilir
-                                  // ama sayfada "desteklenmiyor" uyarısı
-                                  // çıkar.
+                                  // Veri Kullanım Detayı buradan kaldırıldı;
+                                  // «Mina Wrapped & İzleme Analitiği» sayfasının
+                                  // en altına (gizlilik kartının ardına)
+                                  // taşındı — izleme verileriyle aynı bağlamda.
                                   _GlassTile(
                                     index: idx(),
-                                    title: 'settings.dataUsage.title'.tr,
-                                    subtitle: Text(
-                                      'settings.dataUsage.subtitle'.tr,
-                                      style: _subtitleStyle,
-                                    ),
-                                    icon: Icons.data_usage_rounded,
-                                    iconColor: primary,
-                                    onTap: controller.openDataUsage,
-                                  ),
-                                  _GlassTile(
-                                    index: idx(),
+                                    shellDpadIndex: _ShellDpad.downloads,
                                     title: 'settings.downloads.title'.tr,
                                     subtitle: Text(
                                       'settings.downloads.subtitle'.tr,
@@ -357,26 +480,11 @@ class SettingsView extends GetView<SettingsController> {
                                   // «Oynatma Ayarları» alt-sayfasına taşındı.
                                   // «Uygulama Fontu» «Diğer Araçlar»
                                   // alt-sayfasına taşındı.
-                                  if (xt)
-                                    _GlassTile(
-                                      index: idx(),
-                                      title: 'settings.tile.account'.tr,
-                                      subtitle: Obx(
-                                        () => Text(
-                                          controller.isFetchingInfo.value
-                                              ? 'common.fetching'.tr
-                                              : 'settings.tile.account.sub'.tr,
-                                          style: _subtitleStyle,
-                                        ),
-                                      ),
-                                      icon: Icons.account_circle_rounded,
-                                      iconColor: primary,
-                                      onTap: controller.isFetchingInfo.value
-                                          ? null
-                                          : controller.showXtreamInfo,
-                                    ),
+                                  // «Hesap Bilgileri» (Xtream) «Uygulama
+                                  // Bilgileri» bölümünün en altına taşındı.
                                   _GlassTile(
                                     index: idx(),
+                                    shellDpadIndex: _ShellDpad.clearAll,
                                     title: 'settings.tile.clearAll'.tr,
                                     subtitle: Text(
                                       'settings.tile.clearAll.sub'.tr,
@@ -397,11 +505,13 @@ class SettingsView extends GetView<SettingsController> {
                                 var a = 0;
                                 String ai() => (++a).toString().padLeft(2, '0');
                                 return _SettingsGrid(
+                                  tvDpad: embeddedInTvShell,
                                   children: [
                                     // «Yerleşim» «Diğer Araçlar» alt-sayfasına
                                     // taşındı.
                                     _GlassTile(
                                       index: ai(),
+                                      shellDpadIndex: _ShellDpad.about,
                                       title: 'settings.tile.about'.tr,
                                       subtitle: Obx(() {
                                         final v = controller
@@ -420,6 +530,7 @@ class SettingsView extends GetView<SettingsController> {
                                     ),
                                     _GlassTile(
                                       index: ai(),
+                                      shellDpadIndex: _ShellDpad.contact,
                                       title: 'settings.tile.contactUs'.tr,
                                       subtitle: Text(
                                         'settings.tile.contactUs.sub'.tr,
@@ -429,8 +540,10 @@ class SettingsView extends GetView<SettingsController> {
                                       iconColor: primary,
                                       onTap: controller.openContactUs,
                                     ),
+
                                     _GlassTile(
                                       index: ai(),
+                                      shellDpadIndex: _ShellDpad.setup,
                                       title: 'settings.tile.setupWizard'.tr,
                                       subtitle: Text(
                                         'settings.tile.setupWizard.sub'.tr,
@@ -440,39 +553,76 @@ class SettingsView extends GetView<SettingsController> {
                                       iconColor: primary,
                                       onTap: controller.restartSetupWizard,
                                     ),
+                                    // «Hesap Bilgileri» (Xtream) — yalnızca
+                                    // Xtream girişinde, «Uygulama Bilgileri»
+                                    // bölümünün en altında görünür.
+                                    Builder(builder: (_) {
+                                      final accountIndex = ai();
+                                      return Obx(() {
+                                      if (!controller.isXtream.value) {
+                                        return const SizedBox.shrink();
+                                      }
+                                      return _GlassTile(
+                                        index: accountIndex,
+                                        shellDpadIndex: _ShellDpad.account,
+                                        title: 'settings.tile.account'.tr,
+                                        subtitle: Obx(
+                                          () => Text(
+                                            controller.isFetchingInfo.value
+                                                ? 'common.fetching'.tr
+                                                : 'settings.tile.account.sub'.tr,
+                                            style: _subtitleStyle,
+                                          ),
+                                        ),
+                                        icon: Icons.account_circle_rounded,
+                                        iconColor: primary,
+                                        onTap: controller.isFetchingInfo.value
+                                            ? null
+                                            : controller.showXtreamInfo,
+                                      );
+                                    });
+                                    }),
+                                    Obx(() {
+                                      final licensing = LicensingService.to;
+                                      final isPremium = licensing.isPremium.value;
+                                      final isGrandfathered = licensing.isGrandfathered.value;
+
+                                      String sub = '';
+                                      if (isPremium) {
+                                        if (isGrandfathered) {
+                                          sub = 'settings.subscription.grandfathered'.tr;
+                                        } else {
+                                          sub = 'settings.subscription.premiumActive'.tr;
+                                        }
+                                      } else {
+                                        if (licensing.isTrialActive.value) {
+                                          sub = licensing.trialRemainingFormatted;
+                                        } else {
+                                          sub = 'settings.subscription.trialExpired'.tr;
+                                        }
+                                      }
+
+                                      return _GlassTile(
+                                        index: ai(),
+                                        shellDpadIndex: _ShellDpad.subscription,
+                                        title: 'settings.tile.subscription'.tr,
+                                        subtitle: Text(
+                                          sub,
+                                          style: _subtitleStyle,
+                                        ),
+                                        icon: Icons.verified_user_rounded,
+                                        iconColor: isPremium ? Colors.greenAccent : primary,
+                                        onTap: controller.showSubscriptionStatusDialog,
+                                      );
+                                    }),
                                   ],
                                 );
                               },
                             ),
-                            Obx(() {
-                              final t = controller.xtreamFooterLine.value;
-                              if (t.isEmpty) return const SizedBox.shrink();
-                              return Padding(
-                                padding: const EdgeInsets.fromLTRB(4, 20, 4, 8),
-                                child: Text(
-                                  t,
-                                  textAlign: TextAlign.center,
-                                  style: TextStyle(
-                                    color: Colors.white.withValues(alpha: 0.5),
-                                    fontSize: 12,
-                                    height: 1.35,
-                                    fontWeight: FontWeight.w500,
-                                  ),
-                                ),
-                              );
-                            }),
+                            // Xtream kullanıcı adı / bağlantı adresi alt
+                            // bilgisi gizlendi (kullanıcı isteği).
                           ],
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
+                        );
   }
 }
 
@@ -504,62 +654,91 @@ class _SettingsTopBar extends StatelessWidget {
   final VoidCallback onBack;
   final Widget Function() clockBuilder;
 
+  static BoxDecoration get _glassFrame => BoxDecoration(
+        borderRadius: BorderRadius.circular(14),
+        color: Colors.white.withValues(alpha: 0.06),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.18),
+          width: 1,
+        ),
+      );
+
   @override
   Widget build(BuildContext context) {
-    final tv =
-        Get.find<AppSettingsService>().layoutMode.value == AppLayoutMode.tv;
-    final remote = remoteNavForScreenLayout(
-      context,
-      Get.find<AppSettingsService>().layoutMode.value,
+    // Geri ikonu + «Ayarlar» yazısı tek bir cam çerçevede birleşti.
+    // Dokunmatik ve odak (kumanda) tek hedef: her ikisi de `onBack` ile
+    // ana ekrana döner.
+    final backFrame = TvFocusableInkWell(
+      onTap: onBack,
+      autofocus: true,
+      borderRadius: 14,
+      child: Container(
+        decoration: _glassFrame,
+        padding: const EdgeInsets.fromLTRB(10, 8, 16, 8),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.arrow_back_rounded,
+              color: Colors.white,
+              size: 22,
+            ),
+            const SizedBox(width: 8),
+            Text(
+              'settings.title'.tr,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
+
     return Row(
       children: [
-        if (!tv)
-          remote
-              ? TvIconButton(
-                  icon: Icons.arrow_back_rounded,
-                  onPressed: onBack,
-                  tooltip: 'common.back'.tr,
-                  autofocus: true,
-                )
-              : IconButton(
-                  onPressed: onBack,
-                  icon: const Icon(Icons.arrow_back_rounded),
-                  color: Colors.white,
-                  tooltip: 'common.back'.tr,
-                )
-        else
-          TvIconButton(
-            icon: Icons.arrow_back_rounded,
-            onPressed: onBack,
-            tooltip: 'common.back'.tr,
-            autofocus: true,
-          ),
-        Text(
-          'settings.title'.tr,
-          style: const TextStyle(
-            color: Colors.white,
-            fontSize: 20,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
+        backFrame,
         const Spacer(),
         Obx(() {
           final tv = Get.find<AppSettingsService>().layoutMode.value ==
               AppLayoutMode.tv;
-          return Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              if (!tv && !Platform.isAndroid) ...[
-                Icon(Icons.signal_cellular_alt_rounded,
-                    color: Colors.white.withValues(alpha: 0.75), size: 18),
-                const SizedBox(width: 6),
-                Icon(Icons.wifi_rounded,
-                    color: Colors.white.withValues(alpha: 0.75), size: 18),
+          if (tv) return const SizedBox.shrink();
+          return Container(
+            decoration: _glassFrame,
+            // Soldaki «Ayarlar» çerçevesiyle birebir aynı dikey padding (8) ve
+            // 22 px içerik yüksekliği → aynı boy ve hiza.
+            padding: const EdgeInsets.fromLTRB(16, 8, 12, 8),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (!Platform.isAndroid) ...[
+                  Icon(Icons.signal_cellular_alt_rounded,
+                      color: Colors.white.withValues(alpha: 0.75), size: 18),
+                  const SizedBox(width: 6),
+                  Icon(Icons.wifi_rounded,
+                      color: Colors.white.withValues(alpha: 0.75), size: 18),
+                  const SizedBox(width: 10),
+                ],
+                clockBuilder(),
                 const SizedBox(width: 10),
+                // Ayıraç (saat ile Mina şemsiye ikonu arası).
+                Container(
+                  width: 1,
+                  height: 18,
+                  color: Colors.white.withValues(alpha: 0.25),
+                ),
+                const SizedBox(width: 10),
+                // Mina şemsiye logosu.
+                Image.asset(
+                  'assets/images/app_icon.png',
+                  width: 22,
+                  height: 22,
+                  filterQuality: FilterQuality.medium,
+                ),
               ],
-              if (!tv) clockBuilder(),
-            ],
+            ),
           );
         }),
       ],
@@ -568,22 +747,25 @@ class _SettingsTopBar extends StatelessWidget {
 }
 
 class _SettingsGrid extends StatelessWidget {
-  const _SettingsGrid({required this.children});
+  const _SettingsGrid({required this.children, this.tvDpad = false});
 
   final List<Widget> children;
+  final bool tvDpad;
 
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
         final w = constraints.maxWidth;
-        final crossAxisCount = w >= 1100
-            ? 4
-            : w >= 820
-                ? 3
-                : w >= 560
-                    ? 2
-                    : 1;
+        final crossAxisCount = tvDpad
+            ? 1
+            : w >= 1100
+                ? 4
+                : w >= 820
+                    ? 3
+                    : w >= 560
+                        ? 2
+                        : 1;
         const gap = 10.0;
 
         if (crossAxisCount <= 1) {
@@ -638,6 +820,8 @@ class _SettingsGrid extends StatelessWidget {
 class _GlassTile extends StatefulWidget {
   const _GlassTile({
     @Deprecated('Numara artık gösterilmiyor; ikon kullanılır.') this.index,
+    this.shellDpadIndex,
+    this.primaryShellTile = false,
     required this.title,
     required this.subtitle,
     this.icon,
@@ -647,6 +831,10 @@ class _GlassTile extends StatefulWidget {
 
   /// Geriye uyum için (eski «01/02/03» numaraları); render edilmez.
   final String? index;
+  /// TV kabuğu D-pad sırası (tek sütun zincir).
+  final int? shellDpadIndex;
+  /// TV kabuğunda ilk odaklanacak karo.
+  final bool primaryShellTile;
   final String title;
   final Widget subtitle;
   final IconData? icon;
@@ -658,18 +846,50 @@ class _GlassTile extends StatefulWidget {
 }
 
 class _GlassTileState extends State<_GlassTile> {
-  final FocusNode _focusNode = FocusNode();
+  FocusNode? _ownedNode;
+  FocusNode? _listenedNode;
+
+  FocusNode _resolveFocusNode() {
+    final shell = _TvShellSettingsFocus.maybeOf(context);
+    if (shell != null && widget.shellDpadIndex != null) {
+      return shell.coordinator.nodeFor(
+        widget.shellDpadIndex!,
+        external: widget.primaryShellTile ? shell.firstTileFocus : null,
+      );
+    }
+    if (widget.primaryShellTile) {
+      if (shell != null) return shell.firstTileFocus;
+    }
+    return _ownedNode ??= FocusNode();
+  }
+
+  void _bindFocusNode(FocusNode node) {
+    if (_listenedNode == node) return;
+    _listenedNode?.removeListener(_onFocusChange);
+    _listenedNode = node;
+    _listenedNode!.addListener(_onFocusChange);
+  }
 
   @override
-  void initState() {
-    super.initState();
-    _focusNode.addListener(_onFocusChange);
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _bindFocusNode(_resolveFocusNode());
+  }
+
+  @override
+  void didUpdateWidget(covariant _GlassTile oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.primaryShellTile != widget.primaryShellTile) {
+      _bindFocusNode(_resolveFocusNode());
+    }
   }
 
   @override
   void dispose() {
-    _focusNode.removeListener(_onFocusChange);
-    _focusNode.dispose();
+    _listenedNode?.removeListener(_onFocusChange);
+    if (!widget.primaryShellTile) {
+      _ownedNode?.dispose();
+    }
     super.dispose();
   }
 
@@ -681,6 +901,8 @@ class _GlassTileState extends State<_GlassTile> {
   Widget build(BuildContext context) {
     final settings = Get.find<AppSettingsService>();
     final tappable = widget.onTap != null;
+    final focusNode = _resolveFocusNode();
+    final inTvShell = _TvShellSettingsFocus.maybeOf(context) != null;
     final child = ClipRRect(
       borderRadius: BorderRadius.circular(16),
       child: Obx(() {
@@ -744,12 +966,12 @@ class _GlassTileState extends State<_GlassTile> {
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: _focusNode.hasFocus
+              color: !inTvShell && focusNode.hasFocus
                   ? Colors.white
                   : isAnyColor
                       ? themeColor.withValues(alpha: 0.45)
                       : ga.settingsTileBorder,
-              width: _focusNode.hasFocus ? 2.0 : 1.0,
+              width: !inTvShell && focusNode.hasFocus ? 2.0 : 1.0,
             ),
             gradient: LinearGradient(
               begin: Alignment.topLeft,
@@ -807,16 +1029,287 @@ class _GlassTileState extends State<_GlassTile> {
         ? Get.find<AdaptiveHapticsService>().wrapTap(widget.onTap)
         : widget.onTap;
 
+    final shell = _TvShellSettingsFocus.maybeOf(context);
+    if (shell != null) {
+      if (widget.shellDpadIndex != null) {
+        shell.coordinator.markActive(widget.shellDpadIndex!);
+      }
+      final idx = widget.shellDpadIndex;
+      return TvDpadFocus(
+        focusNode: focusNode,
+        onActivate: onTap,
+        ensureVisibleOnFocus: true,
+        borderRadius: 16,
+        enableFocusScale: false,
+        blockLeft: true,
+        blockRight: true,
+        onKeyEvent: (event) {
+          if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+            return KeyEventResult.ignored;
+          }
+          if (tvKeyIsBack(event.logicalKey)) {
+            shell.onRemoteLeft();
+            return KeyEventResult.handled;
+          }
+          if (event is KeyDownEvent &&
+              event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+            shell.onRemoteLeft();
+            return KeyEventResult.handled;
+          }
+          if (idx == null) return KeyEventResult.ignored;
+          final coord = shell.coordinator;
+          final up = coord.prev(idx);
+          final down = coord.next(idx);
+          return tvHandleDpadKeys(
+            event,
+            onActivate: onTap,
+            arrowUp: up != null ? coord.nodeFor(up) : null,
+            arrowDown: down != null ? coord.nodeFor(down) : null,
+            blockUp: up == null,
+            blockDown: down == null,
+            blockLeft: true,
+            blockRight: true,
+          );
+        },
+        child: tvShellTouchableInk(
+          onPressed: onTap,
+          borderRadius: 16,
+          requestFocusOnTap: focusNode,
+          child: child,
+        ),
+      );
+    }
+
     return Material(
       color: Colors.transparent,
       child: InkWell(
         onTap: onTap,
-        focusNode: _focusNode,
+        focusNode: focusNode,
         onFocusChange: (v) => setState(() {}),
         borderRadius: BorderRadius.circular(16),
         child: child,
       ),
     );
+  }
+}
+
+/// TV kabuğu ayar paneli: D-pad koordinasyonu + sol menüye dönüş.
+class _SettingsDpadCoordinator {
+  final Set<int> _active = {};
+  final Map<int, FocusNode> _nodes = {};
+  FocusNode? _externalFirst;
+
+  void attachFirstTileFocus(FocusNode node) => _externalFirst = node;
+
+  void beginBuild() => _active.clear();
+
+  void markActive(int index) {
+    _active.add(index);
+    nodeFor(index);
+  }
+
+  FocusNode nodeFor(int index, {FocusNode? external}) {
+    if (index == 0 && (external != null || _externalFirst != null)) {
+      final node = external ?? _externalFirst!;
+      _nodes[0] = node;
+      return node;
+    }
+    return _nodes.putIfAbsent(
+      index,
+      () => FocusNode(debugLabel: 'tvShellSettingsTile_$index'),
+    );
+  }
+
+  int? prev(int from) {
+    for (var i = from - 1; i >= 0; i--) {
+      if (_active.contains(i)) return i;
+    }
+    return null;
+  }
+
+  int? next(int from) {
+    for (var i = from + 1; i < 32; i++) {
+      if (_active.contains(i)) return i;
+    }
+    return null;
+  }
+
+  void unfocusAll() {
+    for (final node in _nodes.values) {
+      if (node.hasFocus) node.unfocus();
+    }
+  }
+
+  void dispose() {
+    for (final entry in _nodes.entries) {
+      if (entry.key == 0 && entry.value == _externalFirst) continue;
+      entry.value.dispose();
+    }
+    _nodes.clear();
+    _active.clear();
+  }
+}
+
+/// Kumanda geri tuşu: odak karo üzerinde değilken sol menüye dön.
+class _TvShellSettingsScrollBack extends StatelessWidget {
+  const _TvShellSettingsScrollBack({
+    required this.onBack,
+    required this.child,
+  });
+
+  final VoidCallback onBack;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Focus(
+      canRequestFocus: false,
+      skipTraversal: true,
+      onKeyEvent: (node, event) {
+        if (event is! KeyDownEvent) return KeyEventResult.ignored;
+        if (tvKeyIsBack(event.logicalKey) ||
+            event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+          onBack();
+          return KeyEventResult.handled;
+        }
+        return KeyEventResult.ignored;
+      },
+      child: child,
+    );
+  }
+}
+
+/// TV kabuğu ayar paneli: ilk karoya odak kaydı + sol menüye dönüş.
+class _TvShellSettingsHost extends StatefulWidget {
+  const _TvShellSettingsHost({
+    required this.enabled,
+    required this.child,
+  });
+
+  final bool enabled;
+  final Widget child;
+
+  @override
+  State<_TvShellSettingsHost> createState() => _TvShellSettingsHostState();
+}
+
+class _TvShellSettingsHostState extends State<_TvShellSettingsHost> {
+  final _firstTileFocus = FocusNode(debugLabel: 'tvShellSettingsFirstTile');
+  final _coordinator = _SettingsDpadCoordinator();
+
+  @override
+  void initState() {
+    super.initState();
+    _coordinator.attachFirstTileFocus(_firstTileFocus);
+    if (widget.enabled && Get.isRegistered<TvShellController>()) {
+      final shell = Get.find<TvShellController>();
+      shell.registerSettingsFirstTileFocusHandler(_focusFirstTile);
+      shell.registerSettingsLeaveHandler(_coordinator.unfocusAll);
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant _TvShellSettingsHost oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!Get.isRegistered<TvShellController>()) return;
+    final shell = Get.find<TvShellController>();
+    if (oldWidget.enabled && !widget.enabled) {
+      shell.registerSettingsFirstTileFocusHandler(null);
+      shell.registerSettingsLeaveHandler(null);
+    } else if (!oldWidget.enabled && widget.enabled) {
+      shell.registerSettingsFirstTileFocusHandler(_focusFirstTile);
+      shell.registerSettingsLeaveHandler(_coordinator.unfocusAll);
+    }
+  }
+
+  @override
+  void dispose() {
+    if (Get.isRegistered<TvShellController>()) {
+      final shell = Get.find<TvShellController>();
+      shell.registerSettingsFirstTileFocusHandler(null);
+      shell.registerSettingsLeaveHandler(null);
+    }
+    _coordinator.dispose();
+    _firstTileFocus.dispose();
+    super.dispose();
+  }
+
+  void _focusFirstTile() {
+    if (!mounted) return;
+    if (Get.isRegistered<TvShellController>()) {
+      final shell = Get.find<TvShellController>();
+      for (final node in shell.railFocusNodes.values) {
+        if (node.hasFocus) node.unfocus();
+      }
+    }
+    void attempt(int n) {
+      if (!mounted || n > 24) return;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        if (_firstTileFocus.canRequestFocus) {
+          _firstTileFocus.requestFocus();
+        }
+        if (_firstTileFocus.hasFocus) {
+          final ctx = _firstTileFocus.context;
+          if (ctx != null) {
+            Scrollable.ensureVisible(
+              ctx,
+              alignment: 0.08,
+              duration: Duration.zero,
+            );
+          }
+          return;
+        }
+        attempt(n + 1);
+      });
+    }
+    attempt(0);
+  }
+
+  void _onRemoteLeft() {
+    if (Get.isRegistered<TvShellController>()) {
+      Get.find<TvShellController>().onLeftFromSettingsPanel();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!widget.enabled) return widget.child;
+    _coordinator.beginBuild();
+    return _TvShellSettingsFocus(
+      firstTileFocus: _firstTileFocus,
+      coordinator: _coordinator,
+      onRemoteLeft: _onRemoteLeft,
+      child: _TvShellSettingsScrollBack(
+        onBack: _onRemoteLeft,
+        child: widget.child,
+      ),
+    );
+  }
+}
+
+class _TvShellSettingsFocus extends InheritedWidget {
+  const _TvShellSettingsFocus({
+    required this.firstTileFocus,
+    required this.coordinator,
+    required this.onRemoteLeft,
+    required super.child,
+  });
+
+  final FocusNode firstTileFocus;
+  final _SettingsDpadCoordinator coordinator;
+  final VoidCallback onRemoteLeft;
+
+  static _TvShellSettingsFocus? maybeOf(BuildContext context) {
+    return context
+        .dependOnInheritedWidgetOfExactType<_TvShellSettingsFocus>();
+  }
+
+  @override
+  bool updateShouldNotify(covariant _TvShellSettingsFocus oldWidget) {
+    return firstTileFocus != oldWidget.firstTileFocus ||
+        coordinator != oldWidget.coordinator ||
+        onRemoteLeft != oldWidget.onRemoteLeft;
   }
 }
 

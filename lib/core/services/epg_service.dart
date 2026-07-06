@@ -1,7 +1,5 @@
 import 'dart:async' show unawaited;
-import 'dart:convert' show utf8;
 
-import 'package:archive/archive.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
@@ -344,19 +342,6 @@ class EpgService extends GetxService {
   bool hasLoadedGuideData() =>
       _programmes.isNotEmpty || _channels.isNotEmpty;
 
-  static bool _isGzipMagic(List<int> bytes) =>
-      bytes.length >= 2 && bytes[0] == 0x1f && bytes[1] == 0x8b;
-
-  static List<int> _maybeGunzip(List<int> bytes) {
-    if (!_isGzipMagic(bytes)) return bytes;
-    try {
-      return GZipDecoder().decodeBytes(bytes);
-    } catch (e) {
-      debugPrint('mina_iptv: EPG gzip decode failed: $e');
-      return bytes;
-    }
-  }
-
   Future<void> loadEpg(String url) async {
     await loadEpgFirstSuccessful(<String>[url]);
   }
@@ -404,13 +389,10 @@ class EpgService extends GetxService {
     final raw = response.data;
     if (raw == null || raw.isEmpty) return;
 
-    final xmlBytes = lower.endsWith('.gz') || _isGzipMagic(raw)
-        ? _maybeGunzip(raw)
-        : raw;
-    final xmlContent = utf8.decode(xmlBytes, allowMalformed: true);
-    if (xmlContent.isEmpty) return;
-
-    final result = await compute(parseXmlTvIsolate, xmlContent);
+    final result = await compute(parseXmlTvBytesIsolate, {
+      'bytes': raw,
+      'isGz': lower.endsWith('.gz'),
+    });
     final newChannels = result['channels'] as Map<String, EpgChannel>;
     final progMap = result['programmes'] as Map<String, List<EpgProgramme>>;
 
@@ -539,6 +521,28 @@ class EpgService extends GetxService {
     return null;
   }
 
+  /// Canlı kanal için şu anki yayından sonraki program (varsa).
+  EpgProgramme? getNextProgrammeForLiveChannel(Channel ch) {
+    if (!_epgFeatureEnabled) return null;
+    final all = getFullDayProgrammesForLiveChannel(ch);
+    if (all.isEmpty) return null;
+    final now = DateTime.now();
+
+    for (var i = 0; i < all.length; i++) {
+      final p = all[i];
+      if (!p.end.isAfter(now)) continue;
+      if (p.start.isAfter(now)) return p;
+      if (i + 1 < all.length) {
+        final next = all[i + 1];
+        if (next.start.isAfter(now) || next.end.isAfter(now)) {
+          return next;
+        }
+      }
+      return null;
+    }
+    return null;
+  }
+
   List<EpgProgramme> getFullDayProgrammes(String? epgId) {
     final key = epgId?.trim();
     if (key == null || key.isEmpty) return [];
@@ -546,7 +550,15 @@ class EpgService extends GetxService {
   }
 
   void _setProgrammesForKey(String key, List<EpgProgramme> list) {
-    final sorted = List<EpgProgramme>.from(list)
+    final now = DateTime.now();
+    final windowStart = DateTime(now.year, now.month, now.day)
+        .subtract(const Duration(days: 1));
+    final windowEnd = DateTime(now.year, now.month, now.day)
+        .add(const Duration(days: 2));
+    final trimmed = list
+        .where((p) => p.end.isAfter(windowStart) && p.start.isBefore(windowEnd))
+        .toList(growable: false);
+    final sorted = List<EpgProgramme>.from(trimmed)
       ..sort((a, b) => a.start.compareTo(b.start));
     _programmes[key] = sorted;
     _invalidateCachesForProgrammeKey(key);
@@ -585,32 +597,17 @@ class EpgService extends GetxService {
     return [];
   }
 
-  String _epgLookupKeyForLiveChannel(Channel ch) {
-    final xmlKey = ch.epgChannelId?.trim();
-    if (xmlKey != null && xmlKey.isNotEmpty) {
-      final list = _programmes[xmlKey];
-      if (list != null && list.isNotEmpty) return xmlKey;
-    }
-    final mapped = _m3uStreamUrlToXmlId[ch.streamUrl];
-    if (mapped != null) {
-      final list = _programmes[mapped];
-      if (list != null && list.isNotEmpty) return mapped;
-    }
-    return ch.id.toString();
-  }
-
   /// Zaman çizelgesi: [windowStart, windowEnd) ile kesişen programlar (sıralı).
   List<EpgProgramme> programmesInWindowForLiveChannel(
     Channel ch,
     DateTime windowStart,
     DateTime windowEnd,
   ) {
-    final chKey = _epgLookupKeyForLiveChannel(ch);
     final cacheKey =
-        '$chKey|${windowStart.millisecondsSinceEpoch}|${windowEnd.millisecondsSinceEpoch}';
+        '${ch.id}|${ch.name}|${windowStart.millisecondsSinceEpoch}|${windowEnd.millisecondsSinceEpoch}';
     final cached = _windowProgrammesCache[cacheKey];
     if (cached != null) return cached;
-    final all = getFullDayProgrammes(chKey);
+    final all = getFullDayProgrammesForLiveChannel(ch);
     if (all.isEmpty) return [];
     var lo = 0;
     var hi = all.length;

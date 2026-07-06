@@ -110,6 +110,127 @@ class _RecommendedFilmsLoadingSkeletonState
   }
 }
 
+/// Detayda sonradan gelen TMDB/OMDb bilgileri (özet, rozet vb.) yüklenirken
+/// kendi animasyonunu yöneten satır iskeleti. [lines] kadar yanıp sönen
+/// çizgi gösterir; son çizgi daha kısadır.
+class FilmDiziTextSkeleton extends StatefulWidget {
+  const FilmDiziTextSkeleton({
+    super.key,
+    this.lines = 4,
+    this.lineHeight = 12,
+    this.spacing = 9,
+  });
+
+  final int lines;
+  final double lineHeight;
+  final double spacing;
+
+  @override
+  State<FilmDiziTextSkeleton> createState() => _FilmDiziTextSkeletonState();
+}
+
+class _FilmDiziTextSkeletonState extends State<FilmDiziTextSkeleton>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _pulse;
+
+  @override
+  void initState() {
+    super.initState();
+    _pulse = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _pulse.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final count = widget.lines < 1 ? 1 : widget.lines;
+    return AnimatedBuilder(
+      animation: _pulse,
+      builder: (context, child) {
+        final t = Curves.easeInOut.transform(_pulse.value);
+        return Opacity(opacity: 0.55 + t * 0.45, child: child);
+      },
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (var i = 0; i < count; i++) ...[
+            FilmDiziBlinkBox(
+              animation: _pulse,
+              height: widget.lineHeight,
+              // Son çizgi yarım genişlikte → doğal metin görünümü.
+              width: i == count - 1 ? 140 : null,
+              borderRadius: 4,
+            ),
+            if (i != count - 1) SizedBox(height: widget.spacing),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// Rozet (tür/teknik) satırı yüklenirken yanıp sönen iskelet.
+class FilmDiziPillsSkeleton extends StatefulWidget {
+  const FilmDiziPillsSkeleton({super.key, this.count = 3});
+
+  final int count;
+
+  @override
+  State<FilmDiziPillsSkeleton> createState() => _FilmDiziPillsSkeletonState();
+}
+
+class _FilmDiziPillsSkeletonState extends State<FilmDiziPillsSkeleton>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _pulse;
+
+  @override
+  void initState() {
+    super.initState();
+    _pulse = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 900),
+    )..repeat(reverse: true);
+  }
+
+  @override
+  void dispose() {
+    _pulse.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final count = widget.count < 1 ? 1 : widget.count;
+    return AnimatedBuilder(
+      animation: _pulse,
+      builder: (context, child) {
+        final t = Curves.easeInOut.transform(_pulse.value);
+        return Opacity(opacity: 0.55 + t * 0.45, child: child);
+      },
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        children: [
+          for (var i = 0; i < count; i++)
+            FilmDiziBlinkBox(
+              animation: _pulse,
+              width: 64 + (i % 3) * 14,
+              height: 28,
+              borderRadius: 20,
+            ),
+        ],
+      ),
+    );
+  }
+}
+
 /// Film & Dizi cam yanıp sönen iskelet kutusu.
 class FilmDiziBlinkBox extends StatelessWidget {
   const FilmDiziBlinkBox({

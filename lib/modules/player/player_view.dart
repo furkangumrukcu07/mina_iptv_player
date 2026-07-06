@@ -12,7 +12,9 @@ import '../../core/player/playback_orientation_manager.dart';
 import '../../core/services/app_settings_service.dart';
 import '../../core/services/epg_service.dart';
 import '../../core/services/favorites_service.dart';
+import '../../core/home/film_dizi_catalog.dart';
 import '../../core/services/playlist_cache_service.dart';
+import '../../core/services/playlist_data_source.dart';
 import '../../core/layout/app_layout_mode.dart';
 import '../../../core/theme/app_performance.dart';
 import '../../../core/theme/app_scroll_physics.dart';
@@ -59,24 +61,42 @@ class _PlaybackVolumeBrightnessEdgeGestures extends StatelessWidget {
     required this.onBrightnessDragStart,
     required this.onVolumeDragStart,
     required this.onVerticalDragUpdate,
+    this.reserveSeekBarZone = false,
   });
 
   final void Function(DragStartDetails) onBrightnessDragStart;
   final void Function(DragStartDetails) onVolumeDragStart;
   final void Function(DragUpdateDetails) onVerticalDragUpdate;
 
+  /// Tam ekran (yatay) yüzeyde seek bar / OSD kontrol satırı videonun
+  /// üstünde, ekranın altında oturur. `true` iken alttan bir bant rezerve
+  /// edilir; böylece seek bar'ı yatay sürüklerken parlaklık/ses dikey drag'i
+  /// tetiklenmez. Dikey modda video 16:9 kutudadır ve seek bar onun altında
+  /// ayrı durduğundan çakışma yoktur → `false`.
+  final bool reserveSeekBarZone;
+
   @override
   Widget build(BuildContext context) {
-    final edgeW =
-        playbackGestureEdgeStripWidth(MediaQuery.sizeOf(context).width);
+    final mq = MediaQuery.of(context);
+    final edgeW = playbackGestureEdgeStripWidth(mq.size.width);
+    // VOD seek bar / OSD kontrol satırı ekranın altında oturur. Parlaklık/ses
+    // dikey kaydırma şeritleri tüm yüksekliği kaplarsa, seek bar'ı yatay
+    // sürüklerken (soldan sağa) hareketin küçük dikey bileşeni dikey drag
+    // tanıyıcısını kazandırıp yanlışlıkla parlaklık/ses değiştiriyordu.
+    // Alttan bir bant rezerve ederek bu bölgede dikey gesture'ı kapatıyoruz;
+    // seek scrub artık çakışmasız çalışır.
+    const reservedBottom = 120.0;
+    final bottomInset =
+        reserveSeekBarZone ? mq.padding.bottom + reservedBottom : 0.0;
+    const topInset = 12.0;
     return Stack(
       fit: StackFit.expand,
       clipBehavior: Clip.none,
       children: [
         Positioned(
           left: 0,
-          top: 0,
-          bottom: 0,
+          top: topInset,
+          bottom: bottomInset,
           width: edgeW,
           child: GestureDetector(
             behavior: HitTestBehavior.translucent,
@@ -86,8 +106,8 @@ class _PlaybackVolumeBrightnessEdgeGestures extends StatelessWidget {
         ),
         Positioned(
           right: 0,
-          top: 0,
-          bottom: 0,
+          top: topInset,
+          bottom: bottomInset,
           width: edgeW,
           child: GestureDetector(
             behavior: HitTestBehavior.translucent,
@@ -142,7 +162,10 @@ Widget _playerVideoSurfaceStack({
         onBrightnessDragStart: onBrightnessDragStart,
         onVolumeDragStart: onVolumeDragStart,
         onVerticalDragUpdate: onVerticalDragUpdate,
+        reserveSeekBarZone: true,
       ),
+      if (controller.isSeries)
+        _SkipIntroVideoOverlay(controller: controller),
     ],
   );
 }
@@ -224,6 +247,7 @@ class _PlayerViewState extends State<PlayerView> with WidgetsBindingObserver {
   final Rxn<IconData> _overlayIcon = Rxn<IconData>();
   final RxBool _showOverlay = false.obs;
   Timer? _overlayTimer;
+  final Set<int> _activePointers = {};
 
   final GlobalKey<LiveChannelStripOverlayState> _channelStripKey =
       GlobalKey<LiveChannelStripOverlayState>();
@@ -243,18 +267,24 @@ class _PlayerViewState extends State<PlayerView> with WidgetsBindingObserver {
   bool _hardwareKeyHandler(KeyEvent event) => _onGlobalHardwareKey(event);
 
   void _handleBrightnessDragStart(DragStartDetails details) {
+    if (_activePointers.length >= 2) return;
     _isDraggingLeft = true;
     _verticalGestureOriginY = details.globalPosition.dy;
     _verticalGestureStartLevel = controller.inAppPlaybackBrightness.value;
   }
 
   void _handleVolumeDragStart(DragStartDetails details) {
+    if (_activePointers.length >= 2) return;
     _isDraggingLeft = false;
     _verticalGestureOriginY = details.globalPosition.dy;
     _verticalGestureStartLevel = controller.currentVolume;
   }
 
   void _handleVerticalDragUpdate(DragUpdateDetails details) {
+    if (_activePointers.length >= 2) {
+      _showOverlay.value = false;
+      return;
+    }
     final originY = _verticalGestureOriginY;
     if (originY == null) return;
 
@@ -506,6 +536,23 @@ class _PlayerViewState extends State<PlayerView> with WidgetsBindingObserver {
 
   bool _onGlobalHardwareKey(KeyEvent event) {
     if (!mounted) return false;
+    // Oynatıcı menüsü (altyazı/ses/kalite — Get.dialog) veya bir bottom sheet
+    // açıkken kumanda Geri: önce menüyü kapat, yayından çıkma. Kumandanın Geri
+    // tuşu hem bir KeyEvent hem de ayrı bir sistem pop'u olarak iki kez gelir;
+    // burada menüyü kapatıp [_consumeNextSystemBackPop] ile sonraki sistem
+    // pop'unu yutmazsak menü kapanır ama aynı basışta yayından da çıkılıyordu.
+    if (event is KeyDownEvent) {
+      final bk = event.logicalKey;
+      if (bk == LogicalKeyboardKey.goBack ||
+          bk == LogicalKeyboardKey.escape ||
+          bk == LogicalKeyboardKey.backspace) {
+        if (Get.isDialogOpen == true || Get.isBottomSheetOpen == true) {
+          _consumeNextSystemBackPop = true;
+          Get.back<void>();
+          return true;
+        }
+      }
+    }
     if (controller.liveSingleChannelEpgOpen.value) {
       final k = event.logicalKey;
       if (k == LogicalKeyboardKey.goBack || k == LogicalKeyboardKey.escape) {
@@ -607,13 +654,13 @@ class _PlayerViewState extends State<PlayerView> with WidgetsBindingObserver {
       }
     }
 
-    // Yatay + TV + OSD kapalı iken kumandadan SOL yön tuşu: hızlı menüyü açar.
+    // Yatay + OSD kapalı iken kumandadan SOL yön tuşu: hızlı menüyü açar.
     // Canlı yayında kanal şeridi, film/dizi izlerken VOD browse rayı.
     if (event is KeyDownEvent &&
         event.logicalKey == LogicalKeyboardKey.arrowLeft) {
-      final tv =
-          Get.find<AppSettingsService>().layoutMode.value == AppLayoutMode.tv;
+      final settings = Get.find<AppSettingsService>();
       final landscape = _lastAppliedOrientationInBuild == Orientation.landscape;
+      final tv = settings.layoutMode.value == AppLayoutMode.tv;
       if (tv && landscape && !controller.tvOsdVisible.value) {
         if (_isLiveChannel(ch)) {
           _openLiveChannelStrip();
@@ -711,10 +758,20 @@ class _PlayerViewState extends State<PlayerView> with WidgetsBindingObserver {
             },
             child: Scaffold(
               backgroundColor: Colors.black,
-              body: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                mainAxisAlignment: MainAxisAlignment.start,
-                children: [
+              body: Listener(
+                onPointerDown: (event) {
+                  _activePointers.add(event.pointer);
+                },
+                onPointerUp: (event) {
+                  _activePointers.remove(event.pointer);
+                },
+                onPointerCancel: (event) {
+                  _activePointers.remove(event.pointer);
+                },
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  mainAxisAlignment: MainAxisAlignment.start,
+                  children: [
                   Expanded(
                     child: FocusTraversalGroup(
                       policy: OrderedTraversalPolicy(),
@@ -729,6 +786,9 @@ class _PlayerViewState extends State<PlayerView> with WidgetsBindingObserver {
                           final playerWidget = Obx(() {
                             // Tüm ilgili Rx’leri erken return’lerden önce oku; iç içe Obx kullanma.
                             final busy = controller.isBusy.value;
+                            // Kanal değişiminde splash (logo+şemsiye) anında güncellenmeli;
+                            // yalnızca [isBusy] dinlenirse zap sırasında eski logo bir kare kalır.
+                            final splashChannel = controller.channel.value;
                             controller.suppressLiveZapLoadingUi.value;
                             controller.vodResumeDialogOpen.value;
                             final message = controller.error.value;
@@ -752,8 +812,6 @@ class _PlayerViewState extends State<PlayerView> with WidgetsBindingObserver {
                                 _isLiveChannel(controller.channel.value);
                             final live =
                                 _isLiveChannel(controller.channel.value);
-
-                            final loadMsg = 'player.loading.stream'.tr;
 
                             if (message != null) {
                               final err = _PlayerMessage(
@@ -857,8 +915,9 @@ class _PlayerViewState extends State<PlayerView> with WidgetsBindingObserver {
                                         else ...[
                                           if (!suppress)
                                             _PlayerLoadingOverlay(
-                                              channel: controller.channel.value,
-                                              subtitle: loadMsg,
+                                              key: ValueKey(
+                                                  'splash_${splashChannel.id}'),
+                                              channel: splashChannel,
                                             ),
                                           if (useMediaKitPlayer)
                                             Obx(() {
@@ -881,8 +940,9 @@ class _PlayerViewState extends State<PlayerView> with WidgetsBindingObserver {
                                 }
                                 return _PlayerMessage(
                                   child: _PlayerLoadingCenter(
-                                    channel: controller.channel.value,
-                                    subtitle: loadMsg,
+                                    key: ValueKey(
+                                        'splash_center_${splashChannel.id}'),
+                                    channel: splashChannel,
                                   ),
                                 );
                               }
@@ -933,8 +993,9 @@ class _PlayerViewState extends State<PlayerView> with WidgetsBindingObserver {
                                     )
                                   : _PlayerMessage(
                                       child: _PlayerLoadingCenter(
-                                        channel: controller.channel.value,
-                                        subtitle: loadMsg,
+                                        key: ValueKey(
+                                            'splash_center_${splashChannel.id}'),
+                                        channel: splashChannel,
                                       ),
                                     );
                               return _liveRemoteZapWhenPlayerChromeMissing(
@@ -977,30 +1038,25 @@ class _PlayerViewState extends State<PlayerView> with WidgetsBindingObserver {
                               if (!busy) return core;
                               final suppress =
                                   controller.suppressLiveZapLoadingUi.value;
-                              if (liveCh || suppress) {
+                              // Canlı→canlı zaplama: mevcut player kalsın, splash gösterme.
+                              if (suppress) {
                                 return core;
                               }
-                              // Mobil dikey: kanal değişiminde tam ekran logo/splash yerine
-                              // mevcut player kontrolleri kalsın, yalnız merkezde loading görünsün.
-                              if (isPortrait) {
-                                return Stack(
-                                  fit: StackFit.expand,
-                                  children: [
-                                    core,
-                                    const Positioned.fill(
-                                      child: _PlayerCenterLoadingSpinner(),
-                                    ),
-                                  ],
-                                );
-                              }
+                              // Diğer tüm yükleme durumlarında (canlı/VOD,
+                              // dikey/yatay) tutarlı şekilde kanal logosu + yanıp
+                              // sönen şemsiye splash'ı göster — çıplak spinner yok.
+                              // Yüzey hazır olsa bile ilk kareye kadar splash
+                              // üstte kalır; ilk kare gelince [isBusy] düşer ve
+                              // splash kaybolur.
                               return Stack(
                                 fit: StackFit.expand,
                                 children: [
                                   core,
                                   Positioned.fill(
                                     child: _PlayerLoadingOverlay(
-                                      channel: controller.channel.value,
-                                      subtitle: loadMsg,
+                                      key: ValueKey(
+                                          'splash_${splashChannel.id}'),
+                                      channel: splashChannel,
                                     ),
                                   ),
                                 ],
@@ -1183,11 +1239,8 @@ class _PlayerViewState extends State<PlayerView> with WidgetsBindingObserver {
                 ],
               ),
             ),
+            ),
           ),
-          // Akıllı Jenerik Atlatıcı — dizi içeriğinde, ilk
-          // `introSkipTargetSec` saniyesi boyunca sağ alt köşede
-          // beliren cam buton.
-          _SkipIntroPositioned(controller: controller),
           // Kumandadan sayı tuşu ile kanal numarası girişi kutusu (canlı, TV).
           _ChannelNumberEntryPositioned(controller: controller),
           // Yatay durum göstergeleri — gerçek saat (SOL üst) + batarya yüzdesi
@@ -1295,8 +1348,8 @@ class _PortraitVideoTapToShowOsdState
 }
 
 /// Akıllı Jenerik Atlatıcı (Smart Stream Cutter) — dizi içeriğinde,
-/// ilk `introSkipTargetSec` saniyesi boyunca sağ alt köşede beliren
-/// cam "Jeneriği Atla" butonu.
+/// ilk `introSkipTargetSec` saniyesi boyunca video yüzeyinin sağ alt
+/// köşesinde beliren cam "Jeneriği Atla" butonu.
 ///
 /// **Görünürlük:**
 /// 1. `controller.introSkipTargetSec.value > 0` (o dizi için intro
@@ -1307,6 +1360,7 @@ class _PortraitVideoTapToShowOsdState
 /// getter. Saniyede ~30 kez stream tetiklenebileceği için TV
 /// box'larda UI yorulmasın diye `Timer.periodic(1 sn)` kullanıyoruz.
 /// Cihaz işlemcisi yalnız saniyede 1 kez state güncellemesi yaşar.
+
 /// Kumandadan sayı tuşu (0–9) ile girilen kanal numarasını sağ üstte gösteren
 /// cam kutu. Boşken görünmez. Geçerli kategorideki toplam kanal sayısı küçük
 /// bir alt etiket olarak yazılır.
@@ -1385,31 +1439,69 @@ class _ChannelNumberEntryPositioned extends StatelessWidget {
   }
 }
 
-class _SkipIntroPositioned extends StatefulWidget {
-  const _SkipIntroPositioned({required this.controller});
+/// Akıllı Jenerik Atlatıcı — dizi VOD'da video yüzeyinin sağ alt köşesinde
+/// cam «Jeneriği Atla» butonu. Yalnızca [_playerVideoSurfaceStack] içinde
+/// konumlanır; böylece dikey 16:9 alan ve yatay tam ekran görüntüsüyle hizalı kalır.
+///
+/// **Görünürlük:**
+/// 1. `controller.introSkipTargetSec.value > 0`
+/// 2. Mevcut pozisyon `0..introSkipTargetSec` aralığında.
+class _SkipIntroVideoOverlay extends StatefulWidget {
+  const _SkipIntroVideoOverlay({required this.controller});
   final PlayerController controller;
 
   @override
-  State<_SkipIntroPositioned> createState() => _SkipIntroPositionedState();
+  State<_SkipIntroVideoOverlay> createState() => _SkipIntroVideoOverlayState();
 }
 
-class _SkipIntroPositionedState extends State<_SkipIntroPositioned> {
+class _SkipIntroVideoOverlayState extends State<_SkipIntroVideoOverlay> {
   Timer? _ticker;
+  Worker? _introTargetWorker;
   int _posSec = 0;
 
   @override
   void initState() {
     super.initState();
+    _syncIntroTicker(widget.controller.introSkipTargetSec.value);
+    _introTargetWorker = ever<int>(
+      widget.controller.introSkipTargetSec,
+      _syncIntroTicker,
+    );
+  }
+
+  void _syncIntroTicker(int target) {
+    if (target <= 0) {
+      _stopIntroTicker();
+      return;
+    }
+    _startIntroTicker();
+  }
+
+  void _startIntroTicker() {
+    if (_ticker != null) return;
     _ticker = Timer.periodic(const Duration(seconds: 1), (_) {
       if (!mounted) return;
       final s = widget.controller.currentPosition.inSeconds;
-      if (s != _posSec) setState(() => _posSec = s);
+      if (s == _posSec) return;
+      final target = widget.controller.introSkipTargetSec.value;
+      final wasVisible = target > 0 && _posSec < target && _posSec >= 0;
+      final nowVisible = target > 0 && s < target && s >= 0;
+      _posSec = s;
+      if (wasVisible != nowVisible) {
+        setState(() {});
+      }
     });
+  }
+
+  void _stopIntroTicker() {
+    _ticker?.cancel();
+    _ticker = null;
   }
 
   @override
   void dispose() {
-    _ticker?.cancel();
+    _introTargetWorker?.dispose();
+    _stopIntroTicker();
     super.dispose();
   }
 
@@ -1420,12 +1512,15 @@ class _SkipIntroPositionedState extends State<_SkipIntroPositioned> {
       final visible = target > 0 && _posSec < target && _posSec >= 0;
       final isPortrait =
           MediaQuery.orientationOf(context) == Orientation.portrait;
-      // Sağ alt köşe — portraitte OSD'nin biraz yukarısında, landscape
-      // / TV'de OSD daha alçak olduğu için biraz daha yakın.
-      final bottom = isPortrait ? 150.0 : 110.0;
+      // Dikey: OSD video altında ayrı panel — buton 16:9 alanın sağ altında.
+      // Yatay: OSD görüntü üstünde; gizliyken kenara yakın, açıkken seek bar üstü.
+      final osdVisible = widget.controller.tvOsdVisible.value;
+      final bottomInset = isPortrait
+          ? 12.0
+          : (osdVisible ? 104.0 : 16.0);
       return Positioned(
-        right: 18,
-        bottom: bottom,
+        right: 14,
+        bottom: bottomInset,
         child: AnimatedOpacity(
           opacity: visible ? 1.0 : 0.0,
           duration: const Duration(milliseconds: 220),
@@ -1726,6 +1821,11 @@ class _PlayerLiveSingleEpgLayer extends StatelessWidget {
       if (!controller.liveSingleChannelEpgOpen.value) {
         return const SizedBox.shrink();
       }
+      // Dikey modda EPG, alttaki panel sekmesiyle açılır; tam ekran overlay
+      // video yüzeyini gri perdeye çevirir.
+      if (controller.isPortraitPlaybackUi) {
+        return const SizedBox.shrink();
+      }
       return PlayerLiveEpgOverlayShell(
         channel: controller.channel.value,
         onClose: () => controller.closeLiveSingleChannelEpgOverlay(
@@ -1919,13 +2019,23 @@ class _PortraitOsdPanelState extends State<_PortraitOsdPanel> {
                                     vertical: 4,
                                   ),
                                 );
-                                if (badges.isEmpty) return <Widget>[];
                                 return <Widget>[
                                   const SizedBox(width: 8),
-                                  Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: badges,
+                                  osdEngineBadge(
+                                    engine: widget.controller.activeVideoEngine,
+                                    fontSize: 11,
+                                    radius: 8,
+                                    hPad: 8,
+                                    vPad: 4,
+                                    portrait: true,
                                   ),
+                                  if (badges.isNotEmpty) ...[
+                                    const SizedBox(width: 6),
+                                    Row(
+                                      mainAxisSize: MainAxisSize.min,
+                                      children: badges,
+                                    ),
+                                  ],
                                 ];
                               }(),
                             ],
@@ -1997,18 +2107,6 @@ class _PortraitOsdPanelState extends State<_PortraitOsdPanel> {
                                       child: _osdAction(
                                         icon: Icons.view_sidebar_rounded,
                                         onTap: _openQuickMenuFromPortraitOsd,
-                                        tv: useTvOsdStyle,
-                                      ),
-                                    ),
-                                  if (isLive)
-                                    Tooltip(
-                                      message: 'player.tooltip.liveEpg'.tr,
-                                      child: _osdAction(
-                                        icon: Icons.view_timeline_rounded,
-                                        onTap: () {
-                                          widget.controller
-                                              .openLiveSingleChannelEpgOverlay();
-                                        },
                                         tv: useTvOsdStyle,
                                       ),
                                     ),
@@ -2151,18 +2249,6 @@ class _PortraitOsdPanelState extends State<_PortraitOsdPanel> {
                                   child: _osdAction(
                                     icon: Icons.view_sidebar_rounded,
                                     onTap: _openQuickMenuFromPortraitOsd,
-                                    tv: useTvOsdStyle,
-                                  ),
-                                ),
-                              if (isLive)
-                                Tooltip(
-                                  message: 'player.tooltip.liveEpg'.tr,
-                                  child: _osdAction(
-                                    icon: Icons.view_timeline_rounded,
-                                    onTap: () {
-                                      widget.controller
-                                          .openLiveSingleChannelEpgOverlay();
-                                    },
                                     tv: useTvOsdStyle,
                                   ),
                                 ),
@@ -2317,18 +2403,6 @@ class _PortraitOsdPanelState extends State<_PortraitOsdPanel> {
                                             icon: Icons.view_sidebar_rounded,
                                             onTap:
                                                 _openQuickMenuFromPortraitOsd,
-                                            tv: useTvOsdStyle,
-                                          ),
-                                        ),
-                                      if (isLive)
-                                        Tooltip(
-                                          message: 'player.tooltip.liveEpg'.tr,
-                                          child: _osdAction(
-                                            icon: Icons.view_timeline_rounded,
-                                            onTap: () {
-                                              widget.controller
-                                                  .openLiveSingleChannelEpgOverlay();
-                                            },
                                             tv: useTvOsdStyle,
                                           ),
                                         ),
@@ -2535,6 +2609,12 @@ class _PortraitOsdPanelState extends State<_PortraitOsdPanel> {
         discovered.exoTextTracks.isEmpty;
 
     if (!discovered.hasSelectableTracks) {
+      // Better/Exo'da gömülü altyazı izi var ama resim tabanlı (PGS/VobSub) →
+      // Exo çizemiyor. mpv (MediaKit) bunları render eder: geçiş öner.
+      if (!c.effectiveUseMediaKit && discovered.exoHasUnsupportedText) {
+        await _offerSwitchToMediaKitForSubtitles(context);
+        return;
+      }
       if (mediaKitOnly) {
         GlassSnackbar.show(
           'player.warn.title'.tr,
@@ -2621,6 +2701,84 @@ class _PortraitOsdPanelState extends State<_PortraitOsdPanel> {
       title: 'player.sheet.qualityTitle'.tr,
       body: 'player.quality.noneLong'.tr,
     );
+  }
+
+  /// Better/Exo gömülü altyazıyı (resim tabanlı PGS/VobSub) çizemediğinde:
+  /// kullanıcıya MediaKit (mpv/libass) oynatıcısına geçişi öner. Onaylarsa
+  /// motoru bu yayın için değiştirip altyazı listesini MediaKit'ten tekrar açar.
+  Future<void> _offerSwitchToMediaKitForSubtitles(BuildContext context) async {
+    if (!context.mounted) return;
+    final confirmed = await showModalBottomSheet<bool>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) => GlassPopupPanel(
+        borderRadius: 20,
+        padding: const EdgeInsets.fromLTRB(18, 16, 18, 16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              'player.subtitle.imageBasedTitle'.tr,
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 18,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              'player.subtitle.imageBasedBody'.tr,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.9),
+                fontSize: 13,
+                height: 1.35,
+              ),
+            ),
+            const SizedBox(height: 18),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: [
+                GlassDialogActionButton(
+                  label: 'common.cancel'.tr,
+                  onPressed: () => Navigator.of(ctx).pop(false),
+                ),
+                const SizedBox(width: 10),
+                GlassDialogActionButton(
+                  label: 'player.subtitle.switchToMediaKit'.tr,
+                  primary: true,
+                  onPressed: () => Navigator.of(ctx).pop(true),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+    if (confirmed != true) return;
+    final c = widget.controller;
+    GlassSnackbar.show(
+      'player.engine.title'.tr,
+      'player.subtitle.switchingForSubs'.tr,
+      snackPosition: SnackPosition.BOTTOM,
+      duration: const Duration(seconds: 2),
+    );
+    await c.switchToBackupPlayer();
+    // mpv yeniden açılıp altyazı izlerini listeleyene kadar kısa bekle.
+    await Future<void>.delayed(const Duration(milliseconds: 900));
+    if (!context.mounted) return;
+    final again = await c.discoverVodSubtitleOptions();
+    if (!context.mounted) return;
+    if (again.hasMediaKitTracks) {
+      _showMkSubtitleSheet(context, again.mediaKitTracks);
+    } else {
+      GlassSnackbar.show(
+        'player.warn.title'.tr,
+        'player.subtitle.noneShort'.tr,
+        snackPosition: SnackPosition.BOTTOM,
+      );
+    }
   }
 
   Future<void> _showInfoSheet(
@@ -3540,21 +3698,57 @@ class _PortraitVodPanelState extends State<_PortraitVodPanel> {
   _PortraitVodTab _tab = _PortraitVodTab.items;
   int? _selectedCategoryId;
   Worker? _channelWorker;
+  Worker? _playlistWorker;
+  Worker? _historyWorker;
+
+  bool _loadingCategories = true;
+  bool _loadingItems = true;
+  int _allCount = 0;
+  int _recentCount = 0;
+  List<({int id, String name, int count})> _realCats = const [];
+  List<VodItem> _filmItems = const [];
+  List<SeriesItem> _seriesItems = const [];
+  int _categoriesGen = 0;
+  int _itemsGen = 0;
 
   @override
   void initState() {
     super.initState();
     _syncCategoryWithCurrent();
+    unawaited(_reloadCategories());
+    unawaited(_reloadItems());
     // Aktif içerik değişince kategori seçimini hizala — kullanıcı manuel
     // "Tümü" / "Son İzlenenler" seçtiğinde tercihi koru.
     _channelWorker = ever(widget.controller.channel, (_) {
       _syncCategoryWithCurrent();
     });
+    if (Get.isRegistered<PlaylistCacheService>()) {
+      _playlistWorker = ever(
+        Get.find<PlaylistCacheService>().result,
+        (_) {
+          unawaited(_reloadCategories());
+          unawaited(_reloadItems());
+        },
+      );
+    }
+    if (Get.isRegistered<UserHistoryService>()) {
+      _historyWorker = ever(
+        Get.find<UserHistoryService>().revision,
+        (_) {
+          unawaited(_reloadCategories());
+          if (_selectedCategoryId == _kVodPanelRecentlyWatchedCategoryId) {
+            unawaited(_reloadItems());
+          }
+        },
+      );
+    }
   }
 
   @override
   void dispose() {
     _channelWorker?.dispose();
+    _playlistWorker?.dispose();
+    _historyWorker?.dispose();
     super.dispose();
   }
 
@@ -3578,6 +3772,241 @@ class _PortraitVodPanelState extends State<_PortraitVodPanel> {
   M3uResult? _data() {
     if (!Get.isRegistered<PlaylistCacheService>()) return null;
     return Get.find<PlaylistCacheService>().result.value;
+  }
+
+  bool _isDbSlim(M3uResult d) {
+    if (!Get.isRegistered<PlaylistDataSource>()) return false;
+    final ds = Get.find<PlaylistDataSource>();
+    if (!ds.isDbBacked) return false;
+    return widget.isSeriesMode ? d.series.isEmpty : d.vod.isEmpty;
+  }
+
+  Future<void> _reloadCategories() async {
+    final gen = ++_categoriesGen;
+    final d = _data();
+    if (d == null) {
+      if (!mounted || gen != _categoriesGen) return;
+      setState(() {
+        _loadingCategories = false;
+        _allCount = 0;
+        _recentCount = 0;
+        _realCats = const [];
+      });
+      return;
+    }
+
+    if (!_isDbSlim(d)) {
+      final allCount = widget.isSeriesMode ? d.series.length : d.vod.length;
+      final recentCount = widget.isSeriesMode
+          ? _recentlyWatchedSeries(d).length
+          : _recentlyWatchedMovies(d).length;
+      final realCats = widget.isSeriesMode
+          ? _seriesCategoryRowsMem(d)
+          : _filmCategoryRowsMem(d);
+      if (!mounted || gen != _categoriesGen) return;
+      setState(() {
+        _loadingCategories = false;
+        _allCount = allCount;
+        _recentCount = recentCount;
+        _realCats = realCats;
+      });
+      return;
+    }
+
+    final ds = Get.find<PlaylistDataSource>();
+    if (widget.isSeriesMode) {
+      final allCount = await ds.seriesCount();
+      final counts = await ds.seriesCountsByCategory();
+      final recentCount = (await _recentlyWatchedSeriesDb(ds)).length;
+      final realCats = <({int id, String name, int count})>[];
+      for (final c in d.seriesCategories) {
+        final n = counts[c.id] ?? 0;
+        if (n > 0) realCats.add((id: c.id, name: c.name, count: n));
+      }
+      if (!mounted || gen != _categoriesGen) return;
+      setState(() {
+        _loadingCategories = false;
+        _allCount = allCount;
+        _recentCount = recentCount;
+        _realCats = realCats;
+      });
+    } else {
+      final allCount = await ds.vodCount();
+      final counts = await ds.vodCountsByCategory();
+      final recentCount = (await _recentlyWatchedMoviesDb(ds)).length;
+      final realCats = <({int id, String name, int count})>[];
+      for (final c in d.vodCategories) {
+        final n = counts[c.id] ?? 0;
+        if (n > 0) realCats.add((id: c.id, name: c.name, count: n));
+      }
+      if (!mounted || gen != _categoriesGen) return;
+      setState(() {
+        _loadingCategories = false;
+        _allCount = allCount;
+        _recentCount = recentCount;
+        _realCats = realCats;
+      });
+    }
+  }
+
+  Future<void> _reloadItems() async {
+    final gen = ++_itemsGen;
+    if (mounted) setState(() => _loadingItems = true);
+    final d = _data();
+    if (d == null) {
+      if (!mounted || gen != _itemsGen) return;
+      setState(() {
+        _loadingItems = false;
+        _filmItems = const [];
+        _seriesItems = const [];
+      });
+      return;
+    }
+
+    final selectedId = _selectedCategoryId;
+    if (!_isDbSlim(d)) {
+      if (widget.isSeriesMode) {
+        final list = _resolveSeriesListMem(d, selectedId);
+        if (!mounted || gen != _itemsGen) return;
+        setState(() {
+          _loadingItems = false;
+          _seriesItems = list;
+        });
+      } else {
+        final list = _resolveMovieListMem(d, selectedId);
+        if (!mounted || gen != _itemsGen) return;
+        setState(() {
+          _loadingItems = false;
+          _filmItems = list;
+        });
+      }
+      return;
+    }
+
+    final ds = Get.find<PlaylistDataSource>();
+    if (widget.isSeriesMode) {
+      final list = await _resolveSeriesListDb(ds, d, selectedId);
+      if (!mounted || gen != _itemsGen) return;
+      setState(() {
+        _loadingItems = false;
+        _seriesItems = list;
+      });
+    } else {
+      final list = await _resolveMovieListDb(ds, d, selectedId);
+      if (!mounted || gen != _itemsGen) return;
+      setState(() {
+        _loadingItems = false;
+        _filmItems = list;
+      });
+    }
+  }
+
+  List<({int id, String name, int count})> _filmCategoryRowsMem(M3uResult d) {
+    final byCat = _moviesByCategory(d);
+    return [
+      for (final c in d.vodCategories)
+        if ((byCat[c.id] ?? const <VodItem>[]).isNotEmpty)
+          (
+            id: c.id,
+            name: c.name,
+            count: (byCat[c.id] ?? const <VodItem>[]).length,
+          ),
+    ];
+  }
+
+  List<({int id, String name, int count})> _seriesCategoryRowsMem(M3uResult d) {
+    final byCat = _seriesByCategory(d);
+    return [
+      for (final c in d.seriesCategories)
+        if ((byCat[c.id] ?? const <SeriesItem>[]).isNotEmpty)
+          (
+            id: c.id,
+            name: c.name,
+            count: (byCat[c.id] ?? const <SeriesItem>[]).length,
+          ),
+    ];
+  }
+
+  Future<List<VodItem>> _recentlyWatchedMoviesDb(PlaylistDataSource ds) async {
+    final ids = _watchedIdsOrdered();
+    if (ids.isEmpty) return const <VodItem>[];
+    final out = <VodItem>[];
+    for (final id in ids) {
+      final v = await ds.vodById(id);
+      if (v != null) out.add(v);
+    }
+    return out;
+  }
+
+  Future<List<SeriesItem>> _recentlyWatchedSeriesDb(PlaylistDataSource ds) async {
+    final ids = _watchedIdsOrdered();
+    if (ids.isEmpty) return const <SeriesItem>[];
+    final out = <SeriesItem>[];
+    for (final id in ids) {
+      final s = await ds.seriesById(id);
+      if (s != null) out.add(s);
+    }
+    return out;
+  }
+
+  Future<List<VodItem>> _loadAllVodsDb(PlaylistDataSource ds) async {
+    final out = <VodItem>[];
+    var offset = 0;
+    const pageSize = 300;
+    while (true) {
+      final page = await ds.vodPage(offset: offset, limit: pageSize);
+      if (page.isEmpty) break;
+      out.addAll(page);
+      offset += page.length;
+      if (page.length < pageSize) break;
+      await Future<void>.delayed(Duration.zero);
+    }
+    out.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    return out;
+  }
+
+  Future<List<SeriesItem>> _loadAllSeriesDb(PlaylistDataSource ds) async {
+    final out = <SeriesItem>[];
+    var offset = 0;
+    const pageSize = 300;
+    while (true) {
+      final page = await ds.seriesPage(offset: offset, limit: pageSize);
+      if (page.isEmpty) break;
+      out.addAll(page);
+      offset += page.length;
+      if (page.length < pageSize) break;
+      await Future<void>.delayed(Duration.zero);
+    }
+    out.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+    return out;
+  }
+
+  Future<List<VodItem>> _resolveMovieListDb(
+    PlaylistDataSource ds,
+    M3uResult d,
+    int? selectedId,
+  ) async {
+    if (selectedId == _kVodPanelRecentlyWatchedCategoryId) {
+      return _recentlyWatchedMoviesDb(ds);
+    }
+    if (selectedId == _kVodPanelAllCategoryId || selectedId == null) {
+      return _loadAllVodsDb(ds);
+    }
+    return FilmDiziCatalog.allVodsInCategoryFromDb(d, ds, selectedId);
+  }
+
+  Future<List<SeriesItem>> _resolveSeriesListDb(
+    PlaylistDataSource ds,
+    M3uResult d,
+    int? selectedId,
+  ) async {
+    if (selectedId == _kVodPanelRecentlyWatchedCategoryId) {
+      return _recentlyWatchedSeriesDb(ds);
+    }
+    if (selectedId == _kVodPanelAllCategoryId || selectedId == null) {
+      return _loadAllSeriesDb(ds);
+    }
+    return FilmDiziCatalog.allSeriesInCategoryFromDb(d, ds, selectedId);
   }
 
   /// Tüm filmler — kategori bazında VodItem listeleri (alfabetik sıralı).
@@ -3726,47 +4155,26 @@ class _PortraitVodPanelState extends State<_PortraitVodPanel> {
       if (Get.isRegistered<UserHistoryService>()) {
         Get.find<UserHistoryService>().revision.value;
       }
-      final d = _data();
-      if (d == null) {
+      if (_data() == null) {
         return _EmptyState(
           icon: Icons.category_outlined,
           message: 'portraitPanel.empty.categories'.tr,
         );
       }
+      if (_loadingCategories) {
+        return const Center(
+          child: SizedBox(
+            width: 28,
+            height: 28,
+            child: CircularProgressIndicator(strokeWidth: 2.4),
+          ),
+        );
+      }
 
-      final allCount = widget.isSeriesMode ? d.series.length : d.vod.length;
-      final recentCount = widget.isSeriesMode
-          ? _recentlyWatchedSeries(d).length
-          : _recentlyWatchedMovies(d).length;
+      final allCount = _allCount;
+      final recentCount = _recentCount;
+      final realCats = _realCats;
       final showRecent = recentCount > 0;
-
-      // Gerçek kategoriler
-      final List<({int id, String name, int count})> realCats =
-          widget.isSeriesMode
-              ? () {
-                  final byCat = _seriesByCategory(d);
-                  return [
-                    for (final c in d.seriesCategories)
-                      if ((byCat[c.id] ?? const <SeriesItem>[]).isNotEmpty)
-                        (
-                          id: c.id,
-                          name: c.name,
-                          count: (byCat[c.id] ?? const <SeriesItem>[]).length,
-                        ),
-                  ];
-                }()
-              : () {
-                  final byCat = _moviesByCategory(d);
-                  return [
-                    for (final c in d.vodCategories)
-                      if ((byCat[c.id] ?? const <VodItem>[]).isNotEmpty)
-                        (
-                          id: c.id,
-                          name: c.name,
-                          count: (byCat[c.id] ?? const <VodItem>[]).length,
-                        ),
-                  ];
-                }();
 
       if (realCats.isEmpty && allCount == 0) {
         return _EmptyState(
@@ -3798,6 +4206,7 @@ class _PortraitVodPanelState extends State<_PortraitVodPanel> {
                   _selectedCategoryId = _kVodPanelAllCategoryId;
                   _tab = _PortraitVodTab.items;
                 });
+                unawaited(_reloadItems());
               },
             );
           }
@@ -3815,6 +4224,7 @@ class _PortraitVodPanelState extends State<_PortraitVodPanel> {
                   _selectedCategoryId = _kVodPanelRecentlyWatchedCategoryId;
                   _tab = _PortraitVodTab.items;
                 });
+                unawaited(_reloadItems());
               },
             );
           }
@@ -3835,6 +4245,7 @@ class _PortraitVodPanelState extends State<_PortraitVodPanel> {
                 _selectedCategoryId = cat.id;
                 _tab = _PortraitVodTab.items;
               });
+              unawaited(_reloadItems());
             },
           );
         },
@@ -3854,8 +4265,7 @@ class _PortraitVodPanelState extends State<_PortraitVodPanel> {
       }
       // Aktif içerik değişimini izle ki "şu an oynayan" rozeti yenilensin.
       widget.controller.channel.value;
-      final d = _data();
-      if (d == null) {
+      if (_data() == null) {
         return _EmptyState(
           icon: widget.isSeriesMode
               ? Icons.theater_comedy_outlined
@@ -3863,10 +4273,18 @@ class _PortraitVodPanelState extends State<_PortraitVodPanel> {
           message: 'portraitVodPanel.empty.items'.tr,
         );
       }
+      if (_loadingItems) {
+        return const Center(
+          child: SizedBox(
+            width: 28,
+            height: 28,
+            child: CircularProgressIndicator(strokeWidth: 2.4),
+          ),
+        );
+      }
 
-      final selectedId = _selectedCategoryId;
       if (widget.isSeriesMode) {
-        final List<SeriesItem> list = _resolveSeriesList(d, selectedId);
+        final list = _seriesItems;
         if (list.isEmpty) {
           return _EmptyState(
             icon: Icons.theater_comedy_outlined,
@@ -3893,7 +4311,7 @@ class _PortraitVodPanelState extends State<_PortraitVodPanel> {
           },
         );
       } else {
-        final List<VodItem> list = _resolveMovieList(d, selectedId);
+        final list = _filmItems;
         if (list.isEmpty) {
           return _EmptyState(
             icon: Icons.movie_outlined,
@@ -3932,7 +4350,7 @@ class _PortraitVodPanelState extends State<_PortraitVodPanel> {
     });
   }
 
-  List<VodItem> _resolveMovieList(M3uResult d, int? selectedId) {
+  List<VodItem> _resolveMovieListMem(M3uResult d, int? selectedId) {
     if (selectedId == _kVodPanelRecentlyWatchedCategoryId) {
       return _recentlyWatchedMovies(d);
     }
@@ -3945,7 +4363,7 @@ class _PortraitVodPanelState extends State<_PortraitVodPanel> {
     return byCat[selectedId] ?? const <VodItem>[];
   }
 
-  List<SeriesItem> _resolveSeriesList(M3uResult d, int? selectedId) {
+  List<SeriesItem> _resolveSeriesListMem(M3uResult d, int? selectedId) {
     if (selectedId == _kVodPanelRecentlyWatchedCategoryId) {
       return _recentlyWatchedSeries(d);
     }
@@ -4123,7 +4541,17 @@ class _PortraitLiveTvPanelState extends State<_PortraitLiveTvPanel> {
   _PortraitLiveTab _tab = _PortraitLiveTab.channels;
   int? _selectedCategoryId;
   Worker? _channelWorker;
+  Worker? _tabRequestWorker;
   Timer? _epgTicker;
+
+  _PortraitLiveTab _tabFromRequestIndex(int idx) {
+    return switch (idx) {
+      PlayerController.portraitLiveTabCategories =>
+        _PortraitLiveTab.categories,
+      PlayerController.portraitLiveTabEpg => _PortraitLiveTab.epg,
+      _ => _PortraitLiveTab.channels,
+    };
+  }
 
   @override
   void initState() {
@@ -4132,6 +4560,16 @@ class _PortraitLiveTvPanelState extends State<_PortraitLiveTvPanel> {
     // Aktif kanal değişince kategori seçimini güncel kanala hizala.
     _channelWorker = ever(widget.controller.channel, (_) {
       _syncCategoryWithCurrentChannel();
+    });
+    // OSD'deki EPG ikonu → bu panelin EPG sekmesine geçer (dikey mod).
+    _tabRequestWorker =
+        ever(widget.controller.portraitLivePanelTabPulse, (_) {
+      if (!mounted) return;
+      final next =
+          _tabFromRequestIndex(widget.controller.portraitLivePanelTabRequest.value);
+      if (_tab != next) {
+        setState(() => _tab = next);
+      }
     });
     // EPG sekmesinde "DEVAM EDİYOR" rozetinin saat geçişinde tazelenmesi için
     // dakikada bir tetikleme. (Sekme EPG değilse ucuz `setState`.)
@@ -4145,6 +4583,7 @@ class _PortraitLiveTvPanelState extends State<_PortraitLiveTvPanel> {
   @override
   void dispose() {
     _channelWorker?.dispose();
+    _tabRequestWorker?.dispose();
     _epgTicker?.cancel();
     super.dispose();
   }
@@ -4237,6 +4676,8 @@ class _PortraitLiveTvPanelState extends State<_PortraitLiveTvPanel> {
   Widget _buildCategoriesList(BuildContext context) {
     return Obx(() {
       widget.controller.channel.value;
+      // DB destekli şerit async dolunca yeniden çiz.
+      widget.controller.liveStripTapesRevision.value;
       if (Get.isRegistered<PlaylistCacheService>()) {
         Get.find<PlaylistCacheService>().result.value;
       }
@@ -4382,6 +4823,8 @@ class _PortraitLiveTvPanelState extends State<_PortraitLiveTvPanel> {
   Widget _buildChannelsList(BuildContext context) {
     return Obx(() {
       widget.controller.channel.value;
+      // DB destekli şerit async dolunca yeniden çiz.
+      widget.controller.liveStripTapesRevision.value;
       if (Get.isRegistered<PlaylistCacheService>()) {
         Get.find<PlaylistCacheService>().result.value;
       }
@@ -5899,6 +6342,10 @@ class _MediaKitPortraitStreamBuilderState
     extends State<_MediaKitPortraitStreamBuilder> {
   Player? _target;
   final List<StreamSubscription<dynamic>> _subs = [];
+  // Son rebuild edilen snapshot; position stream saniyede ~5 kez tetiklendiği
+  // için, yalnızca oynat/duraklat, süre veya ≥500ms konum değişiminde yeniden
+  // çiz (BetterPlayer builder'ı ile aynı eşik).
+  _MediaKitPortraitSnap? _lastBuilt;
 
   void _cancelSubs() {
     for (final s in _subs) {
@@ -5924,12 +6371,25 @@ class _MediaKitPortraitStreamBuilderState
     if (identical(_target, p)) return;
     _cancelSubs();
     _target = p;
+    _lastBuilt = null;
     if (p == null) {
       if (mounted) setState(() {});
       return;
     }
     void tick([dynamic _]) {
-      if (mounted) setState(() {});
+      if (!mounted) return;
+      final snap = _readSnap();
+      final o = _lastBuilt;
+      if (o != null &&
+          snap != null &&
+          o.playing == snap.playing &&
+          o.duration == snap.duration &&
+          (snap.position.inMilliseconds - o.position.inMilliseconds).abs() <
+              500) {
+        return;
+      }
+      _lastBuilt = snap;
+      setState(() {});
     }
 
     _subs.add(p.stream.playing.listen(tick));
@@ -6109,12 +6569,11 @@ class _MkTrackSelectionSheet extends StatelessWidget {
 /// Yayın henüz çizilmeden önce siyah ekran yerine logo + yükleme göstergesi.
 class _PlayerLoadingOverlay extends StatelessWidget {
   const _PlayerLoadingOverlay({
+    super.key,
     required this.channel,
-    required this.subtitle,
   });
 
   final Channel channel;
-  final String subtitle;
 
   @override
   Widget build(BuildContext context) {
@@ -6126,7 +6585,6 @@ class _PlayerLoadingOverlay extends StatelessWidget {
           Center(
             child: _PlayerLoadingCenter(
               channel: channel,
-              subtitle: subtitle,
             ),
           ),
         ],
@@ -6137,12 +6595,11 @@ class _PlayerLoadingOverlay extends StatelessWidget {
 
 class _PlayerLoadingCenter extends StatelessWidget {
   const _PlayerLoadingCenter({
+    super.key,
     required this.channel,
-    required this.subtitle,
   });
 
   final Channel channel;
-  final String subtitle;
 
   @override
   Widget build(BuildContext context) {
@@ -6156,6 +6613,7 @@ class _PlayerLoadingCenter extends StatelessWidget {
       children: [
         if (hasLogo)
           ClipRRect(
+            key: ValueKey('splash_logo_${channel.id}_$logo'),
             borderRadius: BorderRadius.circular(14),
             child: IptvChannelLogo(
               imageUrl: logo,
@@ -6197,54 +6655,62 @@ class _PlayerLoadingCenter extends StatelessWidget {
               color: Color(0xFF6ECFE0),
             ),
           ),
-        if (hasLogo) const SizedBox(height: 10),
-        SizedBox(
-          width: hasLogo ? 112 : 48,
-          height: 3,
-          child: const LinearProgressIndicator(
-            backgroundColor: Colors.white12,
-            color: Color(0xFF6ECFE0),
-          ),
-        ),
-        const SizedBox(height: 14),
-        Text(
-          subtitle,
-          textAlign: TextAlign.center,
-          style: const TextStyle(
-            color: Colors.white70,
-            fontSize: 14,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
+        if (hasLogo) const SizedBox(height: 18),
+        const _PlayerLoadingBlinkingUmbrella(),
       ],
     );
   }
 }
 
-/// Dikey mod kanal geçişlerinde tam ekran splash yerine yalnız merkezde spinner.
-class _PlayerCenterLoadingSpinner extends StatelessWidget {
-  const _PlayerCenterLoadingSpinner();
+/// Yayın açılırken kanal logosunun altında yanıp sönen küçük uygulama ikonu
+/// (mavi şemsiye). Eski "Akış açılıyor…" metni + progress bar yerine geçer.
+class _PlayerLoadingBlinkingUmbrella extends StatefulWidget {
+  const _PlayerLoadingBlinkingUmbrella();
+
+  @override
+  State<_PlayerLoadingBlinkingUmbrella> createState() =>
+      _PlayerLoadingBlinkingUmbrellaState();
+}
+
+class _PlayerLoadingBlinkingUmbrellaState
+    extends State<_PlayerLoadingBlinkingUmbrella>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _controller;
+  late final Animation<double> _opacity;
+  late final Animation<double> _scale;
+
+  @override
+  void initState() {
+    super.initState();
+    _controller = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 850),
+    )..repeat(reverse: true);
+    _opacity = Tween<double>(begin: 0.3, end: 1.0).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
+    );
+    _scale = Tween<double>(begin: 0.88, end: 1.08).animate(
+      CurvedAnimation(parent: _controller, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
 
   @override
   Widget build(BuildContext context) {
-    return IgnorePointer(
-      child: Center(
-        child: DecoratedBox(
-          decoration: BoxDecoration(
-            color: Colors.black.withValues(alpha: 0.28),
-            shape: BoxShape.circle,
-          ),
-          child: const Padding(
-            padding: EdgeInsets.all(14),
-            child: SizedBox(
-              width: 34,
-              height: 34,
-              child: CircularProgressIndicator(
-                strokeWidth: 3,
-                color: Color(0xFF6ECFE0),
-              ),
-            ),
-          ),
+    return FadeTransition(
+      opacity: _opacity,
+      child: ScaleTransition(
+        scale: _scale,
+        child: Image.asset(
+          'assets/images/app_icon.png',
+          width: 40,
+          height: 40,
+          filterQuality: FilterQuality.medium,
         ),
       ),
     );

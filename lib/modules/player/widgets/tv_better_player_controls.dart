@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 
 import '../../../core/player/better_player_video_track_label.dart';
+import '../../../core/player/video_player_engine.dart';
 import '../../../core/player/exo_native_track_option.dart';
 import '../../../core/layout/app_layout_mode.dart';
 import '../../../core/services/app_settings_service.dart';
@@ -57,7 +58,7 @@ class _TvBetterPlayerControlsState extends State<TvBetterPlayerControls> {
 
   Timer? _hideTimer;
   bool _visible = true;
-  VideoPlayerValue? _value;
+  late final ValueNotifier<VideoPlayerValue?> _betterPlayerValueNotifier;
 
   final FocusNode _mainFocusNode = FocusNode();
   final FocusNode _firstOsdButtonFocus = FocusNode(debugLabel: 'osdFirst');
@@ -92,6 +93,7 @@ class _TvBetterPlayerControlsState extends State<TvBetterPlayerControls> {
   @override
   void initState() {
     super.initState();
+    _betterPlayerValueNotifier = ValueNotifier<VideoPlayerValue?>(null);
     final pc = Get.find<PlayerController>();
     final settings = Get.find<AppSettingsService>();
     final remoteLayout = settings.layoutMode.value.usesRemoteNavigationStyle;
@@ -231,7 +233,7 @@ class _TvBetterPlayerControlsState extends State<TvBetterPlayerControls> {
     if (vc != null) {
       _videoListenerTarget = vc;
       vc.addListener(_onVideoUpdate);
-      _value = vc.value;
+      _betterPlayerValueNotifier.value = vc.value;
       _onVideoUpdate();
       _videoListenerPostFrameRetries = 0;
       return;
@@ -301,6 +303,7 @@ class _TvBetterPlayerControlsState extends State<TvBetterPlayerControls> {
 
   @override
   void dispose() {
+    _betterPlayerValueNotifier.dispose();
     _tvOsdVisibleWorker?.dispose();
     _stripOverlayWorker?.dispose();
     _vodBrowseRailWorker?.dispose();
@@ -376,14 +379,14 @@ class _TvBetterPlayerControlsState extends State<TvBetterPlayerControls> {
     if (!mounted) return;
     final v = widget.controller.videoPlayerController?.value;
     if (v == null) {
-      setState(() => _value = null);
+      _betterPlayerValueNotifier.value = null;
       return;
     }
-    final old = _value;
+    final old = _betterPlayerValueNotifier.value;
     if (old != null && _tvOsdVideoFieldsUnchanged(old, v)) {
       return;
     }
-    setState(() => _value = v);
+    _betterPlayerValueNotifier.value = v;
   }
 
   /// Canlı: pozisyon/buffer sürekli değişir; OSD çoğunlukla oynatma/tampona bağlı.
@@ -474,7 +477,7 @@ class _TvBetterPlayerControlsState extends State<TvBetterPlayerControls> {
 
   void _togglePlay() {
     _restartHideTimer();
-    final v = _value;
+    final v = _betterPlayerValueNotifier.value;
     if (v == null) return;
     final pc = Get.find<PlayerController>();
     if (v.isPlaying) {
@@ -486,7 +489,7 @@ class _TvBetterPlayerControlsState extends State<TvBetterPlayerControls> {
 
   void _skipBack15() {
     _restartHideTimer();
-    final v = _value;
+    final v = _betterPlayerValueNotifier.value;
     if (v == null) return;
     final ms = math.max(0, v.position.inMilliseconds - _skipMs);
     widget.controller.seekTo(Duration(milliseconds: ms));
@@ -494,7 +497,7 @@ class _TvBetterPlayerControlsState extends State<TvBetterPlayerControls> {
 
   void _skipForward15() {
     _restartHideTimer();
-    final v = _value;
+    final v = _betterPlayerValueNotifier.value;
     if (v == null) return;
     var target = v.position.inMilliseconds + _skipMs;
     final dur = v.duration;
@@ -959,7 +962,6 @@ class _TvBetterPlayerControlsState extends State<TvBetterPlayerControls> {
     // Dikey: alttaki _PortraitOsdPanel. Yatay: cam OSD (mobil ve TV aynı TvBetterPlayerControls).
     if (isPortrait) return const SizedBox.shrink();
 
-    final playing = _value?.isPlaying ?? false;
     final bottomInset = MediaQuery.paddingOf(context).bottom;
     final leftInset = MediaQuery.paddingOf(context).left;
     final rightInset = MediaQuery.paddingOf(context).right;
@@ -1117,21 +1119,26 @@ class _TvBetterPlayerControlsState extends State<TvBetterPlayerControls> {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              if (_value?.isBuffering == true)
-                Center(
-                  child: _glassBar(
-                    padding: EdgeInsets.all(isPortrait ? 12 : 16),
-                    radius: 999,
-                    child: SizedBox(
-                      width: isPortrait ? 24 : 32,
-                      height: isPortrait ? 24 : 32,
-                      child: CircularProgressIndicator(
-                        strokeWidth: isPortrait ? 2 : 2.5,
-                        color: _cfg.loadingColor,
+              ValueListenableBuilder<VideoPlayerValue?>(
+                valueListenable: _betterPlayerValueNotifier,
+                builder: (context, val, _) {
+                  if (val?.isBuffering != true) return const SizedBox.shrink();
+                  return Center(
+                    child: _glassBar(
+                      padding: EdgeInsets.all(isPortrait ? 12 : 16),
+                      radius: 999,
+                      child: SizedBox(
+                        width: isPortrait ? 24 : 32,
+                        height: isPortrait ? 24 : 32,
+                        child: CircularProgressIndicator(
+                          strokeWidth: isPortrait ? 2 : 2.5,
+                          color: _cfg.loadingColor,
+                        ),
                       ),
                     ),
-                  ),
-                ),
+                  );
+                },
+              ),
               Positioned(
                 left: (isPortrait ? 8 : 12) + leftInset,
                 right: (isPortrait ? 8 : 12) + rightInset,
@@ -1147,30 +1154,36 @@ class _TvBetterPlayerControlsState extends State<TvBetterPlayerControls> {
                       mainAxisSize: MainAxisSize.min,
                       crossAxisAlignment: CrossAxisAlignment.stretch,
                       children: [
-                        if ((!live || liveTimeshift) &&
-                            _cfg.enableProgressBar &&
-                            _value?.duration != null &&
-                            (_value!.duration!.inMilliseconds > 0))
-                          Padding(
-                            padding:
-                                EdgeInsets.only(bottom: isPortrait ? 6 : 8),
-                            child: _glassBar(
-                              padding: EdgeInsets.fromLTRB(
-                                isPortrait ? 10 : 14,
-                                isPortrait ? 6 : 8,
-                                isPortrait ? 10 : 14,
-                                isPortrait ? 6 : 8,
+                        ValueListenableBuilder<VideoPlayerValue?>(
+                          valueListenable: _betterPlayerValueNotifier,
+                          builder: (context, val, _) {
+                            if (val == null || val.duration == null || val.duration!.inMilliseconds <= 0) {
+                              return const SizedBox.shrink();
+                            }
+                            if (live && !liveTimeshift) return const SizedBox.shrink();
+                            if (!_cfg.enableProgressBar) return const SizedBox.shrink();
+                            return Padding(
+                              padding:
+                                  EdgeInsets.only(bottom: isPortrait ? 6 : 8),
+                              child: _glassBar(
+                                padding: EdgeInsets.fromLTRB(
+                                  isPortrait ? 10 : 14,
+                                  isPortrait ? 6 : 8,
+                                  isPortrait ? 10 : 14,
+                                  isPortrait ? 6 : 8,
+                                ),
+                                child: _TvProgressBar(
+                                  value: val,
+                                  cfg: _cfg,
+                                  onSeek: (d) {
+                                    _restartHideTimer();
+                                    widget.controller.seekTo(d);
+                                  },
+                                ),
                               ),
-                              child: _TvProgressBar(
-                                value: _value!,
-                                cfg: _cfg,
-                                onSeek: (d) {
-                                  _restartHideTimer();
-                                  widget.controller.seekTo(d);
-                                },
-                              ),
-                            ),
-                          ),
+                            );
+                          },
+                        ),
                         IntrinsicHeight(
                           child: Row(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1263,33 +1276,13 @@ class _TvBetterPlayerControlsState extends State<TvBetterPlayerControls> {
                                                 height: 1.1,
                                               ),
                                             ),
-                                            if (live) ...[
-                                              const SizedBox(height: 4),
-                                              Container(
-                                                padding: EdgeInsets.symmetric(
-                                                  horizontal:
-                                                      isPortrait ? 5 : 6,
-                                                  vertical: isPortrait ? 2 : 3,
-                                                ),
-                                                decoration: BoxDecoration(
-                                                  color: const Color(0xFFE74C3C)
-                                                      .withValues(alpha: 0.85),
-                                                  borderRadius:
-                                                      BorderRadius.circular(
-                                                          isPortrait ? 4 : 5),
-                                                ),
-                                                child: Text(
-                                                  'player.liveBadge'.tr,
-                                                  style: TextStyle(
-                                                    color: Colors.white,
-                                                    fontSize:
-                                                        isPortrait ? 8 : 9,
-                                                    fontWeight: FontWeight.w800,
-                                                    letterSpacing: 0.4,
-                                                  ),
-                                                ),
-                                              ),
-                                            ],
+                                            const SizedBox(height: 4),
+                                            osdContentTypeAndEngineRow(
+                                              live: live,
+                                              isSeries: controller.isSeries,
+                                              engine: VideoPlayerEngine.betterPlayer,
+                                              portrait: isPortrait,
+                                            ),
                                           ],
                                         ),
                                       ),
@@ -1341,19 +1334,25 @@ class _TvBetterPlayerControlsState extends State<TvBetterPlayerControls> {
                                             size: isPortrait ? 34 : _osdBtnSize,
                                           ),
                                           SizedBox(width: isPortrait ? 4 : _osdBtnGap),
-                                          _osdButton(
-                                            tooltip: playing
-                                                ? 'player.tooltip.pause'.tr
-                                                : 'player.tooltip.play'.tr,
-                                            icon: playing
-                                                ? Icons.pause_rounded
-                                                : Icons.play_arrow_rounded,
-                                            onPressed: _togglePlay,
-                                            primary: true,
-                                            size: isPortrait ? 34 : _osdBtnSize,
-                                            focusNode: _firstOsdButtonFocus,
-                                            deferLiveOsdCenterForStrip: true,
-                                          ),
+                                           ValueListenableBuilder<VideoPlayerValue?>(
+                                             valueListenable: _betterPlayerValueNotifier,
+                                             builder: (context, val, _) {
+                                               final playing = val?.isPlaying ?? false;
+                                               return _osdButton(
+                                                 tooltip: playing
+                                                     ? 'player.tooltip.pause'.tr
+                                                     : 'player.tooltip.play'.tr,
+                                                 icon: playing
+                                                     ? Icons.pause_rounded
+                                                     : Icons.play_arrow_rounded,
+                                                 onPressed: _togglePlay,
+                                                 primary: true,
+                                                 size: isPortrait ? 34 : _osdBtnSize,
+                                                 focusNode: _firstOsdButtonFocus,
+                                                 deferLiveOsdCenterForStrip: true,
+                                               );
+                                             },
+                                           ),
                                           SizedBox(width: isPortrait ? 4 : _osdBtnGap),
                                           _osdButton(
                                             tooltip: liveTimeshift
@@ -1402,36 +1401,6 @@ class _TvBetterPlayerControlsState extends State<TvBetterPlayerControls> {
                                             onPressed: _cycleFit,
                                             size: isPortrait ? 34 : _osdBtnSize,
                                           ),
-                                          Obx(() {
-                                            final s =
-                                                Get.find<AppSettingsService>();
-                                            if (s.layoutMode.value !=
-                                                AppLayoutMode.mobile) {
-                                              return const SizedBox.shrink();
-                                            }
-                                            return Row(
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                                SizedBox(
-                                                  width: isPortrait ? 4 : 6,
-                                                ),
-                                                _osdButton(
-                                                  tooltip:
-                                                      'player.tooltip.toPortrait'
-                                                          .tr,
-                                                  icon: Icons
-                                                      .stay_current_portrait_rounded,
-                                                  onPressed: () {
-                                                    _restartHideTimer();
-                                                    unawaited(
-                                                      s.requestMobileHandheldPortraitPlayback(),
-                                                    );
-                                                  },
-                                                  size: isPortrait ? 34 : _osdBtnSize,
-                                                ),
-                                              ],
-                                            );
-                                          }),
                                           if (live) ...[
                                             SizedBox(width: isPortrait ? 4 : _osdBtnGap),
                                             _osdButton(
@@ -1552,6 +1521,58 @@ class _TvBetterPlayerControlsState extends State<TvBetterPlayerControls> {
                                               );
                                             }),
                                           ],
+                                          Obx(() {
+                                            final s = Get.find<AppSettingsService>();
+                                            final pc = Get.find<PlayerController>();
+                                            if (s.layoutMode.value == AppLayoutMode.tv) {
+                                              return const SizedBox.shrink();
+                                            }
+                                            final mk = pc.effectiveUseMediaKit;
+                                            return Row(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                                SizedBox(
+                                                  width: isPortrait ? 4 : 6,
+                                                ),
+                                                _osdButton(
+                                                  tooltip: mk
+                                                      ? 'player.engine.toExo'.tr
+                                                      : 'player.engine.toMediaKit'.tr,
+                                                  icon: mk
+                                                      ? Icons.memory_rounded
+                                                      : Icons.bolt_rounded,
+                                                  onPressed: () {
+                                                    _restartHideTimer();
+                                                    unawaited(
+                                                      pc.switchToBackupPlayer(),
+                                                    );
+                                                    GlassSnackbar.show(
+                                                      'player.engine.title'.tr,
+                                                      'player.engine.switchedMediaKit'.tr,
+                                                      snackPosition: SnackPosition.BOTTOM,
+                                                    );
+                                                  },
+                                                  size: isPortrait ? 34 : _osdBtnSize,
+                                                ),
+                                                if (s.layoutMode.value == AppLayoutMode.mobile) ...[
+                                                  SizedBox(
+                                                    width: isPortrait ? 4 : 6,
+                                                  ),
+                                                  _osdButton(
+                                                    tooltip: 'player.tooltip.toPortrait'.tr,
+                                                    icon: Icons.stay_current_portrait_rounded,
+                                                    onPressed: () {
+                                                      _restartHideTimer();
+                                                      unawaited(
+                                                        s.requestMobileHandheldPortraitPlayback(),
+                                                      );
+                                                    },
+                                                    size: isPortrait ? 34 : _osdBtnSize,
+                                                  ),
+                                                ],
+                                              ],
+                                            );
+                                          }),
                                             ],
                                           ),
                                         ),

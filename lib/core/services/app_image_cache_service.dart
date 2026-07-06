@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:dio/dio.dart';
@@ -5,9 +6,11 @@ import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../domain/entities/channel.dart';
 import '../../domain/entities/m3u_result.dart';
 import '../../domain/entities/vod.dart';
 import 'app_settings_service.dart';
+import 'playlist_data_source.dart';
 
 class AppImageCacheService extends GetxService {
   static const Duration cacheStalePeriod = Duration(days: 30);
@@ -40,23 +43,80 @@ class AppImageCacheService extends GetxService {
     ),
   );
 
+  // --- Bellek içi index önbelleği -------------------------------------------
+  // Eskiden her görselde url/etag index'i SharedPreferences'tan okunup yazılıyordu
+  // (görsel başına 2-4 disk round-trip). Artık index'ler bir kez yüklenip
+  // bellekte tutulur; okumalar tamamen bellekten, yazmalar debounce ile diske
+  // flush edilir.
+  Map<String, dynamic>? _urlIndexCache;
+  Map<String, dynamic>? _etagIndexCache;
+  bool _urlIndexDirty = false;
+  bool _etagIndexDirty = false;
+  Timer? _flushTimer;
+  static const Duration _flushDebounce = Duration(seconds: 1);
+
   Future<Map<String, dynamic>> _readJsonMap(String key) async {
+    if (key == _urlIndexKey && _urlIndexCache != null) return _urlIndexCache!;
+    if (key == _etagIndexKey && _etagIndexCache != null) return _etagIndexCache!;
+
+    Map<String, dynamic> loaded;
     try {
       final prefs = await SharedPreferences.getInstance();
       final raw = prefs.getString(key);
-      if (raw == null || raw.isEmpty) return <String, dynamic>{};
-      final decoded = jsonDecode(raw);
-      if (decoded is Map<String, dynamic>) return decoded;
-      return <String, dynamic>{};
+      if (raw == null || raw.isEmpty) {
+        loaded = <String, dynamic>{};
+      } else {
+        final decoded = jsonDecode(raw);
+        loaded = decoded is Map<String, dynamic>
+            ? decoded
+            : <String, dynamic>{};
+      }
     } catch (_) {
-      return <String, dynamic>{};
+      loaded = <String, dynamic>{};
     }
+
+    if (key == _urlIndexKey) {
+      _urlIndexCache ??= loaded;
+      return _urlIndexCache!;
+    }
+    if (key == _etagIndexKey) {
+      _etagIndexCache ??= loaded;
+      return _etagIndexCache!;
+    }
+    return loaded;
   }
 
+  /// Index'i bellekte günceller ve diske debounce'lu flush planlar.
   Future<void> _writeJsonMap(String key, Map<String, dynamic> value) async {
+    if (key == _urlIndexKey) {
+      _urlIndexCache = value;
+      _urlIndexDirty = true;
+    } else if (key == _etagIndexKey) {
+      _etagIndexCache = value;
+      _etagIndexDirty = true;
+    }
+    _scheduleFlush();
+  }
+
+  void _scheduleFlush() {
+    _flushTimer?.cancel();
+    _flushTimer = Timer(_flushDebounce, () {
+      _flushIndexes();
+    });
+  }
+
+  Future<void> _flushIndexes() async {
+    if (!_urlIndexDirty && !_etagIndexDirty) return;
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(key, jsonEncode(value));
+      if (_urlIndexDirty && _urlIndexCache != null) {
+        await prefs.setString(_urlIndexKey, jsonEncode(_urlIndexCache));
+        _urlIndexDirty = false;
+      }
+      if (_etagIndexDirty && _etagIndexCache != null) {
+        await prefs.setString(_etagIndexKey, jsonEncode(_etagIndexCache));
+        _etagIndexDirty = false;
+      }
     } catch (_) {}
   }
 
@@ -70,7 +130,10 @@ class AppImageCacheService extends GetxService {
     return '$u#$lm';
   }
 
-  Future<void> precacheInitialPlaylistImages(M3uResult result) async {
+  Future<void> precacheInitialPlaylistImages(
+    M3uResult result, {
+    bool skipEtag = false,
+  }) async {
     // Düşük Donanımlı Cihaz Modu açıkken açılışta ön-yüklenen görsel sayısını
     // azalt (bellek + ağ baskısını düşürür).
     final lowEnd = Get.isRegistered<AppSettingsService>() &&
@@ -78,37 +141,61 @@ class AppImageCacheService extends GetxService {
     final channelLimit = lowEnd ? 15 : 50;
     final vodLimit = lowEnd ? 8 : 20;
 
-    final topChannels = result.channels
-        .where((c) => (c.logoUrl ?? '').trim().isNotEmpty)
-        .take(channelLimit)
-        .toList(growable: false);
+    final List<Channel> topChannels;
+    if (Get.isRegistered<PlaylistDataSource>() &&
+        Get.find<PlaylistDataSource>().isDbBacked) {
+      final page =
+          await Get.find<PlaylistDataSource>().channelsForScan(limit: channelLimit * 3);
+      topChannels = page
+          .where((c) => (c.logoUrl ?? '').trim().isNotEmpty)
+          .take(channelLimit)
+          .toList(growable: false);
+    } else {
+      topChannels = result.channels
+          .where((c) => (c.logoUrl ?? '').trim().isNotEmpty)
+          .take(channelLimit)
+          .toList(growable: false);
+    }
 
-    final recentMovies = List<VodItem>.from(result.vod)
-      ..sort((a, b) => (b.addedUnix ?? 0).compareTo(a.addedUnix ?? 0));
+    final List<VodItem> recentMovies;
+    if (Get.isRegistered<PlaylistDataSource>() &&
+        Get.find<PlaylistDataSource>().isDbBacked) {
+      final page = await Get.find<PlaylistDataSource>().vodPage(limit: 80);
+      recentMovies = List<VodItem>.from(page)
+        ..sort((a, b) => (b.addedUnix ?? 0).compareTo(a.addedUnix ?? 0));
+    } else if (result.vod.isNotEmpty) {
+      recentMovies = List<VodItem>.from(result.vod)
+        ..sort((a, b) => (b.addedUnix ?? 0).compareTo(a.addedUnix ?? 0));
+    } else {
+      recentMovies = const <VodItem>[];
+    }
     final topVod = recentMovies
         .where((v) => (v.posterUrl ?? '').trim().isNotEmpty)
         .take(vodLimit)
         .toList(growable: false);
 
-    for (final c in topChannels) {
-      await syncEntityImage(
-        entityKey: 'live:${c.id}',
-        imageUrl: c.logoUrl!,
-      );
-    }
-
-    for (final v in topVod) {
-      await syncEntityImage(
-        entityKey: 'vod:${v.id}',
-        imageUrl: v.posterUrl!,
-      );
-    }
+    final jobs = <Future<void>>[
+      for (final c in topChannels)
+        syncEntityImage(
+          entityKey: 'live:${c.id}',
+          imageUrl: c.logoUrl!,
+          skipEtag: skipEtag,
+        ),
+      for (final v in topVod)
+        syncEntityImage(
+          entityKey: 'vod:${v.id}',
+          imageUrl: v.posterUrl!,
+          skipEtag: skipEtag,
+        ),
+    ];
+    await Future.wait(jobs, eagerError: false);
   }
 
   Future<void> syncEntityImage({
     required String entityKey,
     required String imageUrl,
     String? lastModified,
+    bool skipEtag = false,
   }) async {
     final url = imageUrl.trim();
     if (!_isHttpUrl(url)) return;
@@ -125,10 +212,12 @@ class AppImageCacheService extends GetxService {
     urlIndex[entityKey] = url;
     await _writeJsonMap(_urlIndexKey, urlIndex);
 
-    await _revalidateByEtag(
-      imageUrl: url,
-      lastModified: lastModified,
-    );
+    if (!skipEtag) {
+      await _revalidateByEtag(
+        imageUrl: url,
+        lastModified: lastModified,
+      );
+    }
     await _download(imageUrl: url, lastModified: lastModified);
   }
 
@@ -194,6 +283,8 @@ class AppImageCacheService extends GetxService {
 
   @override
   void onClose() {
+    _flushTimer?.cancel();
+    _flushIndexes();
     _dio.close();
     super.onClose();
   }

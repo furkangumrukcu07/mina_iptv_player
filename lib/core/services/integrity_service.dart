@@ -98,6 +98,7 @@ class IntegrityService extends GetxService {
     // olduğundan gecikmesinin UX'e etkisi yok.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Future<void>.delayed(_releaseGateStartupDelay, () {
+        if (!appContext.mounted) return;
         unawaited(_runAndroidReleaseGate(appContext));
       });
     });

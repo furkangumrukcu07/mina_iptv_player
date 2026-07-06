@@ -198,23 +198,20 @@ class _ProgressBarPainter extends CustomPainter {
       ),
       colors.backgroundPaint,
     );
-    if (!value.initialized) {
+    final duration = value.duration;
+    if (!value.initialized || duration == null || duration.inMilliseconds <= 0 || !size.width.isFinite || size.width <= 0) {
       return;
     }
-    double playedPartPercent = value.position.inMilliseconds / value.duration!.inMilliseconds;
-    if (playedPartPercent.isNaN) {
-      playedPartPercent = 0;
-    }
-    final double playedPart = playedPartPercent > 1 ? size.width : playedPartPercent * size.width;
+    final double playedPartPercent = _safeFraction(value.position, duration);
+    final double playedPart = (playedPartPercent * size.width).clamp(0.0, size.width);
     for (final DurationRange range in value.buffered) {
-      double start = range.startFraction(value.duration!) * size.width;
-      if (start.isNaN) {
-        start = 0;
+      final double startFraction = _safeFractionValue(range.startFraction(duration));
+      final double endFraction = _safeFractionValue(range.endFraction(duration));
+      if (endFraction <= startFraction) {
+        continue;
       }
-      double end = range.endFraction(value.duration!) * size.width;
-      if (end.isNaN) {
-        end = 0;
-      }
+      final double start = (startFraction * size.width).clamp(0.0, size.width);
+      final double end = (endFraction * size.width).clamp(0.0, size.width);
       canvas.drawRRect(
         RRect.fromRectAndRadius(
           Rect.fromPoints(Offset(start, size.height / 2), Offset(end, size.height / 2 + height)),
@@ -231,5 +228,20 @@ class _ProgressBarPainter extends CustomPainter {
       colors.playedPaint,
     );
     canvas.drawCircle(Offset(playedPart, size.height / 2 + height / 2), height * 3, colors.handlePaint);
+  }
+
+  double _safeFraction(Duration part, Duration total) {
+    final totalMs = total.inMilliseconds;
+    if (totalMs <= 0) {
+      return 0;
+    }
+    return _safeFractionValue(part.inMilliseconds / totalMs);
+  }
+
+  double _safeFractionValue(double fraction) {
+    if (!fraction.isFinite || fraction.isNaN) {
+      return 0;
+    }
+    return fraction.clamp(0.0, 1.0);
   }
 }

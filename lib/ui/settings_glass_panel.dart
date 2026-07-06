@@ -54,6 +54,7 @@ class SettingsGlassPanel extends StatelessWidget {
     required this.child,
     this.padding = const EdgeInsets.fromLTRB(12, 8, 12, 12),
     this.borderRadius = 22,
+    this.blurBackground = true,
   });
 
   /// Panel içerisindeki içerik. Tipik olarak header Row + hint Padding +
@@ -67,6 +68,13 @@ class SettingsGlassPanel extends StatelessWidget {
   /// Köşe yumuşatma yarıçapı. Tüm ayar ekranlarında varsayılan `22`.
   final double borderRadius;
 
+  /// Panelin kendi [BackdropFilter]'ını uygulasın mı? Arka plan (örn.
+  /// [ThemedSettingsBackground]) zaten blur'lanmışsa, panelin ikinci blur'u
+  /// görsel olarak gereksiz ama her frame `saveLayer` maliyeti getirir. Çok
+  /// sık yeniden çizilen ekranlarda (canlı sohbet listesi) `false` verilerek
+  /// çift blur tek katmana indirilir.
+  final bool blurBackground;
+
   /// `reduceBlur=false` durumda BackdropFilter sigması. Eski sürümde 22
   /// kullanılıyordu; saveLayer maliyeti scroll'da görünür kasılma yaratıyordu.
   /// 14 görsel olarak yakın sonuç, GPU maliyeti ~%40 daha düşük.
@@ -76,9 +84,10 @@ class SettingsGlassPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     final settings = Get.find<AppSettingsService>();
     final reduce = settings.reduceBlur.value;
-    // Reduce modunda BackdropFilter tamamen kaldırılır; yarısaydam zemin
-    // ve border görsel olarak yine cam hissini korur ama GPU yükü 0.
-    final sigma = reduce ? 0.0 : _kSigmaNormal;
+    // Reduce modunda veya çağıran blur'u kapattığında BackdropFilter tamamen
+    // kaldırılır; yarısaydam zemin ve border görsel olarak yine cam hissini
+    // korur ama GPU yükü 0.
+    final sigma = (reduce || !blurBackground) ? 0.0 : _kSigmaNormal;
 
     final radius = BorderRadius.circular(borderRadius);
     final decoration = BoxDecoration(

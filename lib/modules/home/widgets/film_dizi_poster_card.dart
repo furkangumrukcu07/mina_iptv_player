@@ -4,7 +4,7 @@ import 'package:get/get.dart';
 import '../../../core/home/film_dizi_catalog.dart';
 import '../../../core/home/recommended_films_catalog.dart';
 import '../../../core/home/series_name_grouping.dart';
-import '../../../core/layout/app_layout_mode.dart';
+import '../../../core/layout/app_layout_mode.dart' show filmDiziRemoteNavEnabled;
 import '../../../core/services/app_settings_service.dart';
 import '../../../ui/tv_dpad_focus.dart';
 import '../../../core/services/favorites_service.dart';
@@ -30,6 +30,9 @@ class FilmDiziPosterCard extends StatelessWidget {
     required this.onTap,
     required this.posterWidth,
     this.compactLabel = false,
+    this.ensureVisibleOnFocus = true,
+    this.enableDpadFocus = true,
+    this.minimalOverlays = false,
   })  : series = null;
 
   const FilmDiziPosterCard.series({
@@ -38,6 +41,9 @@ class FilmDiziPosterCard extends StatelessWidget {
     required this.onTap,
     required this.posterWidth,
     this.compactLabel = false,
+    this.ensureVisibleOnFocus = true,
+    this.enableDpadFocus = true,
+    this.minimalOverlays = false,
   })  : vod = null;
 
   final VodItem? vod;
@@ -49,6 +55,16 @@ class FilmDiziPosterCard extends StatelessWidget {
   /// Film & Dizi ana ekranında zarif görünüm için kullanılır.
   final bool compactLabel;
 
+  /// Dikey kaydırma içindeki yatay poster şeritlerinde `false` — aksi halde
+  /// iç içe `Scrollable.ensureVisible` döngüsü TV'de çökmeye yol açabiliyor.
+  final bool ensureVisibleOnFocus;
+
+  /// `false` → üst widget (ör. TV kabuğu) kendi D-pad odak sarmalayıcısını kullanır.
+  final bool enableDpadFocus;
+
+  /// TV kabuğu listelerinde kalp / izleme rozeti gibi reaktif katmanları gizle.
+  final bool minimalOverlays;
+
   @override
   Widget build(BuildContext context) {
     final title = vod != null
@@ -56,79 +72,81 @@ class FilmDiziPosterCard extends StatelessWidget {
         : SeriesNameGrouping.displayTitleFromName(series!.name);
     final posterUrl = vod?.posterUrl ?? series?.posterUrl;
     final posterH = posterWidth * 1.48;
-    final rating =
-        vod != null ? RecommendedFilmsRatingCache.effectiveRating(vod!) : 0.0;
     final fav = Get.find<FavoritesService>();
     final accent = Theme.of(context).colorScheme.primary;
-    final remote = remoteNavForScreenLayout(
-      context,
+    final remote = filmDiziRemoteNavEnabled(
       Get.find<AppSettingsService>().layoutMode.value,
     );
 
-    Widget posterTile = Material(
-      color: Colors.transparent,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: BorderRadius.circular(10),
-        child: Stack(
+    Widget posterTile = Stack(
                   fit: StackFit.expand,
                   children: [
                     RecommendedFilmsPosterFrame(
                       borderRadius: 10,
                       child: RecommendedFilmsPosterImage(
                         url: posterUrl,
-                        memCacheWidth: (posterWidth *
-                                MediaQuery.devicePixelRatioOf(context))
-                            .round()
-                            .clamp(96, 320),
+                        renderWidth: posterWidth,
                       ),
                     ),
-                    // Sağ-alt: yıldız + IMDB + puan — sadece VOD'da ve puan
-                    // varsa. Eski yuvarlak rozet kaldırıldı.
-                    if (vod != null && rating > 0)
+                    // Sağ-alt: IMDB puanı — yalnızca rating cache güncellenince
+                    // yeniden çizilir (tüm feed'i rebuild etmeye gerek yok).
+                    if (vod != null)
                       Positioned(
                         left: 4,
                         right: 4,
                         bottom: 4,
-                        child: _ImdbRatingPill(rating: rating),
+                        child: _VodRatingBadge(vod: vod!),
                       ),
-                    // Sağ-üst: küçük, şeffaf zarif kalp.
-                    Positioned(
-                      top: 4,
-                      right: 4,
-                      child: vod != null
-                          ? Obx(() => _FavoriteHeart(
-                                isOn: fav.hasVod(vod!.id),
-                                onToggle: () => fav.toggleVod(vod!.id),
-                                accent: accent,
-                              ))
-                          : Obx(() => _FavoriteHeart(
-                                isOn: fav.hasSeries(series!.id),
-                                onToggle: () => fav.toggleSeries(series!.id),
-                                accent: accent,
-                              )),
-                    ),
-                    // Sol-üst (boş köşe): izlenme oranı — daire içinde yüzde.
-                    // Sağ-üstte kalp, altta IMDB rozeti olduğundan sol-üst boş.
-                    Positioned(
-                      top: 4,
-                      left: 4,
-                      child: _WatchProgressBadge(
-                        vodId: vod?.id,
-                        seriesId: series?.id,
-                        accent: accent,
+                    if (!minimalOverlays)
+                      Positioned(
+                        top: 4,
+                        right: 4,
+                        child: vod != null
+                            ? Obx(() => _FavoriteHeart(
+                                  isOn: fav.hasVod(vod!.id),
+                                  onToggle: () => fav.toggleVod(vod!.id),
+                                  accent: accent,
+                                ))
+                            : Obx(() => _FavoriteHeart(
+                                  isOn: fav.hasSeries(series!.id),
+                                  onToggle: () => fav.toggleSeries(series!.id),
+                                  accent: accent,
+                                )),
                       ),
-                    ),
+                    if (!minimalOverlays)
+                      Positioned(
+                        top: 4,
+                        left: 4,
+                        child: _WatchProgressBadge(
+                          vodId: vod?.id,
+                          seriesId: series?.id,
+                          accent: accent,
+                        ),
+                      ),
                   ],
-                ),
-      ),
-    );
-    if (remote) {
+                );
+
+    if (enableDpadFocus) {
+      posterTile = Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(10),
+          child: posterTile,
+        ),
+      );
+    }
+    if (remote && enableDpadFocus) {
+      final posterContent = posterTile;
       posterTile = TvDpadFocus(
         onActivate: onTap,
         borderRadius: 10,
-        scaleOnFocus: 1.04,
-        child: posterTile,
+        scaleOnFocus: 1.06,
+        tiviMateStyle: true,
+        tiviMateFill: false,
+        showFocusRing: false,
+        ensureVisibleOnFocus: ensureVisibleOnFocus,
+        child: posterContent,
       );
     }
 
@@ -147,9 +165,13 @@ class FilmDiziPosterCard extends StatelessWidget {
             maxLines: compactLabel ? 1 : 2,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
-              color: Theme.of(context).colorScheme.onSurface.withValues(
-                    alpha: compactLabel ? 0.62 : 0.92,
-                  ),
+              // Sekme gridlerinde (compactLabel=false) isim tam beyaz olsun
+              // (okunaklılık); ana ekran kompakt önizlemede zarif gri kalır.
+              color: compactLabel
+                  ? Theme.of(context).colorScheme.onSurface.withValues(
+                        alpha: 0.62,
+                      )
+                  : Colors.white,
               fontSize: compactLabel ? 11.5 : 12,
               fontWeight: FontWeight.w600,
               height: 1.2,
@@ -164,8 +186,7 @@ class FilmDiziPosterCard extends StatelessWidget {
 
 /// Poster afişinin boş köşesinde gösterilen izlenme oranı rozeti — daire
 /// içinde yüzde. İçerik kısmen izlenmişse (≈ %2–%95) görünür; yoksa hiç yer
-/// kaplamaz. [WatchProgressService.revision] dinlenir → oynatma sonrası anında
-/// güncel.
+/// kaplamaz. İlerleme yoksa Obx kullanılmaz (scroll sırasında gereksiz rebuild).
 class _WatchProgressBadge extends StatelessWidget {
   const _WatchProgressBadge({
     required this.vodId,
@@ -180,22 +201,44 @@ class _WatchProgressBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final watch = Get.find<WatchProgressService>();
+    double? fraction;
+    if (vodId != null) {
+      fraction = watch.vodFractionSync(vodId!);
+    } else if (seriesId != null) {
+      fraction = watch.seriesFractionSync(seriesId!);
+    }
+    if (fraction == null) return const SizedBox.shrink();
     return Obx(() {
-      // revision'a abone ol → ilerleme değişince yeniden çiz.
       watch.revision.value;
-      double? fraction;
+      double? f;
       if (vodId != null) {
-        fraction = watch.vodFractionSync(vodId!);
+        f = watch.vodFractionSync(vodId!);
       } else if (seriesId != null) {
-        fraction = watch.seriesFractionSync(seriesId!);
+        f = watch.seriesFractionSync(seriesId!);
       }
-      if (fraction == null) return const SizedBox.shrink();
+      if (f == null) return const SizedBox.shrink();
       return WatchProgressCircle(
-        fraction: fraction.clamp(0.02, 1.0),
+        fraction: f.clamp(0.02, 1.0),
         accent: accent,
         size: 30,
       );
     });
+  }
+}
+
+/// VOD posterinde IMDB puan rozeti. Puan güncellemesi için kart başına ayrı
+/// [Obx] kullanılmaz — yüzlerce posterde `revision` dinleyicisi stack overflow
+/// ve OOM'a yol açıyordu; üst gövde tek seferde yeniden çizilir.
+class _VodRatingBadge extends StatelessWidget {
+  const _VodRatingBadge({required this.vod});
+
+  final VodItem vod;
+
+  @override
+  Widget build(BuildContext context) {
+    final rating = RecommendedFilmsRatingCache.effectiveRating(vod);
+    if (rating <= 0) return const SizedBox.shrink();
+    return _ImdbRatingPill(rating: rating);
   }
 }
 
@@ -271,8 +314,7 @@ class _FavoriteHeart extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final remote = remoteNavForScreenLayout(
-      context,
+    final remote = filmDiziRemoteNavEnabled(
       Get.find<AppSettingsService>().layoutMode.value,
     );
     final heart = InkWell(
@@ -398,10 +440,14 @@ class _TabBarSearchButton extends StatelessWidget {
   Widget build(BuildContext context) {
     final size = isTv ? 56.0 : 40.0;
     final radius = isTv ? 16.0 : 12.0;
+    final dpad = filmDiziRemoteNavEnabled(
+      Get.find<AppSettingsService>().layoutMode.value,
+    );
     return tvDpadActivateWrap(
       context,
       onActivate: onTap,
       borderRadius: radius,
+      useRemoteNav: dpad,
       child: Material(
         color: Colors.white.withValues(alpha: 0.10),
         borderRadius: BorderRadius.circular(radius),
@@ -445,10 +491,14 @@ class _TabChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final radius = isTv ? 16.0 : 12.0;
+    final dpad = filmDiziRemoteNavEnabled(
+      Get.find<AppSettingsService>().layoutMode.value,
+    );
     return tvDpadActivateWrap(
       context,
       onActivate: onTap,
       borderRadius: radius,
+      useRemoteNav: dpad,
       child: Material(
         color: selected ? primary.withValues(alpha: 0.55) : Colors.transparent,
         borderRadius: BorderRadius.circular(radius),

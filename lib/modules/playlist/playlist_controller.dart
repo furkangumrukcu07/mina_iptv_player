@@ -19,6 +19,7 @@ import '../../data/remote/m3u_xtream_sniffer.dart';
 import '../../data/remote/xtream_api.dart';
 import '../../domain/entities/m3u_result.dart';
 import '../../domain/entities/playlist_source.dart';
+import '../../data/local/playlist_sqlite_store.dart';
 import '../../domain/repositories/playlist_repository.dart';
 import '../../ui/glass_overlays.dart';
 import 'widgets/playlist_load_summary_dialog.dart';
@@ -105,6 +106,26 @@ class PlaylistController extends GetxController {
   ///
   /// `setupWizardCompletionMode` durumunda da gösteririz — kullanıcı kurulum
   /// sırasında da "kaç kanalı/filmi/dizisi yüklendi" özetini görmeli.
+  Future<({int films, int series})> _loadSummaryCounts(M3uResult result) async {
+    if (result.vod.isNotEmpty || result.series.isNotEmpty) {
+      return (films: result.vod.length, series: result.series.length);
+    }
+    final dbKey = _cache.dbSourceKey.value ?? await _repo.slotDbKey(0);
+    if (dbKey == null || dbKey.isEmpty) {
+      return (films: result.vod.length, series: result.series.length);
+    }
+    return (
+      films: await PlaylistSqliteStore.vodCount(dbKey),
+      series: await PlaylistSqliteStore.seriesCount(dbKey),
+    );
+  }
+
+  /// M3U→Xtream dönüşümü sonucu "boş" mu? Panel `player_api.php`'yi kısıtlayıp
+  /// hiç kanal/film/dizi döndürmediğinde true; bu durumda ham M3U (`get.php`)
+  /// genelde dolu olduğu için ona düşülür.
+  static bool _isXtreamResultEmpty(M3uResult r) =>
+      r.channels.isEmpty && r.vod.isEmpty && r.series.isEmpty;
+
   Future<void> _finishLoad(M3uResult result) async {
     final notifier = _summaryProgress;
     if (notifier == null) {
@@ -112,10 +133,11 @@ class PlaylistController extends GetxController {
       _navigateAfterPlaylistLoad();
       return;
     }
+    final counts = await _loadSummaryCounts(result);
     notifier.value = PlaylistLoadProgress.done(
       liveChannelCount: result.channels.length,
-      filmCount: result.vod.length,
-      seriesCount: result.series.length,
+      filmCount: counts.films,
+      seriesCount: counts.series,
     );
     final future = _summaryDialogFuture;
     if (future != null) {
@@ -518,6 +540,30 @@ class PlaylistController extends GetxController {
 
   Future<void> _prefillFromStorage() async {
     try {
+      final pri = await _repo.readSource();
+      if (pri != null) {
+        switch (pri) {
+          case M3uSource(:final url):
+            tabIndex.value = 0;
+            if (isM3uLocalSentinel(url)) {
+              m3uLocalFileName.value = 'playlist.label.localM3u'.tr;
+            } else {
+              m3uUrlController.text = url;
+            }
+            break;
+          case XtreamSource(
+              :final baseUrl,
+              :final username,
+              :final password,
+            ):
+            tabIndex.value = 1;
+            xtreamBaseUrlController.text = baseUrl;
+            xtreamUsernameController.text = username;
+            xtreamPasswordController.text = password;
+            break;
+        }
+      }
+
       final sec = await _repo.readSecondarySource();
       if (sec == null) {
         _updateSubmitState();
@@ -532,6 +578,7 @@ class PlaylistController extends GetxController {
           } else {
             m3uSecondaryUrlController.text = url;
           }
+          break;
         case XtreamSource(
             :final baseUrl,
             :final username,
@@ -541,6 +588,7 @@ class PlaylistController extends GetxController {
           xtreamSecondaryBaseUrlController.text = baseUrl;
           xtreamSecondaryUsernameController.text = username;
           xtreamSecondaryPasswordController.text = password;
+          break;
       }
       _updateSubmitState();
     } catch (_) {
@@ -830,12 +878,23 @@ https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.m
                 username: converted.username,
                 password: converted.password,
               );
-              xtreamLoaded = res.result;
-              resolvedXtream = XtreamSource(
-                baseUrl: res.resolvedBaseUrl,
-                username: converted.username,
-                password: converted.password,
-              );
+              if (_isXtreamResultEmpty(res.result)) {
+                // Panel `player_api.php`'yi kısıtlıyor (boş kanal/film/dizi)
+                // ama `get.php` (ham M3U) dolu olabilir. Dönüşümü iptal et,
+                // aşağıda ham M3U yoluna düş — "içerikler eksik" önlenir.
+                debugPrint(
+                  '[playlist] Xtream conversion returned empty for '
+                  '${converted.baseUrl} → falling back to raw M3U',
+                );
+                xtreamLoaded = null;
+              } else {
+                xtreamLoaded = res.result;
+                resolvedXtream = XtreamSource(
+                  baseUrl: res.resolvedBaseUrl,
+                  username: converted.username,
+                  password: converted.password,
+                );
+              }
             } catch (e) {
               debugPrint(
                 '[playlist] Xtream sniff failed for ${converted.baseUrl}, '
@@ -966,11 +1025,18 @@ https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.m
                   username: converted2.username,
                   password: converted2.password,
                 );
-                resolvedSecondary = XtreamSource(
-                  baseUrl: res.resolvedBaseUrl,
-                  username: converted2.username,
-                  password: converted2.password,
-                );
+                if (_isXtreamResultEmpty(res.result)) {
+                  debugPrint(
+                    '[playlist] Secondary Xtream conversion empty for '
+                    '${converted2.baseUrl} → raw M3U fallback',
+                  );
+                } else {
+                  resolvedSecondary = XtreamSource(
+                    baseUrl: res.resolvedBaseUrl,
+                    username: converted2.username,
+                    password: converted2.password,
+                  );
+                }
               } catch (e) {
                 debugPrint(
                   '[playlist] Secondary Xtream sniff failed for '
@@ -1027,6 +1093,10 @@ https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.m
       final merged = await _repo.loadMergedPlaylist(
         secondaryOrphanCategoryName: 'playlist.merge.orphanCategory'.tr,
       );
+      // loadMergedPlaylist birleşik sonucu SQLite'a yazdıysa `merged` zaten
+      // slim'dir (film/dizi RAM'de değil); cache'i DB anahtarıyla besle ki
+      // tüketiciler büyük listeleri diskten (sayfalı) okusun.
+      final mergedDbKey = _repo.lastMergedDbSourceKey;
       final xk = tabIndex.value == 1
           ? AppSettingsService.xtreamPreferenceKey(_xtreamSource())
           : null;
@@ -1039,6 +1109,7 @@ https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.m
         url: '$cacheLabel (+2)',
         xtreamPreferenceKey: xk,
         m3uLayoutKey: m3uK,
+        dbSourceKey: mergedDbKey,
       );
       isLoading.value = false;
       await _finishLoad(merged);

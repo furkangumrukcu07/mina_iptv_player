@@ -8,9 +8,9 @@ import '../services/playlist_category_hide.dart';
 import 'epg_mix_category.dart';
 import 'epg_mix_entry.dart';
 
+const kReplayMaxChannelsScan = 1200;
 const _kMaxEntries = 240;
 const _kMaxPerChannel = 6;
-const _kMaxChannelsScan = 1200;
 const _kReplayWindow = Duration(hours: 24);
 
 /// Canlı kanalların EPG geçmişinden "az önce bitmiş" programları toplar.
@@ -20,6 +20,7 @@ const _kReplayWindow = Duration(hours: 24);
 abstract final class EpgReplayCatalog {
   static List<EpgMixEntry> build({
     required M3uResult data,
+    required Iterable<Channel> channels,
     required AppSettingsService app,
     required PlaylistCacheService cache,
     required EpgService epg,
@@ -30,8 +31,8 @@ abstract final class EpgReplayCatalog {
     final out = <EpgMixEntry>[];
     var scanned = 0;
 
-    for (final ch in data.channels) {
-      if (scanned >= _kMaxChannelsScan) break;
+    for (final ch in channels) {
+      if (scanned >= kReplayMaxChannelsScan) break;
       if (PlaylistCategoryHide.channelHiddenInLive(app, cache, data, ch)) {
         continue;
       }

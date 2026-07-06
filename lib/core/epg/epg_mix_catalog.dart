@@ -8,8 +8,8 @@ import '../services/playlist_category_hide.dart';
 import 'epg_mix_category.dart';
 import 'epg_mix_entry.dart';
 
+const kMaxChannelsScan = 1200;
 const _kMaxPerCategory = 24;
-const _kMaxChannelsScan = 1200;
 
 /// EPG verisinden kategori başına sıradaki yayın listesi.
 ///
@@ -18,6 +18,7 @@ const _kMaxChannelsScan = 1200;
 abstract final class EpgMixCatalog {
   static Map<EpgMixCategory, List<EpgMixEntry>> build({
     required M3uResult data,
+    required Iterable<Channel> channels,
     required AppSettingsService app,
     required PlaylistCacheService cache,
     required EpgService epg,
@@ -27,8 +28,8 @@ abstract final class EpgMixCatalog {
     };
 
     var scanned = 0;
-    for (final ch in data.channels) {
-      if (scanned >= _kMaxChannelsScan) break;
+    for (final ch in channels) {
+      if (scanned >= kMaxChannelsScan) break;
       if (PlaylistCategoryHide.channelHiddenInLive(app, cache, data, ch)) {
         continue;
       }

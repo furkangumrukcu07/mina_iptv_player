@@ -7,11 +7,6 @@ abstract final class IptvOrgEpg {
   static const String defaultWorldGuideUrl =
       'https://worker-9dd4.onrender.com/guide.xml';
 
-  /// GitHub üzerindeki ülke bazlı EPG dosyaları.
-  /// Bu adresler https://github.com/globetvapp/epg deposundan çekilir.
-  static const String _githubEpgBaseUrl =
-      'https://raw.githubusercontent.com/globetvapp/epg/main/';
-
   /// Ülke kodunu en iyi EPG kaynaklarına eşler.
   static List<String> getCountryGuideUrls(String countryCode) {
     final code = countryCode.toUpperCase();

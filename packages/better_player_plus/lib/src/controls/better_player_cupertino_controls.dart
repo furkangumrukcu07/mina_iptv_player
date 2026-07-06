@@ -467,6 +467,9 @@ class _BetterPlayerCupertinoControlsState extends BetterPlayerControlsState<Bett
       });
     }
     _controlsVisibilityStreamSubscription = _betterPlayerController!.controlsVisibilityStream.listen((state) {
+      if (controlsNotVisible == !state) {
+        return;
+      }
       changePlayerControlsNotVisible(!state);
 
       if (!controlsNotVisible) {

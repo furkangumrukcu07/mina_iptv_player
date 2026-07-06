@@ -1,6 +1,5 @@
 import 'dart:async' show unawaited;
 
-import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 
 import '../../../core/home/film_dizi_catalog.dart';
@@ -8,7 +7,9 @@ import '../../../core/home/film_dizi_detail_args.dart';
 import '../../../core/routes/app_routes.dart';
 import '../../../core/services/movie_service.dart';
 import '../../../core/services/playlist_cache_service.dart';
+import '../../../core/services/playlist_data_source.dart';
 import '../../../core/services/toast_service.dart';
+import '../../../domain/entities/vod.dart';
 
 class FilmDiziActorController extends GetxController {
   late final FilmDiziActorArgs args;
@@ -45,24 +46,35 @@ class FilmDiziActorController extends GetxController {
 
   /// TMDB filmografisindeki filmi playlist VOD ile eşleştirip detaya gider.
   void openCredit(ActorCredit credit) {
-    debugPrint('mina_iptv: actor.openCredit → ${credit.title} (${credit.year})');
+    unawaited(_openCreditAsync(credit));
+  }
+
+  Future<void> _openCreditAsync(ActorCredit credit) async {
     final data = Get.find<PlaylistCacheService>().result.value;
     if (data == null) {
       _notFound(credit.title);
       return;
     }
-    debugPrint('mina_iptv: actor.openCredit playlist vod=${data.vod.length}');
-
-    final vod = FilmDiziCatalog.findVodByTitle(
-      data,
-      credit.title,
-      year: credit.year,
-    );
+    final ds = Get.find<PlaylistDataSource>();
+    final VodItem? vod;
+    if (ds.isDbBacked) {
+      vod = await FilmDiziCatalog.findVodByTitleFromDb(
+        data,
+        ds,
+        credit.title,
+        year: credit.year,
+      );
+    } else {
+      vod = FilmDiziCatalog.findVodByTitle(
+        data,
+        credit.title,
+        year: credit.year,
+      );
+    }
     if (vod == null) {
       _notFound(credit.title);
       return;
     }
-    debugPrint('mina_iptv: actor.openCredit match → ${vod.name}');
 
     Get.toNamed(
       AppRoutes.filmDiziDetail,

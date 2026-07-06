@@ -12,11 +12,19 @@ abstract final class PlaylistSnapshotStore {
 
   static File _file(Directory dir) => File('${dir.path}/$_fileName');
 
-  static Future<void> write(String key, M3uResult merged) async {
+  static Future<void> write(
+    String key,
+    M3uResult merged, {
+    bool slim = false,
+  }) async {
     final dir = await getApplicationSupportDirectory();
     await dir.create(recursive: true);
     final f = _file(dir);
-    final json = await encodeMergedPlaylistSnapshotForWrite(key, merged);
+    final json = await encodeMergedPlaylistSnapshotForWrite(
+      key,
+      merged,
+      slim: slim,
+    );
     final tmp = File('${f.path}.tmp');
     await tmp.writeAsString(json, flush: true);
     if (await f.exists()) {

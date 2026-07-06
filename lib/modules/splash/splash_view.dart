@@ -5,6 +5,7 @@ import 'package:get/get.dart';
 
 import '../../core/services/app_bootstrap_service.dart';
 import '../../core/services/app_settings_service.dart';
+import '../../core/services/licensing_service.dart';
 import '../../core/theme/app_theme.dart';
 import 'splash_controller.dart';
 
@@ -76,7 +77,49 @@ class SplashView extends GetView<SplashController> {
                             letterSpacing: 0.3,
                           ),
                         ),
-                        const SizedBox(height: 28),
+                        const SizedBox(height: 8),
+                        // PREMIUM badge
+                        Obx(() {
+                          final isPremium = Get.isRegistered<LicensingService>()
+                              ? Get.find<LicensingService>().isPremium.value
+                              : false;
+                          if (!isPremium) return const SizedBox.shrink();
+                          return Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [
+                                  Colors.amber.withValues(alpha: 0.9),
+                                  Colors.orange.withValues(alpha: 0.8),
+                                ],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                              ),
+                              borderRadius: BorderRadius.circular(20),
+                              border: Border.all(
+                                color: Colors.white.withValues(alpha: 0.3),
+                                width: 1.5,
+                              ),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.amber.withValues(alpha: 0.4),
+                                  blurRadius: 12,
+                                  spreadRadius: 2,
+                                ),
+                              ],
+                            ),
+                            child: const Text(
+                              'PREMIUM',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: 2,
+                              ),
+                            ),
+                          );
+                        }),
+                        const SizedBox(height: 20),
                         const Text(
                           'Mina IPTV',
                           style: TextStyle(
@@ -104,14 +147,9 @@ class SplashView extends GetView<SplashController> {
                           );
                         }),
                         const SizedBox(height: 48),
-                        const SizedBox(
-                          width: 40,
-                          height: 40,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 3,
-                            color: Colors.white,
-                          ),
-                        ),
+                        // Eski dönen halka yerine: çember boyutunda küçültülmüş
+                        // uygulama ikonu yumuşak nabız (yanıp sönme) ile.
+                        const _PulsingLogo(size: 40),
                       ],
                     ),
                   ),
@@ -128,7 +166,10 @@ class SplashView extends GetView<SplashController> {
 /// Ana logo (mavi şemsiye) yumuşak nabız efektiyle yanıp söner; ana ekran
 /// açılınca splash route kapanır ve animasyon kendiliğinden durur.
 class _PulsingLogo extends StatefulWidget {
-  const _PulsingLogo();
+  const _PulsingLogo({this.size = 80});
+
+  /// İkon kenar uzunluğu (üst logo 80, alttaki yükleme göstergesi 40).
+  final double size;
 
   @override
   State<_PulsingLogo> createState() => _PulsingLogoState();
@@ -163,8 +204,8 @@ class _PulsingLogoState extends State<_PulsingLogo>
         scale: Tween<double>(begin: 0.92, end: 1.0).animate(_anim),
         child: Image.asset(
           'assets/images/app_icon.png',
-          width: 80,
-          height: 80,
+          width: widget.size,
+          height: widget.size,
           filterQuality: FilterQuality.medium,
         ),
       ),

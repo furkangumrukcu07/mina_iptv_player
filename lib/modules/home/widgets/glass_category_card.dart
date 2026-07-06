@@ -47,6 +47,7 @@ class GlassCategoryCard extends StatelessWidget {
     /// Önizleme görseli yokken merkezdeki ikonu büyük + belirgin (primary
     /// renkli) gösterir. Sohbet ve Favoriler kartları için kullanılır.
     this.prominentPlaceholderIcon = false,
+    this.manageRemoteFocus = true,
   });
 
   final String primaryLabel;
@@ -64,6 +65,9 @@ class GlassCategoryCard extends StatelessWidget {
 
   /// Önizleme görseli olmayan kartlarda merkez ikonu vurgulu çizer.
   final bool prominentPlaceholderIcon;
+
+  /// `false` iken üst widget odak/OK yönetir (ana ekran TV kartları).
+  final bool manageRemoteFocus;
 
   @override
   Widget build(BuildContext context) {
@@ -86,10 +90,14 @@ class GlassCategoryCard extends StatelessWidget {
           theme == GlassThemeLabels.flyUi;
       final isGg = theme == GlassThemeLabels.glassGri;
       final flat = ga.useFlatHomeCategoryStyle;
+      // Düşük donanım modunda kart başına gerçek zamanlı BackdropFilter
+      // (yatay grid'de N blur geçişi) kapatılır — normal cihazda görünüm aynı.
+      final lowEnd = AppPerformance.isLowEndMode(settings);
       final sigma = flat ||
               reduce ||
               isPortrait ||
               tv ||
+              lowEnd ||
               ga.usesSyntheticGlassSurface
           ? 0.0
           : (isGm || isGg ? 14.0 : 10.0);
@@ -214,13 +222,13 @@ class GlassCategoryCard extends StatelessWidget {
             ),
             boxShadow: isTvAndroid
                 ? null
-                : [
+                : AppPerformance.liteShadow(settings, [
                     BoxShadow(
                       color: ga.homeCategoryCardNeutralShadow(),
                       blurRadius: flat ? 14 : 10,
                       offset: Offset(0, flat ? 6 : 4),
                     ),
-                  ],
+                  ]),
           ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(clipInner),
@@ -353,7 +361,7 @@ class GlassCategoryCard extends StatelessWidget {
           ),
         ),
       );
-      if (remote) {
+      if (remote && manageRemoteFocus) {
         final activate = tap ?? onTap;
         return tvDpadActivateWrap(
           context,
@@ -370,7 +378,7 @@ class GlassCategoryCard extends StatelessWidget {
           ),
         );
       }
-      return GestureDetector(onTap: tap, child: card);
+      return TouchFeedbackScale(onTap: tap, child: card);
     });
   }
 
@@ -469,26 +477,27 @@ class _HomeCategoryCountBadge extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final s = count.toString();
+    final primary = Theme.of(context).colorScheme.primary;
     return ClipRRect(
-      borderRadius: BorderRadius.circular(6),
+      borderRadius: BorderRadius.circular(16),
       child: DecoratedBox(
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(6),
+          borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            width: 0.5,
+            width: 0.8,
             color: flat
-                ? Theme.of(context).colorScheme.outline.withValues(alpha: 0.55)
-                : Colors.white.withValues(alpha: glassBorderAlpha),
+                ? primary.withValues(alpha: 0.35)
+                : primary.withValues(alpha: 0.72),
           ),
           color: flat
               ? Theme.of(context)
                   .colorScheme
                   .surfaceContainerHighest
                   .withValues(alpha: 0.92)
-              : Colors.black.withValues(alpha: 0.42),
+              : Colors.black.withValues(alpha: 0.48),
         ),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
+          padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3.5),
           child: FittedBox(
             fit: BoxFit.scaleDown,
             alignment: Alignment.center,
@@ -513,6 +522,68 @@ class _HomeCategoryCountBadge extends StatelessWidget {
               ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class TouchFeedbackScale extends StatefulWidget {
+  const TouchFeedbackScale({
+    super.key,
+    required this.onTap,
+    required this.child,
+    this.scale = 0.96,
+  });
+
+  final VoidCallback? onTap;
+  final Widget child;
+  final double scale;
+
+  @override
+  State<TouchFeedbackScale> createState() => _TouchFeedbackScaleState();
+}
+
+class _TouchFeedbackScaleState extends State<TouchFeedbackScale>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _ctrl;
+  late final Animation<double> _scaleAnimation;
+
+  @override
+  void initState() {
+    super.initState();
+    _ctrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 100),
+    );
+    _scaleAnimation = Tween<double>(begin: 1.0, end: widget.scale).animate(
+      CurvedAnimation(parent: _ctrl, curve: Curves.easeInOut),
+    );
+  }
+
+  @override
+  void dispose() {
+    _ctrl.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.onTap == null) return widget.child;
+    return Listener(
+      onPointerDown: (_) => _ctrl.forward(),
+      onPointerUp: (_) => _ctrl.reverse(),
+      onPointerCancel: (_) => _ctrl.reverse(),
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: widget.onTap,
+        child: AnimatedBuilder(
+          animation: _scaleAnimation,
+          builder: (context, child) => Transform.scale(
+            scale: _scaleAnimation.value,
+            child: child,
+          ),
+          child: widget.child,
         ),
       ),
     );

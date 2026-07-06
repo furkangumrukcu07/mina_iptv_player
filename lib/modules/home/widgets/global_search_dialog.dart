@@ -1,9 +1,11 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'dart:async';
 
 import '../../../core/layout/app_layout_mode.dart';
+import '../../../core/services/app_image_cache_service.dart';
 import '../../../core/services/app_settings_service.dart';
 import '../../../core/services/search_history_service.dart';
 import '../../../domain/entities/channel.dart';
@@ -85,10 +87,12 @@ class _GlobalSearchDialogState extends State<GlobalSearchDialog> {
       }
 
       setState(() => _isSearching = true);
-      final buckets = widget.controller.portraitSearchBuckets(q);
-      setState(() {
-        _results = buckets;
-        _isSearching = false;
+      widget.controller.portraitSearchBucketsAsync(q).then((buckets) {
+        if (!mounted) return;
+        setState(() {
+          _results = buckets;
+          _isSearching = false;
+        });
       });
     });
   }
@@ -101,60 +105,82 @@ class _GlobalSearchDialogState extends State<GlobalSearchDialog> {
     final width = isPortrait ? mq.size.width * 0.9 : mq.size.width * 0.7;
     final maxHeight = mq.size.height * 0.8;
 
+    final panel = GlassPopupPanel(
+      padding: EdgeInsets.zero,
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          // Arama Çubuğu
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: _tvRemote
+                ? CallbackShortcuts(
+                    bindings: {
+                      const SingleActivator(
+                        LogicalKeyboardKey.arrowDown,
+                      ): () {
+                        if (_resultFocusNodes.isNotEmpty) {
+                          _resultFocusNodes.first.requestFocus();
+                        }
+                      },
+                    },
+                    child: _searchField(),
+                  )
+                : _searchField(),
+          ),
+
+          if (_isSearching)
+            const Padding(
+              padding: EdgeInsets.all(24.0),
+              child: CircularProgressIndicator(),
+            )
+          else if (_results != null)
+            Expanded(
+              child: _buildResultsList(),
+            )
+          else
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
+              child: RecentSearchesStrip(
+                scope: SearchHistoryScope.home,
+                onTap: _applyRecent,
+              ),
+            ),
+        ],
+      ),
+    );
+
     return Dialog(
       backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-      child: Center(
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxWidth: width.clamp(320.0, 720.0),
-            maxHeight: maxHeight,
-          ),
-          child: GlassPopupPanel(
-            padding: EdgeInsets.zero,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Arama Çubuğu
-                Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-                  child: _tvRemote
-                      ? CallbackShortcuts(
-                          bindings: {
-                            const SingleActivator(
-                              LogicalKeyboardKey.arrowDown,
-                            ): () {
-                              if (_resultFocusNodes.isNotEmpty) {
-                                _resultFocusNodes.first.requestFocus();
-                              }
-                            },
-                          },
-                          child: _searchField(),
-                        )
-                      : _searchField(),
-                ),
-
-                if (_isSearching)
-                  const Padding(
-                    padding: EdgeInsets.all(24.0),
-                    child: CircularProgressIndicator(),
-                  )
-                else if (_results != null)
-                  Expanded(
-                    child: _buildResultsList(),
-                  )
-                else
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 4, 16, 16),
-                    child: RecentSearchesStrip(
-                      scope: SearchHistoryScope.home,
-                      onTap: _applyRecent,
-                    ),
-                  ),
-              ],
+      insetPadding: EdgeInsets.zero,
+      child: Stack(
+        children: [
+          // Panel DIŞINDAKİ alana dokununca diyaloğu kapat (bariyer dokunuşu
+          // Dialog'un dolu yüzeyi tarafından yutulduğundan açıkça ekliyoruz).
+          Positioned.fill(
+            child: GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: () => Navigator.of(context).maybePop(),
             ),
           ),
-        ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+            child: Center(
+              child: ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxWidth: width.clamp(320.0, 720.0),
+                  maxHeight: maxHeight,
+                ),
+                // Panel üzerindeki dokunuşlar arka kapatma alanına sızmasın.
+                child: GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () {},
+                  child: panel,
+                ),
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -168,10 +194,12 @@ class _GlobalSearchDialogState extends State<GlobalSearchDialog> {
     );
     _debounce?.cancel();
     setState(() => _isSearching = true);
-    final buckets = widget.controller.portraitSearchBuckets(query);
-    setState(() {
-      _results = buckets;
-      _isSearching = false;
+    widget.controller.portraitSearchBucketsAsync(query).then((buckets) {
+      if (!mounted) return;
+      setState(() {
+        _results = buckets;
+        _isSearching = false;
+      });
     });
   }
 
@@ -335,12 +363,18 @@ class _GlobalSearchDialogState extends State<GlobalSearchDialog> {
     }
     return ClipRRect(
       borderRadius: BorderRadius.circular(8),
-      child: Image.network(
-        url,
+      child: CachedNetworkImage(
+        imageUrl: url,
+        cacheKey: AppImageCacheService.cacheKeyFor(url),
+        cacheManager: AppImageCacheService.manager,
         width: 40,
         height: 40,
         fit: BoxFit.cover,
-        errorBuilder: (_, __, ___) => Container(
+        memCacheWidth: 80,
+        memCacheHeight: 80,
+        fadeInDuration: Duration.zero,
+        fadeOutDuration: Duration.zero,
+        errorWidget: (_, __, ___) => Container(
           width: 40,
           height: 40,
           color: Colors.white10,

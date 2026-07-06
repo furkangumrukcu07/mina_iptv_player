@@ -23,6 +23,15 @@ String languageCodeFromDeviceLocale(Locale locale) {
     'it' => 'it',
     'pt' => 'pt',
     'id' => 'id',
+    'de' => 'de',
+    'fa' => 'fa',
+    'pl' => 'pl',
+    'nl' => 'nl',
+    'uk' => 'uk',
+    'vi' => 'vi',
+    'el' => 'el',
+    'ro' => 'ro',
+    'sq' => 'sq',
     _ => 'en',
   };
 }
@@ -45,6 +54,15 @@ Locale materialLocaleFromLanguageCode(String code) {
     'it' => const Locale('it', 'IT'),
     'pt' => const Locale('pt', 'PT'),
     'id' => const Locale('id', 'ID'),
+    'de' => const Locale('de', 'DE'),
+    'fa' => const Locale('fa', 'IR'),
+    'pl' => const Locale('pl', 'PL'),
+    'nl' => const Locale('nl', 'NL'),
+    'uk' => const Locale('uk', 'UA'),
+    'vi' => const Locale('vi', 'VN'),
+    'el' => const Locale('el', 'GR'),
+    'ro' => const Locale('ro', 'RO'),
+    'sq' => const Locale('sq', 'AL'),
     _ => const Locale('en', 'US'),
   };
 }

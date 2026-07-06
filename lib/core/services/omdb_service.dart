@@ -1,8 +1,6 @@
-import 'dart:convert';
 import 'dart:async';
 import 'package:dio/dio.dart';
 import 'package:get/get.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter/foundation.dart';
 
 import '../utils/turkish_title_utils.dart';
@@ -16,8 +14,11 @@ class OmdbService extends GetxService {
   static const String _tmdbBaseUrl = 'https://api.themoviedb.org/3';
   static const String _tmdbApiKey = '799d7990520625906d0421e0724816c7';
 
-  final Dio _dio = Dio();
-  final FlutterSecureStorage _storage = const FlutterSecureStorage();
+  final Dio _dio = Dio(BaseOptions(
+    connectTimeout: const Duration(seconds: 10),
+    receiveTimeout: const Duration(seconds: 15),
+  ));
+  final Map<String, _OmdbCacheEntry> _memCache = {};
 
   /// Önbellek süresi (1 saat)
   static const Duration _cacheDuration = Duration(hours: 1);
@@ -32,37 +33,21 @@ class OmdbService extends GetxService {
 
   /// Önbelleğe yazar
   Future<void> _writeToCache(String key, Map<String, dynamic> data) async {
-    try {
-      final cacheData = {
-        'data': data,
-        'timestamp': DateTime.now().millisecondsSinceEpoch,
-      };
-      await _storage.write(key: key, value: json.encode(cacheData));
-    } catch (e) {
-      debugPrint('OMDB cache write error: $e');
-    }
+    _memCache[key] = _OmdbCacheEntry(data, DateTime.now());
   }
 
   /// Önbellekten okur
   Future<Map<String, dynamic>?> _readFromCache(String key) async {
-    try {
-      final cached = await _storage.read(key: key);
-      if (cached == null) return null;
+    final cached = _memCache[key];
+    if (cached == null) return null;
 
-      final cacheData = json.decode(cached) as Map<String, dynamic>;
-      final timestamp = cacheData['timestamp'] as int;
-      final age = DateTime.now().millisecondsSinceEpoch - timestamp;
-
-      if (age > _cacheDuration.inMilliseconds) {
-        await _storage.delete(key: key);
-        return null;
-      }
-
-      return cacheData['data'] as Map<String, dynamic>?;
-    } catch (e) {
-      debugPrint('OMDB cache read error: $e');
+    final age = DateTime.now().difference(cached.timestamp);
+    if (age > _cacheDuration) {
+      _memCache.remove(key);
       return null;
     }
+
+    return cached.data;
   }
 
   /// TMDB üzerinden yerel dilde (Örn: Türkçe) arama yapıp IMDB ID döndürür
@@ -233,4 +218,11 @@ class OmdbService extends GetxService {
     _dio.close();
     super.onClose();
   }
+}
+
+class _OmdbCacheEntry {
+  final Map<String, dynamic> data;
+  final DateTime timestamp;
+
+  const _OmdbCacheEntry(this.data, this.timestamp);
 }

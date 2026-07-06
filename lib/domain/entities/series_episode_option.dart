@@ -9,6 +9,7 @@ class SeriesEpisodeOption {
     required this.displayTitle,
     this.plot,
     this.durationSecs,
+    this.audioCodec,
   });
 
   final Channel channel;
@@ -21,6 +22,10 @@ class SeriesEpisodeOption {
 
   /// Xtream bölüm süresi (saniye); yoksa null.
   final int? durationSecs;
+
+  /// Xtream `info.audio.codec_name` (ör. `ac3`, `eac3`, `dts`); yoksa null.
+  /// Oynatıcı motoru proaktif seçiminde kullanılır.
+  final String? audioCodec;
 }
 
 /// `get_series_info` tek istekte dönen dizi özeti + bölüm listesi.

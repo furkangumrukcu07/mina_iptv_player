@@ -17,6 +17,35 @@ class MovieModel {
   final String? error;
   final List<CastMember>? cast; // Yeni: Oyuncu listesi (Resimli)
 
+  // ── TMDB ek alanları ───────────────────────────────────────────────
+  /// TMDB poster (tam URL). Varsa poster kaynağı olarak önceliklidir.
+  final String? tmdbPoster;
+
+  /// TMDB arka plan görseli (backdrop, tam URL) — hero/blur arka planı.
+  final String? tmdbBackdrop;
+
+  /// TMDB oy ortalaması (0-10).
+  final double? tmdbRating;
+
+  /// TMDB oy sayısı.
+  final int? tmdbVoteCount;
+
+  /// TMDB tür adları (yerelleştirilmiş).
+  final List<String>? tmdbGenres;
+
+  /// Tam çıkış/ilk yayın tarihi (TMDB `release_date` / `first_air_date`).
+  final String? releaseDate;
+
+  /// Yapım ülkesi (TMDB).
+  final String? country;
+
+  /// Yaş sınırı / sertifika (TMDB release_dates / content_ratings).
+  final String? certification;
+
+  /// Dizi: sezon / bölüm sayısı (TMDB).
+  final int? seasons;
+  final int? episodes;
+
   MovieModel({
     this.title,
     this.year,
@@ -30,6 +59,16 @@ class MovieModel {
     this.response,
     this.error,
     this.cast,
+    this.tmdbPoster,
+    this.tmdbBackdrop,
+    this.tmdbRating,
+    this.tmdbVoteCount,
+    this.tmdbGenres,
+    this.releaseDate,
+    this.country,
+    this.certification,
+    this.seasons,
+    this.episodes,
   });
 
   factory MovieModel.fromJson(Map<String, dynamic> json) {
@@ -79,6 +118,16 @@ class MovieModel {
     String? response,
     String? error,
     List<CastMember>? cast,
+    String? tmdbPoster,
+    String? tmdbBackdrop,
+    double? tmdbRating,
+    int? tmdbVoteCount,
+    List<String>? tmdbGenres,
+    String? releaseDate,
+    String? country,
+    String? certification,
+    int? seasons,
+    int? episodes,
   }) {
     return MovieModel(
       title: title ?? this.title,
@@ -93,6 +142,16 @@ class MovieModel {
       response: response ?? this.response,
       error: error ?? this.error,
       cast: cast ?? this.cast,
+      tmdbPoster: tmdbPoster ?? this.tmdbPoster,
+      tmdbBackdrop: tmdbBackdrop ?? this.tmdbBackdrop,
+      tmdbRating: tmdbRating ?? this.tmdbRating,
+      tmdbVoteCount: tmdbVoteCount ?? this.tmdbVoteCount,
+      tmdbGenres: tmdbGenres ?? this.tmdbGenres,
+      releaseDate: releaseDate ?? this.releaseDate,
+      country: country ?? this.country,
+      certification: certification ?? this.certification,
+      seasons: seasons ?? this.seasons,
+      episodes: episodes ?? this.episodes,
     );
   }
 
@@ -114,6 +173,17 @@ class MovieModel {
     MovieModel? omdbData,
     List<CastMember>? tmdbCast,
     String? tmdbRuntime,
+    // TMDB ek metadata
+    String? tmdbPoster,
+    String? tmdbBackdrop,
+    double? tmdbRating,
+    int? tmdbVoteCount,
+    List<String>? tmdbGenres,
+    String? releaseDate,
+    String? country,
+    String? certification,
+    int? seasons,
+    int? episodes,
   }) {
     String? pickRuntime(String? omdb, String? tmdb) {
       if (omdb != null && omdb.trim().isNotEmpty && omdb != 'N/A') {
@@ -125,35 +195,67 @@ class MovieModel {
       return null;
     }
 
+    String? usable(String? v) =>
+        (v != null && v.trim().isNotEmpty && v.trim() != 'N/A') ? v : null;
+
+    // Poster önceliği: TMDB → OMDb → yerel (kullanıcı isteği: TMDB posterleri).
+    String? pickPoster(String? omdbPoster) =>
+        usable(tmdbPoster) ?? usable(omdbPoster) ?? usable(localPoster);
+
+    // TMDB türleri varsa onları (yerelleştirilmiş) tercih et.
+    String? tmdbGenreLine =
+        (tmdbGenres != null && tmdbGenres.isNotEmpty)
+            ? tmdbGenres.join(', ')
+            : null;
+
     if (omdbData == null || omdbData.response == 'False') {
       return MovieModel(
         title: name,
         plot: localPlot,
-        poster: localPoster,
+        poster: pickPoster(null),
         imdbRating: localRating,
-        genre: localGenre,
+        genre: tmdbGenreLine ?? localGenre,
         runtime: pickRuntime(null, tmdbRuntime),
         cast: tmdbCast,
+        tmdbPoster: usable(tmdbPoster),
+        tmdbBackdrop: usable(tmdbBackdrop),
+        tmdbRating: tmdbRating,
+        tmdbVoteCount: tmdbVoteCount,
+        tmdbGenres: tmdbGenres,
+        releaseDate: usable(releaseDate),
+        country: usable(country),
+        certification: usable(certification),
+        seasons: seasons,
+        episodes: episodes,
       );
     }
 
     return MovieModel(
       title: omdbData.title ?? name,
       year: omdbData.year,
-      poster: (omdbData.poster != null && omdbData.poster != 'N/A')
-          ? omdbData.poster
-          : localPoster,
+      poster: pickPoster(omdbData.poster),
       imdbRating: (omdbData.imdbRating != null && omdbData.imdbRating != 'N/A')
           ? omdbData.imdbRating
           : localRating,
       plot: _pickPlot(omdbData.plot, localPlot),
-      genre: (omdbData.genre != null && omdbData.genre != 'N/A')
-          ? omdbData.genre
-          : localGenre,
-      rated: omdbData.rated,
+      genre: tmdbGenreLine ??
+          ((omdbData.genre != null && omdbData.genre != 'N/A')
+              ? omdbData.genre
+              : localGenre),
+      rated: usable(certification) ?? omdbData.rated,
       runtime: pickRuntime(omdbData.runtime, tmdbRuntime),
       language: omdbData.language,
       cast: tmdbCast,
+      tmdbPoster: usable(tmdbPoster),
+      tmdbBackdrop: usable(tmdbBackdrop),
+      tmdbRating: tmdbRating,
+      tmdbVoteCount: tmdbVoteCount,
+      tmdbGenres: tmdbGenres,
+      releaseDate: usable(releaseDate),
+      country: usable(country),
+      certification: usable(certification),
+      seasons: seasons,
+      episodes: episodes,
     );
   }
 }

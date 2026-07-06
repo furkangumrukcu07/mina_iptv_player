@@ -12,8 +12,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../home/home_card_frame_style.dart';
 import '../home/home_card_swipe_effect.dart';
 import '../home/home_category_card_id.dart';
+import '../home/home_layout_style.dart';
+import '../home/page_transition_effect.dart';
+import '../home/tv_home_layout_mode.dart';
 import '../i18n/app_locale.dart';
 import '../layout/app_layout_mode.dart';
+import '../platform/android_playback_soc_hints.dart';
 import 'mina_analytics_service.dart';
 import '../theme/app_performance.dart';
 import '../theme/glass_appearance.dart';
@@ -46,12 +50,18 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
   static const _kBg = 'mina_settings_bg_playback';
   static const _kLang = 'mina_settings_language';
   static const _kXmltv = 'mina_settings_xmltv_url';
+
   /// Son başarılı M3U XMLTV (varsayılan iptv-org dahil) ağ çekim zamanı.
   static const _kLastM3uEpgFetchMs = 'mina_last_m3u_epg_fetch_ms_v1';
 
   /// [GlobalEpgService] ülke rehberi SQLite indirmesi için son başarılı çekim (ms epoch).
   static const _kLastGlobalEpgFetchMs = 'mina_last_global_epg_fetch_ms_v1';
   static const _kBuffer = 'mina_settings_live_buffer_sec';
+
+  /// Kullanıcının seçtiği görüntü oranı/sığdırma modu — tür bazında ayrı
+  /// hatırlanır (canlı vs VOD film/dizi). [BoxFit.index] olarak saklanır.
+  static const _kVideoFitLive = 'mina_settings_video_fit_live_v1';
+  static const _kVideoFitVod = 'mina_settings_video_fit_vod_v1';
 
   /// Kayıt yoksa veya sıfırlamada kullanılan canlı yayın tamponu (saniye).
   /// Düşük gecikme için varsayılan 2 sn (IPTV canlı yayın standardı).
@@ -62,25 +72,52 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
   static const _legacyDefaultLiveBufferSeconds = 3;
   static const _kBufferDefault2Migrated =
       'mina_settings_buffer_default2_migrated_v1';
+
+  /// Mobil/tablet ana ekran kart sırası yeni varsayılana (Canlı · Film & Dizi ·
+  /// Film · Dizi · Mina Analytics · EPG Mix) tek seferlik geçiş. Yalnızca eski
+  /// varsayılan sırada kalan / hiç özelleştirmemiş kullanıcılar güncellenir;
+  /// kartlarını elle sıralayanların tercihi korunur.
+  static const _kHomeCardOrderV2Migrated =
+      'mina_settings_home_card_order_v2_migrated';
+
+  /// V2 geçişinde "özelleştirilmemiş" sayılan eski varsayılan mobil sıra
+  /// ([normalizeOrder]'dan geçmiş hâli; eksik mina_analytics eklenmiş olabilir).
+  static const List<String> _legacyMobileCardOrderKeys = <String>[
+    'live',
+    'films',
+    'series',
+    'recommended_films',
+    'epg_mix',
+    'mina_analytics',
+  ];
   static const _kTheme = 'mina_settings_theme_label';
   static const _kLayout = 'mina_settings_layout_mode';
 
   static const _kReduceBlur = 'mina_settings_reduce_blur';
   static const _kLowEndDeviceMode = 'mina_settings_low_end_device_mode';
+  static const _kTvLite = 'mina_settings_tv_lite';
+
+  /// TV düzeninde TV Lite'ı bir kez zorla açtık mı? (Eski kullanıcılarda kapalı
+  /// kalmış olabilir.) Bir kez true yapılır; kullanıcı sonradan kapatabilir.
+  static const _kTvLiteTvForced = 'mina_settings_tv_lite_tv_forced';
   static const _kLowEndSuggestDismissed =
       'mina_settings_low_end_suggest_dismissed';
   static const _kLaunchOnBoot = 'mina_settings_launch_on_boot';
   static const _kLastLiveCat = 'mina_last_live_cat';
   static const _kLastLiveCh = 'mina_last_live_ch';
+  static const _kLastLiveChTime = 'mina_last_live_ch_time';
+  static const _kPrevLiveCh = 'mina_prev_live_ch';
   static const _kLastFilmsCat = 'mina_last_films_cat';
   static const _kLastFilmsVod = 'mina_last_films_vod';
   static const _kLastSeriesCat = 'mina_last_series_cat';
   static const _kLastSeriesId = 'mina_last_series_id';
   static const _kLastFavCat = 'mina_last_fav_cat';
   static const _kLastFavSel = 'mina_last_fav_sel';
-  static const _kAutoRefresh = 'mina_settings_auto_refresh_days';
+  static const _kAutoRefresh = 'mina_settings_auto_refresh_days'; // eski (gün)
+  static const _kAutoRefreshHours = 'mina_settings_auto_refresh_hours';
   static const _kLastRefresh = 'mina_settings_last_refresh_time';
   static const _kCloudAutoBackupDays = 'mina_settings_cloud_auto_backup_days';
+  static const _kSilentBackgroundSync = 'mina_settings_silent_background_sync';
   static const _kLastCloudBackup = 'mina_settings_last_cloud_backup_time';
 
   /// Google ile oturum açma teşvik popup'ı bir kez gösterildi mi? (Giriş
@@ -104,6 +141,28 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
   /// `auto` modunda yüklenen son panelden çözülen biçim (`hls`/`ts`); kalıcı.
   static const _kLiveStreamFormatAuto =
       'mina_settings_live_stream_format_auto_v1';
+
+  /// TV box / düşük donanımlı cihazda canlı biçimi bir kez **MPEG-TS**'e
+  /// zorladığımızı işaretler. Bir daha zorlanmaz; kullanıcı sonradan HLS'e
+  /// dönebilir, tercihi korunur.
+  static const _kLiveStreamFormatTsForcedLowEnd =
+      'mina_settings_live_stream_format_ts_forced_lowend_v1';
+
+  /// Donanıma özel "bir kez zorlandı" kararlarının (TV Lite, MPEG-TS) ait
+  /// olduğu cihazın kimliği. Google yedeği BAŞKA bir cihazda (örn. telefon
+  /// yedeği TV box'ta) geri yüklenince burada eski cihazın kimliği kalır;
+  /// uyuşmazlık tespit edilince zorlama bayrakları sıfırlanıp karar bu cihaz
+  /// için yeniden verilir. Böylece yedek, cihaza özel ayarlarımızı ezmez.
+  static const _kHardwareSettingsDeviceKey = 'mina_settings_hw_device_key_v1';
+
+  /// Stream Success Cache: Kanalların son başarılı oynatma formatı (hls/ts/software/mediakit)
+  static const _kStreamSuccessCache = 'mina_stream_success_cache_v1';
+
+  /// Stream Success Cache Format Constants
+  static const String streamSuccessFormatHls = 'hls';
+  static const String streamSuccessFormatTs = 'ts';
+  static const String streamSuccessFormatSoftware = 'software';
+  static const String streamSuccessFormatMediaKit = 'mediakit';
 
   /// [liveStreamFormat] için "Otomatik" değeri (varsayılan; URL'den karar verir).
   static const String liveStreamFormatAuto = 'auto';
@@ -130,7 +189,8 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
   // yüklü VLC, MX Player, Just Player vb. uygulamaya akışı yönlendirebilir.
   // Sentinel `__chooser__`: her oynatma öncesi sistem seçici diyaloğu çıksın.
   // ---------------------------------------------------------------------------
-  static const _kExternalPlayerEnabled = 'mina_settings_external_player_enabled';
+  static const _kExternalPlayerEnabled =
+      'mina_settings_external_player_enabled';
   static const _kExternalPlayerId = 'mina_settings_external_player_id';
   static const _kExternalPlayerLabel = 'mina_settings_external_player_label';
 
@@ -143,36 +203,55 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
   static const _kIgnoreSsl = 'mina_settings_ignore_ssl';
   static const _kUpcomingMatches = 'mina_settings_upcoming_matches';
   static const _kMixedLiveTv = 'mina_settings_mixed_live_tv';
+  static const _kTrendFilms = 'mina_settings_trend_films';
+  static const _kTrendSeries = 'mina_settings_trend_series';
+  static const _kShowcaseFavoriteFilms =
+      'mina_settings_showcase_favorite_films';
+  static const _kShowcaseFavoriteSeries =
+      'mina_settings_showcase_favorite_series';
+  static const _kShowcaseMixedFilms = 'mina_settings_showcase_mixed_films';
+  static const _kShowcaseMixedSeries = 'mina_settings_showcase_mixed_series';
+  static const _kShowcaseMixedLiveTv = 'mina_settings_showcase_mixed_live_tv';
   static const _kAiRecommendations = 'mina_settings_ai_recommendations';
+  static const _kShowcaseLastWatchedButton =
+      'mina_settings_showcase_last_watched_button';
+  static const _kShowcaseInAppPip = 'mina_settings_showcase_in_app_pip_v1';
 
   /// Bir kerelik TV varsayılanları migration'ı. Bayrak yazılı değilse
   /// `ensureLoaded()` veya TV layout'una geçişte ana ekran şeritleri
   /// "AI önerileri + Sıradaki maçlar" varsayılanına zorlanır
   /// (TopRated / Mixed Live TV kapanır). Bayrak yazıldıktan sonra
   /// kullanıcının manuel seçimleri korunur.
-  static const _kTvHomeStripsDefaultV1 =
-      'mina_tv_home_strips_default_v1';
+  static const _kTvHomeStripsDefaultV1 = 'mina_tv_home_strips_default_v1';
 
   /// Bir kerelik TV performans varsayılanı (V2): TV layout'unda ana ekranda
   /// «Günün Sözü» (haftalık marquee) ve «Mina AI Önerileri» şeritleri
   /// varsayılan olarak KAPALI gelir (eski TV box'larda decode/blur/animasyon
   /// yükünü azaltmak için). Bayrak yazıldıktan sonra kullanıcı bunları
   /// elle açabilir; mobil/tablet layout'unda hiçbir şey yapılmaz.
-  static const _kTvHomeLightDefaultV2 =
-      'mina_tv_home_light_default_v2';
+  static const _kTvHomeLightDefaultV2 = 'mina_tv_home_light_default_v2';
 
   /// Bir kerelik TV varsayılanı (V3): TV layout'unda ana ekranda «Mina AI
   /// Önerileri» ve «Karışık Canlı TV» şeritleri varsayılan AÇIK gelir.
   /// Önceki V1/V2 bunları kapatıyordu; bu bayrak ile eski TV kullanıcılarında
   /// da bir kez açılır. Yazıldıktan sonra kullanıcının manuel seçimi korunur.
   /// Mobil/tablet layout'unda hiçbir şey yapılmaz.
-  static const _kTvHomeRichDefaultV3 =
-      'mina_tv_home_rich_default_v3';
+  static const _kTvHomeRichDefaultV3 = 'mina_tv_home_rich_default_v3';
 
   /// Bir kerelik TV varsayılan tema: eski TV varsayılanı «Flat Black» →
   /// «Amoled Black». Bayrak yazıldıktan sonra kullanıcının seçtiği tema korunur.
-  static const _kTvAmoledThemeDefaultV1 =
-      'mina_tv_amoled_theme_default_v1';
+  static const _kTvAmoledThemeDefaultV1 = 'mina_tv_amoled_theme_default_v1';
+
+  /// Bir kerelik TV varsayılan tema (V2): TV layout'unda yeni varsayılan tema
+  /// «TV Lite»'tır. Bayrak yoksa eski TV kullanıcıları (hangi tema seçili
+  /// olursa olsun) bir kez «TV Lite» temasına geçirilir. Yazıldıktan sonra
+  /// kullanıcı dilediği temaya geçebilir ve tercihi korunur. Mobil/tablet'e
+  /// dokunulmaz.
+  static const _kTvLiteThemeDefaultV2 = 'mina_tv_lite_theme_default_v2';
+
+  /// TV: gizli temalar (Varsayılan, Glassmorphism, Mina Glass, Fly UI) bir
+  /// kerelik «Koyu Cam»'a taşınır; sonrasında her açılışta da doğrulanır.
+  static const _kTvThemeSanitizeV3 = 'mina_tv_theme_sanitize_v3';
 
   /// Bir kerelik TV ana ekran kart düzeni migration'ı. Bayrak yoksa TV
   /// layout'unda kullanıcının kayıtlı kart sırasına `recommendedFilms`
@@ -191,6 +270,11 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
   ///   * «Sıradaki Maçlar» şeridi AÇIK.
   /// Bayrak yazıldıktan sonra kullanıcı kendi düzenini koruyabilir.
   static const _kTvHomeLayoutV3 = 'mina_tv_home_layout_v3';
+
+  /// Bir kerelik TV kabuk geçişi (V4): Android TV / TV layout kullanıcılarında
+  /// «Varsayılan düzen» (classic) → «TV modu» (shell). Bayrak yazıldıktan sonra
+  /// kullanıcı Ayarlar'dan tekrar klasik düzene dönebilir.
+  static const _kTvShellHomeMigrationV4 = 'mina_tv_shell_home_migration_v4';
   static const _kDailyQuote = 'mina_settings_daily_quote';
   static const _kContinueWatching = 'mina_settings_continue_watching';
   static const _kMinaWrappedEnabled = 'mina_settings_mina_wrapped_enabled';
@@ -213,6 +297,8 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
   /// Filmler + Diziler) veya her ikisi. Kurulum sihirbazından ve
   /// Ayarlar > Ana Ekran > Film & Dizi modu ekranından değiştirilebilir.
   static const _kHomeFilmDiziMode = 'mina_settings_home_film_dizi_mode_v1';
+  static const _kHomeLayoutStyle = 'mina_settings_home_layout_style_v1';
+  static const _kTvHomeLayoutMode = 'mina_settings_tv_home_layout_v1';
 
   /// Ana ekran portrait carousel'inde kategori kartlarını sağa/sola
   /// sürüklerken uygulanan geçiş efekti (default / blur / glassShimmer /
@@ -220,29 +306,25 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
   /// Efekti ekranından seçilir.
   static const _kHomeCardSwipeEffect = 'mina_settings_home_card_swipe_effect';
 
+  /// Sayfa geçiş efekti (ios / fadeScale). Ayarlar > Ana Ekran > Geçiş
+  /// Efekti ekranından seçilir. TV layout'unda bu seçenek gösterilmez.
+  static const _kPageTransitionEffect = 'mina_settings_page_transition_effect_v1';
+
   /// Ana ekran kartlarına uygulanacak dış çerçeve stili (classic /
   /// neonGlow / embossed / boldOutline). Ayarlar > Ana Ekran > Çerçeve
   /// Stili ekranından seçilir; kartların kendi cam dekorasyonu korunur.
   static const _kHomeCardFrameStyle = 'mina_settings_home_card_frame_style';
 
-  /// «+18 / Erişkin içerik» ana ekran şeritlerinden gizlensin mi.
-  static const _kHideAdultContent = 'mina_settings_hide_adult_content_v1';
+  /// Eski sürümde Smart Route geçici tampon artışı (8 sn) kalıcı yazılıyordu;
+  /// bir kerelik temizlik bayrağı.
+  static const _kSmartRouteBufferLeakFixed =
+      'mina_settings_smart_route_buf_leak_fix_v1';
 
-  /// Smart Route — Akıllı CDN/Proxy yönlendirici. Arka planda IPTV
-  /// sunucularının TCP RTT/jitter/packet-loss istatistiğini periyodik
-  /// olarak ölçer; ağ dalgalanırsa kullanıcıyı bilgilendirir ve (alt
-  /// toggle açıksa) canlı tamponu otomatik yukarı çeker.
-  static const _kSmartRouteEnabled = 'mina_settings_smart_route_v1';
-
-  /// Canlı TV (dikey mod): "Detay" sekmesini gizle; kanal seçilince doğrudan
-  /// tam ekran yayın açılır. Yalnızca portre düzeni etkiler.
-  static const _kHideLivePortraitDetailTab =
-      'mina_settings_hide_live_portrait_detail_tab_v1';
-
-  /// Smart Route auto-buffer: ağ kötüleşince `liveBufferSeconds` değerini
-  /// dinamik yukarı çek. Kullanıcı bunu kapatırsa servis yalnız uyarı
-  /// gösterir, tampona dokunmaz.
-  static const _kSmartRouteAutoBuffer = 'mina_settings_smart_route_auto_buf_v1';
+  /// Film/Dizi (VOD) oynatıcısı artık varsayılan **MediaKit**; motoru bilinçli
+  /// seçmemiş mevcut kullanıcıları bir kerelik MediaKit'e taşı (Better'ı bilinçli
+  /// seçenler korunur). İlk kurulumda da VOD varsayılanı MediaKit olur.
+  static const _kVodEngineMediaKitDefault =
+      'mina_settings_vod_engine_mediakit_default_v1';
 
   /// Ana ekran kategori kartları sırası (live, films, …).
   static const _kHomeCategoryCardOrder =
@@ -334,9 +416,16 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
   /// Ayarlar > EPG > EPG Kaynağı tercihi (yalnızca Xtream kullanıcısı için).
   /// `auto` (varsayılan) Xtream + GitHub yedek birlikte; `xtreamOnly` yalnız
   /// Xtream sunucusu; `githubOnly` yalnız GitHub (iptv-org / globetvapp).
-  static const _kXtreamEpgSourceMode = 'mina_settings_xtream_epg_source_mode_v1';
+  static const _kXtreamEpgSourceMode =
+      'mina_settings_xtream_epg_source_mode_v1';
 
   static const _kSetupCompleted = 'mina_setup_wizard_completed_v1';
+
+  /// Vitrin (showcase) yerleşimini tavsiye eden açılış popup'ı gösterildi mi?
+  /// Bir kez gösterilir; mobil/tablette güncelleyen (Play Store) kullanıcılar
+  /// için. Taze kurulumda sihirbaz zaten yerleşim seçtirdiği için orada `true`
+  /// işaretlenir; eski kullanıcılar (sihirbazsız tamamlanmış) bu popup'ı görür.
+  static const _kShowcaseSuggestSeen = 'mina_showcase_suggest_seen_v1';
 
   /// Sihirbaz eklendikten sonra: daha önce listesi vardı, [readSource] ile tek sefer
   /// "tamamlandı" kabul; yeni taze kurulumlarda sihirbaz açılır.
@@ -344,6 +433,12 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
       'mina_setup_legacy_user_with_playlist_v1';
 
   final backgroundPlayback = false.obs;
+
+  /// Oynatıcı tam ekran rota üstte mi (yatay/dikey oynatma açık)? Arka plandaki
+  /// controller'lar (Home/Channels/Browse) bu bayrağa tepki verip görünmeyen
+  /// periyodik işleri (logo döngüsü, saat/EPG tazeleme) duraklatır; oynatıcı
+  /// kapanınca anında bir kez tazeleyip sürdürür. Kalıcı değildir (yalnız RAM).
+  final playerScreenActive = false.obs;
   final languageCode = 'tr'.obs;
   final xmltvUrl = ''.obs;
 
@@ -353,6 +448,40 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
   /// iptv-org tabanlı global EPG SQLite güncellemesi için son başarılı indirme.
   final lastGlobalEpgFetchMs = 0.obs;
   final liveBufferSeconds = defaultLiveBufferSeconds.obs;
+
+  /// Kullanıcının en son seçtiği görüntü sığdırma modu (tür bazında). Oynatıcı
+  /// açılışında geçerli içeriğin türüne göre uygulanır; kullanıcı oynatıcıda
+  /// değiştirince ilgili tür için kalıcı yazılır. Varsayılan [BoxFit.fill]
+  /// (önceki davranış).
+  final liveVideoFit = BoxFit.fill.obs;
+  final vodVideoFit = BoxFit.fill.obs;
+
+  /// Smart Route auto-buffer geçici override'ı (kalıcı ayarlara yazılmaz).
+  int? _runtimeLiveBufferOverrideSec;
+
+  /// Override değiştiğinde (engage / revert) reaktif bildirim. Oynatıcı bunu
+  /// dinleyip aktif CANLI yayında tamponu dinamik olarak yeniden uygular;
+  /// böylece ağ iyileştiğinde tampon yalnızca bir sonraki zap'ta değil, anında
+  /// (mümkün olduğunca kesintisiz) eski/düşük değerine döner.
+  final liveBufferOverrideRev = 0.obs;
+
+  /// Oynatıcı / önizleme için geçerli canlı tampon (sn). Smart Route ağ
+  /// dalgalanmasında geçici yükseltme uygular; kullanıcının kayıtlı tercihine
+  /// dokunulmaz.
+  int get effectiveLiveBufferSeconds =>
+      _runtimeLiveBufferOverrideSec ?? liveBufferSeconds.value;
+
+  bool get hasRuntimeLiveBufferOverride =>
+      _runtimeLiveBufferOverrideSec != null;
+
+  void setRuntimeLiveBufferOverride(int? seconds) {
+    final next = seconds?.clamp(0, 120);
+    if (next == _runtimeLiveBufferOverrideSec) return;
+    _runtimeLiveBufferOverrideSec = next;
+    // Aktif oynatıcının reaktif olarak tamponu yeniden uygulaması için tetikle.
+    liveBufferOverrideRev.value++;
+  }
+
   final themeLabel = GlassThemeLabels.glassGri.obs;
   final layoutMode = AppLayoutMode.mobile.obs;
 
@@ -375,6 +504,14 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
   /// bayrağı tüketir.
   final lowEndDeviceMode = false.obs;
 
+  /// **TV Lite** — TV / zayıf box'lar için ekstra sade grafik katmanı. Açıkken
+  /// (veya TV düzeninde varsayılan açık): gerçek zamanlı blur ve glow gölgeleri
+  /// kapanır, kart gölgeleri ve büyük köşe yarıçapları sadeleşir, kumanda odak
+  /// belirteci hafif düz bir çerçeveye iner, odak animasyonları kısalır. Cam
+  /// renk paleti korunur (renkler + ince kenarlar), yalnız GPU-pahalı efektler
+  /// düşer. [AppPerformance] bu bayrağı tek noktadan tüketir.
+  final tvLite = false.obs;
+
   /// Düşük donanım modu önerisi (ana ekrandaki uyarı) kullanıcı tarafından
   /// kapatıldı mı? Kapatılınca bir daha gösterilmez; mod açılırsa zaten gerek
   /// kalmaz. [DevicePerformanceAdvisor] bu bayrağı tüketir.
@@ -382,8 +519,8 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
   final launchOnBoot = false.obs;
 
   /// **Film/Dizi (VOD)** oynatma motoru tercihi: `true` → MediaKit (mpv),
-  /// `false` → Better Player (Exo). Sorun olursa oynatıcı, yalnız o yayın için
-  /// diğer motora otomatik geçer (fallback).
+  /// `false` → Better Player (Exo). Varsayılan **Better Player**; sorun olursa
+  /// oynatıcı yalnız o yayın için diğer motora otomatik geçer.
   final useMediaKit = false.obs;
 
   /// **Canlı Yayın** oynatma motoru tercihi: `true` → MediaKit (mpv),
@@ -393,6 +530,11 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
 
   /// Kullanıcı motoru bilinçli seçti mi? [ensureLoaded]'da yüklenir.
   bool _engineUserChosen = false;
+
+  /// Kullanıcı film/dizi (veya canlı) oynatma motorunu ayarlardan **bilinçli**
+  /// seçti mi? `true` ise codec'e dayalı proaktif MediaKit yönlendirmesi
+  /// uygulanmaz (kullanıcı tercihi korunur; yalnızca reaktif fallback çalışır).
+  bool get engineUserChosen => _engineUserChosen;
 
   /// Harici Oynatıcı özelliği aktif mi? Açıksa Mina, oynatma sırasında akışı
   /// dahili oynatıcı yerine kullanıcının seçtiği uygulamada (VLC, MX Player
@@ -411,17 +553,50 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
   /// Sihirbazı geçen kullanıcı / kurulum bitti; [ensureLoaded] prefs yükler.
   final isSetupCompleted = false.obs;
 
+  /// Vitrin yerleşim tavsiyesi açılış popup'ı gösterildi mi? (bkz.
+  /// [_kShowcaseSuggestSeen])
+  final showcaseSuggestionSeen = false.obs;
+  final silentBackgroundSyncEnabled = true.obs;
+
   /// Zayıf GPU’lu eski TV kutuları için tam donanım çözüm (mpv `hwdec=mediacodec`).
   final mediaKitLowPowerHwdec = false.obs;
   final lastLiveCategoryId = Rxn<int>();
   final lastLiveChannelId = Rxn<int>();
+  final lastLiveChannelTime = Rxn<int>();
+  final previousLiveChannelId = Rxn<int>();
   final lastFilmsCategoryKey = Rxn<int>();
   final lastFilmsVodId = Rxn<int>();
   final lastSeriesCategoryKey = Rxn<int>();
   final lastSeriesId = Rxn<int>();
   final lastFavoritesCategoryKey = Rxn<int>();
   final lastFavoritesSelection = ''.obs;
-  final autoRefreshDays = 7.obs; // 0: Kapalı, 3: 3 Gün, 7: 1 Hafta (varsayılan)
+
+  /// Stream Success Cache: Map<channelId, format>
+  /// Format values: 'hls', 'ts', 'software', 'mediakit'
+  final Map<int, String> _streamSuccessCache = <int, String>{};
+
+  Future<String?> getStreamSuccessFormat(int channelId) {
+    return Future.value(_streamSuccessCache[channelId]);
+  }
+
+  Future<void> setStreamSuccessFormat(int channelId, String format) async {
+    _streamSuccessCache[channelId] = format;
+    final p = await _getPrefs();
+    final stringKeyMap = _streamSuccessCache.map((k, v) => MapEntry(k.toString(), v));
+    await p.setString(_kStreamSuccessCache, jsonEncode(stringKeyMap));
+  }
+
+  Future<void> clearStreamSuccessFormat(int channelId) async {
+    _streamSuccessCache.remove(channelId);
+    final p = await _getPrefs();
+    final stringKeyMap = _streamSuccessCache.map((k, v) => MapEntry(k.toString(), v));
+    await p.setString(_kStreamSuccessCache, jsonEncode(stringKeyMap));
+  }
+
+  /// İçerik otomatik yenileme aralığı (**saat**). Seçenekler:
+  /// 0 = Kapalı, 2 = 2 saat, 24 = 1 gün, 48 = 2 gün, 72 = 3 gün, 168 = 1 hafta.
+  /// Varsayılan 168 (1 hafta). Eski gün-temelli ayardan (`_kAutoRefresh`) göç edilir.
+  final autoRefreshHours = 168.obs;
   final lastRefreshTime = 0.obs; // epoch ms
 
   /// Google buluta otomatik yedekleme aralığı (gün). 0: Kapalı, 1: Günlük,
@@ -437,17 +612,20 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
   Future<void> markGoogleSignInPromptShown() async {
     if (_googleSignInPromptShown) return;
     _googleSignInPromptShown = true;
-    final p = await SharedPreferences.getInstance();
+    final p = await _getPrefs();
     await p.setBool(_kGoogleSignInPromptShown, true);
   }
 
   /// Android ExoPlayer: `true` = yazılım kod çözücü önce (TS uyumluluğu); varsayılan donanım.
   final preferSoftwareVideoDecoder = false.obs;
 
-  /// Canlı yayın taşıma biçimi modu: [liveStreamFormatAuto] (varsayılan),
-  /// [liveStreamFormatHls] veya [liveStreamFormatTs]. Oynatma anında canlı
-  /// Xtream URL'sine uygulanır; playlist yeniden yüklenmeden geçerli olur.
-  final liveStreamFormat = liveStreamFormatAuto.obs;
+  /// Canlı yayın taşıma biçimi modu: [liveStreamFormatHls] (varsayılan) veya
+  /// [liveStreamFormatTs]. Oynatma anında canlı Xtream URL'sine uygulanır;
+  /// playlist yeniden yüklenmeden geçerli olur.
+  ///
+  /// NOT: "Otomatik" modu kaldırıldı; varsayılan artık **HLS**. HLS açılmazsa
+  /// oynatıcı hata kurtarma zinciri otomatik **MPEG-TS**'e düşer (fallback).
+  final liveStreamFormat = liveStreamFormatHls.obs;
 
   /// `auto` modunda yüklenen son panelden çözülen biçim (`hls`/`ts`).
   final liveStreamFormatAutoResolved = liveStreamFormatHls.obs;
@@ -494,15 +672,46 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
   /// «SSL/TLS sertifika doğrulamasını yoksay» — IPTV'de meşhur seçenek.
   /// Geçersiz/self-signed sertifikalı panellerde playlist/EPG/poster indirme ve
   /// MediaKit oynatma istekleri açıkken sertifikayı doğrulamadan kabul eder.
-  /// Varsayılan kapalı (güvenlik). Açıkken global [HttpOverrides] + mpv
-  /// `tls-verify=no` uygulanır.
-  final ignoreSslCertificate = false.obs;
+  /// Varsayılan **açık** — birçok IPTV paneli geçersiz/self-signed sertifika
+  /// kullandığından, doğrulama açıkken liste/EPG/poster ve oynatma istekleri
+  /// başarısız oluyordu. Açıkken global [HttpOverrides] + mpv `tls-verify=no`
+  /// uygulanır.
+  final ignoreSslCertificate = true.obs;
 
   /// Ana ekranda «Sıradaki Maçlar» şeridi; varsayılan açık.
   final upcomingMatchesEnabled = true.obs;
 
   /// Ana ekranda «Karışık Canlı TV» şeridi; varsayılan açık.
   final mixedLiveTvEnabled = true.obs;
+
+  /// Yalnızca **Vitrin** düzeninde «Trend Filmler» (IMDB 7+) şeridi; varsayılan
+  /// açık. Diğer düzenlerde kullanılmaz.
+  final trendFilmsEnabled = true.obs;
+
+  /// Yalnızca **Vitrin** düzeninde «Trend Diziler» (IMDB 7+) şeridi; varsayılan
+  /// açık. Diğer düzenlerde kullanılmaz.
+  final trendSeriesEnabled = true.obs;
+
+  /// Yalnızca **Vitrin** düzeninde «Favori Filmler» şeridi; varsayılan açık.
+  /// Diğer düzenlerde kullanılmaz.
+  final favoriteFilmsEnabled = true.obs;
+
+  /// Yalnızca **Vitrin** düzeninde «Favori Diziler» şeridi; varsayılan açık.
+  /// Diğer düzenlerde kullanılmaz.
+  final favoriteSeriesEnabled = true.obs;
+
+  /// Yalnızca **Vitrin** düzeninde «Karışık Filmler» şeridi; varsayılan açık.
+  /// Diğer düzenlerde kullanılmaz.
+  final mixedFilmsEnabled = true.obs;
+
+  /// Yalnızca **Vitrin** düzeninde «Karışık Diziler» şeridi; varsayılan açık.
+  /// Diğer düzenlerde kullanılmaz.
+  final mixedSeriesEnabled = true.obs;
+
+  /// Yalnızca **Vitrin** düzeninde «Karışık Canlı TV» şeridi; varsayılan
+  /// **kapalı**. Vitrinde standart düzenden bağımsız ayrı bir bayrak kullanılır
+  /// (standart/TV düzeni `mixedLiveTvEnabled` ile açık gelmeye devam eder).
+  final showcaseMixedLiveTvEnabled = false.obs;
 
   /// Ana ekranda «Mina AI: Senin İçin Önerilenler» şeridi; varsayılan açık.
   /// Kullanıcı geçmiş izleme alışkanlıklarına göre kişiselleştirilmiş 10
@@ -518,16 +727,24 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
   /// film ve dizileri, en son izlenenden başlayarak gösterir.
   final continueWatchingEnabled = true.obs;
 
+  /// Vitrin (showcase) modunda arama butonunun üzerindeki «Son İzlenen»
+  /// dairesel butonu; varsayılan açık. Kapatıldığında buton gizlenir.
+  final showcaseLastWatchedButtonEnabled = true.obs;
+
+  /// Vitrin modunda uygulama içi PiP: ana ekrana dönünce dock'ta mini oynatıcı.
+  /// Yalnızca [HomeLayoutStyle.showcase] iken etkindir; varsayılan kapalı.
+  final showcaseInAppPipEnabled = false.obs;
+
   /// **Mina Wrapped & İzleme Analitiği** master switch. Kapatıldığında:
   ///
   /// * Ayarlar → Ana Ekran Ayarları'ndaki *Mina Wrapped* tile'ı gizlenir.
   /// * [MinaAnalyticsService] tick toplamayı durdurur (mevcut veriler
   ///   korunur; tekrar açılınca toplama kaldığı yerden devam eder).
   ///
-  /// **Varsayılan kapalı** — gizlilik dostu davranış: kullanıcı bilinçli
-  /// olarak açana kadar hiçbir izleme verisi toplanmaz. Kurulum sihirbazının
-  /// kişiselleştirme adımı bu switch'i ön plana çıkarır.
-  final minaWrappedEnabled = false.obs;
+  /// **Varsayılan açık** — kurulum sihirbazında ve normal modda Mina İzleme
+  /// (Wrapped) analitiği açık gelir; kullanıcı isterse Ayarlar > Ana Ekran'dan
+  /// veya kurulum sihirbazından kapatabilir. Tüm veri yereldir (bulut sync yok).
+  final minaWrappedEnabled = true.obs;
 
   /// Ana ekran kart boyut ölçeği. 1.0 = standart; 0.80 → ~%20 küçük,
   /// 1.20 → ~%20 büyük. Hem üst kategori kartları (Canlı/Filmler/Diziler…)
@@ -538,9 +755,10 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
   final homeCardScale = homeCardScaleDefault.obs;
 
   /// Yeni kurulumlarda ve `resetToDefaults` sonrası kullanılan başlangıç
-  /// değeri. Kullanıcı slider'ı küçültüp büyütebilir; eski kullanıcıların
-  /// kaydedilmiş tercihi korunur (yalnızca yeni kullanıcılar / reset).
-  static const double homeCardScaleDefault = 1.00;
+  /// değeri (%110 — kartlar biraz daha büyük açılır). Kullanıcı slider'ı
+  /// küçültüp büyütebilir; eski kullanıcıların kaydedilmiş tercihi korunur
+  /// (yalnızca yeni kullanıcılar / reset).
+  static const double homeCardScaleDefault = 1.10;
 
   /// Slider için minimum/maksimum sınırlar.
   static const homeCardScaleMin = 0.80;
@@ -550,11 +768,22 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
   /// sihirbazında veya ayarlar üzerinden değiştirir.
   final homeFilmDiziMode = HomeFilmDiziMode.both.obs;
 
+  /// TV ana ekran yerleşim stili (varsayılan / sade). Mobil/tablet için;
+  /// TV'de [tvHomeLayoutMode] kullanılır.
+  final homeLayoutStyle = HomeLayoutStyle.standard.obs;
+
+  /// TV ana ekranı: klasik kart düzeni veya yeni TV kabuğu (rail).
+  final tvHomeLayoutMode = TvHomeLayoutMode.shell.obs;
+
   /// Portrait carousel'de kategori kartları arasında sürüklerken uygulanan
   /// geçiş efekti. Varsayılan `rubberBand` (elastik snap-back + overshoot).
   /// Düşük performans modunda UI tarafı bu değeri görmezden gelip
   /// `defaultStack`'e düşebilir.
   final homeCardSwipeEffect = HomeCardSwipeEffect.rubberBand.obs;
+
+  /// Sayfa geçiş efekti. Varsayılan `ios` (iOS tarzı kaydırma).
+  /// TV layout'unda bu seçenek gösterilmez.
+  final pageTransitionEffect = PageTransitionEffect.ios.obs;
 
   /// Ana ekran kartlarının dış çerçeve stili. Varsayılan `classic` —
   /// kartların mevcut cam görünümü hiç değişmez. Diğer 3 stil (neonGlow,
@@ -565,35 +794,15 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
   /// Canlı TV listelerinde TR:/BR:/EN: vb. ülke öneklerini gizle.
   final stripLiveChannelCountryPrefix = false.obs;
 
-  /// «+18 / Erişkin İçerik Gizle» — ana ekran şeritlerinde (Senin İçin
-  /// Önerilenler, Karışık Canlı, İzlemeye Devam Et) +18 kategori veya
-  /// öğe adı taşıyan içerikler gizlenir. Listelerin (Canlı / Filmler /
-  /// Diziler) ana sayfada görünmesini engellemek için
-  /// [PlaylistCategoryHide.liveChannelHiddenForHome] vb. helper'lar bu
-  /// bayrağı okur.
-  final hideAdultContentEnabled = false.obs;
-
   /// **Remote Config `inceleme_modu_aktif`** — mağaza inceleme modu. Sunucudan
-  /// `true` gelirse +18 içerik, kullanıcının ayarından bağımsız olarak zorla
-  /// gizlenir. Kalıcı değildir; her açılışta Remote Config'ten yenilenir.
+  /// `true` gelirse +18 içerik zorla gizlenir (kullanıcı ayarı yok; yalnızca
+  /// mağaza onayı sırasında). Kalıcı değildir; her açılışta Remote Config'ten
+  /// yenilenir.
   final reviewModeActive = false.obs;
 
-  /// +18 içerik fiilen gizlensin mi? Kullanıcı ayarı **veya** uzaktan inceleme
-  /// modu açıksa `true`. İçerik filtreleri bunu okur.
-  bool get effectiveHideAdultContent =>
-      hideAdultContentEnabled.value || reviewModeActive.value;
-
-  /// Smart Route — Akıllı CDN / Proxy seçici özelliği aktif mi.
-  /// Varsayılan açık (yurt dışı CDN'lerden Türkiye'ye akşam peering
-  /// darboğazları sık görülüyor; arka plan ölçümü çok hafif).
-  final smartRouteEnabled = true.obs;
-
-  /// Canlı TV dikey modda "Detay" sekmesini gizle (kanal seçince direkt oynat).
-  final hideLivePortraitDetailTab = false.obs;
-
-  /// Smart Route auto-buffer alt anahtarı. Açıkken servis ağ kötüleşince
-  /// canlı tamponu yukarı çeker; kapatılırsa yalnız toast bildirimi.
-  final smartRouteAutoBufferEnabled = true.obs;
+  /// +18 içerik fiilen gizlensin mi? Yalnızca [reviewModeActive] açıkken
+  /// `true` — mağaza inceleme modu için. İçerik filtreleri bunu okur.
+  bool get effectiveHideAdultContent => reviewModeActive.value;
 
   /// Mobil mod: liste kaydırma ve seçimlerde hafif titreşim.
   final adaptiveHapticsEnabled = true.obs;
@@ -712,6 +921,7 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
   final subtitleColorKey = kSubtitleColorOptions.first.key.obs;
   final subtitleOutlineEnabled = true.obs;
   final appFontFamilyKey = kDefaultAppFontFamilyKey.obs;
+
   /// Film/Dizi açıldığında altyazıyı otomatik aç. Varsayılan **kapalı** —
   /// kullanıcı OSD üzerinden manuel olarak seçer.
   final vodSubtitleAutoEnabled = false.obs;
@@ -749,6 +959,16 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
   /// Xtream kullanıcısı için EPG kaynak tercihi. UI bağı: Ayarlar > EPG > EPG Kaynağı.
   final xtreamEpgSourceMode = XtreamEpgSourceMode.auto.obs;
 
+  /// Film/Dizi (VOD) bilgi motoru tercihi. UI bağı: Ayarlar > Oynatma > Film Dizi Bilgi Motoru.
+  /// `auto` (varsayılan) önce Xtream, yoksa TMDB/OMDB dener.
+  /// `xtreamOnly` yalnızca Xtream sunucusu bilgilerini kullanır.
+  /// `tmdbOmdbOnly` yalnızca TMDB/OMDB bilgilerini kullanır.
+  static const _kVodInfoEngine = 'mina_settings_vod_info_engine_v1';
+  static const String vodInfoEngineAuto = 'auto';
+  static const String vodInfoEngineXtreamOnly = 'xtreamOnly';
+  static const String vodInfoEngineTmdbOmdbOnly = 'tmdbOmdbOnly';
+  final vodInfoEngine = vodInfoEngineAuto.obs;
+
   Map<String, Map<String, List<int>>> _xtreamHiddenBySource = {};
   Map<String, Map<String, List<String>>> _m3uHiddenBySource = {};
   Map<String, Map<String, dynamic>> _liveChannelLayoutBySource = {};
@@ -766,7 +986,8 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
   final Map<String, Set<int>> _xtreamHiddenSeriesCache = <String, Set<int>>{};
   final Map<String, Set<String>> _m3uHiddenLiveCache = <String, Set<String>>{};
   final Map<String, Set<String>> _m3uHiddenVodCache = <String, Set<String>>{};
-  final Map<String, Set<String>> _m3uHiddenSeriesCache = <String, Set<String>>{};
+  final Map<String, Set<String>> _m3uHiddenSeriesCache =
+      <String, Set<String>>{};
 
   void _ensureHiddenSetsCacheFresh() {
     final rev = xtreamHideRevision.value;
@@ -795,9 +1016,13 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
 
   /// Canlı / film / dizi liste detayında küçük önizleme (TV ve telefonda tercihe bağlı).
   /// Düşük Donanımlı Cihaz Modu açıkken ikinci bir decoder örneği RAM'i ikiye
-  /// katladığı için önizleme tamamen kapatılır.
-  bool get streamPreviewActive =>
-      streamPreviewEnabled.value && !lowEndDeviceMode.value;
+  /// katlayabilir; mobil/tablet'te önizleme kapatılır. **TV'de** kullanıcı
+  /// ayarlardan açtıysa tercih geçerli kalır (önizleme zaten gecikmeli/tekil).
+  bool get streamPreviewActive {
+    if (!streamPreviewEnabled.value) return false;
+    if (layoutMode.value == AppLayoutMode.tv) return true;
+    return !lowEndDeviceMode.value;
+  }
 
   bool _loaded = false;
   int _layoutCoercePostFrameTries = 0;
@@ -831,6 +1056,13 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
     }
   }
 
+  SharedPreferences? _prefs;
+  Future<SharedPreferences> _getPrefs() async {
+    if (_prefs != null) return _prefs!;
+    _prefs = await SharedPreferences.getInstance();
+    return _prefs!;
+  }
+
   @override
   void onInit() {
     super.onInit();
@@ -855,7 +1087,7 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
 
   Future<void> ensureLoaded() async {
     if (_loaded) return;
-    final p = await SharedPreferences.getInstance();
+    final p = await _getPrefs();
     // Eski sürümlerde özel arka plan yolu; READ_MEDIA kaldırıldı, anahtarı temizle.
     if (p.containsKey('mina_settings_custom_bg_path')) {
       await p.remove('mina_settings_custom_bg_path');
@@ -877,6 +1109,18 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
     lastM3uEpgFetchMs.value = p.getInt(_kLastM3uEpgFetchMs) ?? 0;
     lastGlobalEpgFetchMs.value = p.getInt(_kLastGlobalEpgFetchMs) ?? 0;
     liveBufferSeconds.value = p.getInt(_kBuffer) ?? defaultLiveBufferSeconds;
+    liveVideoFit.value = _boxFitFromIndex(p.getInt(_kVideoFitLive));
+    vodVideoFit.value = _boxFitFromIndex(p.getInt(_kVideoFitVod));
+    // Smart Route auto-buffer eski sürümde geçici 8 sn değerini kalıcı
+    // yazıyordu; bir kerelik 8 → varsayılan geri al (bilinçli 8 seçimi nadir).
+    if (!(p.getBool(_kSmartRouteBufferLeakFixed) ?? false)) {
+      final stored = p.getInt(_kBuffer);
+      if (stored == 8) {
+        liveBufferSeconds.value = defaultLiveBufferSeconds;
+        await p.setInt(_kBuffer, defaultLiveBufferSeconds);
+      }
+      await p.setBool(_kSmartRouteBufferLeakFixed, true);
+    }
     // Düşük gecikme varsayılanı 3→2 sn tek seferlik geçiş: yalnızca eski
     // varsayılanda (3) kalan veya hiç ayarlamamış kullanıcılar 2'ye düşürülür;
     // manuel farklı değer (ör. 1, 5, 10) seçenlerin tercihi korunur.
@@ -889,7 +1133,8 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
       await p.setBool(_kBufferDefault2Migrated, true);
     }
     var epgCacheDays = p.getInt(_kEpgDiskCacheRefreshDays);
-    if (epgCacheDays == null || epgCacheDays < 1 || epgCacheDays > 5) {
+    // 0 = otomatik yenileme kapalı (yalnızca bir kez indir) → geçerli değer.
+    if (epgCacheDays == null || epgCacheDays < 0 || epgCacheDays > 5) {
       epgCacheDays = defaultEpgDiskCacheRefreshDays;
       await p.setInt(_kEpgDiskCacheRefreshDays, epgCacheDays);
     }
@@ -900,6 +1145,7 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
     epgEnabled.value = p.getBool(_kEpgEnabled) ?? true;
     xtreamEpgSourceMode.value =
         XtreamEpgSourceMode.fromStorageKey(p.getString(_kXtreamEpgSourceMode));
+    vodInfoEngine.value = p.getString(_kVodInfoEngine) ?? vodInfoEngineAuto;
     final rawLayoutForTheme = p.getString(_kLayout);
     final savedTheme = p.getString(_kTheme);
     if (savedTheme == null || savedTheme.isEmpty) {
@@ -919,6 +1165,7 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
     } else {
       themeLabel.value = savedTheme;
     }
+    await _coerceThemeForTvLayoutIfNeeded(p);
     reduceBlur.value = p.getBool(_kReduceBlur) ?? true;
     if (p.containsKey('mina_settings_low_performance_mode')) {
       await p.remove('mina_settings_low_performance_mode');
@@ -946,10 +1193,25 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
     await _applyLayoutMode(layoutMode.value);
     _syncLayoutTextScale();
 
+    // TV Lite: TV düzeninde TV Lite'ı bir kez zorla aç (eski kullanıcılarda
+    // kapalı kaydedilmiş olabilir). Bir kez zorlandıktan sonra kullanıcı dilerse
+    // kapatabilir ve tercihi korunur. TV dışı düzenlerde varsayılan kapalı.
+    final bool isTvLayoutForLite = layoutMode.value == AppLayoutMode.tv;
+    final bool tvLiteAlreadyForced = p.getBool(_kTvLiteTvForced) ?? false;
+    if (isTvLayoutForLite && !tvLiteAlreadyForced) {
+      tvLite.value = true;
+      unawaited(p.setBool(_kTvLite, true));
+      unawaited(p.setBool(_kTvLiteTvForced, true));
+    } else {
+      tvLite.value = p.getBool(_kTvLite) ?? isTvLayoutForLite;
+    }
+
     final liveCat = p.getInt(_kLastLiveCat);
     lastLiveCategoryId.value =
         (liveCat == null || liveCat < 0) ? null : liveCat;
     lastLiveChannelId.value = p.getInt(_kLastLiveCh);
+    lastLiveChannelTime.value = p.getInt(_kLastLiveChTime);
+    previousLiveChannelId.value = p.getInt(_kPrevLiveCh);
 
     lastFilmsCategoryKey.value = p.getInt(_kLastFilmsCat);
     lastFilmsVodId.value = p.getInt(_kLastFilmsVod);
@@ -959,11 +1221,31 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
 
     lastFavoritesCategoryKey.value = p.getInt(_kLastFavCat);
     lastFavoritesSelection.value = p.getString(_kLastFavSel) ?? '';
-    if (p.containsKey(_kAutoRefresh)) {
-      autoRefreshDays.value = p.getInt(_kAutoRefresh) ?? 7;
+
+    // Load Stream Success Cache
+    final rawStreamCache = p.getString(_kStreamSuccessCache);
+    if (rawStreamCache != null) {
+      try {
+        final decoded = jsonDecode(rawStreamCache) as Map<String, dynamic>;
+        _streamSuccessCache.clear();
+        decoded.forEach((key, value) {
+          _streamSuccessCache[int.parse(key)] = value as String;
+        });
+      } catch (e) {
+        // If there's an error, ignore it (just use empty cache)
+      }
+    }
+    if (p.containsKey(_kAutoRefreshHours)) {
+      autoRefreshHours.value = p.getInt(_kAutoRefreshHours) ?? 168;
+    } else if (p.containsKey(_kAutoRefresh)) {
+      // Eski gün-temelli ayardan göç: gün × 24 saat (0 = kapalı korunur).
+      final oldDays = p.getInt(_kAutoRefresh) ?? 7;
+      final migrated = oldDays <= 0 ? 0 : oldDays * 24;
+      autoRefreshHours.value = migrated;
+      unawaited(p.setInt(_kAutoRefreshHours, migrated));
     } else {
-      autoRefreshDays.value = 7;
-      unawaited(p.setInt(_kAutoRefresh, 7));
+      autoRefreshHours.value = 168;
+      unawaited(p.setInt(_kAutoRefreshHours, 168));
     }
     lastRefreshTime.value = p.getInt(_kLastRefresh) ?? 0;
 
@@ -975,16 +1257,18 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
 
     preferSoftwareVideoDecoder.value =
         p.getBool(_kPreferSoftwareDecoder) ?? false;
+    silentBackgroundSyncEnabled.value =
+        p.getBool(_kSilentBackgroundSync) ?? true;
 
     final fmt = p.getString(_kLiveStreamFormat);
-    liveStreamFormat.value = (fmt == liveStreamFormatTs ||
-            fmt == liveStreamFormatHls ||
-            fmt == liveStreamFormatAuto)
-        ? fmt!
-        : liveStreamFormatAuto;
+    // "Otomatik" kaldırıldı: TS dışındaki her değer (auto / null / bilinmeyen)
+    // HLS'e migrate edilir. HLS açılmazsa oynatıcı TS'e fallback yapar.
+    liveStreamFormat.value =
+        fmt == liveStreamFormatTs ? liveStreamFormatTs : liveStreamFormatHls;
     final fmtAuto = p.getString(_kLiveStreamFormatAuto);
-    liveStreamFormatAutoResolved.value =
-        fmtAuto == liveStreamFormatTs ? liveStreamFormatTs : liveStreamFormatHls;
+    liveStreamFormatAutoResolved.value = fmtAuto == liveStreamFormatTs
+        ? liveStreamFormatTs
+        : liveStreamFormatHls;
 
     // User-Agent tercihi — boşsa varsayılan preset.
     final uaId = p.getString(_kPlaybackUserAgentId);
@@ -998,16 +1282,31 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
 
     var mk = p.getBool(_kUseMediaKit);
     if (mk == null) {
-      // İlk kurulum: film/dizi için varsayılan Exo (Better); donanım hatasında MediaKit’e düşülür.
+      // İlk kurulum: hem film/dizi hem canlı için varsayılan Better Player
+      // (Exo). Kurulum sihirbazında iki motor da Better gösterilir; kullanıcı
+      // dilerse sihirbazdan veya ayarlardan MediaKit'e (mpv) geçebilir.
       mk = false;
       await p.setBool(_kUseMediaKit, false);
       final legacy = p.getBool(_kUseVlcLegacy);
       if (legacy != null) {
         await p.remove(_kUseVlcLegacy);
       }
+      // Yeni kurulumu, eski Better kullanıcılarını MediaKit'e taşıyan tek
+      // seferlik geçişin dışında tut (aşağıdaki blok bu bayrakla atlanır).
+      await p.setBool(_kVodEngineMediaKitDefault, true);
+    }
+    _engineUserChosen = p.getBool(_kEngineUserChosen) ?? false;
+    // Bir kerelik geçiş: VOD varsayılanı MediaKit oldu. Motoru BİLİNÇLİ seçmemiş
+    // (eski varsayılan Better'da kalmış) kullanıcıları MediaKit'e taşı; Better'ı
+    // bilinçli seçenler korunur.
+    if (!(p.getBool(_kVodEngineMediaKitDefault) ?? false)) {
+      if (!_engineUserChosen && mk == false) {
+        mk = true;
+        await p.setBool(_kUseMediaKit, true);
+      }
+      await p.setBool(_kVodEngineMediaKitDefault, true);
     }
     useMediaKit.value = mk;
-    _engineUserChosen = p.getBool(_kEngineUserChosen) ?? false;
 
     // Canlı yayın motoru: yeni anahtar yoksa eski tek-motor davranışına göre
     // varsayılan Better (false). Kullanıcı eski sürümde MediaKit seçtiyse de
@@ -1020,8 +1319,7 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
       liveUseMediaKit.value = liveMk;
     }
 
-    externalPlayerEnabled.value =
-        p.getBool(_kExternalPlayerEnabled) ?? false;
+    externalPlayerEnabled.value = p.getBool(_kExternalPlayerEnabled) ?? false;
     externalPlayerId.value = p.getString(_kExternalPlayerId);
     externalPlayerLabel.value = p.getString(_kExternalPlayerLabel);
 
@@ -1034,17 +1332,26 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
     landscapeStatusBarEnabled.value = p.getBool(_kLandscapeStatusBar) ?? false;
 
     isSetupCompleted.value = p.getBool(_kSetupCompleted) ?? false;
+    showcaseSuggestionSeen.value = p.getBool(_kShowcaseSuggestSeen) ?? false;
 
     mediaKitLowPowerHwdec.value = p.getBool(_kMediaKitLowPowerHwdec) ?? false;
 
     streamPreviewEnabled.value = p.getBool(_kStreamPreview) ?? true;
-    ignoreSslCertificate.value = p.getBool(_kIgnoreSsl) ?? false;
+    ignoreSslCertificate.value = true;
     _applyHttpSslPolicy();
     upcomingMatchesEnabled.value = p.getBool(_kUpcomingMatches) ?? true;
     mixedLiveTvEnabled.value = p.getBool(_kMixedLiveTv) ?? true;
+    trendFilmsEnabled.value = p.getBool(_kTrendFilms) ?? true;
+    trendSeriesEnabled.value = p.getBool(_kTrendSeries) ?? true;
+    favoriteFilmsEnabled.value = p.getBool(_kShowcaseFavoriteFilms) ?? true;
+    favoriteSeriesEnabled.value = p.getBool(_kShowcaseFavoriteSeries) ?? true;
+    mixedFilmsEnabled.value = p.getBool(_kShowcaseMixedFilms) ?? true;
+    mixedSeriesEnabled.value = p.getBool(_kShowcaseMixedSeries) ?? true;
+    showcaseMixedLiveTvEnabled.value =
+        p.getBool(_kShowcaseMixedLiveTv) ?? false;
     final rawScale = p.getDouble(_kHomeCardScale) ?? homeCardScaleDefault;
     // 2.10.27 öncesinde varsayılan 0.95 idi; slider'a hiç dokunmadan eski
-    // varsayılana takılı kalmış kullanıcıları yeni %100 varsayılanına taşı.
+    // varsayılana takılı kalmış kullanıcıları yeni varsayılana (%110) taşı.
     // Kullanıcı manuel olarak farklı bir değer seçtiyse (0.94 veya tam 1.0
     // dahil) o değer korunur — yalnızca tam 0.95 eşiği migrate edilir.
     final migratedScale =
@@ -1066,38 +1373,74 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
     } else {
       homeFilmDiziMode.value = HomeFilmDiziMode.fromStorageKey(rawFilmDizi);
     }
+    final rawLayoutStyle = p.getString(_kHomeLayoutStyle);
+    if (rawLayoutStyle == null) {
+      if (layoutMode.value != AppLayoutMode.tv) {
+        homeLayoutStyle.value = HomeLayoutStyle.showcase;
+      } else {
+        homeLayoutStyle.value = HomeLayoutStyle.standard;
+      }
+    } else {
+      homeLayoutStyle.value = HomeLayoutStyle.fromStorageKey(rawLayoutStyle);
+    }
+    tvHomeLayoutMode.value = TvHomeLayoutMode.fromStorageKey(
+      p.getString(_kTvHomeLayoutMode),
+    );
     homeCardSwipeEffect.value =
         HomeCardSwipeEffect.fromStorageKey(p.getString(_kHomeCardSwipeEffect));
+    pageTransitionEffect.value =
+        PageTransitionEffect.fromStorageKey(p.getString(_kPageTransitionEffect));
     homeCardFrameStyle.value =
         HomeCardFrameStyle.fromStorageKey(p.getString(_kHomeCardFrameStyle));
-    isAiRecommendationEnabled.value =
-        p.getBool(_kAiRecommendations) ?? true;
+    isAiRecommendationEnabled.value = p.getBool(_kAiRecommendations) ?? true;
     dailyQuoteEnabled.value = p.getBool(_kDailyQuote) ?? true;
     continueWatchingEnabled.value = p.getBool(_kContinueWatching) ?? true;
-    minaWrappedEnabled.value = p.getBool(_kMinaWrappedEnabled) ?? false;
+    showcaseLastWatchedButtonEnabled.value =
+        p.getBool(_kShowcaseLastWatchedButton) ?? true;
+    showcaseInAppPipEnabled.value =
+        p.getBool(_kShowcaseInAppPip) ?? false;
+    // Mina Wrapped artık kullanıcı tarafından kapatılamaz — her zaman açık.
+    // Eskiden kapatmış kullanıcılarda da zorla açık gelir.
+    minaWrappedEnabled.value = true;
     stripLiveChannelCountryPrefix.value =
         p.getBool(_kStripLiveChannelPrefix) ?? false;
-    hideAdultContentEnabled.value = p.getBool(_kHideAdultContent) ?? false;
-    smartRouteEnabled.value = p.getBool(_kSmartRouteEnabled) ?? true;
-    hideLivePortraitDetailTab.value =
-        p.getBool(_kHideLivePortraitDetailTab) ?? false;
-    smartRouteAutoBufferEnabled.value =
-        p.getBool(_kSmartRouteAutoBuffer) ?? true;
     var adaptiveHaptics = p.getBool(_kAdaptiveHaptics);
     if (adaptiveHaptics == null) {
       adaptiveHaptics = true;
       await p.setBool(_kAdaptiveHaptics, true);
     }
     adaptiveHapticsEnabled.value = adaptiveHaptics;
-    smartStreamCutterEnabled.value =
-        p.getBool(_kSmartStreamCutter) ?? true;
+    smartStreamCutterEnabled.value = true;
     volumeBoostMaxPercent.value = normalizeVolumeBoostMaxPercent(
       p.getInt(_kVolumeBoostMaxPercent),
     );
 
+    final storedCardOrderKeys = p.getStringList(_kHomeCategoryCardOrder);
     homeCategoryCardOrder.assignAll(
-      HomeCategoryCardId.normalizeOrder(p.getStringList(_kHomeCategoryCardOrder)),
+      HomeCategoryCardId.normalizeOrder(storedCardOrderKeys),
     );
+
+    // Mobil/tablet kart sırası V2 geçişi: yeni varsayılan (Canlı · Film & Dizi ·
+    // Film · Dizi · Mina Analytics · EPG Mix). Yalnızca hiç özelleştirmemiş veya
+    // eski varsayılan sırada kalanlar güncellenir; TV kendi düzenini kullanır.
+    if (!(p.getBool(_kHomeCardOrderV2Migrated) ?? false)) {
+      if (layoutMode.value != AppLayoutMode.tv) {
+        final normalizedStored = homeCategoryCardOrder
+            .map((e) => e.storageKey)
+            .toList(growable: false);
+        final isUncustomized = storedCardOrderKeys == null ||
+            storedCardOrderKeys.isEmpty ||
+            listEquals(normalizedStored, _legacyMobileCardOrderKeys);
+        if (isUncustomized) {
+          homeCategoryCardOrder.assignAll(HomeCategoryCardId.defaultOrder);
+          await p.setStringList(
+            _kHomeCategoryCardOrder,
+            HomeCategoryCardId.defaultOrder.map((e) => e.storageKey).toList(),
+          );
+        }
+      }
+      await p.setBool(_kHomeCardOrderV2Migrated, true);
+    }
 
     final hiddenRaw = p.getStringList(_kHomeCategoryCardHidden);
     if (hiddenRaw != null && hiddenRaw.isNotEmpty) {
@@ -1187,6 +1530,9 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
 
     await _applyTvAmoledThemeDefaultIfNeeded(p);
 
+    await _applyTvLiteThemeDefaultIfNeeded(p);
+    await _applyTvThemeSanitizeIfNeeded(p);
+
     // TV ana ekran kart düzenine «Film & Dizi» kartı eklemesini bir kerelik
     // migration olarak uygula (zaten varsa veya gizliyse normalize edilir).
     await _applyTvHomeFilmDiziCardMigrationIfNeeded(p);
@@ -1195,6 +1541,8 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
     // Canlı·Film·Dizi·Favoriler·EPG Mix, Günün Sözü + IMDb filmleri + Sıradaki
     // Maçlar açık. V1/V2 sonrası çalışır ve onların değerlerini geçersiz kılar.
     await _applyTvHomeLayoutV3IfNeeded(p);
+
+    await _applyTvShellHomeMigrationV4IfNeeded(p);
 
     _loaded = true;
     rescheduleSleepTimer();
@@ -1288,8 +1636,8 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
     _ensureHiddenSetsCacheFresh();
     final cached = _xtreamHiddenLiveCache[key];
     if (cached != null) return cached;
-    final set = Set<int>.from(
-        _xtreamHiddenBySource[key]?['live'] ?? const <int>[]);
+    final set =
+        Set<int>.from(_xtreamHiddenBySource[key]?['live'] ?? const <int>[]);
     _xtreamHiddenLiveCache[key] = set;
     return set;
   }
@@ -1299,8 +1647,8 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
     _ensureHiddenSetsCacheFresh();
     final cached = _xtreamHiddenVodCache[key];
     if (cached != null) return cached;
-    final set = Set<int>.from(
-        _xtreamHiddenBySource[key]?['vod'] ?? const <int>[]);
+    final set =
+        Set<int>.from(_xtreamHiddenBySource[key]?['vod'] ?? const <int>[]);
     _xtreamHiddenVodCache[key] = set;
     return set;
   }
@@ -1310,8 +1658,8 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
     _ensureHiddenSetsCacheFresh();
     final cached = _xtreamHiddenSeriesCache[key];
     if (cached != null) return cached;
-    final set = Set<int>.from(
-        _xtreamHiddenBySource[key]?['series'] ?? const <int>[]);
+    final set =
+        Set<int>.from(_xtreamHiddenBySource[key]?['series'] ?? const <int>[]);
     _xtreamHiddenSeriesCache[key] = set;
     return set;
   }
@@ -1321,8 +1669,8 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
     _ensureHiddenSetsCacheFresh();
     final cached = _m3uHiddenLiveCache[key];
     if (cached != null) return cached;
-    final set = Set<String>.from(
-        _m3uHiddenBySource[key]?['live'] ?? const <String>[]);
+    final set =
+        Set<String>.from(_m3uHiddenBySource[key]?['live'] ?? const <String>[]);
     _m3uHiddenLiveCache[key] = set;
     return set;
   }
@@ -1332,8 +1680,8 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
     _ensureHiddenSetsCacheFresh();
     final cached = _m3uHiddenVodCache[key];
     if (cached != null) return cached;
-    final set = Set<String>.from(
-        _m3uHiddenBySource[key]?['vod'] ?? const <String>[]);
+    final set =
+        Set<String>.from(_m3uHiddenBySource[key]?['vod'] ?? const <String>[]);
     _m3uHiddenVodCache[key] = set;
     return set;
   }
@@ -1360,7 +1708,7 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
       'vod': (vod.toList()..sort()),
       'series': (series.toList()..sort()),
     };
-    final p = await SharedPreferences.getInstance();
+    final p = await _getPrefs();
     await p.setString(_kXtreamHidden, json.encode(_xtreamHiddenBySource));
     xtreamHideRevision.value++;
   }
@@ -1376,7 +1724,7 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
       'vod': (vod.toList()..sort()),
       'series': (series.toList()..sort()),
     };
-    final p = await SharedPreferences.getInstance();
+    final p = await _getPrefs();
     await p.setString(_kM3uHidden, json.encode(_m3uHiddenBySource));
     xtreamHideRevision.value++;
   }
@@ -1430,7 +1778,7 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
         };
     existing[type] = List<String>.from(order);
     _categoryOrderBySource[key] = existing;
-    final p = await SharedPreferences.getInstance();
+    final p = await _getPrefs();
     await p.setString(_kCategoryOrder, json.encode(_categoryOrderBySource));
     xtreamHideRevision.value++;
   }
@@ -1464,7 +1812,8 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
 
   Set<int> liveChannelHiddenIds(String key) {
     playlistLayoutRevision.value;
-    return Set<int>.from(_intListFromJson(_liveChannelLayoutBySource[key]?['hidden']));
+    return Set<int>.from(
+        _intListFromJson(_liveChannelLayoutBySource[key]?['hidden']));
   }
 
   Map<int, List<int>> liveChannelOrderByCategory(String key) {
@@ -1476,10 +1825,8 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
       final id = int.tryParse(k.toString());
       if (id == null) return;
       if (v is List) {
-        out[id] = v
-            .map((e) => int.tryParse(e.toString()))
-            .whereType<int>()
-            .toList();
+        out[id] =
+            v.map((e) => int.tryParse(e.toString())).whereType<int>().toList();
       }
     });
     return out;
@@ -1498,7 +1845,7 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
       'hidden': (hiddenIds.toList()..sort()),
       'order': orderJson,
     };
-    final p = await SharedPreferences.getInstance();
+    final p = await _getPrefs();
     await p.setString(
         _kLiveChannelLayout, json.encode(_liveChannelLayoutBySource));
     playlistLayoutRevision.value++;
@@ -1512,7 +1859,7 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
   }
 
   Future<void> _persistSleepTimer() async {
-    final p = await SharedPreferences.getInstance();
+    final p = await _getPrefs();
     final v = sleepTimerEndMs.value;
     if (v == null || v <= 0) {
       await p.remove(_kSleepEnd);
@@ -1627,22 +1974,22 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
     return dr * dr + dg * dg + db * db;
   }
 
-  String get appFontFamilyLabel => appFontFamilyPreviewFor(appFontFamilyKey.value);
+  String get appFontFamilyLabel =>
+      appFontFamilyPreviewFor(appFontFamilyKey.value);
 
   Future<void> setSubtitleFontPt(double pt) async {
     final v = pt.clamp(10.0, 40.0);
     subtitleFontPt.value = v;
-    final p = await SharedPreferences.getInstance();
+    final p = await _getPrefs();
     await p.setDouble(_kSubtitleFontPt, v);
     onSubtitleFontPtApplied?.call();
   }
 
   Future<void> setSubtitleFontFamilyKey(String key) async {
-    final next = isValidSubtitleFontFamilyKey(key)
-        ? key
-        : kDefaultSubtitleFontFamilyKey;
+    final next =
+        isValidSubtitleFontFamilyKey(key) ? key : kDefaultSubtitleFontFamilyKey;
     subtitleFontFamilyKey.value = next;
-    final p = await SharedPreferences.getInstance();
+    final p = await _getPrefs();
     await p.setString(_kSubtitleFontFamily, next);
     onSubtitleFontPtApplied?.call();
   }
@@ -1651,7 +1998,7 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
     final next =
         isValidSubtitleColorKey(key) ? key : kSubtitleColorOptions.first.key;
     subtitleColorKey.value = next;
-    final p = await SharedPreferences.getInstance();
+    final p = await _getPrefs();
     await p.setString(_kSubtitleColorKey, next);
     await p.setInt(
       _kSubtitleColorArgb,
@@ -1662,7 +2009,7 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
 
   Future<void> setSubtitleOutlineEnabled(bool enabled) async {
     subtitleOutlineEnabled.value = enabled;
-    final p = await SharedPreferences.getInstance();
+    final p = await _getPrefs();
     await p.setBool(_kSubtitleOutline, enabled);
     onSubtitleFontPtApplied?.call();
   }
@@ -1670,19 +2017,29 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
   Future<void> setAppFontFamilyKey(String key) async {
     final next = isValidAppFontFamilyKey(key) ? key : kDefaultAppFontFamilyKey;
     appFontFamilyKey.value = next;
-    final p = await SharedPreferences.getInstance();
+    final p = await _getPrefs();
     await p.setString(_kAppFontFamily, next);
   }
 
   Future<void> setVodPreferredSubtitleToken(String? token) async {
     final normalized = (token ?? '').trim().toLowerCase();
     vodPreferredSubtitleToken.value = normalized;
-    final p = await SharedPreferences.getInstance();
+    final p = await _getPrefs();
     if (normalized.isEmpty) {
       await p.remove(_kVodPreferredSubtitleToken);
     } else {
       await p.setString(_kVodPreferredSubtitleToken, normalized);
     }
+  }
+
+  Future<void> setVodInfoEngine(String value) async {
+    final valid = value == vodInfoEngineAuto ||
+        value == vodInfoEngineXtreamOnly ||
+        value == vodInfoEngineTmdbOmdbOnly;
+    if (!valid) return;
+    vodInfoEngine.value = value;
+    final p = await _getPrefs();
+    await p.setString(_kVodInfoEngine, value);
   }
 
   String get adaptiveStreamQualityCeilingSubtitle {
@@ -1702,7 +2059,7 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
     AdaptiveStreamQualityCeiling value,
   ) async {
     adaptiveStreamQualityCeiling.value = value;
-    final p = await SharedPreferences.getInstance();
+    final p = await _getPrefs();
     await p.setString(_kAdaptiveQualityCeiling, value.storageValue);
   }
 
@@ -1736,7 +2093,7 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
 
   Future<void> setCatchUpUrlPreset(CatchUpUrlPreset value) async {
     catchUpUrlPreset.value = value;
-    final p = await SharedPreferences.getInstance();
+    final p = await _getPrefs();
     if (value == CatchUpUrlPreset.off) {
       await p.remove(_kCatchUpPreset);
     } else {
@@ -1746,7 +2103,7 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
 
   Future<void> setCatchUpCustomTemplate(String value) async {
     catchUpCustomTemplate.value = value;
-    final p = await SharedPreferences.getInstance();
+    final p = await _getPrefs();
     final t = value.trim();
     if (t.isEmpty) {
       await p.remove(_kCatchUpCustomTemplate);
@@ -1971,6 +2328,15 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
         'it' => 'common.lang.it'.tr,
         'pt' => 'common.lang.pt'.tr,
         'id' => 'common.lang.id'.tr,
+        'de' => 'common.lang.de'.tr,
+        'fa' => 'common.lang.fa'.tr,
+        'pl' => 'common.lang.pl'.tr,
+        'nl' => 'common.lang.nl'.tr,
+        'uk' => 'common.lang.uk'.tr,
+        'vi' => 'common.lang.vi'.tr,
+        'el' => 'common.lang.el'.tr,
+        'ro' => 'common.lang.ro'.tr,
+        'sq' => 'common.lang.sq'.tr,
         _ => 'common.lang.en'.tr,
       };
 
@@ -1990,6 +2356,7 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
     if (c.isNotEmpty) return c;
     return IptvOrgEpg.defaultWorldGuideUrl;
   }
+
   /// M3U XMLTV indirmesi için URL listesi: özel tek adres veya varsayılan iptv-org adayları.
   List<String> get m3uEpgFetchUrls {
     final explicit = xmltvUrl.value.trim();
@@ -2012,7 +2379,8 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
   }
 
   /// [GlobalEpgService] için ağ indirmesi; TTL [epgDiskCacheTtlMs]. Veri yoksa her zaman true.
-  bool shouldRefreshGlobalEpgFromNetwork({required bool hasPersistedSqliteData}) {
+  bool shouldRefreshGlobalEpgFromNetwork(
+      {required bool hasPersistedSqliteData}) {
     if (!hasPersistedSqliteData) return true;
     final last = lastGlobalEpgFetchMs.value;
     if (last <= 0) {
@@ -2026,14 +2394,14 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
   Future<void> markM3uEpgFetchedOk() async {
     final now = DateTime.now().millisecondsSinceEpoch;
     lastM3uEpgFetchMs.value = now;
-    final p = await SharedPreferences.getInstance();
+    final p = await _getPrefs();
     await p.setInt(_kLastM3uEpgFetchMs, now);
   }
 
   Future<void> markGlobalEpgFetchedOk() async {
     final now = DateTime.now().millisecondsSinceEpoch;
     lastGlobalEpgFetchMs.value = now;
-    final p = await SharedPreferences.getInstance();
+    final p = await _getPrefs();
     await p.setInt(_kLastGlobalEpgFetchMs, now);
   }
 
@@ -2045,65 +2413,107 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
 
   Future<void> setBackgroundPlayback(bool v) async {
     backgroundPlayback.value = v;
-    final p = await SharedPreferences.getInstance();
+    final p = await _getPrefs();
     await p.setBool(_kBg, v);
   }
 
+  /// Güvenli (yalnızca desteklenen) görüntü sığdırma modu — geçersiz/eski
+  /// index'lerde [BoxFit.fill]'e döner.
+  static BoxFit _boxFitFromIndex(int? index) {
+    const supported = [BoxFit.fill, BoxFit.contain, BoxFit.cover];
+    if (index == null) return BoxFit.fill;
+    for (final f in supported) {
+      if (f.index == index) return f;
+    }
+    return BoxFit.fill;
+  }
+
+  /// Görüntü sığdırma modunu **tür bazında** kalıcı yaz. [live] = canlı yayın,
+  /// aksi halde VOD (film/dizi). Oynatıcı bir sonraki açılışta ilgili türde bu
+  /// modu uygular.
+  Future<void> setVideoFitForKind(BoxFit fit, {required bool live}) async {
+    if (live) {
+      if (liveVideoFit.value == fit) return;
+      liveVideoFit.value = fit;
+    } else {
+      if (vodVideoFit.value == fit) return;
+      vodVideoFit.value = fit;
+    }
+    final p = await _getPrefs();
+    await p.setInt(live ? _kVideoFitLive : _kVideoFitVod, fit.index);
+  }
+
+  /// Geçerli içerik türü için hatırlanan görüntü sığdırma modu.
+  BoxFit videoFitForKind({required bool live}) =>
+      live ? liveVideoFit.value : vodVideoFit.value;
+
   Future<void> setMiniPlayerOnHome(bool v) async {
     miniPlayerOnHome.value = v;
-    final p = await SharedPreferences.getInstance();
+    final p = await _getPrefs();
     await p.setBool(_kMiniPlayerHome, v);
   }
 
   Future<void> setLanguageCode(String code) async {
     languageCode.value = code;
-    final p = await SharedPreferences.getInstance();
+    final p = await _getPrefs();
     await p.setString(_kLang, code);
     Get.updateLocale(materialLocaleFromLanguageCode(code));
   }
 
   Future<void> setXmltvUrl(String url) async {
     xmltvUrl.value = url.trim();
-    final p = await SharedPreferences.getInstance();
+    final p = await _getPrefs();
     await p.setString(_kXmltv, xmltvUrl.value);
   }
 
   Future<void> setLiveBufferSeconds(int sec) async {
     liveBufferSeconds.value = sec.clamp(0, 120);
-    final p = await SharedPreferences.getInstance();
+    final p = await _getPrefs();
     await p.setInt(_kBuffer, liveBufferSeconds.value);
   }
 
-  /// Yerel EPG anlık görüntüsü için maksimum önbellek yaşı (1–4 gün).
+  /// Kullanıcı sıklığı **0** seçtiyse otomatik EPG yenileme kapalı: rehber
+  /// yalnızca bir kez (veri yokken) indirilir, sonra asla otomatik yenilenmez.
+  bool get epgAutoRefreshDisabled => epgDiskCacheRefreshDays.value <= 0;
+
+  /// Yerel EPG anlık görüntüsü için maksimum önbellek yaşı.
+  ///
+  /// 0 (otomatik yenileme kapalı) → pratikçe sonsuz TTL döner; böylece mevcut
+  /// anlık görüntü her zaman "taze" sayılır ve yeniden indirme tetiklenmez.
+  /// Veri hiç yoksa çağıran taraflar yine bir kez indirir (TTL'den bağımsız).
   int get epgDiskCacheTtlMs {
-    final d = epgDiskCacheRefreshDays.value.clamp(1, 4);
+    if (epgAutoRefreshDisabled) {
+      // ~10 yıl: yaş kontrolleri (`age > ttl`) hiçbir zaman tetiklenmez.
+      return const Duration(days: 3650).inMilliseconds;
+    }
+    final d = epgDiskCacheRefreshDays.value.clamp(1, 5);
     return Duration(days: d).inMilliseconds;
   }
 
   Future<void> setEpgDiskCacheRefreshDays(int days) async {
-    final d = days.clamp(1, 5);
+    final d = days.clamp(0, 5);
     epgDiskCacheRefreshDays.value = d;
-    final p = await SharedPreferences.getInstance();
+    final p = await _getPrefs();
     await p.setInt(_kEpgDiskCacheRefreshDays, d);
   }
 
   Future<void> setXtreamEpgSourceMode(XtreamEpgSourceMode mode) async {
     if (xtreamEpgSourceMode.value == mode) return;
     xtreamEpgSourceMode.value = mode;
-    final p = await SharedPreferences.getInstance();
+    final p = await _getPrefs();
     await p.setString(_kXtreamEpgSourceMode, mode.storageKey);
   }
 
   Future<void> setEpgTimeFormat24h(bool use24Hour) async {
     epgTimeFormat24h.value = use24Hour;
-    final p = await SharedPreferences.getInstance();
+    final p = await _getPrefs();
     await p.setBool(_kEpgTimeFormat24h, use24Hour);
   }
 
   Future<void> setEpgTimezoneOffsetMinutes(int minutes) async {
     final m = minutes.clamp(-720, 840);
     epgTimezoneOffsetMinutes.value = m;
-    final p = await SharedPreferences.getInstance();
+    final p = await _getPrefs();
     await p.setInt(_kEpgTimezoneOffsetMinutes, m);
   }
 
@@ -2113,14 +2523,13 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
   Future<void> setEpgEnabled(bool enabled) async {
     if (epgEnabled.value == enabled) return;
     epgEnabled.value = enabled;
-    final p = await SharedPreferences.getInstance();
+    final p = await _getPrefs();
     await p.setBool(_kEpgEnabled, enabled);
   }
 
-  String get epgTimeFormatSubtitle =>
-      epgTimeFormat24h.value
-          ? 'settings.epg.timeFormat24'.tr
-          : 'settings.epg.timeFormat12'.tr;
+  String get epgTimeFormatSubtitle => epgTimeFormat24h.value
+      ? 'settings.epg.timeFormat24'.tr
+      : 'settings.epg.timeFormat12'.tr;
 
   String get epgTimezoneOffsetSubtitle {
     final m = epgTimezoneOffsetMinutes.value;
@@ -2133,16 +2542,23 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
   }
 
   Future<void> setThemeLabel(String label) async {
-    themeLabel.value = label;
-    final p = await SharedPreferences.getInstance();
-    await p.setString(_kTheme, label);
+    final resolved = layoutMode.value == AppLayoutMode.tv &&
+            !GlassThemeLabels.isThemeAllowedOnTv(label)
+        ? GlassThemeLabels.koyuCam
+        : label;
+    themeLabel.value = resolved;
+    final p = await _getPrefs();
+    await p.setString(_kTheme, resolved);
   }
 
   Future<void> setLayoutMode(AppLayoutMode mode) async {
     layoutMode.value = mode;
+    // TV düzenine geçişte/çıkışta image cache tavanını yeniden uygula
+    // (TV daha düşük tavan alır).
+    AppPerformance.applyImageCacheLimitsFor(this);
     _syncLayoutTextScale();
     await _applyLayoutMode(mode);
-    final p = await SharedPreferences.getInstance();
+    final p = await _getPrefs();
     await p.setString(_kLayout, mode.name);
     // Layout TV'ye ilk geçişte ana ekran şerit varsayılanlarını uygula
     // (mobil/tablet → TV geçişinde de tek seferlik zorlama).
@@ -2150,16 +2566,23 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
     await _applyTvHomeLightDefaultsIfNeeded(p);
     await _applyTvHomeRichDefaultsIfNeeded(p);
     await _applyTvAmoledThemeDefaultIfNeeded(p);
+    await _applyTvLiteThemeDefaultIfNeeded(p);
+    await _applyTvThemeSanitizeIfNeeded(p);
     await _applyTvHomeFilmDiziCardMigrationIfNeeded(p);
     await _applyTvHomeLayoutV3IfNeeded(p);
+    await _applyTvShellHomeMigrationV4IfNeeded(p);
+    if (mode == AppLayoutMode.tv &&
+        homeLayoutStyle.value == HomeLayoutStyle.showcase) {
+      homeLayoutStyle.value = HomeLayoutStyle.standard;
+      await p.setString(_kHomeLayoutStyle, HomeLayoutStyle.standard.storageKey);
+    }
   }
 
   /// TV ana ekranı için **bir kerelik** varsayılan şerit kümesi:
   /// yalnızca AI Önerileri + Sıradaki Maçlar açık; Mixed Live TV
   /// kapalı. Bayrak yazıldıktan sonra çalışmaz; kullanıcı manuel değişiklik
   /// yaptıysa o değer korunur. Mobil/tablet layout'unda hiçbir şey yapmaz.
-  Future<void> _applyTvHomeStripsDefaultsIfNeeded(
-      SharedPreferences p) async {
+  Future<void> _applyTvHomeStripsDefaultsIfNeeded(SharedPreferences p) async {
     final already = p.getBool(_kTvHomeStripsDefaultV1) ?? false;
     if (already) return;
     if (layoutMode.value != AppLayoutMode.tv) return;
@@ -2174,8 +2597,15 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
 
   /// Yerleşim moduna göre ilk kurulum / fabrika sıfırı tema etiketi.
   static String _defaultThemeLabelForLayout(AppLayoutMode mode) {
-    if (mode == AppLayoutMode.tv) return GlassThemeLabels.amoledBlack;
     return GlassThemeLabels.koyuCam;
+  }
+
+  /// TV düzeninde yasaklı tema kayıtlıysa «Koyu Cam»'a çek.
+  Future<void> _coerceThemeForTvLayoutIfNeeded(SharedPreferences p) async {
+    if (layoutMode.value != AppLayoutMode.tv) return;
+    if (GlassThemeLabels.isThemeAllowedOnTv(themeLabel.value)) return;
+    themeLabel.value = GlassThemeLabels.koyuCam;
+    await p.setString(_kTheme, GlassThemeLabels.koyuCam);
   }
 
   /// TV: eski varsayılan «Flat Black» → «Amoled Black» (bir kerelik).
@@ -2188,6 +2618,23 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
       await p.setString(_kTheme, GlassThemeLabels.amoledBlack);
     }
     await p.setBool(_kTvAmoledThemeDefaultV1, true);
+  }
+
+  /// TV: artık «TV Lite» zorlanmaz (bayrak yalnızca eski migration'ı atlar).
+  Future<void> _applyTvLiteThemeDefaultIfNeeded(SharedPreferences p) async {
+    final already = p.getBool(_kTvLiteThemeDefaultV2) ?? false;
+    if (already) return;
+    if (layoutMode.value != AppLayoutMode.tv) return;
+    await p.setBool(_kTvLiteThemeDefaultV2, true);
+  }
+
+  /// TV: Varsayılan / Glassmorphism / Mina Glass / Fly UI → Koyu Cam.
+  Future<void> _applyTvThemeSanitizeIfNeeded(SharedPreferences p) async {
+    await _coerceThemeForTvLayoutIfNeeded(p);
+    final already = p.getBool(_kTvThemeSanitizeV3) ?? false;
+    if (already) return;
+    if (layoutMode.value != AppLayoutMode.tv) return;
+    await p.setBool(_kTvThemeSanitizeV3, true);
   }
 
   /// TV performans varsayılanı (**bir kerelik**, V2): TV layout'unda ana
@@ -2322,15 +2769,139 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
     await p.setBool(_kTvHomeLayoutV3, true);
   }
 
+  /// Android TV / TV layout: «Varsayılan düzen» (classic) kullanıcılarını bir
+  /// kez «TV modu» (shell) kabuğuna taşır. Android TV kutusunda kayıtlı
+  /// layout tablet/mobile ise TV layout'una da çekilir.
+  Future<void> _applyTvShellHomeMigrationV4IfNeeded(SharedPreferences p) async {
+    final already = p.getBool(_kTvShellHomeMigrationV4) ?? false;
+    if (already) return;
+
+    final isTvDevice = await nativeAndroidTv();
+    if (!isTvDevice && layoutMode.value != AppLayoutMode.tv) {
+      return;
+    }
+
+    if (isTvDevice && layoutMode.value != AppLayoutMode.tv) {
+      layoutMode.value = AppLayoutMode.tv;
+      await p.setString(_kLayout, AppLayoutMode.tv.name);
+      await _applyLayoutMode(AppLayoutMode.tv);
+      _syncLayoutTextScale();
+      AppPerformance.applyImageCacheLimitsFor(this);
+      await _applyTvHomeStripsDefaultsIfNeeded(p);
+      await _applyTvHomeLightDefaultsIfNeeded(p);
+      await _applyTvHomeRichDefaultsIfNeeded(p);
+      await _applyTvAmoledThemeDefaultIfNeeded(p);
+      await _applyTvLiteThemeDefaultIfNeeded(p);
+      await _applyTvThemeSanitizeIfNeeded(p);
+      await _applyTvHomeFilmDiziCardMigrationIfNeeded(p);
+      await _applyTvHomeLayoutV3IfNeeded(p);
+    }
+
+    if (tvHomeLayoutMode.value == TvHomeLayoutMode.classic) {
+      tvHomeLayoutMode.value = TvHomeLayoutMode.shell;
+      await p.setString(_kTvHomeLayoutMode, TvHomeLayoutMode.shell.storageKey);
+    }
+
+    await p.setBool(_kTvShellHomeMigrationV4, true);
+  }
+
   Future<void> setReduceBlur(bool v) async {
     reduceBlur.value = v;
-    final p = await SharedPreferences.getInstance();
+    final p = await _getPrefs();
     await p.setBool(_kReduceBlur, v);
+  }
+
+  Future<void> setTvLite(bool v) async {
+    tvLite.value = v;
+    final p = await _getPrefs();
+    await p.setBool(_kTvLite, v);
+  }
+
+  /// Zayıf donanımlı cihazlarda (Android: RAM &lt; ~2.5 GiB veya ≤4 çekirdek —
+  /// [AndroidPlaybackSocHints.weakMpvDevice]) TV Lite'ı bir kez otomatik açar.
+  ///
+  /// [AndroidPlaybackSocHints.ensureLoaded] **sonrası** ([main]) çağrılmalıdır;
+  /// SoC ipuçları yüklenmeden önce zayıf cihaz tespiti güvenilir değildir
+  /// (`load()` içinde toggle bu yüzden zorlanamaz). Bir kez zorlandıktan sonra
+  /// kullanıcı dilerse kapatabilir; tercihi korunur. `_kTvLiteTvForced` aynı
+  /// "otomatik bir kez zorlandı" bayrağını TV düzeni ile paylaşır.
+  /// Bu cihazın donanım kimliği (model + TV/mobil + güç segmenti). Aynı fiziksel
+  /// cihaz için kalıcı; cihaz değişince değişir.
+  String _currentHardwareDeviceKey() {
+    final model = AndroidPlaybackSocHints.buildModel ?? 'unknown';
+    final form = AndroidPlaybackSocHints.androidTv ? 'tv' : 'mob';
+    final seg = AndroidPlaybackSocHints.playbackSegment.name;
+    return '$model|$form|$seg';
+  }
+
+  /// Google yedeği başka bir cihazda geri yüklendiğinde cihaza özel donanım
+  /// kararlarımızın (TV Lite, MPEG-TS zorlaması) eski cihazın değerleriyle
+  /// ezilmesini engeller. Yedeklenen "bir kez zorlandı" bayraklarını cihaz
+  /// kimliğine bağlar:
+  ///   • Kimlik aynıysa → kullanıcının bu cihazda yaptığı seçimler korunur.
+  ///   • Kimlik farklıysa (yedek geri yüklendi) → zorlama bayrakları temizlenir
+  ///     ki `maybeForce*` metodları kararı bu donanım için yeniden uygulasın.
+  /// Diğer tüm ayarlar yedekten normal şekilde geri yüklenmeye devam eder.
+  ///
+  /// [AndroidPlaybackSocHints.ensureLoaded] çağrılmış olmalı; `maybeForce*`
+  /// metodlarından ÖNCE çağrılmalı.
+  Future<void> reconcileDeviceLocalHardwareSettings() async {
+    if (!Platform.isAndroid) return;
+    final p = await _getPrefs();
+    final current = _currentHardwareDeviceKey();
+    final stored = p.getString(_kHardwareSettingsDeviceKey);
+    if (stored == current) return;
+    // Farklı cihaz (büyük olasılıkla yedek geri yüklendi): cihaza özel
+    // "zorlandı" bayraklarını sıfırla; bu donanım için yeniden değerlendirilsin.
+    await p.remove(_kTvLiteTvForced);
+    await p.remove(_kLiveStreamFormatTsForcedLowEnd);
+    // TV Lite (sade grafik) cihaza özel bir karardır: TV'de varsayılan AÇIK,
+    // telefon/tablette varsayılan KAPALI. Yedek başka cihazdan geri
+    // yüklendiğinde (örn. TV yedeği telefona) eski cihazın TV Lite tercihi
+    // taşınmamalı — bu cihaz tipinin varsayılanına döndür. Telefon zayıf
+    // donanımsa `maybeForceTvLiteForWeakHardware` ardından yeniden açar.
+    final bool tvLiteDefaultForDevice = layoutMode.value == AppLayoutMode.tv;
+    tvLite.value = tvLiteDefaultForDevice;
+    await p.setBool(_kTvLite, tvLiteDefaultForDevice);
+    await p.setString(_kHardwareSettingsDeviceKey, current);
+  }
+
+  Future<void> maybeForceTvLiteForWeakHardware() async {
+    if (!Platform.isAndroid) return;
+    if (!AndroidPlaybackSocHints.weakMpvDevice) return;
+    final p = await _getPrefs();
+    if (p.getBool(_kTvLiteTvForced) ?? false) return;
+    tvLite.value = true;
+    await p.setBool(_kTvLite, true);
+    await p.setBool(_kTvLiteTvForced, true);
+  }
+
+  /// TV box veya düşük donanımlı cihazda canlı yayın biçimini bir kez otomatik
+  /// **MPEG-TS**'e geçirir. Bu cihazlarda HLS (m3u8) ABR/segment yükü sık
+  /// takılmaya yol açtığından, hâlâ HLS kullanan kullanıcılar da TS'e zorlanır.
+  /// Tek seferlik migrasyon; sonradan kullanıcı tercihine dokunulmaz.
+  ///
+  /// [AndroidPlaybackSocHints.ensureLoaded] çağrılmış olmalı.
+  Future<void> maybeForceTsLiveFormatForWeakHardware() async {
+    if (!Platform.isAndroid) return;
+    final lowEndOrTvBox = AndroidPlaybackSocHints.weakMpvDevice ||
+        AndroidPlaybackSocHints.playbackChallengedTv ||
+        AndroidPlaybackSocHints.androidTv ||
+        AndroidPlaybackSocHints.playbackSegment == DevicePlaybackSegment.low;
+    if (!lowEndOrTvBox) return;
+    final p = await _getPrefs();
+    if (p.getBool(_kLiveStreamFormatTsForcedLowEnd) ?? false) return;
+    // Zaten TS ise yalnızca bayrağı işaretle (idempotent).
+    if (liveStreamFormat.value != liveStreamFormatTs) {
+      liveStreamFormat.value = liveStreamFormatTs;
+      await p.setString(_kLiveStreamFormat, liveStreamFormatTs);
+    }
+    await p.setBool(_kLiveStreamFormatTsForcedLowEnd, true);
   }
 
   Future<void> setLaunchOnBoot(bool v) async {
     launchOnBoot.value = v;
-    final p = await SharedPreferences.getInstance();
+    final p = await _getPrefs();
     await p.setBool(_kLaunchOnBoot, v);
   }
 
@@ -2339,8 +2910,8 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
   /// çizilir.
   Future<void> setLowEndDeviceMode(bool v) async {
     lowEndDeviceMode.value = v;
-    AppPerformance.applyImageCacheLimits(v);
-    final p = await SharedPreferences.getInstance();
+    AppPerformance.applyImageCacheLimitsFor(this);
+    final p = await _getPrefs();
     await p.setBool(_kLowEndDeviceMode, v);
   }
 
@@ -2348,20 +2919,30 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
   /// işaretlenir; bir daha gösterilmez.
   Future<void> setLowEndSuggestionDismissed(bool v) async {
     lowEndSuggestionDismissed.value = v;
-    final p = await SharedPreferences.getInstance();
+    final p = await _getPrefs();
     await p.setBool(_kLowEndSuggestDismissed, v);
   }
 
   Future<void> setLastLiveCategoryId(int? id) async {
     lastLiveCategoryId.value = id;
-    final p = await SharedPreferences.getInstance();
+    final p = await _getPrefs();
     await p.setInt(_kLastLiveCat, id ?? -1);
   }
 
   Future<void> setLastLiveChannelId(int id) async {
+    final current = lastLiveChannelId.value;
+    if (current != null && current != id) {
+      previousLiveChannelId.value = current;
+    }
     lastLiveChannelId.value = id;
-    final p = await SharedPreferences.getInstance();
+    final time = DateTime.now().millisecondsSinceEpoch;
+    lastLiveChannelTime.value = time;
+    final p = await _getPrefs();
     await p.setInt(_kLastLiveCh, id);
+    await p.setInt(_kLastLiveChTime, time);
+    if (previousLiveChannelId.value != null) {
+      await p.setInt(_kPrevLiveCh, previousLiveChannelId.value!);
+    }
   }
 
   Future<void> setLastFilmsSelection({
@@ -2369,7 +2950,7 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
     int? vodId,
   }) async {
     lastFilmsCategoryKey.value = categoryKey;
-    final p = await SharedPreferences.getInstance();
+    final p = await _getPrefs();
     await p.setInt(_kLastFilmsCat, categoryKey);
     if (vodId != null && vodId > 0) {
       lastFilmsVodId.value = vodId;
@@ -2382,7 +2963,7 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
     int? seriesId,
   }) async {
     lastSeriesCategoryKey.value = categoryKey;
-    final p = await SharedPreferences.getInstance();
+    final p = await _getPrefs();
     await p.setInt(_kLastSeriesCat, categoryKey);
     if (seriesId != null && seriesId > 0) {
       lastSeriesId.value = seriesId;
@@ -2396,29 +2977,49 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
   }) async {
     lastFavoritesCategoryKey.value = categoryKey;
     lastFavoritesSelection.value = selection;
-    final p = await SharedPreferences.getInstance();
+    final p = await _getPrefs();
     await p.setInt(_kLastFavCat, categoryKey);
     await p.setString(_kLastFavSel, selection);
   }
 
-  Future<void> setAutoRefreshDays(int days) async {
-    autoRefreshDays.value = days;
-    final p = await SharedPreferences.getInstance();
-    await p.setInt(_kAutoRefresh, days);
+  Future<void> setAutoRefreshHours(int hours) async {
+    autoRefreshHours.value = hours;
+    final p = await _getPrefs();
+    await p.setInt(_kAutoRefreshHours, hours);
+  }
+
+  /// İçerik yenileme aralığının yerelleştirilmiş özeti (Ayarlar tile alt yazısı).
+  String get autoRefreshSummary {
+    switch (autoRefreshHours.value) {
+      case 0:
+        return 'settings.dialog.refresh.autoOff'.tr;
+      case 2:
+        return 'settings.dialog.refresh.every2h'.tr;
+      case 24:
+        return 'settings.dialog.refresh.every1d'.tr;
+      case 48:
+        return 'settings.dialog.refresh.every2d'.tr;
+      case 72:
+        return 'settings.dialog.refresh.every3d'.tr;
+      case 168:
+        return 'settings.dialog.refresh.every1w'.tr;
+      default:
+        return 'settings.dialog.refresh.autoOff'.tr;
+    }
   }
 
   /// Google buluta otomatik yedekleme aralığı (0: kapalı, 1: günlük, 7: haftalık).
   Future<void> setCloudAutoBackupDays(int days) async {
     final v = (days == 1 || days == 7) ? days : 0;
     cloudAutoBackupDays.value = v;
-    final p = await SharedPreferences.getInstance();
+    final p = await _getPrefs();
     await p.setInt(_kCloudAutoBackupDays, v);
   }
 
   Future<void> updateLastCloudBackupTime() async {
     final now = DateTime.now().millisecondsSinceEpoch;
     lastCloudBackupTime.value = now;
-    final p = await SharedPreferences.getInstance();
+    final p = await _getPrefs();
     await p.setInt(_kLastCloudBackup, now);
   }
 
@@ -2426,7 +3027,7 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
   /// yedek olmadığını yansıtır).
   Future<void> resetLastCloudBackupTime() async {
     lastCloudBackupTime.value = 0;
-    final p = await SharedPreferences.getInstance();
+    final p = await _getPrefs();
     await p.remove(_kLastCloudBackup);
   }
 
@@ -2441,7 +3042,7 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
 
   Future<void> setStreamPreviewEnabled(bool v) async {
     streamPreviewEnabled.value = v;
-    final p = await SharedPreferences.getInstance();
+    final p = await _getPrefs();
     await p.setBool(_kStreamPreview, v);
   }
 
@@ -2452,7 +3053,7 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
   Future<void> setIgnoreSslCertificate(bool v) async {
     ignoreSslCertificate.value = v;
     _applyHttpSslPolicy();
-    final p = await SharedPreferences.getInstance();
+    final p = await _getPrefs();
     await p.setBool(_kIgnoreSsl, v);
   }
 
@@ -2466,14 +3067,56 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
 
   Future<void> setUpcomingMatchesEnabled(bool v) async {
     upcomingMatchesEnabled.value = v;
-    final p = await SharedPreferences.getInstance();
+    final p = await _getPrefs();
     await p.setBool(_kUpcomingMatches, v);
   }
 
   Future<void> setMixedLiveTvEnabled(bool v) async {
     mixedLiveTvEnabled.value = v;
-    final p = await SharedPreferences.getInstance();
+    final p = await _getPrefs();
     await p.setBool(_kMixedLiveTv, v);
+  }
+
+  Future<void> setTrendFilmsEnabled(bool v) async {
+    trendFilmsEnabled.value = v;
+    final p = await _getPrefs();
+    await p.setBool(_kTrendFilms, v);
+  }
+
+  Future<void> setTrendSeriesEnabled(bool v) async {
+    trendSeriesEnabled.value = v;
+    final p = await _getPrefs();
+    await p.setBool(_kTrendSeries, v);
+  }
+
+  Future<void> setFavoriteFilmsEnabled(bool v) async {
+    favoriteFilmsEnabled.value = v;
+    final p = await _getPrefs();
+    await p.setBool(_kShowcaseFavoriteFilms, v);
+  }
+
+  Future<void> setFavoriteSeriesEnabled(bool v) async {
+    favoriteSeriesEnabled.value = v;
+    final p = await _getPrefs();
+    await p.setBool(_kShowcaseFavoriteSeries, v);
+  }
+
+  Future<void> setMixedFilmsEnabled(bool v) async {
+    mixedFilmsEnabled.value = v;
+    final p = await _getPrefs();
+    await p.setBool(_kShowcaseMixedFilms, v);
+  }
+
+  Future<void> setMixedSeriesEnabled(bool v) async {
+    mixedSeriesEnabled.value = v;
+    final p = await _getPrefs();
+    await p.setBool(_kShowcaseMixedSeries, v);
+  }
+
+  Future<void> setShowcaseMixedLiveTvEnabled(bool v) async {
+    showcaseMixedLiveTvEnabled.value = v;
+    final p = await _getPrefs();
+    await p.setBool(_kShowcaseMixedLiveTv, v);
   }
 
   /// «Günün Sözü» (haftalık kayan yazı) görünürlüğünü ayarlar. UI tarafı
@@ -2481,7 +3124,7 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
   /// ekrandaki şerit ve çevresindeki dikey boşluk tamamen kaldırılır.
   Future<void> setDailyQuoteEnabled(bool v) async {
     dailyQuoteEnabled.value = v;
-    final p = await SharedPreferences.getInstance();
+    final p = await _getPrefs();
     await p.setBool(_kDailyQuote, v);
   }
 
@@ -2490,8 +3133,24 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
   /// ana ekrandaki şerit ve çevresindeki boşluk tamamen kaldırılır.
   Future<void> setContinueWatchingEnabled(bool v) async {
     continueWatchingEnabled.value = v;
-    final p = await SharedPreferences.getInstance();
+    final p = await _getPrefs();
     await p.setBool(_kContinueWatching, v);
+  }
+
+  /// Vitrin (showcase) modunda «Son İzlenen» butonu görünürlüğünü ayarlar.
+  /// UI tarafı `showcaseLastWatchedButtonEnabled.value` üzerinden reactive okur;
+  /// kapatıldığında arama butonunun üzerindeki dairesel buton gizlenir.
+  Future<void> setShowcaseLastWatchedButtonEnabled(bool v) async {
+    showcaseLastWatchedButtonEnabled.value = v;
+    final p = await _getPrefs();
+    await p.setBool(_kShowcaseLastWatchedButton, v);
+  }
+
+  /// Vitrin modunda uygulama içi PiP (dock mini oynatıcı).
+  Future<void> setShowcaseInAppPipEnabled(bool v) async {
+    showcaseInAppPipEnabled.value = v;
+    final p = await _getPrefs();
+    await p.setBool(_kShowcaseInAppPip, v);
   }
 
   /// **Mina Wrapped & İzleme Analitiği** master switch. Kapatıldığında
@@ -2500,7 +3159,7 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
   /// dilerse içeriden ayrıca "verileri sıfırla" tuşunu kullanabilir.
   Future<void> setMinaWrappedEnabled(bool v) async {
     minaWrappedEnabled.value = v;
-    final p = await SharedPreferences.getInstance();
+    final p = await _getPrefs();
     await p.setBool(_kMinaWrappedEnabled, v);
     // Servis kayıtlıysa collection enabled bayrağını da hizala — toplama
     // anlık olarak durur/başlar.
@@ -2518,7 +3177,7 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
     final clamped = v.clamp(homeCardScaleMin, homeCardScaleMax).toDouble();
     if ((homeCardScale.value - clamped).abs() < 0.005) return;
     homeCardScale.value = clamped;
-    final p = await SharedPreferences.getInstance();
+    final p = await _getPrefs();
     await p.setDouble(_kHomeCardScale, clamped);
   }
 
@@ -2529,8 +3188,32 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
   Future<void> setHomeFilmDiziMode(HomeFilmDiziMode mode) async {
     if (homeFilmDiziMode.value == mode) return;
     homeFilmDiziMode.value = mode;
-    final p = await SharedPreferences.getInstance();
+    final p = await _getPrefs();
     await p.setString(_kHomeFilmDiziMode, mode.storageKey);
+  }
+
+  /// TV ana ekran yerleşim stilini değiştirir. `home_view.dart` `Obx` ile
+  /// `homeLayoutStyle.value` okuyarak anında vitrin/standart düzene geçer.
+  Future<void> setHomeLayoutStyle(HomeLayoutStyle style) async {
+    if (homeLayoutStyle.value == style) return;
+    homeLayoutStyle.value = style;
+    final p = await _getPrefs();
+    await p.setString(_kHomeLayoutStyle, style.storageKey);
+    // Vitrin düzeninde Film & Dizi modu her zaman «modern» olur — vitrin
+    // kart yerleşimini kendisi yönettiğinden ayar kilitlenir ve modern'e
+    // sabitlenir (kullanıcı isteği).
+    if (style == HomeLayoutStyle.showcase &&
+        homeFilmDiziMode.value != HomeFilmDiziMode.modern) {
+      await setHomeFilmDiziMode(HomeFilmDiziMode.modern);
+    }
+  }
+
+  /// TV ana ekranı: klasik kart düzeni ↔ yeni TV kabuğu.
+  Future<void> setTvHomeLayoutMode(TvHomeLayoutMode mode) async {
+    if (tvHomeLayoutMode.value == mode) return;
+    tvHomeLayoutMode.value = mode;
+    final p = await _getPrefs();
+    await p.setString(_kTvHomeLayoutMode, mode.storageKey);
   }
 
   /// **Cihaz tipine göre Film & Dizi modu varsayılanı.**
@@ -2555,8 +3238,16 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
   Future<void> setHomeCardSwipeEffect(HomeCardSwipeEffect effect) async {
     if (homeCardSwipeEffect.value == effect) return;
     homeCardSwipeEffect.value = effect;
-    final p = await SharedPreferences.getInstance();
+    final p = await _getPrefs();
     await p.setString(_kHomeCardSwipeEffect, effect.storageKey);
+  }
+
+  /// Sayfa geçiş efekti ayarlar. TV layout'unda bu seçenek kullanılmaz.
+  Future<void> setPageTransitionEffect(PageTransitionEffect effect) async {
+    if (pageTransitionEffect.value == effect) return;
+    pageTransitionEffect.value = effect;
+    final p = await _getPrefs();
+    await p.setString(_kPageTransitionEffect, effect.storageKey);
   }
 
   /// Ana ekran kart çerçeve stilini değiştirir. UI tarafı
@@ -2566,31 +3257,31 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
   Future<void> setHomeCardFrameStyle(HomeCardFrameStyle style) async {
     if (homeCardFrameStyle.value == style) return;
     homeCardFrameStyle.value = style;
-    final p = await SharedPreferences.getInstance();
+    final p = await _getPrefs();
     await p.setString(_kHomeCardFrameStyle, style.storageKey);
   }
 
   Future<void> setAiRecommendationEnabled(bool v) async {
     isAiRecommendationEnabled.value = v;
-    final p = await SharedPreferences.getInstance();
+    final p = await _getPrefs();
     await p.setBool(_kAiRecommendations, v);
   }
 
   Future<void> setStripLiveChannelCountryPrefix(bool v) async {
     stripLiveChannelCountryPrefix.value = v;
-    final p = await SharedPreferences.getInstance();
+    final p = await _getPrefs();
     await p.setBool(_kStripLiveChannelPrefix, v);
   }
 
   Future<void> setAdaptiveHapticsEnabled(bool v) async {
     adaptiveHapticsEnabled.value = v;
-    final p = await SharedPreferences.getInstance();
+    final p = await _getPrefs();
     await p.setBool(_kAdaptiveHaptics, v);
   }
 
   Future<void> setSmartStreamCutterEnabled(bool v) async {
     smartStreamCutterEnabled.value = v;
-    final p = await SharedPreferences.getInstance();
+    final p = await _getPrefs();
     await p.setBool(_kSmartStreamCutter, v);
   }
 
@@ -2600,46 +3291,8 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
     final v = normalizeVolumeBoostMaxPercent(raw);
     if (volumeBoostMaxPercent.value == v) return;
     volumeBoostMaxPercent.value = v;
-    final p = await SharedPreferences.getInstance();
+    final p = await _getPrefs();
     await p.setInt(_kVolumeBoostMaxPercent, v);
-  }
-
-  /// «+18 içerikleri gizle» bayrağını yazar ve ana ekran şeritlerinin
-  /// yeniden hesaplaması için gizleme revizyonunu artırır. Mixed live
-  /// strip ve diğer reactive katmanlar [xtreamHideRevision] üzerinden
-  /// bu değişimi yakalar.
-  Future<void> setHideAdultContentEnabled(bool v) async {
-    if (hideAdultContentEnabled.value == v) return;
-    hideAdultContentEnabled.value = v;
-    final p = await SharedPreferences.getInstance();
-    await p.setBool(_kHideAdultContent, v);
-    xtreamHideRevision.value += 1;
-  }
-
-  /// Smart Route — Akıllı CDN / Proxy seçici özelliğini açar/kapatır.
-  /// Kapatıldığında [NetworkQualityMonitorService] döngüsünü sonlandırır
-  /// ve daha önce kendi uyguladığı auto-buffer override'ını geri alır.
-  Future<void> setSmartRouteEnabled(bool v) async {
-    if (smartRouteEnabled.value == v) return;
-    smartRouteEnabled.value = v;
-    final p = await SharedPreferences.getInstance();
-    await p.setBool(_kSmartRouteEnabled, v);
-  }
-
-  Future<void> setHideLivePortraitDetailTab(bool v) async {
-    if (hideLivePortraitDetailTab.value == v) return;
-    hideLivePortraitDetailTab.value = v;
-    final p = await SharedPreferences.getInstance();
-    await p.setBool(_kHideLivePortraitDetailTab, v);
-  }
-
-  /// Smart Route auto-buffer alt toggle. Kapatılırsa servis bağlantı
-  /// dalgalanmasını yine raporlar ama tampona dokunmaz.
-  Future<void> setSmartRouteAutoBufferEnabled(bool v) async {
-    if (smartRouteAutoBufferEnabled.value == v) return;
-    smartRouteAutoBufferEnabled.value = v;
-    final p = await SharedPreferences.getInstance();
-    await p.setBool(_kSmartRouteAutoBuffer, v);
   }
 
   Future<void> setHomeCategoryCardOrder(List<HomeCategoryCardId> order) async {
@@ -2647,7 +3300,7 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
         HomeCategoryCardId.normalizeOrder(order.map((e) => e.storageKey));
     homeCategoryCardOrder.assignAll(normalized);
     homeCategoryCardOrderRevision.value++;
-    final p = await SharedPreferences.getInstance();
+    final p = await _getPrefs();
     await p.setStringList(
       _kHomeCategoryCardOrder,
       normalized.map((e) => e.storageKey).toList(),
@@ -2665,7 +3318,7 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
       ..clear()
       ..addAll(hidden);
     homeCategoryCardOrderRevision.value++;
-    final p = await SharedPreferences.getInstance();
+    final p = await _getPrefs();
     if (hidden.isEmpty) {
       await p.remove(_kHomeCategoryCardHidden);
     } else {
@@ -2680,7 +3333,7 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
   Future<void> setPlayStoreRatePromptShownForBuild(int build) async {
     if (build <= playStoreRateLastPromptBuild) return;
     playStoreRateLastPromptBuild = build;
-    final p = await SharedPreferences.getInstance();
+    final p = await _getPrefs();
     await p.setInt(_kPlayRateLastPromptBuild, build);
   }
 
@@ -2699,7 +3352,7 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
     final day = playStoreRateDayYmd();
     if (playStoreRateLastPromptDay >= day) return;
     playStoreRateLastPromptDay = day;
-    final p = await SharedPreferences.getInstance();
+    final p = await _getPrefs();
     await p.setInt(_kPlayRateLastPromptDay, day);
   }
 
@@ -2707,29 +3360,32 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
     if (playStoreRateUserRated) return;
     playStoreRateUserRated = true;
     playStoreRateLastPromptDay = playStoreRateDayYmd();
-    final p = await SharedPreferences.getInstance();
+    final p = await _getPrefs();
     await p.setBool(_kPlayRateUserRated, true);
     await p.setInt(_kPlayRateLastPromptDay, playStoreRateLastPromptDay);
   }
 
   Future<void> setPreferSoftwareVideoDecoder(bool v) async {
     preferSoftwareVideoDecoder.value = v;
-    final p = await SharedPreferences.getInstance();
+    final p = await _getPrefs();
     await p.setBool(_kPreferSoftwareDecoder, v);
   }
 
-  /// Canlı yayın biçimi modunu ayarlar ([liveStreamFormatAuto] /
-  /// [liveStreamFormatHls] / [liveStreamFormatTs]). Bilinmeyen değer Otomatik'e
-  /// (varsayılan) düşer.
+  Future<void> setSilentBackgroundSyncEnabled(bool v) async {
+    silentBackgroundSyncEnabled.value = v;
+    final p = await _getPrefs();
+    await p.setBool(_kSilentBackgroundSync, v);
+  }
+
+  /// Canlı yayın biçimi modunu ayarlar ([liveStreamFormatHls] /
+  /// [liveStreamFormatTs]). Bilinmeyen/eski "auto" değeri varsayılan **HLS**'e
+  /// düşer.
   Future<void> setLiveStreamFormat(String value) async {
-    final next = (value == liveStreamFormatTs ||
-            value == liveStreamFormatHls ||
-            value == liveStreamFormatAuto)
-        ? value
-        : liveStreamFormatAuto;
+    final next =
+        value == liveStreamFormatTs ? liveStreamFormatTs : liveStreamFormatHls;
     if (liveStreamFormat.value == next) return;
     liveStreamFormat.value = next;
-    final p = await SharedPreferences.getInstance();
+    final p = await _getPrefs();
     await p.setString(_kLiveStreamFormat, next);
   }
 
@@ -2742,7 +3398,7 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
         hint == liveStreamFormatTs ? liveStreamFormatTs : liveStreamFormatHls;
     if (liveStreamFormatAutoResolved.value == resolved) return;
     liveStreamFormatAutoResolved.value = resolved;
-    final p = await SharedPreferences.getInstance();
+    final p = await _getPrefs();
     await p.setString(_kLiveStreamFormatAuto, resolved);
   }
 
@@ -2752,11 +3408,11 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
   Future<void> setPlaybackUserAgentPreset(String id) async {
     final normalized = id.trim();
     final isCustom = normalized == kPlaybackUserAgentCustomId;
-    final isKnown =
-        kPlaybackUserAgentPresets.any((p) => p.id == normalized);
-    final next = (isCustom || isKnown) ? normalized : kPlaybackUserAgentDefaultId;
+    final isKnown = kPlaybackUserAgentPresets.any((p) => p.id == normalized);
+    final next =
+        (isCustom || isKnown) ? normalized : kPlaybackUserAgentDefaultId;
     playbackUserAgentId.value = next;
-    final p = await SharedPreferences.getInstance();
+    final p = await _getPrefs();
     await p.setString(_kPlaybackUserAgentId, next);
     IptvPlaybackDefaults.setOverrideUserAgent(effectivePlaybackUserAgent);
   }
@@ -2765,7 +3421,7 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
   Future<void> setPlaybackUserAgentCustomValue(String value) async {
     final t = value.trim();
     playbackUserAgentCustomValue.value = t;
-    final p = await SharedPreferences.getInstance();
+    final p = await _getPrefs();
     await p.setString(_kPlaybackUserAgentCustomValue, t);
     if (t.isNotEmpty) {
       playbackUserAgentId.value = kPlaybackUserAgentCustomId;
@@ -2777,7 +3433,7 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
   /// Film/Dizi (VOD) motoru tercihini ayarla.
   Future<void> setUseMediaKit(bool v) async {
     useMediaKit.value = v;
-    final p = await SharedPreferences.getInstance();
+    final p = await _getPrefs();
     await p.setBool(_kUseMediaKit, v);
     await _markEngineUserChosen(p);
   }
@@ -2785,7 +3441,7 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
   /// Canlı yayın motoru tercihini ayarla.
   Future<void> setLiveUseMediaKit(bool v) async {
     liveUseMediaKit.value = v;
-    final p = await SharedPreferences.getInstance();
+    final p = await _getPrefs();
     await p.setBool(_kLiveUseMediaKit, v);
     await _markEngineUserChosen(p);
   }
@@ -2808,7 +3464,7 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
     }
     useMediaKit.value = preferMediaKit;
     liveUseMediaKit.value = preferMediaKit;
-    final p = await SharedPreferences.getInstance();
+    final p = await _getPrefs();
     await p.setBool(_kUseMediaKit, preferMediaKit);
     await p.setBool(_kLiveUseMediaKit, preferMediaKit);
     // Not: _kEngineUserChosen yazılmaz — bu uzaktan varsayılan, kullanıcı
@@ -2819,7 +3475,7 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
   /// (kullanıcı tekrar açtığında aynı oynatıcıya geri dönsün).
   Future<void> setExternalPlayerEnabled(bool v) async {
     externalPlayerEnabled.value = v;
-    final p = await SharedPreferences.getInstance();
+    final p = await _getPrefs();
     await p.setBool(_kExternalPlayerEnabled, v);
   }
 
@@ -2832,7 +3488,7 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
   }) async {
     externalPlayerId.value = id;
     externalPlayerLabel.value = label;
-    final p = await SharedPreferences.getInstance();
+    final p = await _getPrefs();
     if (id == null || id.isEmpty) {
       await p.remove(_kExternalPlayerId);
     } else {
@@ -2845,10 +3501,27 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
     }
   }
 
-  Future<void> setSetupCompleted(bool v) async {
+  Future<void> setSetupCompleted(
+    bool v, {
+    bool markShowcaseSuggestionSeen = false,
+  }) async {
     isSetupCompleted.value = v;
-    final p = await SharedPreferences.getInstance();
+    final p = await _getPrefs();
     await p.setBool(_kSetupCompleted, v);
+    // Taze sihirbaz tamamlandığında: yerleşim zaten orada seçildiği için vitrin
+    // tavsiye popup'ı tekrar gösterilmesin.
+    if (markShowcaseSuggestionSeen && !showcaseSuggestionSeen.value) {
+      showcaseSuggestionSeen.value = true;
+      await p.setBool(_kShowcaseSuggestSeen, true);
+    }
+  }
+
+  /// Vitrin tavsiye popup'ı gösterildi/işlendi olarak işaretle (tekrar gösterme).
+  Future<void> setShowcaseSuggestionSeen(bool v) async {
+    if (showcaseSuggestionSeen.value == v) return;
+    showcaseSuggestionSeen.value = v;
+    final p = await _getPrefs();
+    await p.setBool(_kShowcaseSuggestSeen, v);
   }
 
   /// Profil değişimi sonrası: TÜM reaktif ayarları diskten yeniden okur.
@@ -2869,7 +3542,7 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
   /// diskten tekrar okuyup reaktif olarak günceller. Mevcut setter'lar
   /// kullanıldığı için locale/tema yan etkileri de doğru tetiklenir.
   Future<void> reloadCoreFromPrefs() async {
-    final p = await SharedPreferences.getInstance();
+    final p = await _getPrefs();
 
     final lang = p.getString(_kLang);
     if (lang != null && lang.isNotEmpty && lang != languageCode.value) {
@@ -2893,7 +3566,7 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
     PlaylistRepository repo,
   ) async {
     if (isSetupCompleted.value) return;
-    final p = await SharedPreferences.getInstance();
+    final p = await _getPrefs();
     if (p.getBool(_kSetupLegacyPlaylistMigrated) ?? false) return;
     final src = await repo.readSource();
     if (src == null) return;
@@ -2903,7 +3576,7 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
 
   Future<void> setMediaKitLowPowerHwdec(bool v) async {
     mediaKitLowPowerHwdec.value = v;
-    final p = await SharedPreferences.getInstance();
+    final p = await _getPrefs();
     await p.setBool(_kMediaKitLowPowerHwdec, v);
   }
 
@@ -2915,7 +3588,7 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
   Future<void> setTvOsdAutoHideDuration(int seconds) async {
     final v = normalizeTvOsdAutoHideSeconds(seconds);
     tvOsdAutoHideDuration.value = v;
-    final p = await SharedPreferences.getInstance();
+    final p = await _getPrefs();
     await p.setInt(_kTvOsdAutoHideDuration, v);
   }
 
@@ -2923,13 +3596,13 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
   Future<void> setOsdLandscapeBackgroundOpacity(int value) async {
     final v = normalizeOsdBackgroundOpacity(value);
     osdLandscapeBackgroundOpacity.value = v;
-    final p = await SharedPreferences.getInstance();
+    final p = await _getPrefs();
     await p.setInt(_kOsdLandscapeBackgroundOpacity, v);
   }
 
   Future<void> setLandscapeStatusBarEnabled(bool v) async {
     landscapeStatusBarEnabled.value = v;
-    final p = await SharedPreferences.getInstance();
+    final p = await _getPrefs();
     await p.setBool(_kLandscapeStatusBar, v);
   }
 
@@ -2956,17 +3629,17 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
   Future<void> updateLastRefreshTime() async {
     final now = DateTime.now().millisecondsSinceEpoch;
     lastRefreshTime.value = now;
-    final p = await SharedPreferences.getInstance();
+    final p = await _getPrefs();
     await p.setInt(_kLastRefresh, now);
   }
 
   bool shouldRefreshContent() {
-    if (autoRefreshDays.value <= 0) return false;
+    if (autoRefreshHours.value <= 0) return false;
     if (lastRefreshTime.value <= 0) return true;
 
     final last = DateTime.fromMillisecondsSinceEpoch(lastRefreshTime.value);
-    final diff = DateTime.now().difference(last).inDays;
-    return diff >= autoRefreshDays.value;
+    final diff = DateTime.now().difference(last).inHours;
+    return diff >= autoRefreshHours.value;
   }
 
   Future<void> resetToDefaults() async {
@@ -2977,31 +3650,35 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
     lastM3uEpgFetchMs.value = 0;
     lastGlobalEpgFetchMs.value = 0;
     liveBufferSeconds.value = defaultLiveBufferSeconds;
-    smartRouteEnabled.value = true;
-    hideLivePortraitDetailTab.value = false;
-    smartRouteAutoBufferEnabled.value = true;
+    liveVideoFit.value = BoxFit.fill;
+    vodVideoFit.value = BoxFit.fill;
     epgDiskCacheRefreshDays.value = defaultEpgDiskCacheRefreshDays;
     epgEnabled.value = true;
     layoutMode.value = await resolveDefaultLayoutMode();
     themeLabel.value = layoutMode.value == AppLayoutMode.tv
-        ? GlassThemeLabels.amoledBlack
+        ? GlassThemeLabels.koyuCam
         : GlassThemeLabels.varsayilan;
     _syncLayoutTextScale();
     await _applyLayoutMode(layoutMode.value);
     reduceBlur.value = true;
     lowEndDeviceMode.value = false;
     lowEndSuggestionDismissed.value = false;
-    AppPerformance.applyImageCacheLimits(false);
+    AppPerformance.applyImageCacheLimitsFor(this);
     homeCardScale.value = homeCardScaleDefault;
-    homeFilmDiziMode.value = _defaultHomeFilmDiziModeForLayout(layoutMode.value);
+    homeFilmDiziMode.value =
+        _defaultHomeFilmDiziModeForLayout(layoutMode.value);
     homeCardSwipeEffect.value = HomeCardSwipeEffect.rubberBand;
+    pageTransitionEffect.value = PageTransitionEffect.ios;
     homeCardFrameStyle.value = HomeCardFrameStyle.classic;
     launchOnBoot.value = false;
+    silentBackgroundSyncEnabled.value = true;
     sleepTimerEndMs.value = null;
     _sleepTimer?.cancel();
     _sleepTimer = null;
     lastLiveCategoryId.value = null;
     lastLiveChannelId.value = null;
+    lastLiveChannelTime.value = null;
+    previousLiveChannelId.value = null;
     lastFilmsCategoryKey.value = null;
     lastFilmsVodId.value = null;
     lastSeriesCategoryKey.value = null;
@@ -3009,20 +3686,26 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
     lastFavoritesCategoryKey.value = null;
     lastFavoritesSelection.value = '';
     preferSoftwareVideoDecoder.value = false;
-    liveStreamFormat.value = liveStreamFormatAuto;
+    liveStreamFormat.value = liveStreamFormatHls;
     liveStreamFormatAutoResolved.value = liveStreamFormatHls;
     useMediaKit.value = false;
     liveUseMediaKit.value = false;
     mediaKitLowPowerHwdec.value = false;
     streamPreviewEnabled.value = true;
-    ignoreSslCertificate.value = false;
+    ignoreSslCertificate.value = true;
     _applyHttpSslPolicy();
     upcomingMatchesEnabled.value = true;
     mixedLiveTvEnabled.value = true;
+    trendFilmsEnabled.value = true;
+    trendSeriesEnabled.value = true;
+    favoriteFilmsEnabled.value = true;
+    favoriteSeriesEnabled.value = true;
+    mixedFilmsEnabled.value = true;
+    mixedSeriesEnabled.value = true;
+    showcaseMixedLiveTvEnabled.value = false;
     isAiRecommendationEnabled.value = true;
     dailyQuoteEnabled.value = true;
     stripLiveChannelCountryPrefix.value = false;
-    hideAdultContentEnabled.value = false;
     adaptiveHapticsEnabled.value = true;
     smartStreamCutterEnabled.value = true;
     volumeBoostMaxPercent.value = defaultVolumeBoostMaxPercent;
@@ -3035,6 +3718,7 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
     homeCategoryCardOrderRevision.value++;
     tvOsdAutoHideDuration.value = defaultTvOsdAutoHideSeconds;
     miniPlayerOnHome.value = false;
+    showcaseInAppPipEnabled.value = false;
     subtitleFontPt.value = 14.0;
     subtitleFontFamilyKey.value = kDefaultSubtitleFontFamilyKey;
     appFontFamilyKey.value = kDefaultAppFontFamilyKey;
@@ -3052,7 +3736,7 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
     playStoreRateLastPromptBuild = 0;
     playStoreRateUserRated = false;
     playStoreRateLastPromptDay = 0;
-    final p = await SharedPreferences.getInstance();
+    final p = await _getPrefs();
     await p.remove(_kPlayRateLastPromptBuild);
     await p.remove(_kPlayRateUserRated);
     await p.remove(_kPlayRateLastPromptDay);
@@ -3066,6 +3750,8 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
     await p.remove(_kLastM3uEpgFetchMs);
     await p.remove(_kLastGlobalEpgFetchMs);
     await p.setInt(_kBuffer, defaultLiveBufferSeconds);
+    await p.remove(_kVideoFitLive);
+    await p.remove(_kVideoFitVod);
     await p.setInt(
       _kEpgDiskCacheRefreshDays,
       defaultEpgDiskCacheRefreshDays,
@@ -3077,8 +3763,11 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
     await p.setBool(_kLowEndDeviceMode, false);
     await p.remove(_kLowEndSuggestDismissed);
     await p.remove(_kLaunchOnBoot);
+    await p.remove(_kSilentBackgroundSync);
     await p.remove(_kLastLiveCat);
     await p.remove(_kLastLiveCh);
+    await p.remove(_kLastLiveChTime);
+    await p.remove(_kPrevLiveCh);
     await p.remove(_kLastFilmsCat);
     await p.remove(_kLastFilmsVod);
     await p.remove(_kLastSeriesCat);
@@ -3093,18 +3782,45 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
     playbackUserAgentId.value = kPlaybackUserAgentDefaultId;
     playbackUserAgentCustomValue.value = '';
     IptvPlaybackDefaults.setOverrideUserAgent(effectivePlaybackUserAgent);
-    await p.setBool(_kUseMediaKit, false);
+    await p.setBool(_kUseMediaKit, true);
     await p.setBool(_kLiveUseMediaKit, false);
     await p.setBool(_kMediaKitLowPowerHwdec, false);
+    // Varsayılana dönüşte motor "bilinçli seçim" durumu da sıfırlanır; böylece
+    // codec'e dayalı proaktif MediaKit yönlendirmesi yeniden devreye girer.
+    _engineUserChosen = false;
+    await p.remove(_kEngineUserChosen);
     await p.setBool(_kStreamPreview, true);
-    await p.setBool(_kIgnoreSsl, false);
+    await p.setBool(_kIgnoreSsl, true);
     await p.setBool(_kUpcomingMatches, true);
     final tvLayout = layoutMode.value == AppLayoutMode.tv;
     // TV dâhil tüm layout'larda AI önerileri + karışık canlı TV açık gelir.
     await p.setBool(_kMixedLiveTv, true);
+    await p.setBool(_kTrendFilms, true);
+    await p.setBool(_kTrendSeries, true);
+    await p.setBool(_kShowcaseFavoriteFilms, true);
+    await p.setBool(_kShowcaseFavoriteSeries, true);
+    await p.setBool(_kShowcaseMixedFilms, true);
+    await p.setBool(_kShowcaseMixedSeries, true);
+    await p.setBool(_kShowcaseMixedLiveTv, false);
     await p.setBool(_kAiRecommendations, true);
     isAiRecommendationEnabled.value = true;
     mixedLiveTvEnabled.value = true;
+    trendFilmsEnabled.value = true;
+    trendSeriesEnabled.value = true;
+    favoriteFilmsEnabled.value = true;
+    favoriteSeriesEnabled.value = true;
+    mixedFilmsEnabled.value = true;
+    mixedSeriesEnabled.value = true;
+    showcaseMixedLiveTvEnabled.value = false;
+    if (layoutMode.value != AppLayoutMode.tv) {
+      await p.setString(_kHomeLayoutStyle, HomeLayoutStyle.showcase.storageKey);
+      homeLayoutStyle.value = HomeLayoutStyle.showcase;
+    } else {
+      await p.setString(_kHomeLayoutStyle, HomeLayoutStyle.standard.storageKey);
+      homeLayoutStyle.value = HomeLayoutStyle.standard;
+    }
+    await p.setString(_kTvHomeLayoutMode, TvHomeLayoutMode.shell.storageKey);
+    tvHomeLayoutMode.value = TvHomeLayoutMode.shell;
     // TV layout için bayrağı **silmeden** koruruz; reset sırasında zaten
     // doğru varsayılanlar (yukarıdaki değerler) yazıldı. Mobil/tablet'e
     // tam reset durumunda kullanıcı sonradan TV'ye geçerse migration
@@ -3115,7 +3831,9 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
       await p.setBool(_kTvHomeRichDefaultV3, true);
       await p.setBool(_kTvHomeFilmDiziCardMigratedV1, true);
       await p.setBool(_kTvAmoledThemeDefaultV1, true);
+      await p.setBool(_kTvLiteThemeDefaultV2, true);
       await p.setBool(_kTvHomeLayoutV3, true);
+      await p.setBool(_kTvShellHomeMigrationV4, true);
       // V3 düzeni: Film & Dizi kartı gizli (classic) + TV kart sırası.
       await p.setString(
         _kHomeFilmDiziMode,
@@ -3123,9 +3841,7 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
       );
       await p.setStringList(
         _kHomeCategoryCardOrder,
-        HomeCategoryCardId.tvDefaultOrder
-            .map((e) => e.storageKey)
-            .toList(),
+        HomeCategoryCardId.tvDefaultOrder.map((e) => e.storageKey).toList(),
       );
     } else {
       await p.remove(_kTvHomeStripsDefaultV1);
@@ -3133,20 +3849,26 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
       await p.remove(_kTvHomeRichDefaultV3);
       await p.remove(_kTvHomeFilmDiziCardMigratedV1);
       await p.remove(_kTvAmoledThemeDefaultV1);
+      await p.remove(_kTvLiteThemeDefaultV2);
       await p.remove(_kTvHomeLayoutV3);
+      await p.remove(_kTvShellHomeMigrationV4);
     }
     await p.setString(_kTheme, themeLabel.value);
     // Günün Sözü tüm cihazlarda (TV dâhil) varsayılan açık.
     await p.setBool(_kDailyQuote, true);
     dailyQuoteEnabled.value = true;
-    await p.setBool(_kMinaWrappedEnabled, false);
+    // Mina İzleme (Wrapped) analitiği varsayılan açık gelir.
+    await p.setBool(_kMinaWrappedEnabled, true);
+    minaWrappedEnabled.value = true;
     await p.remove(_kHomeCardSwipeEffect);
     await p.remove(_kHomeCardFrameStyle);
+    await p.remove(_kPageTransitionEffect);
     await p.remove(_kLegacySportEpgStrip);
 
     await p.setInt(_kTvOsdAutoHideDuration, defaultTvOsdAutoHideSeconds);
     await p.remove(_kUseVlcLegacy);
     await p.remove(_kMiniPlayerHome);
+    await p.remove(_kShowcaseInAppPip);
     await p.remove(_kSleepEnd);
     await p.remove(_kSubtitleFontPt);
     await p.remove(_kSubtitleFontFamily);
@@ -3156,7 +3878,8 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
     subtitleColorKey.value = kSubtitleColorOptions.first.key;
     subtitleOutlineEnabled.value = true;
     await p.remove(_kAppFontFamily);
-    await p.setBool(_kVodSubtitleAutoEnabled, true);
+    // Altyazı varsayılan KAPALI: sıfırlamada otomatik açmayı geri getirme.
+    await p.remove(_kVodSubtitleAutoEnabled);
     await p.remove(_kVodPreferredSubtitleToken);
     await p.remove(_kAdaptiveQualityCeiling);
     await p.remove(_kCatchUpPreset);

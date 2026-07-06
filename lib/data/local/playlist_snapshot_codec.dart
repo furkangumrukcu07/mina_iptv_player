@@ -104,6 +104,11 @@ SeriesItem _seriesFromJson(Map<String, dynamic> m) => SeriesItem(
       addedUnix: (m['addedUnix'] as num?)?.toInt(),
     );
 
+/// Snapshot sürümü: v1 = tam VOD/dizi dizileri; v2 = slim (yalnızca meta +
+/// kanallar — film/dizi SQLite'ta).
+const int kPlaylistSnapshotVersionFull = 1;
+const int kPlaylistSnapshotVersionSlim = 2;
+
 Map<String, dynamic> m3uResultToJsonMap(M3uResult r) => {
       'channels': r.channels.map(_channelToJson).toList(),
       'channelCategories': r.channelCategories
@@ -115,6 +120,24 @@ Map<String, dynamic> m3uResultToJsonMap(M3uResult r) => {
       'vodCategories':
           r.vodCategories.map((c) => {'id': c.id, 'name': c.name}).toList(),
       'series': r.series.map(_seriesToJson).toList(),
+      'seriesCategories': r.seriesCategories
+          .map((c) => {'id': c.id, 'name': c.name})
+          .toList(),
+      'recentVodIds': r.recentVodIds,
+      'recentSeriesIds': r.recentSeriesIds,
+      'userInfo': _userInfoToJson(r.userInfo),
+    };
+
+/// v2 slim snapshot — `vod` / `series` / `channels` diske yazılmaz (RAM + dosya
+/// boyutu tasarrufu). Geri yüklemede boş listeler döner; tüketiciler SQLite'tan okur.
+Map<String, dynamic> m3uResultToSlimJsonMap(M3uResult r) => {
+      'channelCategories': r.channelCategories
+          .map(
+            (c) => {'id': c.id, 'name': c.name},
+          )
+          .toList(),
+      'vodCategories':
+          r.vodCategories.map((c) => {'id': c.id, 'name': c.name}).toList(),
       'seriesCategories': r.seriesCategories
           .map((c) => {'id': c.id, 'name': c.name})
           .toList(),
@@ -218,7 +241,11 @@ M3uResult? decodeMergedPlaylistSnapshotBytes(List<dynamic> args) {
   final bytes = args[1] as List<int>;
   try {
     final root = jsonDecode(utf8.decode(bytes)) as Map<String, dynamic>;
-    if (root['v'] != 1) return null;
+    final version = root['v'];
+    if (version != kPlaylistSnapshotVersionFull &&
+        version != kPlaylistSnapshotVersionSlim) {
+      return null;
+    }
     if (root['sk'] as String != expectedKey) return null;
     final payload = root['payload'];
     if (payload is! Map) return null;
@@ -239,12 +266,33 @@ String encodeMergedPlaylistSnapshotJson(List<dynamic> args) {
   });
 }
 
+/// [compute] için: `args[0]` = anahtar, `args[1]` = [M3uResult].
+/// Payload map'i (46k+ item) ana thread yerine isolate içinde kurulur.
+String encodeMergedPlaylistSnapshotFromResult(List<dynamic> args) {
+  final key = args[0] as String;
+  final merged = args[1] as M3uResult;
+  final slim = args.length > 2 && args[2] == true;
+  final version =
+      slim ? kPlaylistSnapshotVersionSlim : kPlaylistSnapshotVersionFull;
+  final payload = slim
+      ? m3uResultToSlimJsonMap(merged)
+      : m3uResultToJsonMap(merged);
+  return jsonEncode(<String, dynamic>{
+    'v': version,
+    'sk': key,
+    if (slim) 'slim': true,
+    'payload': payload,
+  });
+}
+
 Future<String> encodeMergedPlaylistSnapshotForWrite(
   String key,
-  M3uResult merged,
-) {
-  final payload = m3uResultToJsonMap(merged);
-  return compute(encodeMergedPlaylistSnapshotJson, [key, payload]);
+  M3uResult merged, {
+  bool slim = false,
+}) {
+  // Hem payload map kurulumu hem jsonEncode isolate'te çalışır; ana thread
+  // büyük listelerde (46k+) bloklanmaz.
+  return compute(encodeMergedPlaylistSnapshotFromResult, [key, merged, slim]);
 }
 
 Future<M3uResult?> decodeMergedPlaylistSnapshotFromBytes(

@@ -126,6 +126,142 @@ abstract final class IptvPlaybackDefaults {
   /// Normal IPTV canlı/VOD kalıpları (`/live/`, `/movie/`, `/series/`, `.ts`,
   /// `.m3u8`, `.mpd`, `output=`, `get.php`) ve bilinen medya uzantıları HARİÇ
   /// tutulur — onlar mevcut ExoPlayer yolunda kalır.
+  /// Ayarlar > Oynatıcı > «Yayın formatı» tercihini canlı Xtream URL'sine uygular.
+  /// URL zaten istenen biçimdeyse `null` döner.
+  static String? applyPreferredLiveStreamFormat(
+    String url, {
+    required bool preferTs,
+  }) {
+    final u = url.trim();
+    if (u.isEmpty) return null;
+    final uri = Uri.tryParse(u);
+    if (uri == null) return null;
+    final path = uri.path.toLowerCase();
+    final lower = u.toLowerCase();
+
+    if (path.contains('/live/')) {
+      if (preferTs && lower.endsWith('.m3u8')) {
+        final np = '${uri.path.substring(0, uri.path.length - 5)}.ts';
+        return uri.replace(path: np).toString();
+      }
+      if (!preferTs && lower.endsWith('.ts')) {
+        final np = '${uri.path.substring(0, uri.path.length - 3)}.m3u8';
+        return uri.replace(path: np).toString();
+      }
+      return null;
+    }
+
+    if (path.endsWith('get.php')) {
+      final q = uri.queryParameters;
+      if ((q['stream_id'] ?? '').isEmpty) return null;
+      final out = (q['output'] ?? '').toLowerCase().trim();
+      if (preferTs) {
+        if (out == 'm3u8' || out == 'm3u' || out == 'hls') {
+          return _convertXtreamGetPhpOutput(u, 'ts');
+        }
+      } else {
+        if (out == 'ts' ||
+            out == 'mpegts' ||
+            out == 'mpeg-ts' ||
+            out == 'm2ts') {
+          return _convertXtreamGetPhpOutput(u, 'm3u8');
+        }
+      }
+    }
+
+    return null;
+  }
+
+  /// Canlı Xtream: `/live/.../*.ts` ↔ `*.m3u8`; `get.php` `output=` tersine çevirir.
+  static String? swapLiveTsM3u8Url(String url, {required bool live}) {
+    final u = url.trim();
+    if (u.isEmpty) return null;
+    final uri = Uri.tryParse(u);
+    if (uri == null) return null;
+    final lower = u.toLowerCase();
+    final path = uri.path.toLowerCase();
+
+    if (path.contains('/live/')) {
+      if (lower.endsWith('.ts')) {
+        final np = '${uri.path.substring(0, uri.path.length - 3)}.m3u8';
+        return uri.replace(path: np).toString();
+      }
+      if (lower.endsWith('.m3u8')) {
+        final np = '${uri.path.substring(0, uri.path.length - 5)}.ts';
+        return uri.replace(path: np).toString();
+      }
+    }
+
+    if (path.endsWith('get.php')) {
+      final q = uri.queryParameters;
+      if (q['stream_id'] == null || q['stream_id']!.isEmpty) return null;
+      final out = (q['output'] ?? '').toLowerCase().trim();
+      if (out.isEmpty) {
+        if (!live) return null;
+        return _convertXtreamGetPhpOutput(u, 'm3u8');
+      }
+      if (out == 'ts' || out == 'mpegts' || out == 'mpeg-ts' || out == 'm2ts') {
+        if (!live) return null;
+        return _convertXtreamGetPhpOutput(u, 'm3u8');
+      }
+      if (out == 'm3u8' || out == 'm3u' || out == 'hls') {
+        if (!live) return null;
+        return _convertXtreamGetPhpOutput(u, 'ts');
+      }
+    }
+
+    return null;
+  }
+
+  /// Önizleme / oynatıcı: normalize + kullanıcı format tercihi + yedek URL listesi.
+  static List<String> previewLivePlaybackUrls(
+    String raw, {
+    required bool preferTs,
+  }) {
+    var url = normalizeStreamUrl(raw);
+    if (url.isEmpty) return const [];
+    if (!isLikelyLiveStream(url)) return [url];
+
+    final preferred = applyPreferredLiveStreamFormat(
+      url,
+      preferTs: preferTs,
+    );
+    if (preferred != null && preferred.isNotEmpty) {
+      url = preferred;
+    }
+
+    final out = <String>[url];
+    final alt = swapLiveTsM3u8Url(url, live: true);
+    if (alt != null && alt.isNotEmpty && alt != url) {
+      out.add(alt);
+    }
+    return out;
+  }
+
+  static String? _convertXtreamGetPhpOutput(String normalizedUrl, String output) {
+    final uri = Uri.tryParse(normalizedUrl);
+    if (uri == null) return null;
+    if (!uri.path.toLowerCase().endsWith('get.php')) return null;
+
+    final q = Map<String, String>.from(uri.queryParameters);
+    final streamId = q['stream_id'];
+    final username = q['username'];
+    final password = q['password'];
+
+    if (streamId == null || streamId.isEmpty) return null;
+    if (username == null || username.isEmpty) return null;
+    if (password == null || password.isEmpty) return null;
+
+    q['output'] = output;
+
+    final base =
+        '${uri.scheme}://${uri.host}${uri.hasPort ? ':${uri.port}' : ''}';
+    final query = q.entries
+        .map((e) => '${e.key}=${Uri.encodeQueryComponent(e.value)}')
+        .join('&');
+    return '$base/get.php?$query';
+  }
+
   static bool isExtensionlessWebManifestUrl(String url) {
     final u = url.trim().toLowerCase();
     if (u.isEmpty) return false;

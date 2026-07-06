@@ -7,10 +7,16 @@ import 'package:crypto/crypto.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:get/get.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../../core/constants/playlist_storage.dart';
+import '../../core/player/playback_user_agent.dart';
+import '../../core/services/app_settings_service.dart';
+import '../../core/services/active_playlist_service.dart';
+import '../../core/perf/playlist_memory_diagnostics.dart';
 import '../local/playlist_snapshot_store.dart';
+import '../local/playlist_sqlite_store.dart';
 import '../local/slot_playlist_snapshot_store.dart';
 import '../../core/error/app_exception.dart';
 import '../../domain/entities/channel.dart';
@@ -23,6 +29,7 @@ import '../../domain/repositories/playlist_repository.dart';
 import '../m3u_live_merge.dart';
 import '../recent_vod_selection.dart';
 import '../remote/m3u_parser.dart';
+import '../remote/m3u_stream_parser.dart';
 import '../remote/xtream_api.dart';
 
 class PlaylistRepositoryImpl implements PlaylistRepository {
@@ -40,6 +47,18 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
               InterceptorsWrapper(
                 onRequest: (options, handler) {
                   options.extra['startTime'] = DateTime.now();
+                  // Bazı M3U barındırıcıları (Cloudflare Worker proxy'leri, CDN
+                  // erişim filtreleri) varsayılan `Dart/x (dart:io)` / boş
+                  // User-Agent'i reddedip "Erişim Reddedildi" döndürüyor → liste
+                  // boş/eksik geliyor. İndirmede de playback ile aynı (varsayılan
+                  // tarayıcı) UA'yı gönder; kullanıcı Ayarlar'dan farklı UA
+                  // seçtiyse o kullanılır. Çağıran açıkça UA verdiyse dokunma.
+                  final hasUa = options.headers.keys
+                      .any((k) => k.toLowerCase() == 'user-agent');
+                  if (!hasUa) {
+                    options.headers['User-Agent'] =
+                        _effectiveDownloadUserAgent();
+                  }
                   debugPrint('🌐 HTTP Request: ${options.method} ${options.uri}');
                   debugPrint('📦 Headers: ${options.headers}');
                   return handler.next(options);
@@ -63,6 +82,13 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
                 encryptedSharedPreferences: true,
               ),
             );
+
+  /// [loadMergedPlaylist] birleşik sonucu DB'ye yazdığında oluşan `source_key`.
+  /// Çağıran taraf cache'i "slim" beslemek için bu anahtarı okur.
+  String? _lastMergedDbSourceKey;
+
+  @override
+  String? get lastMergedDbSourceKey => _lastMergedDbSourceKey;
 
   static const _kSourceType = 'mina_iptv_source_type';
   static const _kPlaylistUrl = 'mina_iptv_playlist_url';
@@ -135,6 +161,20 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
 
   final Dio _dio;
   final FlutterSecureStorage _storage;
+
+  /// Playlist indirme (M3U + Xtream API) istekleri için gönderilecek
+  /// User-Agent. Kullanıcı Ayarlar'dan bir UA seçtiyse o; yoksa playback ile
+  /// aynı varsayılan tarayıcı UA'sı. AppSettingsService henüz kayıtlı değilse
+  /// (erken bootstrap) varsayılana düşer.
+  static String _effectiveDownloadUserAgent() {
+    try {
+      if (Get.isRegistered<AppSettingsService>()) {
+        final ua = Get.find<AppSettingsService>().effectivePlaybackUserAgent;
+        if (ua.trim().isNotEmpty) return ua.trim();
+      }
+    } catch (_) {}
+    return kPlaybackUserAgentLegacyChrome;
+  }
 
   Future<File> _localM3uFileAt(int slot) async {
     final dir = await getApplicationSupportDirectory();
@@ -339,6 +379,132 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
     }
   }
 
+  /// M3U gövdesini **stream** (satır satır) olarak açar. Tüm dosyayı belleğe
+  /// almak yerine baytları akış halinde UTF-8 → satır dönüşümünden geçirir.
+  /// Şema (http/https) yanlışsa **bağlantı aşamasında** swap'a düşer (gövde
+  /// indirilmeden); bu, [_raceSchemes] kadar agresif değildir ama dev gövdeyi
+  /// iki kez indirme riskini ortadan kaldırır.
+  Future<({Stream<String> lines, String resolvedUrl})> _openM3uLineStream(
+      String url) async {
+    final swapped = _swapHttpScheme(url);
+    try {
+      final s = await _openM3uLineStreamOnce(url, fast: swapped != null);
+      return (lines: s, resolvedUrl: url);
+    } on AppException {
+      if (swapped == null) rethrow;
+      final s = await _openM3uLineStreamOnce(swapped, fast: false);
+      return (lines: s, resolvedUrl: swapped);
+    }
+  }
+
+  Future<Stream<String>> _openM3uLineStreamOnce(
+    String url, {
+    required bool fast,
+  }) async {
+    try {
+      final resp = await _dio
+          .get<ResponseBody>(
+            url,
+            options: Options(
+              responseType: ResponseType.stream,
+              validateStatus: (s) => s != null && s < 500,
+            ),
+          )
+          .timeout(fast ? _kFastFirstTimeout : const Duration(seconds: 30));
+      final code = resp.statusCode ?? 0;
+      if (code != 200) {
+        throw NetworkException('HTTP $code', resp.statusMessage);
+      }
+      final body = resp.data;
+      if (body == null) {
+        throw NetworkException('Empty response', resp.statusMessage);
+      }
+      return body.stream
+          .cast<List<int>>()
+          .transform(const Utf8Decoder(allowMalformed: true))
+          .transform(const LineSplitter());
+    } on AppException {
+      rethrow;
+    } on DioException catch (e) {
+      throw NetworkException(e.message ?? 'Network error', e);
+    } catch (e) {
+      throw NetworkException('Failed to load playlist', e);
+    }
+  }
+
+  /// Bir kaynağı (M3U/Xtream) yükler ve verilen [sourceKey] için
+  /// [PlaylistSqliteStore]'a yazar. M3U'da streaming parse kullanılır.
+  Future<M3uResult> _loadParsedForMergeToDb(
+    PlaylistSource source,
+    String? sourceKey,
+  ) async {
+    switch (source) {
+      case M3uSource():
+        return _loadM3uToDb(source.url, sourceKey);
+      case XtreamSource():
+        final result = await loadFromXtream(
+          baseUrl: source.baseUrl,
+          username: source.username,
+          password: source.password,
+        );
+        if (sourceKey != null && sourceKey.isNotEmpty) {
+          try {
+            await PlaylistSqliteStore.replaceFromResult(sourceKey, result);
+          } catch (e) {
+            debugPrint('mina_iptv: xtream SQLite populate failed: $e');
+          }
+          return result.slimForSqliteCache();
+        }
+        return result;
+    }
+  }
+
+  /// M3U URL/yerel dosyayı satır akışı olarak parse eder; [sourceKey] doluysa
+  /// satırlar DB'ye streaming yazılır.
+  Future<M3uResult> _loadM3uToDb(String url, String? sourceKey) async {
+    final trimmed = url.trim();
+    if (trimmed.isEmpty) {
+      throw const ParseException('Playlist URL is empty');
+    }
+    final key = sourceKey ?? '';
+    final localSlot = slotFromLocalM3uSentinel(trimmed);
+    if (localSlot != null) {
+      final f = await _localM3uFileAt(localSlot);
+      if (!await f.exists()) {
+        throw ParseException(localSlot == 1
+            ? 'Kayıtlı yerel playlist bulunamadı'
+            : 'Kayıtlı $localSlot. yerel playlist bulunamadı');
+      }
+      try {
+        final lines = f
+            .openRead()
+            .transform(const Utf8Decoder(allowMalformed: true))
+            .transform(const LineSplitter());
+        return await M3uStreamParser.parse(
+          lines: lines,
+          sourceKey: key,
+          buildVodSeriesInMemory: key.isEmpty,
+        );
+      } on AppException {
+        rethrow;
+      } catch (e) {
+        throw NetworkException(
+          localSlot == 1
+              ? 'Yerel playlist okunamadı'
+              : '$localSlot. yerel playlist okunamadı',
+          e,
+        );
+      }
+    }
+
+    final opened = await _openM3uLineStream(trimmed);
+    return M3uStreamParser.parse(
+      lines: opened.lines,
+      sourceKey: key,
+      buildVodSeriesInMemory: key.isEmpty,
+    );
+  }
+
   /// URL'nin `http://` / `https://` şemasını ters çevirip yeni URL döner;
   /// başka bir şema veya şemasız ise `null` döner.
   static String? _swapHttpScheme(String url) {
@@ -363,7 +529,18 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
   Future<M3uResult> loadPlaylistFromUrl(String url) => loadFromM3uUrl(url);
 
   /// İlk Xtream barındıran slot (1..[kMaxPlaylistSlots]) — dizi/VOD API çağrıları için.
+  /// Ancak öncelikle o an aktif olan slot tercih edilir (birden çok çalma listesi durumunda çakışmayı önlemek için).
   Future<XtreamSource?> _readAnyXtreamSource() async {
+    try {
+      if (Get.isRegistered<ActivePlaylistService>()) {
+        final activeSlot = Get.find<ActivePlaylistService>().activeSlot.value;
+        final activeSource = await readSourceAt(activeSlot);
+        if (activeSource is XtreamSource) {
+          return activeSource;
+        }
+      }
+    } catch (_) {}
+
     for (final slot in allPlaylistSlots()) {
       final s = await readSourceAt(slot);
       if (s is XtreamSource) return s;
@@ -1003,7 +1180,8 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
       final active = await _readActiveSourcesForMerge();
       if (active.isEmpty) return;
       final key = await _mergedSnapshotKeyAll(active);
-      await PlaylistSnapshotStore.write(key, merged);
+      final slim = merged.vod.isEmpty && merged.series.isEmpty;
+      await PlaylistSnapshotStore.write(key, merged, slim: slim);
     } catch (e) {
       debugPrint('mina_iptv: persist merged snapshot: $e');
     }
@@ -1036,7 +1214,35 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
     try {
       final key = await _slotSnapshotKey(slot);
       if (key == null) return;
-      await SlotPlaylistSnapshotStore.write(slot, key, result);
+      var dbReady = await PlaylistSqliteStore.hasData(key);
+      final hasLists = result.channels.isNotEmpty ||
+          result.vod.isNotEmpty ||
+          result.series.isNotEmpty;
+      if (!dbReady && hasLists) {
+        try {
+          await PlaylistSqliteStore.replaceFromResult(key, result);
+          dbReady = await PlaylistSqliteStore.hasData(key);
+        } catch (e) {
+          debugPrint('mina_iptv: persist slot $slot SQLite backfill: $e');
+        }
+      }
+      final toWrite =
+          dbReady ? result.slimForSqliteCache() : result;
+      await SlotPlaylistSnapshotStore.write(
+        slot,
+        key,
+        toWrite,
+        slim: dbReady,
+      );
+      if (dbReady) {
+        unawaited(
+          PlaylistMemoryDiagnostics.captureAndLog(
+            tag: 'snapshot_write_slot$slot',
+            result: toWrite,
+            dbKey: key,
+          ),
+        );
+      }
     } catch (e) {
       debugPrint('mina_iptv: persist slot $slot snapshot: $e');
     }
@@ -1047,7 +1253,48 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
     try {
       final key = await _slotSnapshotKey(slot);
       if (key == null) return null;
-      return SlotPlaylistSnapshotStore.tryRead(slot, key);
+      final snap = await SlotPlaylistSnapshotStore.tryRead(slot, key);
+      if (snap == null) return null;
+      var dbReady = await PlaylistSqliteStore.hasData(key);
+      final hasLists = snap.channels.isNotEmpty ||
+          snap.vod.isNotEmpty ||
+          snap.series.isNotEmpty;
+      if (!dbReady && hasLists) {
+        try {
+          await PlaylistSqliteStore.replaceFromResult(key, snap);
+          dbReady = await PlaylistSqliteStore.hasData(key);
+        } catch (e) {
+          debugPrint('mina_iptv: restore slot $slot SQLite backfill: $e');
+        }
+        if (!dbReady) {
+          await Future<void>.delayed(const Duration(milliseconds: 150));
+          try {
+            await PlaylistSqliteStore.replaceFromResult(key, snap);
+            dbReady = await PlaylistSqliteStore.hasData(key);
+          } catch (e) {
+            debugPrint(
+              'mina_iptv: restore slot $slot SQLite backfill retry: $e',
+            );
+          }
+        }
+      }
+      if (dbReady) {
+        if (hasLists) {
+          final slim = snap.slimForSqliteCache();
+          unawaited(
+            SlotPlaylistSnapshotStore.write(slot, key, slim, slim: true),
+          );
+          return slim;
+        }
+        return snap.slimForSqliteCache();
+      }
+      if (hasLists) {
+        debugPrint(
+          'mina_iptv: restore slot $slot — SQLite empty, skip RAM fallback',
+        );
+        return null;
+      }
+      return snap;
     } catch (e) {
       debugPrint('mina_iptv: restore slot $slot snapshot: $e');
       return null;
@@ -1058,9 +1305,38 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
   Future<M3uResult?> loadSlotPlaylist(int slot) async {
     final src = await readSourceAt(slot);
     if (src == null) return null;
-    final result = await _loadParsedForMerge(src);
+    // Slot parmak izi = DB `source_key`. M3U streaming parse + Xtream sonucu
+    // bu anahtarla SQLite'a yazılır; böylece tüketiciler büyük listeleri
+    // RAM yerine diskten (sayfalı) okuyabilir.
+    final key = await _slotSnapshotKey(slot);
+    final result = await _loadParsedForMergeToDb(src, key);
     unawaited(persistSlotSnapshot(slot, result));
     return result;
+  }
+
+  @override
+  Future<String?> slotDbKey(int slot) => _slotSnapshotKey(slot);
+
+  @override
+  Future<void> pruneOrphanPlaylistDbSources({
+    Set<String> keepExtra = const {},
+  }) async {
+    try {
+      final keep = <String>{...keepExtra};
+      for (final slot in allPlaylistSlots()) {
+        final src = await readSourceAt(slot);
+        if (src == null) continue;
+        final key = await _slotSnapshotKey(slot);
+        if (key != null && key.isNotEmpty) keep.add(key);
+      }
+      // Aktif birleşik anahtar (varsa) korunur — kullanıcı o an birleşik
+      // görünümdeyse verisi silinmesin.
+      final mergedKey = _lastMergedDbSourceKey;
+      if (mergedKey != null && mergedKey.isNotEmpty) keep.add(mergedKey);
+      await PlaylistSqliteStore.pruneExcept(keep);
+    } catch (e) {
+      debugPrint('mina_iptv: prune orphan playlist db sources failed: $e');
+    }
   }
 
   @override
@@ -1118,9 +1394,71 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
       await _storage.delete(key: keys.disabled);
       // Etiket de slot'a bağlı; slot boşaldığında varsayılan başlığa dön.
       await _storage.delete(key: keys.name);
+      // Bu slota ait SQLite playlist verisi artık yetim — temizle (20+ liste
+      // senaryosunda DB'nin sınırsız büyümesini önler). Kaynak yukarıda
+      // silindiği için ilgili `source_key` artık aktif kümeye girmez.
+      await pruneOrphanPlaylistDbSources();
     } catch (e) {
       throw StorageException('Could not clear source slot $slot', e);
     }
+  }
+
+  @override
+  Future<Map<int, int>> compactSlots() async {
+    // Dolu slotları artan sırada oku; hedef ardışık 1..N dizilimi.
+    final infos = await readAllSlotInfos();
+    if (infos.isEmpty) return const <int, int>{};
+    final sorted = [...infos]..sort((a, b) => a.slot.compareTo(b.slot));
+
+    final remap = <int, int>{};
+    for (var i = 0; i < sorted.length; i++) {
+      final from = sorted[i].slot;
+      final to = i + 1;
+      if (from == to) continue;
+      // Artan sırada işlediğimiz için `to` her zaman boştur (ya silinen
+      // boşluk ya da bir önceki adımda yukarı taşınıp boşaltılmış slot).
+      await _moveSlotData(from: from, to: to, info: sorted[i]);
+      remap[from] = to;
+    }
+    if (remap.isNotEmpty) {
+      // Birleşik snapshot artık geçersiz — yeniden hesaplansın.
+      await PlaylistSnapshotStore.delete();
+    }
+    return remap;
+  }
+
+  /// Bir slotun tüm verisini (kaynak + etiket + devre dışı bayrağı + yerel
+  /// m3u dosyası) [from]'dan [to]'ya taşır ve eskisini temizler.
+  Future<void> _moveSlotData({
+    required int from,
+    required int to,
+    required ({
+      int slot,
+      PlaylistSource source,
+      bool disabled,
+      String? name,
+    }) info,
+  }) async {
+    final source = info.source;
+    if (source is M3uSource && isAnyM3uLocalSentinel(source.url)) {
+      // Yerel m3u: dosyayı fiziksel olarak yeni slota kopyala, sentinel'i
+      // yeni slota göre yaz. (persistSourceAt aynı sentinel için dosyayı
+      // silmez, başka slot snapshot'ını temizler.)
+      final oldFile = await _localM3uFileAt(from);
+      final newFile = await _localM3uFileAt(to);
+      if (await oldFile.exists()) {
+        await newFile.parent.create(recursive: true);
+        await oldFile.copy(newFile.path);
+      }
+      await persistSourceAt(to, M3uSource(url: localM3uSentinelForSlot(to)));
+    } else {
+      await persistSourceAt(to, source);
+    }
+    await writeSlotName(to, info.name);
+    await setSlotDisabled(to, info.disabled);
+    // Eski slotu tamamen temizle (kaynak, yerel dosya, snapshot, etiket,
+    // devre dışı bayrağı).
+    await clearSourceAt(from);
   }
 
   @override
@@ -1326,6 +1664,34 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
         parsed,
         orphanCategoryName: orphanName,
       );
+    }
+
+    // Birleşik sonucu SQLite'a yaz → film/dizi RAM'de tutulmaz (slim). Çoklu
+    // liste birleştirmesinde tepe RAM yine de parse anında oluşur; bu adım
+    // yükleme sonrası kalıcı RAM'i düşürür ve "Listeler" geçişiyle aynı
+    // disk-tabanlı okumayı kullanır. Yazım başarısızsa eski davranışa (tam
+    // bellek) düşülür.
+    _lastMergedDbSourceKey = null;
+    try {
+      final active = await _readActiveSourcesForMerge();
+      if (active.isNotEmpty &&
+          (merged.vod.isNotEmpty || merged.series.isNotEmpty)) {
+        final mergedKey = await _mergedSnapshotKeyAll(active);
+        await PlaylistSqliteStore.replaceFromResult(mergedKey, merged);
+        _lastMergedDbSourceKey = mergedKey;
+        final slim = merged.slimForSqliteCache();
+        unawaited(_persistMergedPlaylistSnapshot(slim));
+        unawaited(
+          PlaylistMemoryDiagnostics.captureAndLog(
+            tag: 'merged_to_db',
+            result: slim,
+            dbKey: mergedKey,
+          ),
+        );
+        return slim;
+      }
+    } catch (e) {
+      debugPrint('mina_iptv: merged SQLite populate failed: $e');
     }
 
     unawaited(_persistMergedPlaylistSnapshot(merged));

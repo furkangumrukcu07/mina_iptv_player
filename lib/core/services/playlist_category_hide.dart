@@ -1,5 +1,6 @@
 import 'app_settings_service.dart';
 import 'playlist_cache_service.dart';
+import 'playlist_data_source.dart';
 import '../../domain/entities/channel.dart';
 import '../../domain/entities/m3u_result.dart';
 import '../../domain/entities/series.dart';
@@ -255,8 +256,8 @@ abstract final class PlaylistCategoryHide {
   //
   // İki katmanı tek bayrakta birleştirir:
   //   1. Kullanıcının gizlediği kategori (kanal / film / dizi)
-  //   2. [AppSettingsService.hideAdultContentEnabled] açıkken kategori/öğe
-  //      adında +18 token tespit edilmesi
+  //   2. Mağaza inceleme modu ([AppSettingsService.reviewModeActive]) açıkken
+  //      kategori/öğe adında +18 token tespit edilmesi
   //
   // Strip'ler bu helper'ları kullanarak hem gizlenmiş hem de +18 içeriği
   // dışlar. Toggle değiştiğinde [AppSettingsService.xtreamHideRevision]
@@ -288,6 +289,57 @@ abstract final class PlaylistCategoryHide {
     if (channelHiddenInLive(app, cache, data, ch)) return true;
     if (app.effectiveHideAdultContent && _adultLiveChannel(data, ch)) {
       return true;
+    }
+    return false;
+  }
+
+  static bool vodLiteHidden(
+    AppSettingsService app,
+    PlaylistCacheService cache,
+    M3uResult data,
+    VodLite v,
+  ) {
+    if (vodCategoryHidden(app, cache, data, v.categoryId)) return true;
+    if (app.effectiveHideAdultContent) {
+      final catName = _vodCatNames(data)[v.categoryId];
+      if (AdultContentFilter.isAnyAdult([catName, v.name])) return true;
+    }
+    return false;
+  }
+
+  static bool seriesLiteHidden(
+    AppSettingsService app,
+    PlaylistCacheService cache,
+    M3uResult data,
+    SeriesLite s,
+  ) {
+    if (seriesCategoryHidden(app, cache, data, s.categoryId)) return true;
+    if (app.effectiveHideAdultContent) {
+      final catName = _seriesCatNames(data)[s.categoryId];
+      if (AdultContentFilter.isAnyAdult([catName, s.name])) return true;
+    }
+    return false;
+  }
+
+  static bool channelLiteHidden(
+    AppSettingsService app,
+    PlaylistCacheService cache,
+    M3uResult data,
+    ChannelLite ch,
+  ) {
+    final xk = cache.xtreamPreferenceKey.value?.trim();
+    if (xk != null && xk.isNotEmpty) {
+      if (app.xtreamHiddenLiveIds(xk).contains(ch.categoryId)) return true;
+    } else {
+      final mk = m3uSourceKey(cache);
+      if (mk != null) {
+        final n = _liveCatNames(data)[ch.categoryId];
+        if (n != null && app.m3uHiddenLiveNames(mk).contains(n)) return true;
+      }
+    }
+    if (app.effectiveHideAdultContent) {
+      final catName = _liveCatNames(data)[ch.categoryId];
+      if (AdultContentFilter.isAnyAdult([catName, ch.name])) return true;
     }
     return false;
   }

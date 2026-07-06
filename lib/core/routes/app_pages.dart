@@ -1,7 +1,6 @@
 import 'package:get/get.dart';
 
-import '../../modules/browse/browse_binding.dart';
-import '../../modules/browse/browse_view.dart';
+import '../navigation/page_transition_builder.dart';
 import '../../modules/channels/channels_binding.dart';
 import '../../modules/channels/channels_view.dart';
 import '../../modules/chat/chat_binding.dart';
@@ -49,8 +48,11 @@ import '../../modules/settings/channel_category_layout_view.dart';
 import '../../modules/settings/playback_settings_view.dart';
 import '../../modules/settings/other_tools_view.dart';
 import '../../modules/settings/contact_us_view.dart';
+import '../../modules/settings/faq_view.dart';
 import '../../modules/settings/subtitle_options_view.dart';
 import '../../modules/settings/xtream_category_hide_view.dart';
+import '../../modules/settings/tv_key_mapping_settings_view.dart';
+import '../../modules/settings/premium_paywall_view.dart';
 import '../../modules/splash/splash_binding.dart';
 import '../../modules/splash/splash_view.dart';
 import '../../modules/mina_analytics/mina_analytics_binding.dart';
@@ -63,166 +65,251 @@ abstract final class AppPages {
       name: AppRoutes.splash,
       page: SplashView.new,
       binding: SplashBinding(),
+      transition: Transition.fadeIn,
+      transitionDuration: const Duration(milliseconds: 200),
     ),
     GetPage(
       name: AppRoutes.setupWizard,
       page: SetupWizardView.new,
       binding: SetupWizardBinding(),
+      transition: Transition.fadeIn,
+      transitionDuration: const Duration(milliseconds: 200),
     ),
     GetPage(
       name: AppRoutes.playlist,
       page: PlaylistView.new,
       binding: PlaylistBinding(),
+      transition: PageTransitionBuilder.getTransition(),
+      transitionDuration: PageTransitionBuilder.duration,
     ),
     GetPage(
       name: AppRoutes.playlistsManager,
       page: PlaylistsManagerView.new,
       binding: PlaylistsManagerBinding(),
+      transition: PageTransitionBuilder.getTransition(),
+      transitionDuration: PageTransitionBuilder.duration,
     ),
     GetPage(
       name: AppRoutes.home,
       page: HomeView.new,
       binding: HomeBinding(),
+      transition: PageTransitionBuilder.getTransition(),
+      transitionDuration: PageTransitionBuilder.duration,
     ),
     GetPage(
       name: AppRoutes.recommendedFilms,
       page: RecommendedFilmsView.new,
       binding: RecommendedFilmsBinding(),
+      transition: PageTransitionBuilder.getTransition(),
+      transitionDuration: PageTransitionBuilder.duration,
     ),
     GetPage(
       name: AppRoutes.recommendedFilmsCategory,
       page: RecommendedFilmsCategoryView.new,
       binding: RecommendedFilmsCategoryBinding(),
+      // «Tümünü gör» açılışında içerik hazırsa anında grid; aksi halde fade
+      // sırasında DB okuması bir sonraki karede başlar (takılma azalır).
+      transition: Transition.fadeIn,
+      transitionDuration: const Duration(milliseconds: 200),
     ),
     GetPage(
       name: AppRoutes.filmDiziDetail,
       page: FilmDiziDetailView.new,
       binding: FilmDiziDetailBinding(),
+      transition: PageTransitionBuilder.getTransition(),
+      transitionDuration: PageTransitionBuilder.duration,
     ),
     GetPage(
       name: AppRoutes.filmDiziSeriesDetail,
       page: FilmDiziSeriesDetailView.new,
       binding: FilmDiziSeriesDetailBinding(),
+      transition: PageTransitionBuilder.getTransition(),
+      transitionDuration: PageTransitionBuilder.duration,
     ),
     GetPage(
       name: AppRoutes.filmDiziActor,
       page: FilmDiziActorView.new,
       binding: FilmDiziActorBinding(),
+      transition: PageTransitionBuilder.getTransition(),
+      transitionDuration: PageTransitionBuilder.duration,
     ),
     GetPage(
       name: AppRoutes.epgMix,
       page: EpgMixView.new,
       binding: EpgMixBinding(),
+      transition: PageTransitionBuilder.getTransition(),
+      transitionDuration: PageTransitionBuilder.duration,
     ),
     GetPage(
       name: AppRoutes.chat,
       page: ChatRoomsView.new,
       binding: ChatBinding(),
+      transition: PageTransitionBuilder.getTransition(),
+      transitionDuration: PageTransitionBuilder.duration,
     ),
     GetPage(
       name: AppRoutes.chatRoom,
       page: ChatRoomView.new,
       binding: ChatBinding(),
+      transition: PageTransitionBuilder.getTransition(),
+      transitionDuration: PageTransitionBuilder.duration,
     ),
     GetPage(
       name: AppRoutes.chatSupportInbox,
       page: ChatSupportInboxView.new,
       binding: ChatBinding(),
+      transition: PageTransitionBuilder.getTransition(),
+      transitionDuration: PageTransitionBuilder.duration,
     ),
     GetPage(
       name: AppRoutes.channels,
       page: ChannelsView.new,
       binding: ChannelsBinding(),
-    ),
-    GetPage(
-      name: AppRoutes.browse,
-      page: BrowseView.new,
-      binding: BrowseBinding(),
+      transition: PageTransitionBuilder.getTransition(),
+      transitionDuration: PageTransitionBuilder.duration,
     ),
     GetPage(
       name: AppRoutes.settings,
       page: SettingsView.new,
       binding: SettingsBinding(),
+      transition: PageTransitionBuilder.getTransition(),
+      transitionDuration: PageTransitionBuilder.duration,
     ),
     GetPage(
       name: AppRoutes.epgSettings,
       page: EpgSettingsView.new,
       binding: EpgSettingsBinding(),
+      transition: PageTransitionBuilder.getTransition(),
+      transitionDuration: PageTransitionBuilder.duration,
     ),
     GetPage(
       name: AppRoutes.epgSourceManage,
       page: EpgSourceManageView.new,
       binding: EpgSourceManageBinding(),
+      transition: PageTransitionBuilder.getTransition(),
+      transitionDuration: PageTransitionBuilder.duration,
     ),
     GetPage(
       name: AppRoutes.xtreamCategoryHide,
       page: XtreamCategoryHideView.new,
+      transition: PageTransitionBuilder.getTransition(),
+      transitionDuration: PageTransitionBuilder.duration,
     ),
     GetPage(
       name: AppRoutes.channelListEditor,
       page: ChannelListEditorView.new,
+      transition: PageTransitionBuilder.getTransition(),
+      transitionDuration: PageTransitionBuilder.duration,
     ),
     GetPage(
       name: AppRoutes.homeCardOrderEditor,
       page: HomeCardOrderEditorView.new,
+      transition: PageTransitionBuilder.getTransition(),
+      transitionDuration: PageTransitionBuilder.duration,
     ),
     GetPage(
       name: AppRoutes.homeSettings,
       page: HomeSettingsView.new,
+      transition: PageTransitionBuilder.getTransition(),
+      transitionDuration: PageTransitionBuilder.duration,
     ),
     GetPage(
       name: AppRoutes.backupRestore,
       page: BackupRestoreView.new,
+      transition: PageTransitionBuilder.getTransition(),
+      transitionDuration: PageTransitionBuilder.duration,
     ),
     GetPage(
       name: AppRoutes.cloudSync,
       page: CloudSyncView.new,
+      transition: PageTransitionBuilder.getTransition(),
+      transitionDuration: PageTransitionBuilder.duration,
     ),
     GetPage(
       name: AppRoutes.channelCategoryLayout,
       page: ChannelCategoryLayoutView.new,
+      transition: PageTransitionBuilder.getTransition(),
+      transitionDuration: PageTransitionBuilder.duration,
     ),
     GetPage(
       name: AppRoutes.playbackSettings,
       page: PlaybackSettingsView.new,
+      transition: PageTransitionBuilder.getTransition(),
+      transitionDuration: PageTransitionBuilder.duration,
     ),
     GetPage(
       name: AppRoutes.otherTools,
       page: OtherToolsView.new,
+      transition: PageTransitionBuilder.getTransition(),
+      transitionDuration: PageTransitionBuilder.duration,
     ),
     GetPage(
       name: AppRoutes.contactUs,
       page: ContactUsView.new,
+      transition: PageTransitionBuilder.getTransition(),
+      transitionDuration: PageTransitionBuilder.duration,
+    ),
+    GetPage(
+      name: AppRoutes.faq,
+      page: FaqView.new,
+      transition: PageTransitionBuilder.getTransition(),
+      transitionDuration: PageTransitionBuilder.duration,
     ),
     GetPage(
       name: AppRoutes.subtitleOptions,
       page: SubtitleOptionsView.new,
+      transition: PageTransitionBuilder.getTransition(),
+      transitionDuration: PageTransitionBuilder.duration,
     ),
     GetPage(
       name: AppRoutes.parentalControl,
       page: ParentalControlView.new,
+      transition: PageTransitionBuilder.getTransition(),
+      transitionDuration: PageTransitionBuilder.duration,
     ),
     GetPage(
       name: AppRoutes.profiles,
       page: ProfilesView.new,
+      transition: PageTransitionBuilder.getTransition(),
+      transitionDuration: PageTransitionBuilder.duration,
     ),
     GetPage(
       name: AppRoutes.player,
       page: PlayerView.new,
       binding: PlayerBinding(),
+      transition: Transition.fadeIn,
+      transitionDuration: const Duration(milliseconds: 200),
     ),
     GetPage(
       name: AppRoutes.minaAnalytics,
       page: MinaAnalyticsView.new,
       binding: MinaAnalyticsBinding(),
+      transition: PageTransitionBuilder.getTransition(),
+      transitionDuration: PageTransitionBuilder.duration,
     ),
     GetPage(
       name: AppRoutes.dataUsage,
       page: DataUsageView.new,
+      transition: PageTransitionBuilder.getTransition(),
+      transitionDuration: PageTransitionBuilder.duration,
     ),
     GetPage(
       name: AppRoutes.downloads,
       page: DownloadsView.new,
+      transition: PageTransitionBuilder.getTransition(),
+      transitionDuration: PageTransitionBuilder.duration,
+    ),
+    GetPage(
+      name: AppRoutes.tvKeyMapping,
+      page: TvKeyMappingSettingsView.new,
+      transition: PageTransitionBuilder.getTransition(),
+      transitionDuration: PageTransitionBuilder.duration,
+    ),
+    GetPage(
+      name: AppRoutes.paywall,
+      page: PremiumPaywallView.new,
+      transition: Transition.fadeIn,
+      transitionDuration: const Duration(milliseconds: 200),
     ),
   ];
 }

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:vector_math/vector_math_64.dart' as vm;
 
 import '../../../core/layout/app_layout_mode.dart';
 import '../../../core/services/app_settings_service.dart';
@@ -23,8 +24,11 @@ class PlaybackPinchZoomLayer extends StatefulWidget {
   State<PlaybackPinchZoomLayer> createState() => _PlaybackPinchZoomLayerState();
 }
 
-class _PlaybackPinchZoomLayerState extends State<PlaybackPinchZoomLayer> {
+class _PlaybackPinchZoomLayerState extends State<PlaybackPinchZoomLayer>
+    with SingleTickerProviderStateMixin {
   final _transform = TransformationController();
+  late AnimationController _animationController;
+  Animation<Matrix4>? _zoomAnimation;
   Timer? _hideHudTimer;
   bool _hudVisible = false;
   double _scale = 1.0;
@@ -38,6 +42,14 @@ class _PlaybackPinchZoomLayerState extends State<PlaybackPinchZoomLayer> {
   void initState() {
     super.initState();
     _transform.addListener(_onTransformChanged);
+    _animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 250),
+    )..addListener(() {
+        if (_zoomAnimation != null) {
+          _transform.value = _zoomAnimation!.value;
+        }
+      });
   }
 
   @override
@@ -45,6 +57,7 @@ class _PlaybackPinchZoomLayerState extends State<PlaybackPinchZoomLayer> {
     _hideHudTimer?.cancel();
     _transform.removeListener(_onTransformChanged);
     _transform.dispose();
+    _animationController.dispose();
     super.dispose();
   }
 
@@ -52,6 +65,7 @@ class _PlaybackPinchZoomLayerState extends State<PlaybackPinchZoomLayer> {
   void didUpdateWidget(covariant PlaybackPinchZoomLayer oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.playbackKey != widget.playbackKey) {
+      _animationController.stop();
       _resetTransform(notifyHud: false);
     }
   }
@@ -69,12 +83,55 @@ class _PlaybackPinchZoomLayerState extends State<PlaybackPinchZoomLayer> {
   }
 
   void _resetTransform({bool notifyHud = true}) {
+    _animationController.stop();
     _transform.value = Matrix4.identity();
     setState(() {
       _scale = 1.0;
       _pan = Offset.zero;
     });
     if (notifyHud) _flashHud();
+  }
+
+  void _handleDoubleTap(Offset position) {
+    _hideHudTimer?.cancel();
+    _animationController.stop();
+
+    final currentMatrix = _transform.value;
+    final currentScale = currentMatrix.getMaxScaleOnAxis();
+
+    final Matrix4 endMatrix;
+    if (currentScale > 1.05) {
+      // Zoomed in -> Reset to 1.0 (identity matrix)
+      endMatrix = Matrix4.identity();
+    } else {
+      // Zoom in to 2.0x centered at double tap position
+      final double targetScale = 2.0;
+      final double x = position.dx;
+      final double y = position.dy;
+      
+      final Matrix4 m = Matrix4.identity();
+      m.translateByVector3(vm.Vector3(x, y, 0.0));
+      m.scaleByVector3(vm.Vector3(targetScale, targetScale, 1.0));
+      m.translateByVector3(vm.Vector3(-x, -y, 0.0));
+        
+      endMatrix = m;
+    }
+
+    _zoomAnimation = Matrix4Tween(
+      begin: currentMatrix,
+      end: endMatrix,
+    ).animate(CurvedAnimation(
+      parent: _animationController,
+      curve: Curves.easeOutCubic,
+    ));
+
+    _animationController.forward(from: 0.0).then((_) {
+      if (endMatrix == Matrix4.identity()) {
+        setState(() => _hudVisible = false);
+      } else {
+        _flashHud();
+      }
+    });
   }
 
   void _flashHud() {
@@ -88,7 +145,10 @@ class _PlaybackPinchZoomLayerState extends State<PlaybackPinchZoomLayer> {
     });
   }
 
-  void _onInteractionStart() => _flashHud();
+  void _onInteractionStart() {
+    _animationController.stop();
+    _flashHud();
+  }
 
   void _onInteractionEnd() {
     if (_scale <= 1.02) {
@@ -134,33 +194,43 @@ class _PlaybackPinchZoomLayerState extends State<PlaybackPinchZoomLayer> {
           fit: StackFit.expand,
           clipBehavior: Clip.hardEdge,
           children: [
-            InteractiveViewer(
-              transformationController: _transform,
-              minScale: _minScale,
-              maxScale: _maxScale,
-              panEnabled: _scale > 1.05,
-              scaleEnabled: true,
-              alignment: Alignment.center,
-              clipBehavior: Clip.hardEdge,
-              onInteractionStart: (_) => _onInteractionStart(),
-              onInteractionEnd: (_) => _onInteractionEnd(),
-              child: SizedBox(
-                width: constraints.maxWidth,
-                height: constraints.maxHeight,
-                child: widget.child,
-              ),
-            ),
-            if (_hudVisible || zoomed)
-              Positioned(
-                left: 12,
-                top: 12,
-                child: _PinchZoomHud(
-                  scalePercent: (_scale * 100).round(),
-                  panLabel: _panLabel(),
-                  showReset: zoomed,
-                  onReset: _resetTransform,
+            GestureDetector(
+              onDoubleTapDown: (details) {
+                _handleDoubleTap(details.localPosition);
+              },
+              child: InteractiveViewer(
+                transformationController: _transform,
+                minScale: _minScale,
+                maxScale: _maxScale,
+                panEnabled: _scale > 1.05,
+                scaleEnabled: true,
+                clipBehavior: Clip.hardEdge,
+                onInteractionStart: (_) => _onInteractionStart(),
+                onInteractionEnd: (_) => _onInteractionEnd(),
+                child: SizedBox(
+                  width: constraints.maxWidth,
+                  height: constraints.maxHeight,
+                  child: widget.child,
                 ),
               ),
+            ),
+            Positioned(
+              left: 12,
+              top: 12,
+              child: AnimatedOpacity(
+                opacity: (_hudVisible || zoomed) ? 1.0 : 0.0,
+                duration: const Duration(milliseconds: 200),
+                child: IgnorePointer(
+                  ignoring: !(_hudVisible || zoomed),
+                  child: _PinchZoomHud(
+                    scalePercent: (_scale * 100).round(),
+                    panLabel: _panLabel(),
+                    showReset: zoomed,
+                    onReset: _resetTransform,
+                  ),
+                ),
+              ),
+            ),
           ],
         );
       },

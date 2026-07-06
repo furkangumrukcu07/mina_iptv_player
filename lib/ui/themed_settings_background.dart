@@ -82,6 +82,7 @@ class ThemedSettingsBackground extends StatelessWidget {
           );
           if (reduce ||
               tv ||
+              isPortrait ||
               GlassAppearance.fromLabel(themeLabel)
                   .usesSyntheticGlassSurface) {
             return scaled;

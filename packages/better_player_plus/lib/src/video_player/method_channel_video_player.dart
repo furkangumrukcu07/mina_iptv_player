@@ -156,7 +156,7 @@ class MethodChannelVideoPlayer extends VideoPlayerPlatform {
     final int milliseconds =
         await _channel.invokeMethod<int>('absolutePosition', <String, dynamic>{'textureId': textureId}) ?? 0;
 
-    if (milliseconds <= 0) {
+    if (milliseconds <= 0 || milliseconds > 8640000000000000) {
       return null;
     }
 

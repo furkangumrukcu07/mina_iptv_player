@@ -8,6 +8,7 @@ import 'package:get/get.dart';
 import '../../core/layout/app_layout_mode.dart';
 import '../../core/services/app_settings_service.dart';
 import '../../core/services/search_history_service.dart';
+import '../../domain/entities/channel.dart';
 import '../../domain/entities/series.dart';
 import '../../domain/entities/vod.dart';
 import '../../ui/glass_overlays.dart';
@@ -56,10 +57,20 @@ class _HomeUnifiedSearchDialog extends StatefulWidget {
 }
 
 class _HomeUnifiedSearchDialogState extends State<_HomeUnifiedSearchDialog> {
+  static const _emptyBuckets = HomeUnifiedSearchBuckets(
+    channels: <Channel>[],
+    vods: <VodItem>[],
+    series: <SeriesItem>[],
+  );
+
   late final TextEditingController _queryCtrl = TextEditingController();
   late final FocusNode _queryFocus = FocusNode(debugLabel: 'unifiedSearchQuery');
   late final FocusNode _closeFocus = FocusNode(debugLabel: 'unifiedSearchClose');
   final List<FocusNode> _resultNodes = [];
+  HomeUnifiedSearchBuckets _buckets = _emptyBuckets;
+  bool _searching = false;
+  String _lastSearchQuery = '';
+  int _searchGen = 0;
 
   /// Kullanıcı bir sonuca tıkladığında o anki sorguyu geçmişe iter — sadece
   /// gerçek bir seçim yapıldığında yazılır (boş çıkıp kapatma kaydedilmez).
@@ -77,7 +88,59 @@ class _HomeUnifiedSearchDialogState extends State<_HomeUnifiedSearchDialog> {
       selection: TextSelection.collapsed(offset: query.length),
     );
     setState(() {});
+    unawaited(_runSearch(query));
     _queryFocus.requestFocus();
+  }
+
+  void _onQueryChanged(String _) {
+    setState(() {});
+    unawaited(_runSearch(_queryCtrl.text));
+  }
+
+  Future<void> _runSearch(String raw) async {
+    final q = raw.trim();
+    final gen = ++_searchGen;
+    if (q.isEmpty) {
+      if (!mounted || gen != _searchGen) return;
+      setState(() {
+        _buckets = _emptyBuckets;
+        _searching = false;
+        _lastSearchQuery = '';
+      });
+      return;
+    }
+    if (mounted) setState(() => _searching = true);
+    final buckets =
+        await Get.find<HomeController>().portraitSearchBucketsAsync(q);
+    if (!mounted || gen != _searchGen) return;
+    setState(() {
+      _buckets = buckets;
+      _searching = false;
+      _lastSearchQuery = q;
+    });
+  }
+
+  Future<void> _focusFirstResult(String query) async {
+    final q = query.trim();
+    if (q.isEmpty) return;
+    HomeUnifiedSearchBuckets buckets;
+    if (q == _lastSearchQuery && !_searching) {
+      buckets = _buckets;
+    } else {
+      buckets =
+          await Get.find<HomeController>().portraitSearchBucketsAsync(q);
+      if (!mounted) return;
+      setState(() {
+        _buckets = buckets;
+        _lastSearchQuery = q;
+        _searching = false;
+      });
+    }
+    final n =
+        buckets.channels.length + buckets.vods.length + buckets.series.length;
+    if (n > 0 && _resultNodes.isNotEmpty) {
+      _resultNodes.first.requestFocus();
+    }
   }
 
   @override
@@ -136,7 +199,7 @@ class _HomeUnifiedSearchDialogState extends State<_HomeUnifiedSearchDialog> {
     final c = Get.find<HomeController>();
     final directional = _directionalNav(context);
     final q = _queryCtrl.text;
-    final buckets = c.portraitSearchBuckets(q);
+    final buckets = _buckets;
     final total = buckets.channels.length + buckets.vods.length + buckets.series.length;
     _ensureResultNodeCount(total);
 
@@ -159,7 +222,7 @@ class _HomeUnifiedSearchDialogState extends State<_HomeUnifiedSearchDialog> {
       final field = TextField(
         controller: _queryCtrl,
         autofocus: true,
-        onChanged: (_) => setState(() {}),
+        onChanged: _onQueryChanged,
         style: const TextStyle(color: Colors.white, fontSize: 15),
         decoration: InputDecoration(
           hintText: 'home.search.hint'.tr,
@@ -193,7 +256,7 @@ class _HomeUnifiedSearchDialogState extends State<_HomeUnifiedSearchDialog> {
           ),
         ),
         textInputAction: TextInputAction.search,
-        onSubmitted: (_) => setState(() {}),
+        onSubmitted: _onQueryChanged,
         focusNode: _queryFocus,
       );
 
@@ -204,13 +267,7 @@ class _HomeUnifiedSearchDialogState extends State<_HomeUnifiedSearchDialog> {
       return CallbackShortcuts(
         bindings: {
           const SingleActivator(LogicalKeyboardKey.arrowDown): () {
-            final t = _queryCtrl.text.trim();
-            if (t.isEmpty) return;
-            final b = c.portraitSearchBuckets(t);
-            final n = b.channels.length + b.vods.length + b.series.length;
-            if (n > 0 && _resultNodes.isNotEmpty) {
-              _resultNodes.first.requestFocus();
-            }
+            unawaited(_focusFirstResult(_queryCtrl.text));
           },
         },
         child: field,
@@ -385,8 +442,26 @@ class _HomeUnifiedSearchDialogState extends State<_HomeUnifiedSearchDialog> {
       }
     }
 
+    if (_searching && q.trim().isNotEmpty) {
+      listChildren.add(
+        const ExcludeFocus(
+          child: Padding(
+            padding: EdgeInsets.only(top: 24),
+            child: Center(
+              child: SizedBox(
+                width: 28,
+                height: 28,
+                child: CircularProgressIndicator(strokeWidth: 2.4),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
     final liveEmptyForResults = widget.excludeLive || buckets.channels.isEmpty;
-    if (q.trim().isNotEmpty &&
+    if (!_searching &&
+        q.trim().isNotEmpty &&
         liveEmptyForResults &&
         buckets.vods.isEmpty &&
         buckets.series.isEmpty) {

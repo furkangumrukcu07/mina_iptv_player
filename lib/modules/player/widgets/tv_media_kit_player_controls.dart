@@ -7,6 +7,7 @@ import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:media_kit/media_kit.dart';
 
+import '../../../core/player/video_player_engine.dart';
 import '../../../core/layout/app_layout_mode.dart';
 import '../../../core/services/app_settings_service.dart';
 import '../../../core/theme/app_performance.dart';
@@ -71,7 +72,7 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
   Timer? _hideTimer;
 
   bool _visible = true;
-  _MediaKitOsdSnapshot? _mkSnap;
+  late final ValueNotifier<_MediaKitOsdSnapshot?> _mkSnapNotifier;
 
   Player? _mkListenerTarget;
   final List<StreamSubscription<dynamic>> _mkSubs = [];
@@ -103,6 +104,7 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
   @override
   void initState() {
     super.initState();
+    _mkSnapNotifier = ValueNotifier<_MediaKitOsdSnapshot?>(null);
     final settings = Get.find<AppSettingsService>();
     final remoteLayout = settings.layoutMode.value.usesRemoteNavigationStyle;
     if (remoteLayout) {
@@ -232,7 +234,7 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
     _cancelMkSubs();
     _mkListenerTarget = p;
     if (p == null) {
-      if (mounted) setState(() => _mkSnap = null);
+      if (mounted) _mkSnapNotifier.value = null;
       return;
     }
     void tick([dynamic _]) => _onMkUpdate();
@@ -248,7 +250,7 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
     if (!mounted) return;
     final p = _player;
     if (p == null) {
-      setState(() => _mkSnap = null);
+      _mkSnapNotifier.value = null;
       return;
     }
     final s = p.state;
@@ -259,9 +261,9 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
       duration: s.duration,
       volume: s.volume,
     );
-    final old = _mkSnap;
+    final old = _mkSnapNotifier.value;
     if (old != null && _mkFieldsUnchanged(old, next)) return;
-    setState(() => _mkSnap = next);
+    _mkSnapNotifier.value = next;
   }
 
   bool _mkFieldsUnchanged(_MediaKitOsdSnapshot old, _MediaKitOsdSnapshot v) {
@@ -339,6 +341,7 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
   @override
   void dispose() {
     _cancelLiveOsdPlayPauseCenterHold();
+    _mkSnapNotifier.dispose();
     // TUM Worker'lari guvenli sekilde dispose et - memory leak kritik fix
     _safeDisposeWorker(_tvOsdVisibleWorker);
     _safeDisposeWorker(_stripOverlayWorker);
@@ -470,7 +473,7 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
 
   void _togglePlay() {
     _restartHideTimer();
-    final v = _mkSnap;
+    final v = _mkSnapNotifier.value;
     if (v == null) return;
     if (v.playing) {
       _pc.pause();
@@ -481,7 +484,7 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
 
   void _skipBack15() {
     _restartHideTimer();
-    final v = _mkSnap;
+    final v = _mkSnapNotifier.value;
     if (v == null) return;
     final ms = math.max(0, v.position.inMilliseconds - _skipMs);
     _pc.seekTo(Duration(milliseconds: ms));
@@ -489,7 +492,7 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
 
   void _skipForward15() {
     _restartHideTimer();
-    final v = _mkSnap;
+    final v = _mkSnapNotifier.value;
     if (v == null) return;
     var target = v.position.inMilliseconds + _skipMs;
     final dur = v.duration;
@@ -1082,7 +1085,6 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
         MediaQuery.orientationOf(context) == Orientation.portrait;
     if (isPortrait) return const SizedBox.shrink();
 
-    final playing = _mkSnap?.playing ?? false;
     final bottomInset = MediaQuery.paddingOf(context).bottom;
     final leftInset = MediaQuery.paddingOf(context).left;
     final rightInset = MediaQuery.paddingOf(context).right;
@@ -1242,21 +1244,26 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
           child: Stack(
             fit: StackFit.expand,
             children: [
-              if (_mkSnap?.buffering == true)
-                Center(
-                  child: _glassBar(
-                    padding: const EdgeInsets.all(16),
-                    radius: 999,
-                    child: const SizedBox(
-                      width: 32,
-                      height: 32,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2.5,
-                        color: _loadingColor,
+              ValueListenableBuilder<_MediaKitOsdSnapshot?>(
+                valueListenable: _mkSnapNotifier,
+                builder: (context, snap, _) {
+                  if (snap?.buffering != true) return const SizedBox.shrink();
+                  return Center(
+                    child: _glassBar(
+                      padding: const EdgeInsets.all(16),
+                      radius: 999,
+                      child: const SizedBox(
+                        width: 32,
+                        height: 32,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2.5,
+                          color: _loadingColor,
+                        ),
                       ),
                     ),
-                  ),
-                ),
+                  );
+                },
+              ),
               Positioned(
                 left: 12 + leftInset,
                 right: 12 + rightInset,
@@ -1274,24 +1281,28 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
                         mainAxisSize: MainAxisSize.min,
                         crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          if (!live &&
-                              _mkSnap != null &&
-                              _mkSnap!.duration.inMilliseconds > 0)
-                            Padding(
-                              padding: const EdgeInsets.only(bottom: 8),
-                              child: _glassBar(
-                                padding:
-                                    const EdgeInsets.fromLTRB(14, 8, 14, 8),
-                                child: _MkProgressBar(
-                                  position: _mkSnap!.position,
-                                  duration: _mkSnap!.duration,
-                                  onSeek: (d) {
-                                    _restartHideTimer();
-                                    _pc.seekTo(d);
-                                  },
+                          ValueListenableBuilder<_MediaKitOsdSnapshot?>(
+                            valueListenable: _mkSnapNotifier,
+                            builder: (context, snap, _) {
+                              if (live || snap == null || snap.duration.inMilliseconds <= 0) {
+                                return const SizedBox.shrink();
+                              }
+                              return Padding(
+                                padding: const EdgeInsets.only(bottom: 8),
+                                child: _glassBar(
+                                  padding: const EdgeInsets.fromLTRB(14, 8, 14, 8),
+                                  child: _MkProgressBar(
+                                    position: snap.position,
+                                    duration: snap.duration,
+                                    onSeek: (d) {
+                                      _restartHideTimer();
+                                      _pc.seekTo(d);
+                                    },
+                                  ),
                                 ),
-                              ),
-                            ),
+                              );
+                            },
+                          ),
                           IntrinsicHeight(
                             child: Row(
                               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1381,35 +1392,12 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
                                                   height: 1.1,
                                                 ),
                                               ),
-                                              if (live) ...[
-                                                const SizedBox(height: 4),
-                                                Container(
-                                                  padding: const EdgeInsets
-                                                      .symmetric(
-                                                    horizontal: 6,
-                                                    vertical: 3,
-                                                  ),
-                                                  decoration: BoxDecoration(
-                                                    color:
-                                                        const Color(0xFFE74C3C)
-                                                            .withValues(
-                                                                alpha: 0.85),
-                                                    borderRadius:
-                                                        BorderRadius.circular(
-                                                            5),
-                                                  ),
-                                                  child: Text(
-                                                    'player.liveBadge'.tr,
-                                                    style: const TextStyle(
-                                                      color: Colors.white,
-                                                      fontSize: 9,
-                                                      fontWeight:
-                                                          FontWeight.w800,
-                                                      letterSpacing: 0.4,
-                                                    ),
-                                                  ),
-                                                ),
-                                              ],
+                                              const SizedBox(height: 4),
+                                              osdContentTypeAndEngineRow(
+                                                live: live,
+                                                isSeries: _pc.isSeries,
+                                                engine: VideoPlayerEngine.mediaKit,
+                                              ),
                                             ],
                                           ),
                                         ),
@@ -1456,18 +1444,24 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
                                                   : _skipBack15,
                                             ),
                                             SizedBox(width: _osdBtnGap),
-                                            _osdButton(
-                                              context,
-                                              tooltip: playing
-                                                  ? 'player.tooltip.pause'.tr
-                                                  : 'player.tooltip.play'.tr,
-                                              icon: playing
-                                                  ? Icons.pause_rounded
-                                                  : Icons.play_arrow_rounded,
-                                              onPressed: _togglePlay,
-                                              primary: true,
-                                              focusNode: _firstOsdButtonFocus,
-                                              deferLiveOsdCenterForStrip: true,
+                                            ValueListenableBuilder<_MediaKitOsdSnapshot?>(
+                                              valueListenable: _mkSnapNotifier,
+                                              builder: (context, snap, _) {
+                                                final playing = snap?.playing ?? false;
+                                                return _osdButton(
+                                                  context,
+                                                  tooltip: playing
+                                                      ? 'player.tooltip.pause'.tr
+                                                      : 'player.tooltip.play'.tr,
+                                                  icon: playing
+                                                      ? Icons.pause_rounded
+                                                      : Icons.play_arrow_rounded,
+                                                  onPressed: _togglePlay,
+                                                  primary: true,
+                                                  focusNode: _firstOsdButtonFocus,
+                                                  deferLiveOsdCenterForStrip: true,
+                                                );
+                                              },
                                             ),
                                             SizedBox(width: _osdBtnGap),
                                             _osdButton(
@@ -1509,34 +1503,6 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
                                               icon: _fitIcon(fit),
                                               onPressed: _cycleFit,
                                             ),
-                                            Obx(() {
-                                              final s = Get.find<
-                                                  AppSettingsService>();
-                                              if (s.layoutMode.value !=
-                                                  AppLayoutMode.mobile) {
-                                                return const SizedBox.shrink();
-                                              }
-                                              return Row(
-                                                mainAxisSize: MainAxisSize.min,
-                                                children: [
-                                                  SizedBox(width: _osdBtnGap),
-                                                  _osdButton(
-                                                    context,
-                                                    tooltip:
-                                                        'player.tooltip.toPortrait'
-                                                            .tr,
-                                                    icon: Icons
-                                                        .stay_current_portrait_rounded,
-                                                    onPressed: () {
-                                                      _restartHideTimer();
-                                                      unawaited(
-                                                        s.requestMobileHandheldPortraitPlayback(),
-                                                      );
-                                                    },
-                                                  ),
-                                                ],
-                                              );
-                                            }),
                                             if (live) ...[
                                               SizedBox(width: _osdBtnGap),
                                               _osdButton(
@@ -1661,6 +1627,53 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
                                               }),
                                               SizedBox(width: _osdBtnGap),
                                             ],
+                                             Obx(() {
+                                               final s = Get.find<AppSettingsService>();
+                                               if (s.layoutMode.value == AppLayoutMode.tv) {
+                                                 return const SizedBox.shrink();
+                                               }
+                                               final mk = _pc.effectiveUseMediaKit;
+                                               return Row(
+                                                 mainAxisSize: MainAxisSize.min,
+                                                 children: [
+                                                   SizedBox(width: _osdBtnGap),
+                                                   _osdButton(
+                                                     context,
+                                                     tooltip: mk
+                                                         ? 'player.engine.toExo'.tr
+                                                         : 'player.engine.toMediaKit'.tr,
+                                                     icon: mk
+                                                         ? Icons.memory_rounded
+                                                         : Icons.bolt_rounded,
+                                                     onPressed: () {
+                                                       _restartHideTimer();
+                                                       unawaited(
+                                                         _pc.switchToBetterPlayer(),
+                                                       );
+                                                       GlassSnackbar.show(
+                                                         'player.engine.title'.tr,
+                                                         'player.engine.switchedExo'.tr,
+                                                         snackPosition: SnackPosition.BOTTOM,
+                                                       );
+                                                     },
+                                                   ),
+                                                   if (s.layoutMode.value == AppLayoutMode.mobile) ...[
+                                                     SizedBox(width: _osdBtnGap),
+                                                     _osdButton(
+                                                       context,
+                                                       tooltip: 'player.tooltip.toPortrait'.tr,
+                                                       icon: Icons.stay_current_portrait_rounded,
+                                                       onPressed: () {
+                                                         _restartHideTimer();
+                                                         unawaited(
+                                                           s.requestMobileHandheldPortraitPlayback(),
+                                                         );
+                                                       },
+                                                     ),
+                                                   ],
+                                                 ],
+                                               );
+                                             }),
                                               ],
                                             ),
                                           ),

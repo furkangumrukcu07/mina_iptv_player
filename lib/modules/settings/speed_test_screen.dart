@@ -27,8 +27,9 @@ class _SpeedTestScreenState extends State<SpeedTestScreen> {
     _speedTestService = Get.find<SpeedTestService>();
     _startTestFocusNode = FocusNode();
     _retryFocusNode = FocusNode();
-    _isTvMode = Get.find<AppSettingsService>().layoutMode.value.usesRemoteNavigationStyle;
-    
+    _isTvMode =
+        Get.find<AppSettingsService>().layoutMode.value == AppLayoutMode.tv;
+
     // TV modunda otomatik olarak test butonuna odaklan
     if (_isTvMode) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -50,12 +51,13 @@ class _SpeedTestScreenState extends State<SpeedTestScreen> {
     final colorScheme = theme.colorScheme;
     
     return Scaffold(
-      backgroundColor: colorScheme.background,
+      backgroundColor: colorScheme.surface,
       appBar: AppBar(
         title: Text('settings.speed_test.title'.tr),
         backgroundColor: colorScheme.surface,
         foregroundColor: colorScheme.onSurface,
         elevation: 0,
+        automaticallyImplyLeading: !_isTvMode,
       ),
       body: CallbackShortcuts(
         bindings: {
@@ -110,13 +112,19 @@ class _SpeedTestScreenState extends State<SpeedTestScreen> {
                     },
                     child: AnimatedContainer(
                       duration: const Duration(milliseconds: 200),
-                      transform: Matrix4.identity()..scale(_startTestFocusNode.hasFocus ? 1.05 : 1.0),
+                      transform: Matrix4.identity()
+                        ..scaleByDouble(
+                          _startTestFocusNode.hasFocus ? 1.05 : 1.0,
+                          _startTestFocusNode.hasFocus ? 1.05 : 1.0,
+                          1.0,
+                          1.0,
+                        ),
                       decoration: BoxDecoration(
                         borderRadius: BorderRadius.circular(12),
                         boxShadow: _startTestFocusNode.hasFocus
                             ? [
                                 BoxShadow(
-                                  color: colorScheme.primary.withOpacity(0.3),
+                                  color: colorScheme.primary.withValues(alpha: 0.3),
                                   blurRadius: 12,
                                   spreadRadius: 2,
                                 ),
@@ -182,7 +190,7 @@ class _SpeedTestScreenState extends State<SpeedTestScreen> {
                         color: colorScheme.errorContainer,
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                          color: colorScheme.error.withOpacity(0.3),
+                          color: colorScheme.error.withValues(alpha: 0.3),
                           width: 1,
                         ),
                       ),
@@ -238,11 +246,11 @@ class _SpeedTestScreenState extends State<SpeedTestScreen> {
             width: 40,
             height: 40,
             decoration: BoxDecoration(
-              color: Colors.white.withOpacity(0.9),
+              color: Colors.white.withValues(alpha: 0.9),
               borderRadius: BorderRadius.circular(8),
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.1),
+                  color: Colors.black.withValues(alpha: 0.1),
                   blurRadius: 4,
                   offset: const Offset(0, 2),
                 ),
@@ -290,7 +298,7 @@ class _SpeedTestScreenState extends State<SpeedTestScreen> {
         Container(
           padding: EdgeInsets.all(_isTvMode ? 24 : 16),
           decoration: BoxDecoration(
-            color: colorScheme.surfaceVariant.withOpacity(0.5),
+            color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
             borderRadius: BorderRadius.circular(12),
           ),
           child: Column(
@@ -379,7 +387,7 @@ class _SpeedTestScreenState extends State<SpeedTestScreen> {
                 Text(
                   description,
                   style: theme.textTheme.bodySmall?.copyWith(
-                    color: colorScheme.onSurfaceVariant.withOpacity(0.8),
+                    color: colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
                     fontSize: _isTvMode ? 16 : 12,
                     height: 1.3,
                   ),
@@ -399,7 +407,7 @@ class _SpeedTestScreenState extends State<SpeedTestScreen> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: colorScheme.surfaceVariant.withOpacity(0.5),
+        color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(
@@ -418,7 +426,7 @@ class _SpeedTestScreenState extends State<SpeedTestScreen> {
               Text(
                 '${result.timestamp.hour.toString().padLeft(2, '0')}:${result.timestamp.minute.toString().padLeft(2, '0')}',
                 style: theme.textTheme.bodySmall?.copyWith(
-                  color: colorScheme.onSurfaceVariant.withOpacity(0.8),
+                  color: colorScheme.onSurfaceVariant.withValues(alpha: 0.8),
                 ),
               ),
             ],
@@ -426,8 +434,11 @@ class _SpeedTestScreenState extends State<SpeedTestScreen> {
           
           const SizedBox(height: 12),
           
-          // Sonuc detaylari
+          // Sonuc detaylari: hiz degeri kendi dogal genisliginde kalsin;
+          // uzun analiz mesaji kalan alanda sarsin (tek karakter dikey
+          // tasma sorunu Expanded'in yanlis ogeye verilmesindendi).
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Icon(
                 _getAnalysisIcon(result.analysis),
@@ -435,19 +446,21 @@ class _SpeedTestScreenState extends State<SpeedTestScreen> {
                 size: 20,
               ),
               const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  '${result.downloadSpeed.toStringAsFixed(1)} Mbps',
-                  style: theme.textTheme.bodyLarge?.copyWith(
-                    fontWeight: FontWeight.bold,
-                    color: colorScheme.onSurfaceVariant,
-                  ),
+              Text(
+                '${result.downloadSpeed.toStringAsFixed(1)} Mbps',
+                style: theme.textTheme.bodyLarge?.copyWith(
+                  fontWeight: FontWeight.bold,
+                  color: colorScheme.onSurfaceVariant,
                 ),
               ),
-              Text(
-                result.analysisMessage,
-                style: theme.textTheme.bodySmall?.copyWith(
-                  color: _getAnalysisColor(result.analysis),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  result.analysisMessage,
+                  textAlign: TextAlign.end,
+                  style: theme.textTheme.bodySmall?.copyWith(
+                    color: _getAnalysisColor(result.analysis),
+                  ),
                 ),
               ),
             ],
@@ -460,7 +473,7 @@ class _SpeedTestScreenState extends State<SpeedTestScreen> {
   /// Hiz testini baslat
   Future<void> _startSpeedTest() async {
     final result = await _speedTestService.startSpeedTest();
-    
+    if (!mounted) return;
     if (result != null) {
       // Sonucu goster
       showDialog(

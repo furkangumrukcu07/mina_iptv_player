@@ -8,13 +8,13 @@ import '../../core/layout/app_layout_mode.dart';
 import '../../core/services/app_settings_service.dart';
 import '../../core/services/equalizer_service.dart';
 import '../../core/services/external_player_service.dart';
-import '../../core/services/network_quality_monitor_service.dart';
 import '../../core/services/toast_service.dart';
 import '../../core/theme/app_scroll_physics.dart';
 import '../../ui/glass_overlays.dart';
 import '../../ui/settings_glass_panel.dart';
 import '../../ui/themed_settings_background.dart';
 import '../../ui/tv_dpad_focus.dart';
+import '../../ui/tv_settings_subpage.dart';
 import 'settings_controller.dart';
 
 /// Ayarlar → «Oynatma Ayarları» alt-sayfası.
@@ -32,46 +32,34 @@ class PlaybackSettingsView extends StatelessWidget {
     final settings = Get.find<AppSettingsService>();
     final controller = Get.find<SettingsController>();
 
+    final tvDpad = settings.layoutMode.value == AppLayoutMode.tv;
+
     return Scaffold(
       backgroundColor: Colors.black,
-      body: FocusTraversalGroup(
-        policy: OrderedTraversalPolicy(),
-        child: ThemedSettingsBackground(
-          child: SafeArea(
-            child: SettingsGlassPanel(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(12, 10, 12, 8),
-                    child: Row(
-                      children: [
-                        tvSettingsBackButton(context, autofocus: true),
-                        Expanded(
-                          child: Text(
-                            'playbackSettings.title'.tr,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 18,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ),
-                      ],
+      body: ThemedSettingsBackground(
+        child: SafeArea(
+          child: SettingsGlassPanel(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                tvSettingsSubpageHeader(
+                  context,
+                  'playbackSettings.title'.tr,
+                ),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
+                  child: Text(
+                    'playbackSettings.hint'.tr,
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.65),
+                      fontSize: 12.5,
+                      height: 1.35,
                     ),
                   ),
-                  Padding(
-                    padding: const EdgeInsets.fromLTRB(14, 0, 14, 10),
-                    child: Text(
-                      'playbackSettings.hint'.tr,
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.65),
-                        fontSize: 12.5,
-                        height: 1.35,
-                      ),
-                    ),
-                  ),
-                  Expanded(
+                ),
+                Expanded(
+                  child: TvSettingsDpadScope(
+                    enabled: tvDpad,
                     child: ListView(
                       physics: AppScrollPhysics.list(),
                       padding: const EdgeInsets.fromLTRB(12, 4, 12, 16),
@@ -87,6 +75,7 @@ class PlaybackSettingsView extends StatelessWidget {
                                     : 'player.engine.better')
                                 .tr;
                             return _PlaybackTile(
+                              tvDpadIndex: 0,
                               icon: Icons.play_circle_outline_rounded,
                               title: 'settings.tile.playerEngine'.tr,
                               subtitle:
@@ -107,6 +96,7 @@ class PlaybackSettingsView extends StatelessWidget {
                           const SizedBox(height: 10),
                           Obx(
                             () => _PlaybackTile(
+                              tvDpadIndex: 1,
                               icon: Icons.hd_rounded,
                               title: 'settings.tile.mediaKitHwdec'.tr,
                               subtitle: settings.mediaKitHwdecModeSubtitle,
@@ -119,6 +109,7 @@ class PlaybackSettingsView extends StatelessWidget {
                           const SizedBox(height: 10),
                           Obx(
                             () => _PlaybackTile(
+                              tvDpadIndex: 2,
                               icon: Icons.memory_rounded,
                               title: 'settings.tile.videoDecoder'.tr,
                               subtitle: settings.videoDecoderModeSubtitle,
@@ -133,6 +124,7 @@ class PlaybackSettingsView extends StatelessWidget {
                         ],
                         Obx(
                           () => _PlaybackTile(
+                            tvDpadIndex: 3,
                             icon: Icons.swap_horiz_rounded,
                             title: 'settings.tile.streamFormat'.tr,
                             subtitle: controller.liveStreamFormatSubtitle,
@@ -153,11 +145,29 @@ class PlaybackSettingsView extends StatelessWidget {
                         if (Get.isRegistered<ExternalPlayerService>() &&
                             Get.find<ExternalPlayerService>()
                                 .isPlatformSupported) ...[
-                          const _ExternalPlayerSection(),
+                          const _ExternalPlayerSection(baseIndex: 4),
                           const SizedBox(height: 10),
                         ],
                         Obx(
                           () => _PlaybackTile(
+                            tvDpadIndex: 6,
+                            icon: Icons.movie_filter_rounded,
+                            title: 'settings.tile.vodInfoEngine'.tr,
+                            subtitle: _vodInfoEngineSubtitle(settings),
+                            primary: primary,
+                            onTap: () => unawaited(
+                              showVodInfoEngineDialog(context),
+                            ),
+                            trailing: const Icon(
+                              Icons.chevron_right_rounded,
+                              color: Colors.white70,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        Obx(
+                          () => _PlaybackTile(
+                            tvDpadIndex: 7,
                             icon: Icons.travel_explore_rounded,
                             title: 'settings.tile.userAgent'.tr,
                             subtitle: controller.playbackUserAgentSubtitle,
@@ -171,25 +181,11 @@ class PlaybackSettingsView extends StatelessWidget {
                             ),
                           ),
                         ),
+
                         const SizedBox(height: 10),
                         Obx(
                           () => _PlaybackTile(
-                            icon: Icons.lock_open_rounded,
-                            title: 'settings.tile.ignoreSsl'.tr,
-                            subtitle: settings.ignoreSslCertificate.value
-                                ? 'settings.tile.ignoreSsl.on'.tr
-                                : 'settings.tile.ignoreSsl.off'.tr,
-                            primary: primary,
-                            onTap: () => unawaited(
-                              settings.setIgnoreSslCertificate(
-                                !settings.ignoreSslCertificate.value,
-                              ),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        Obx(
-                          () => _PlaybackTile(
+                            tvDpadIndex: 9,
                             icon: Icons.speed_rounded,
                             title: 'settings.tile.liveBuffer'.tr,
                             subtitle: 'settings.tile.liveBuffer.sub'.trParams({
@@ -206,6 +202,7 @@ class PlaybackSettingsView extends StatelessWidget {
                         const SizedBox(height: 10),
                         Obx(
                           () => _PlaybackTile(
+                            tvDpadIndex: 10,
                             icon: Icons.volume_up_rounded,
                             title: 'settings.tile.volumeBoost'.tr,
                             subtitle: settings.volumeBoostMaxPercent.value <=
@@ -234,6 +231,7 @@ class PlaybackSettingsView extends StatelessWidget {
                               ? eq.labelKey(eq.preset.value).tr
                               : 'settings.tile.equalizer.off'.tr;
                           return _PlaybackTile(
+                            tvDpadIndex: 11,
                             icon: Icons.graphic_eq_rounded,
                             title: 'settings.tile.equalizer'.tr,
                             subtitle: on
@@ -251,11 +249,7 @@ class PlaybackSettingsView extends StatelessWidget {
                             ),
                           );
                         }),
-                        const SizedBox(height: 10),
-                        _SmartRouteSection(primary: primary),
-                        const SizedBox(height: 10),
-                        _SmartStreamCutterSection(primary: primary),
-                        const SizedBox(height: 10),
+
                         // ─────────────────────────────────────────
                         // Ana ayarlardan taşınanlar:
                         // OSD gizleme süresi, yayın önizlemesi,
@@ -264,6 +258,7 @@ class PlaybackSettingsView extends StatelessWidget {
                         // ─────────────────────────────────────────
                         Obx(
                           () => _PlaybackTile(
+                            tvDpadIndex: 12,
                             icon: Icons.timer_outlined,
                             title: 'settings.tile.tvOsdAutoHide'.tr,
                             subtitle:
@@ -285,6 +280,7 @@ class PlaybackSettingsView extends StatelessWidget {
                         // taşındı — OSD süre ayarıyla aynı yerde dursun.
                         Obx(
                           () => _PlaybackTile(
+                            tvDpadIndex: 13,
                             icon: Icons.opacity_rounded,
                             title: 'settings.tile.osdOpacity'.tr,
                             subtitle: 'settings.tile.osdOpacity.sub'.trParams({
@@ -301,38 +297,28 @@ class PlaybackSettingsView extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(height: 10),
-                        Obx(
-                          () => _PlaybackTile(
-                            icon: Icons.access_time_filled_rounded,
-                            title: 'settings.tile.landscapeStatusBar'.tr,
-                            subtitle: settings.landscapeStatusBarEnabled.value
-                                ? 'settings.tile.landscapeStatusBar.on'.tr
-                                : 'settings.tile.landscapeStatusBar.off'.tr,
-                            primary: primary,
-                            onTap: () => unawaited(
-                              settings.setLandscapeStatusBarEnabled(
-                                !settings.landscapeStatusBarEnabled.value,
+                        // TV modunda gizli
+                        if (settings.layoutMode.value != AppLayoutMode.tv)
+                          Obx(
+                            () => _PlaybackTile(
+                              tvDpadIndex: 14,
+                              icon: Icons.access_time_filled_rounded,
+                              title: 'settings.tile.landscapeStatusBar'.tr,
+                              subtitle: settings.landscapeStatusBarEnabled.value
+                                  ? 'settings.tile.landscapeStatusBar.on'.tr
+                                  : 'settings.tile.landscapeStatusBar.off'.tr,
+                              primary: primary,
+                              onTap: () => unawaited(
+                                settings.setLandscapeStatusBarEnabled(
+                                  !settings.landscapeStatusBarEnabled.value,
+                                ),
                               ),
                             ),
                           ),
-                        ),
                         const SizedBox(height: 10),
                         Obx(
                           () => _PlaybackTile(
-                            icon: Icons.preview_rounded,
-                            title: 'settings.tile.streamPreview'.tr,
-                            subtitle: settings.streamPreviewEnabled.value
-                                ? 'settings.tile.streamPreview.on'.tr
-                                : 'settings.tile.streamPreview.off'.tr,
-                            primary: primary,
-                            onTap: () => unawaited(
-                              controller.toggleStreamPreviewEnabled(),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        Obx(
-                          () => _PlaybackTile(
+                            tvDpadIndex: 15,
                             icon: Icons.play_arrow_rounded,
                             title: 'settings.tile.bgPlayback'.tr,
                             subtitle: settings.backgroundPlayback.value
@@ -344,34 +330,23 @@ class PlaybackSettingsView extends StatelessWidget {
                             ),
                           ),
                         ),
-                        if (Platform.isAndroid) ...[
-                          const SizedBox(height: 10),
-                          Obx(
-                            () => _PlaybackTile(
-                              icon: Icons.picture_in_picture_alt_rounded,
-                              title: 'settings.tile.miniPlayerHome'.tr,
-                              subtitle: _miniPlayerSubtitle(settings),
-                              primary: primary,
-                              onTap: () {
-                                if (settings.layoutMode.value ==
-                                    AppLayoutMode.tv) {
-                                  GlassSnackbar.show(
-                                    'settings.snackbar.info'.tr,
-                                    'settings.tile.miniPlayerHome.hintTv'.tr,
-                                    snackPosition: SnackPosition.BOTTOM,
-                                  );
-                                  return;
-                                }
-                                settings.setMiniPlayerOnHome(
-                                  !settings.miniPlayerOnHome.value,
-                                );
-                              },
-                            ),
-                          ),
-                        ],
                         const SizedBox(height: 10),
                         Obx(
                           () => _PlaybackTile(
+                            tvDpadIndex: 16,
+                            icon: Icons.picture_in_picture_alt_rounded,
+                            title: 'settings.tile.miniPlayerHome'.tr,
+                            subtitle: _miniPlayerSubtitle(settings),
+                            primary: primary,
+                            onTap: () => settings.setMiniPlayerOnHome(
+                              !settings.miniPlayerOnHome.value,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        Obx(
+                          () => _PlaybackTile(
+                            tvDpadIndex: 17,
                             icon: Icons.power_settings_new_rounded,
                             title: 'settings.tile.launchBoot'.tr,
                             subtitle: settings.launchOnBoot.value
@@ -385,27 +360,13 @@ class PlaybackSettingsView extends StatelessWidget {
                         ),
                         const SizedBox(height: 18),
                         // ─────────────────────────────────────────
-                        // Ana ayarlardan buraya taşınanlar:
-                        // İçerikleri Yenile, Kanal Öneki. Bu ayarların
-                        // playback ile doğrudan bağı yok ama kullanıcı
-                        // isteğiyle tek noktada toplandı.
+                        // Ana ayarlardan buraya taşınan: «Kanal Öneki».
+                        // («İçerikleri Yenile» kullanıcı isteğiyle ana
+                        // Ayarlar listesine geri taşındı.)
                         // ─────────────────────────────────────────
                         Obx(
                           () => _PlaybackTile(
-                            icon: Icons.cloud_download_rounded,
-                            title: 'settings.tile.refresh'.tr,
-                            subtitle: controller.isRefreshing.value
-                                ? 'settings.tile.refresh.loading'.tr
-                                : 'settings.tile.refresh.sub'.tr,
-                            primary: primary,
-                            onTap: controller.isRefreshing.value
-                                ? () {}
-                                : controller.refreshContent,
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        Obx(
-                          () => _PlaybackTile(
+                            tvDpadIndex: 18,
                             icon: Icons.label_off_outlined,
                             title: 'settings.tile.channelPrefix'.tr,
                             subtitle:
@@ -417,28 +378,11 @@ class PlaybackSettingsView extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(height: 10),
-                        // Canlı TV (dikey mod): "Detay" sekmesini gizle →
-                        // kanal seçilince doğrudan tam ekran yayın açılır.
-                        Obx(
-                          () => _PlaybackTile(
-                            icon: Icons.tab_unselected_rounded,
-                            title: 'settings.tile.hideLiveDetail'.tr,
-                            subtitle:
-                                settings.hideLivePortraitDetailTab.value
-                                    ? 'settings.tile.hideLiveDetail.on'.tr
-                                    : 'settings.tile.hideLiveDetail.off'.tr,
-                            primary: primary,
-                            onTap: () =>
-                                settings.setHideLivePortraitDetailTab(
-                              !settings.hideLivePortraitDetailTab.value,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 10),
                         // «Altyazı Seçenekleri» — eskiden ana Ayarlar listesinde;
                         // oynatma ile ilgili olduğundan buraya taşındı.
                         Obx(
                           () => _PlaybackTile(
+                            tvDpadIndex: 19,
                             icon: Icons.subtitles_rounded,
                             title: 'settings.tile.subtitleOptions'.tr,
                             subtitle: settings.subtitleOptionsSummary,
@@ -450,11 +394,44 @@ class PlaybackSettingsView extends StatelessWidget {
                             ),
                           ),
                         ),
+                        const SizedBox(height: 10),
+                        Obx(
+                          () => _PlaybackTile(
+                            tvDpadIndex: 20,
+                            icon: Icons.high_quality_rounded,
+                            title: 'settings.tile.adaptiveQuality'.tr,
+                            subtitle: settings.adaptiveStreamQualityCeilingSubtitle,
+                            primary: primary,
+                            onTap: () => unawaited(
+                              controller.showAdaptiveQualityCeilingDialog(),
+                            ),
+                            trailing: const Icon(
+                              Icons.chevron_right_rounded,
+                              color: Colors.white70,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        Obx(
+                          () => _PlaybackTile(
+                            tvDpadIndex: 21,
+                            icon: Icons.sync_rounded,
+                            title: 'settings.tile.silentSync'.tr,
+                            subtitle: settings.silentBackgroundSyncEnabled.value
+                                ? 'settings.tile.silentSync.enabled'.tr
+                                : 'settings.tile.silentSync.disabled'.tr,
+                            primary: primary,
+                            onTap: () =>
+                                settings.setSilentBackgroundSyncEnabled(
+                              !settings.silentBackgroundSyncEnabled.value,
+                            ),
+                          ),
+                        ),
                       ],
                     ),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ),
@@ -466,12 +443,25 @@ class PlaybackSettingsView extends StatelessWidget {
 String _miniPlayerSubtitle(AppSettingsService settings) {
   final tv = settings.layoutMode.value == AppLayoutMode.tv;
   if (tv) return 'settings.tile.miniPlayerHome.subTv'.tr;
-  if (settings.useMediaKit.value) {
+  if (settings.useMediaKit.value && settings.liveUseMediaKit.value) {
     return 'settings.tile.miniPlayerHome.subMk'.tr;
   }
   return settings.miniPlayerOnHome.value
       ? 'settings.tile.miniPlayerHome.subOn'.tr
       : 'settings.tile.miniPlayerHome.subOff'.tr;
+}
+
+String _vodInfoEngineSubtitle(AppSettingsService settings) {
+  switch (settings.vodInfoEngine.value) {
+    case AppSettingsService.vodInfoEngineAuto:
+      return 'settings.tile.vodInfoEngine.auto'.tr;
+    case AppSettingsService.vodInfoEngineXtreamOnly:
+      return 'settings.tile.vodInfoEngine.xtreamOnly'.tr;
+    case AppSettingsService.vodInfoEngineTmdbOmdbOnly:
+      return 'settings.tile.vodInfoEngine.tmdbOmdbOnly'.tr;
+    default:
+      return 'settings.tile.vodInfoEngine.auto'.tr;
+  }
 }
 
 // =============================================================================
@@ -752,6 +742,7 @@ class _EngineOptionCard extends StatelessWidget {
 
 class _PlaybackTile extends StatelessWidget {
   const _PlaybackTile({
+    required this.tvDpadIndex,
     required this.icon,
     required this.title,
     required this.subtitle,
@@ -759,6 +750,8 @@ class _PlaybackTile extends StatelessWidget {
     required this.onTap,
     this.trailing,
   });
+
+  final int tvDpadIndex;
 
   final IconData icon;
   final String title;
@@ -769,8 +762,9 @@ class _PlaybackTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return tvDpadActivateWrap(
+    return tvSettingsDpadWrap(
       context,
+      index: tvDpadIndex,
       onActivate: onTap,
       borderRadius: 18,
       child: Container(
@@ -850,480 +844,8 @@ class _PlaybackTile extends StatelessWidget {
 }
 
 // =============================================================================
-// Smart Route — Akıllı CDN / Proxy seçici bölümü.
-// =============================================================================
-
-/// `PlaybackSettingsView` içinde tek glass panel olarak çizilen Smart Route
-/// kontrol bloğu. Üst başlık + canlı durum rozeti + 2 toggle satırı (ana
-/// anahtar + otomatik tampon) tek kart içinde. Servis varsa ölçüm verisini
-/// `NetworkQualityMonitorService` reaktif Rx alanlarından çeker; servis
-/// kayıtlı değilse (örn. test ortamı) gracefully boş gösterir.
-class _SmartRouteSection extends StatelessWidget {
-  const _SmartRouteSection({required this.primary});
-
-  final Color primary;
-
-  @override
-  Widget build(BuildContext context) {
-    final settings = Get.find<AppSettingsService>();
-    return Container(
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            Colors.white.withValues(alpha: 0.07),
-            Colors.white.withValues(alpha: 0.02),
-          ],
-        ),
-      ),
-      padding: const EdgeInsets.fromLTRB(14, 12, 14, 14),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          // Başlık satırı + canlı durum rozeti.
-          Row(
-            children: [
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: primary.withValues(alpha: 0.18),
-                  border: Border.all(color: primary.withValues(alpha: 0.40)),
-                ),
-                alignment: Alignment.center,
-                child: const Icon(
-                  Icons.network_check_rounded,
-                  color: Colors.white,
-                  size: 20,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'smartRoute.section.title'.tr,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      'smartRoute.section.sub'.tr,
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.65),
-                        fontSize: 12.5,
-                        height: 1.3,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(width: 8),
-              const _SmartRouteStatusBadge(),
-            ],
-          ),
-          const SizedBox(height: 12),
-          // Canlı ölçüm detayı (avg / jitter / loss).
-          const _SmartRouteMetricsLine(),
-          const SizedBox(height: 12),
-          // Ana anahtar.
-          Obx(
-            () => _SmartRouteToggleRow(
-              title: 'smartRoute.toggle.title'.tr,
-              subtitle: 'smartRoute.toggle.sub'.tr,
-              value: settings.smartRouteEnabled.value,
-              onChanged: (v) => unawaited(settings.setSmartRouteEnabled(v)),
-              primary: primary,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Divider(
-            height: 14,
-            thickness: 0.6,
-            color: Colors.white.withValues(alpha: 0.08),
-          ),
-          // Auto-buffer alt anahtarı — ana anahtar kapalıyken dim.
-          Obx(
-            () => Opacity(
-              opacity: settings.smartRouteEnabled.value ? 1.0 : 0.45,
-              child: AbsorbPointer(
-                absorbing: !settings.smartRouteEnabled.value,
-                child: _SmartRouteToggleRow(
-                  title: 'smartRoute.autoBuffer.title'.tr,
-                  subtitle: 'smartRoute.autoBuffer.sub'.trParams({
-                    'target': '8',
-                  }),
-                  value: settings.smartRouteAutoBufferEnabled.value,
-                  onChanged: (v) => unawaited(
-                    settings.setSmartRouteAutoBufferEnabled(v),
-                  ),
-                  primary: primary,
-                ),
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-/// Canlı kalite rozeti (Mükemmel / İyi / Dalgalı / Zayıf / Ölçülüyor).
-class _SmartRouteStatusBadge extends StatelessWidget {
-  const _SmartRouteStatusBadge();
-
-  @override
-  Widget build(BuildContext context) {
-    if (!Get.isRegistered<NetworkQualityMonitorService>()) {
-      return const SizedBox.shrink();
-    }
-    final svc = Get.find<NetworkQualityMonitorService>();
-    return Obx(() {
-      final q = svc.quality.value;
-      final (label, color, dot) = _styleFor(q);
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-        decoration: BoxDecoration(
-          color: color.withValues(alpha: 0.18),
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: color.withValues(alpha: 0.45)),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 7,
-              height: 7,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: dot,
-                boxShadow: [
-                  BoxShadow(
-                    color: dot.withValues(alpha: 0.7),
-                    blurRadius: 6,
-                    spreadRadius: 1,
-                  ),
-                ],
-              ),
-            ),
-            const SizedBox(width: 6),
-            Text(
-              label,
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.95),
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-              ),
-            ),
-          ],
-        ),
-      );
-    });
-  }
-
-  /// Kalite seviyesi → (etiket, panel rengi, nokta rengi).
-  (String, Color, Color) _styleFor(NetworkQuality q) {
-    switch (q) {
-      case NetworkQuality.excellent:
-        return (
-          'smartRoute.status.excellent'.tr,
-          const Color(0xFF38E078),
-          const Color(0xFF38E078)
-        );
-      case NetworkQuality.good:
-        return (
-          'smartRoute.status.good'.tr,
-          const Color(0xFF6FD1FF),
-          const Color(0xFF6FD1FF)
-        );
-      case NetworkQuality.unstable:
-        return (
-          'smartRoute.status.unstable'.tr,
-          const Color(0xFFFFB341),
-          const Color(0xFFFFB341)
-        );
-      case NetworkQuality.poor:
-        return (
-          'smartRoute.status.poor'.tr,
-          const Color(0xFFFF6470),
-          const Color(0xFFFF6470)
-        );
-      case NetworkQuality.unknown:
-        return (
-          'smartRoute.status.unknown'.tr,
-          Colors.white.withValues(alpha: 0.45),
-          Colors.white.withValues(alpha: 0.65)
-        );
-    }
-  }
-}
-
-/// `Avg … ms · Jitter … ms · Loss … %` detay satırı + auto-buffer rozeti.
-class _SmartRouteMetricsLine extends StatelessWidget {
-  const _SmartRouteMetricsLine();
-
-  @override
-  Widget build(BuildContext context) {
-    if (!Get.isRegistered<NetworkQualityMonitorService>()) {
-      return const SizedBox.shrink();
-    }
-    final svc = Get.find<NetworkQualityMonitorService>();
-    return Obx(() {
-      final avg = svc.lastAverageLatencyMs.value;
-      final jitter = svc.lastJitterMs.value;
-      final loss = svc.lastPacketLoss.value;
-      final auto = svc.autoBufferActive.value;
-      String text;
-      if (avg == null || jitter == null || loss == null) {
-        text = 'smartRoute.status.detailNoData'.tr;
-      } else if (avg.isInfinite) {
-        text = 'smartRoute.status.detail'.trParams({
-          'avg': '–',
-          'jitter': '–',
-          'loss': (loss * 100).toStringAsFixed(0),
-        });
-      } else {
-        text = 'smartRoute.status.detail'.trParams({
-          'avg': avg.toStringAsFixed(0),
-          'jitter': jitter.toStringAsFixed(0),
-          'loss': (loss * 100).toStringAsFixed(0),
-        });
-      }
-      return Row(
-        children: [
-          Icon(
-            Icons.cell_tower_rounded,
-            color: Colors.white.withValues(alpha: 0.55),
-            size: 14,
-          ),
-          const SizedBox(width: 6),
-          Expanded(
-            child: Text(
-              text,
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.7),
-                fontSize: 12,
-                fontFeatures: const [FontFeature.tabularFigures()],
-              ),
-            ),
-          ),
-          if (auto) ...[
-            const SizedBox(width: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-              decoration: BoxDecoration(
-                color: const Color(0xFFFFB341).withValues(alpha: 0.18),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                  color: const Color(0xFFFFB341).withValues(alpha: 0.5),
-                ),
-              ),
-              child: Text(
-                'smartRoute.status.autoActive'.tr,
-                style: const TextStyle(
-                  color: Color(0xFFFFB341),
-                  fontSize: 11,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-          ],
-        ],
-      );
-    });
-  }
-}
-
-/// İçeride iki satır kullanılan toggle: başlık + alt yazı + Switch.adaptive.
-class _SmartRouteToggleRow extends StatelessWidget {
-  const _SmartRouteToggleRow({
-    required this.title,
-    required this.subtitle,
-    required this.value,
-    required this.onChanged,
-    required this.primary,
-  });
-
-  final String title;
-  final String subtitle;
-  final bool value;
-  final ValueChanged<bool> onChanged;
-  final Color primary;
-
-  @override
-  Widget build(BuildContext context) {
-    return tvDpadActivateWrap(
-      context,
-      onActivate: () => onChanged(!value),
-      borderRadius: 12,
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          borderRadius: BorderRadius.circular(12),
-          onTap: () => onChanged(!value),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 6),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        title,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 14,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        subtitle,
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.6),
-                          fontSize: 12,
-                          height: 1.3,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 12),
-                ExcludeFocus(
-                  child: IgnorePointer(
-                    child: Switch.adaptive(
-                      value: value,
-                      onChanged: (_) {},
-                      activeTrackColor: primary,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-// =============================================================================
 // Akıllı Jenerik Atlatıcı (Smart Stream Cutter) — toggle bölümü.
-// =============================================================================
 
-class _SmartStreamCutterSection extends StatelessWidget {
-  const _SmartStreamCutterSection({required this.primary});
-
-  final Color primary;
-
-  @override
-  Widget build(BuildContext context) {
-    final settings = Get.find<AppSettingsService>();
-    return tvDpadActivateWrap(
-      context,
-      onActivate: () => unawaited(
-        settings.setSmartStreamCutterEnabled(
-          !settings.smartStreamCutterEnabled.value,
-        ),
-      ),
-      borderRadius: 18,
-      child: Material(
-        color: Colors.transparent,
-        borderRadius: BorderRadius.circular(18),
-        child: InkWell(
-          borderRadius: BorderRadius.circular(18),
-          onTap: () => unawaited(
-            settings.setSmartStreamCutterEnabled(
-              !settings.smartStreamCutterEnabled.value,
-            ),
-          ),
-          child: Container(
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(18),
-              border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [
-                  Colors.white.withValues(alpha: 0.07),
-                  Colors.white.withValues(alpha: 0.02),
-                ],
-              ),
-            ),
-            padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.center,
-              children: [
-                Container(
-                  width: 40,
-                  height: 40,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: primary.withValues(alpha: 0.18),
-                    border: Border.all(color: primary.withValues(alpha: 0.40)),
-                  ),
-                  alignment: Alignment.center,
-                  child: const Icon(
-                    Icons.fast_forward_rounded,
-                    color: Colors.white,
-                    size: 20,
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        'settings.smartStreamCutter.title'.tr,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 15,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      const SizedBox(height: 2),
-                      Text(
-                        'settings.smartStreamCutter.sub'.tr,
-                        softWrap: true,
-                        style: TextStyle(
-                          color: Colors.white.withValues(alpha: 0.65),
-                          fontSize: 12.5,
-                          height: 1.3,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Obx(
-                  () => ExcludeFocus(
-                    child: IgnorePointer(
-                      child: Switch.adaptive(
-                        value: settings.smartStreamCutterEnabled.value,
-                        onChanged: (_) {},
-                        activeTrackColor: primary,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
 
 // =============================================================================
 // Harici Oynatıcı (External Player) — VLC, MX Player, Just Player, Infuse,
@@ -1333,7 +855,9 @@ class _SmartStreamCutterSection extends StatelessWidget {
 /// Glass kart: ana toggle + (açıkken) seçim satırı. Seçim satırına basınca
 /// [showExternalPlayerPicker] çağrılır → cihazda yüklü oynatıcılar listelenir.
 class _ExternalPlayerSection extends StatelessWidget {
-  const _ExternalPlayerSection();
+  const _ExternalPlayerSection({required this.baseIndex});
+
+  final int baseIndex;
 
   @override
   Widget build(BuildContext context) {
@@ -1356,8 +880,9 @@ class _ExternalPlayerSection extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          tvDpadActivateWrap(
+          tvSettingsDpadWrap(
             context,
+            index: baseIndex,
             onActivate: () => _onTogglePressed(
               context,
               settings,
@@ -1449,8 +974,9 @@ class _ExternalPlayerSection extends StatelessWidget {
                 : (label ?? id);
             return Padding(
               padding: const EdgeInsets.only(top: 10),
-              child: tvDpadActivateWrap(
+              child: tvSettingsDpadWrap(
                 context,
+                index: baseIndex + 1,
                 onActivate: () => showExternalPlayerPicker(context),
                 borderRadius: 12,
                 child: Material(
@@ -1842,6 +1368,292 @@ class _ExternalPlayerPickerDialogState
       },
       separatorBuilder: (_, __) => const SizedBox(height: 6),
       itemCount: _apps.length,
+    );
+  }
+}
+
+// =============================================================================
+// Film Dizi Bilgi Motoru — Xtream / TMDB-OMDB / Otomatik seçimi.
+// =============================================================================
+
+/// Film/Dizi bilgi motoru seçim diyaloğunu açar.
+Future<void> showVodInfoEngineDialog(BuildContext context) async {
+  await Get.dialog<void>(
+    const _VodInfoEngineDialog(),
+    barrierDismissible: true,
+  );
+}
+
+class _VodInfoEngineDialog extends StatefulWidget {
+  const _VodInfoEngineDialog();
+
+  @override
+  State<_VodInfoEngineDialog> createState() => _VodInfoEngineDialogState();
+}
+
+class _VodInfoEngineDialogState extends State<_VodInfoEngineDialog> {
+  late String _selected;
+
+  @override
+  void initState() {
+    super.initState();
+    final settings = Get.find<AppSettingsService>();
+    _selected = settings.vodInfoEngine.value;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final settings = Get.find<AppSettingsService>();
+    final primary = Theme.of(context).colorScheme.primary;
+    final tvDpad = settings.layoutMode.value == AppLayoutMode.tv;
+
+    return TvSettingsDpadScope(
+      enabled: tvDpad,
+      onBack: () => Get.back<void>(),
+      child: FocusTraversalGroup(
+        policy: OrderedTraversalPolicy(),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 460),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: GlassPopupPanel(
+                padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
+                gradientBlendTowardBlack: 0.22,
+                child: Material(
+                  type: MaterialType.transparency,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(
+                        'settings.tile.vodInfoEngine'.tr,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 17,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        'settings.tile.vodInfoEngine.hint'.tr,
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.65),
+                          fontSize: 12.5,
+                          height: 1.35,
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      _VodEngineOptionCard(
+                        index: 0,
+                        label: 'settings.tile.vodInfoEngine.auto'.tr,
+                        icon: Icons.auto_awesome_rounded,
+                        selected:
+                            _selected == AppSettingsService.vodInfoEngineAuto,
+                        onTap: () => setState(() {
+                          _selected = AppSettingsService.vodInfoEngineAuto;
+                        }),
+                        primary: primary,
+                      ),
+                      const SizedBox(height: 8),
+                      _VodEngineOptionCard(
+                        index: 1,
+                        label: 'settings.tile.vodInfoEngine.xtreamOnly'.tr,
+                        icon: Icons.cloud_rounded,
+                        selected: _selected ==
+                            AppSettingsService.vodInfoEngineXtreamOnly,
+                        onTap: () => setState(() {
+                          _selected =
+                              AppSettingsService.vodInfoEngineXtreamOnly;
+                        }),
+                        primary: primary,
+                      ),
+                      const SizedBox(height: 8),
+                      _VodEngineOptionCard(
+                        index: 2,
+                        label: 'settings.tile.vodInfoEngine.tmdbOmdbOnly'.tr,
+                        icon: Icons.movie_rounded,
+                        selected: _selected ==
+                            AppSettingsService.vodInfoEngineTmdbOmdbOnly,
+                        onTap: () => setState(() {
+                          _selected =
+                              AppSettingsService.vodInfoEngineTmdbOmdbOnly;
+                        }),
+                        primary: primary,
+                      ),
+                      const SizedBox(height: 18),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: tvSettingsDpadWrap(
+                              context,
+                              index: 3,
+                              onActivate: () => Get.back<void>(),
+                              borderRadius: 12,
+                              child: Material(
+                                color: Colors.transparent,
+                                borderRadius: BorderRadius.circular(12),
+                                child: InkWell(
+                                  borderRadius: BorderRadius.circular(12),
+                                  onTap: () => Get.back<void>(),
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        vertical: 12),
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(12),
+                                      border: Border.all(
+                                        color: Colors.white
+                                            .withValues(alpha: 0.15),
+                                      ),
+                                      color:
+                                          Colors.white.withValues(alpha: 0.05),
+                                    ),
+                                    child: Center(
+                                      child: Text(
+                                        'common.cancel'.tr,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            child: tvSettingsDpadWrap(
+                              context,
+                              index: 4,
+                              onActivate: () async {
+                                await settings.setVodInfoEngine(_selected);
+                                Get.back<void>();
+                              },
+                              borderRadius: 12,
+                              child: Material(
+                                color: Colors.transparent,
+                                borderRadius: BorderRadius.circular(12),
+                                child: InkWell(
+                                  borderRadius: BorderRadius.circular(12),
+                                  onTap: () async {
+                                    await settings.setVodInfoEngine(_selected);
+                                    Get.back<void>();
+                                  },
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        vertical: 12),
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(12),
+                                      gradient: LinearGradient(
+                                        colors: [
+                                          primary,
+                                          primary.withValues(alpha: 0.8),
+                                        ],
+                                      ),
+                                    ),
+                                    child: Center(
+                                      child: Text(
+                                        'common.save'.tr,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 14,
+                                          fontWeight: FontWeight.w800,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _VodEngineOptionCard extends StatelessWidget {
+  const _VodEngineOptionCard({
+    required this.index,
+    required this.label,
+    required this.icon,
+    required this.selected,
+    required this.onTap,
+    required this.primary,
+  });
+
+  final int index;
+  final String label;
+  final IconData icon;
+  final bool selected;
+  final VoidCallback onTap;
+  final Color primary;
+
+  @override
+  Widget build(BuildContext context) {
+    return tvSettingsDpadWrap(
+      context,
+      index: index,
+      onActivate: onTap,
+      borderRadius: 14,
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(14),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(14),
+          onTap: onTap,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              color: selected
+                  ? primary.withValues(alpha: 0.16)
+                  : Colors.white.withValues(alpha: 0.04),
+              border: Border.all(
+                color: selected
+                    ? primary.withValues(alpha: 0.65)
+                    : Colors.white.withValues(alpha: 0.10),
+                width: selected ? 1.4 : 1,
+              ),
+            ),
+            child: Row(
+              children: [
+                Icon(
+                  icon,
+                  color: selected ? primary : Colors.white70,
+                  size: 20,
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      color: Colors.white,
+                      fontSize: 13.5,
+                      fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
+                    ),
+                  ),
+                ),
+                if (selected)
+                  Icon(Icons.check_circle_rounded, color: primary, size: 18),
+              ],
+            ),
+          ),
+        ),
+      ),
     );
   }
 }

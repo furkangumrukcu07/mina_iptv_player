@@ -58,6 +58,17 @@ service cloud.firestore {
       }
     }
 
+    // Çevrimiçi varlık (presence): presence/{userId}
+    //   - Okuma: oturum açmış herkes (çevrimiçi sayısını aggregate count ile
+    //     hesaplayabilmek için).
+    //   - Oluşturma/güncelleme: yalnızca kendi dökümanı, yalnızca lastSeen + name.
+    //   - Silme: sahibi veya admin (ekrandan çıkınca temizlik).
+    match /presence/{userId} {
+      allow read: if request.auth != null;
+      allow create, update: if isOwner(userId) && isValidPresence();
+      allow delete: if isOwner(userId) || isChatAdmin();
+    }
+
     // Yukarıdaki kurallarla eşleşmeyen her şey reddedilir (varsayılan deny).
     match /{document=**} {
       allow read, write: if false;
@@ -78,6 +89,14 @@ function isValidChatMessage() {
           ['senderId', 'senderName', 'messageText', 'timestamp',
            'senderPhotoUrl', 'senderRole', 'replyToName', 'replyToText',
            'statusTag']);
+}
+
+// Bir presence dökümanı geçerli mi? Yalnızca lastSeen + (isteğe bağlı) name
+// alanlarına izin verilir; başka alan yazılamaz.
+function isValidPresence() {
+  let d = request.resource.data;
+  return d.keys().hasOnly(['lastSeen', 'name'])
+      && (!('name' in d) || (d.name is string && d.name.size() <= 120));
 }
 
 // Sohbet yöneticisi (admin) mi? Herhangi bir mesajı silebilir. Yeni admin

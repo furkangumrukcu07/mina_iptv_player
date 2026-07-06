@@ -49,26 +49,31 @@ enum HomeCategoryCardId {
   series,
   recommendedFilms,
   epgMix,
+  minaAnalytics,
   chat;
 
+  /// Mobil/tablet ana ekranı varsayılan kart sırası: Canlı TV · Film & Dizi ·
+  /// Filmler · Diziler · Mina Analytics · EPG Mix. Görünürlük ayrıca Film & Dizi
+  /// moduna ([visibleForFilmDiziMode]) ve kullanıcının gizledikleri kartlara
+  /// bağlıdır; bu yalnızca sıradır.
   static const List<HomeCategoryCardId> defaultOrder = [
     live,
+    recommendedFilms,
     films,
     series,
-    recommendedFilms,
+    minaAnalytics,
     epgMix,
-    chat,
   ];
 
   /// TV ana ekranı varsayılan kart sırası: Canlı TV · Filmler · Diziler ·
-  /// EPG Mix. `recommendedFilms` (Film & Dizi) sona alınır ve TV'de
-  /// `classic` film/dizi modu ile gizli kalır.
+  /// EPG Mix · Mina Analytics. `recommendedFilms` (Film & Dizi) TV'de HİÇ
+  /// gösterilmez ([visibleForLayout]), bu yüzden TV sırasında yer almaz.
   static const List<HomeCategoryCardId> tvDefaultOrder = [
     live,
     films,
     series,
     epgMix,
-    recommendedFilms,
+    minaAnalytics,
   ];
 
   String get storageKey => switch (this) {
@@ -77,6 +82,7 @@ enum HomeCategoryCardId {
         series => 'series',
         recommendedFilms => 'recommended_films',
         epgMix => 'epg_mix',
+        minaAnalytics => 'mina_analytics',
         chat => 'chat',
       };
 
@@ -86,6 +92,7 @@ enum HomeCategoryCardId {
         series => 'home.series',
         recommendedFilms => 'home.recommendedFilms',
         epgMix => 'home.epgMix',
+        minaAnalytics => 'home.minaAnalytics',
         chat => 'home.chat',
       };
 
@@ -95,6 +102,7 @@ enum HomeCategoryCardId {
         series => 'home.series.subtitle',
         recommendedFilms => 'home.recommendedFilms.subtitle',
         epgMix => 'home.epgMix.subtitle',
+        minaAnalytics => 'home.minaAnalytics.subtitle',
         chat => 'home.chat.subtitle',
       };
 
@@ -104,6 +112,7 @@ enum HomeCategoryCardId {
         series => Icons.theater_comedy_rounded,
         recommendedFilms => Icons.local_movies_rounded,
         epgMix => Icons.view_timeline_rounded,
+        minaAnalytics => Icons.insights_rounded,
         chat => Icons.forum_rounded,
       };
 
@@ -113,6 +122,7 @@ enum HomeCategoryCardId {
         series => 'homeCardOrder.card.series',
         recommendedFilms => 'homeCardOrder.card.recommendedFilms',
         epgMix => 'homeCardOrder.card.epgMix',
+        minaAnalytics => 'homeCardOrder.card.minaAnalytics',
         chat => 'homeCardOrder.card.chat',
       };
 
@@ -125,12 +135,18 @@ enum HomeCategoryCardId {
   }
 
   /// Eksik / bilinmeyen anahtarları tamamlar; yinelenenleri atar.
+  ///
+  /// [chat] artık ana ekranda kart olarak gösterilmediği için (sohbete başlık
+  /// ikonundan ulaşılır) eski kayıtlarda kalmış olsa bile sıradan düşürülür;
+  /// aksi halde düzen editöründe "hayalet" bir satır olarak kalabilir.
   static List<HomeCategoryCardId> normalizeOrder(Iterable<String>? rawKeys) {
     final out = <HomeCategoryCardId>[];
     if (rawKeys != null) {
       for (final key in rawKeys) {
         final id = tryParseStorageKey(key);
-        if (id != null && !out.contains(id)) out.add(id);
+        if (id != null && id != HomeCategoryCardId.chat && !out.contains(id)) {
+          out.add(id);
+        }
       }
     }
     for (final id in defaultOrder) {
@@ -141,31 +157,35 @@ enum HomeCategoryCardId {
 
   /// Kartın bu cihaz tipinde görünüp görünmeyeceği.
   ///
-  /// * [chat]: yalnızca mobil ve tablette görünür; Android TV / Google TV
-  ///   düzeninde tamamen gizlenir (kart hiç gösterilmez, route'a erişilmez).
+  /// * [chat]: artık ana ekranda **kart olarak gösterilmez** (hiçbir cihaz
+  ///   tipinde). Kullanıcı sohbete ana ekran başlığındaki sohbet ikonundan
+  ///   ulaşır. Enum değeri route/aktivasyon için korunur.
+  /// * [recommendedFilms] (Film & Dizi): **TV'de hiç gösterilmez**; TV'de
+  ///   ayrı Filmler / Diziler kartları kullanılır.
   /// * Diğer kartlar tüm cihaz tiplerinde görünür.
   bool visibleForLayout(AppLayoutMode mode) {
     if (this == HomeCategoryCardId.chat) {
-      return mode != AppLayoutMode.tv;
+      return false;
     }
-    return true;
+    if (mode == AppLayoutMode.tv) {
+      // TV modunda sadece ayrı Filmler ve Diziler kartları gösterilir, Film & Dizi (recommendedFilms) gizlidir.
+      if (this == HomeCategoryCardId.recommendedFilms) {
+        return false;
+      }
+      return true;
+    } else {
+      // Mobil/Tablet modunda sadece Film & Dizi (recommendedFilms) kartı gösterilir, ayrı Filmler ve Diziler gizlidir.
+      if (this == HomeCategoryCardId.films || this == HomeCategoryCardId.series) {
+        return false;
+      }
+      return true;
+    }
   }
 
   /// Kullanıcının seçtiği Film & Dizi moduna göre kartın görünüp
-  /// görünmeyeceğini söyler. Live / Favorites / EpgMix gibi kartlar bu
-  /// filtreden **etkilenmez** (her zaman görünür kalır).
+  /// görünmeyeceğini söyler. Bu seçim kaldırıldığı için artık her zaman görünür kabul edilir.
   bool visibleForFilmDiziMode(HomeFilmDiziMode mode) {
-    switch (this) {
-      case HomeCategoryCardId.recommendedFilms:
-        return mode == HomeFilmDiziMode.modern ||
-            mode == HomeFilmDiziMode.both;
-      case HomeCategoryCardId.films:
-      case HomeCategoryCardId.series:
-        return mode == HomeFilmDiziMode.classic ||
-            mode == HomeFilmDiziMode.both;
-      default:
-        return true;
-    }
+    return true;
   }
 
   /// Verilen [order] listesinden mevcut [mode] (mobil/tablet/TV), [filmDiziMode]

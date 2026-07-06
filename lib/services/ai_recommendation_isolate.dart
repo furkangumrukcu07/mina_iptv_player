@@ -94,13 +94,20 @@ List<Map<String, dynamic>> _coldStart(AiRecommendIsolateInput input) {
 
   final out = <Map<String, dynamic>>[];
 
-  final live = List<Map<String, dynamic>>.from(input.liveItems)..shuffle(rand);
+  // Gizlenen kategori öğelerini cold-start'ta da dışla — profil boş olsa bile
+  // kullanıcının gizlediği canlı/film/dizi içeriği önerilerde görünmesin.
+  final live = [
+    for (final ch in input.liveItems)
+      if (ch['hidden'] != true) ch,
+  ]..shuffle(rand);
   for (final ch in live.take(liveTarget)) {
     out.add({'k': 0, 'id': ch['id'], 's': 0.55});
   }
 
-  final vod = List<Map<String, dynamic>>.from(input.vodItems)
-    ..sort((a, b) {
+  final vod = [
+    for (final v in input.vodItems)
+      if (v['hidden'] != true) v,
+  ]..sort((a, b) {
       final ar = (a['rating'] as num?)?.toDouble() ?? 0;
       final br = (b['rating'] as num?)?.toDouble() ?? 0;
       return br.compareTo(ar);
@@ -110,7 +117,10 @@ List<Map<String, dynamic>> _coldStart(AiRecommendIsolateInput input) {
     out.add({'k': 1, 'id': v['id'], 's': 0.6});
   }
 
-  final series = List<Map<String, dynamic>>.from(input.seriesItems)..shuffle(rand);
+  final series = [
+    for (final s in input.seriesItems)
+      if (s['hidden'] != true) s,
+  ]..shuffle(rand);
   for (final s in series.take(seriesTarget)) {
     out.add({'k': 2, 'id': s['id'], 's': 0.55});
   }

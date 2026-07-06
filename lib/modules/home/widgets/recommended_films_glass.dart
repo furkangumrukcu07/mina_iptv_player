@@ -1,9 +1,11 @@
 import 'dart:ui';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
-import '../../../core/layout/app_layout_mode.dart';
+import '../../../core/layout/app_layout_mode.dart' show AppLayoutMode, filmDiziRemoteNavEnabled;
+import '../../../core/services/app_image_cache_service.dart';
 import '../../../core/services/app_settings_service.dart';
 import '../../../core/theme/app_performance.dart';
 import '../../../core/theme/app_theme.dart';
@@ -59,8 +61,7 @@ class _RecommendedFilmsGlassHeaderState extends State<RecommendedFilmsGlassHeade
 
   @override
   Widget build(BuildContext context) {
-    final remote = remoteNavForScreenLayout(
-      context,
+    final remote = filmDiziRemoteNavEnabled(
       Get.find<AppSettingsService>().layoutMode.value,
     );
 
@@ -353,15 +354,18 @@ class FilmDiziGlassPlayButton extends StatelessWidget {
             Positioned.fill(
               child: ImageFiltered(
                 imageFilter: ImageFilter.blur(sigmaX: 22, sigmaY: 22),
-                child: Image.network(
-                  posterUrl!,
+                child: CachedNetworkImage(
+                  imageUrl: posterUrl!,
+                  cacheKey: AppImageCacheService.cacheKeyFor(posterUrl!),
+                  cacheManager: AppImageCacheService.manager,
                   fit: BoxFit.cover,
                   filterQuality: FilterQuality.low,
-                  errorBuilder: (_, __, ___) => const SizedBox.shrink(),
-                  loadingBuilder: (context, child, progress) {
-                    if (progress == null) return child;
-                    return const SizedBox.shrink();
-                  },
+                  // Blur'lanan zemin — düşük çözünürlük yeterli, RAM'i korur.
+                  memCacheWidth: 120,
+                  fadeInDuration: Duration.zero,
+                  fadeOutDuration: Duration.zero,
+                  errorWidget: (_, __, ___) => const SizedBox.shrink(),
+                  placeholder: (_, __) => const SizedBox.shrink(),
                 ),
               ),
             ),

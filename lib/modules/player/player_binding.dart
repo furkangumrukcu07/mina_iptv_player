@@ -1,5 +1,6 @@
 import 'package:get/get.dart';
 
+import '../../core/home/showcase_player_launch.dart';
 import '../../domain/entities/channel.dart';
 import '../../domain/entities/series.dart';
 import '../../domain/entities/series_episode_option.dart';
@@ -17,6 +18,8 @@ class PlayerBinding extends Bindings {
     List<SeriesEpisodeOption>? episodeTape;
     List<PlayerBrowseCategoryTape<Channel>>? movieCategoryTapes;
     List<PlayerBrowseCategoryTape<SeriesItem>>? seriesCategoryTapes;
+    String? audioCodecHint;
+    var showcasePipHandoff = false;
 
     if (arg is PlayerScreenArgs) {
       channel = arg.channel;
@@ -26,8 +29,11 @@ class PlayerBinding extends Bindings {
       episodeTape = arg.episodeBrowseTape;
       movieCategoryTapes = arg.movieBrowseCategoryTapes;
       seriesCategoryTapes = arg.seriesBrowseCategoryTapes;
+      audioCodecHint = arg.audioCodecHint;
+      showcasePipHandoff = arg.showcaseInAppPipHandoff;
     } else if (arg is Channel) {
       channel = arg;
+      showcasePipHandoff = showcaseInAppPipHandoffEligibleNow();
     } else {
       throw ArgumentError(
         'Player route requires Channel or PlayerScreenArgs',
@@ -43,7 +49,8 @@ class PlayerBinding extends Bindings {
         episodeBrowseTape: episodeTape,
         movieBrowseCategoryTapes: movieCategoryTapes,
         seriesBrowseCategoryTapes: seriesCategoryTapes,
-        openedFromBrowse: arg is PlayerScreenArgs,
+        showcaseInAppPipHandoff: showcasePipHandoff,
+        initialAudioCodecHint: audioCodecHint,
       ),
     );
   }

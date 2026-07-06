@@ -2,6 +2,7 @@ import 'package:get/get.dart';
 
 import '../../core/services/app_settings_service.dart';
 import '../../core/services/mina_analytics_service.dart';
+import '../../services/user_history_service.dart';
 
 /// **Mina Wrapped controller'ı.**
 ///
@@ -11,15 +12,28 @@ import '../../core/services/mina_analytics_service.dart';
 /// Service değiştiğinde (player tick → flush) `version` Rx artar ve
 /// otomatik recompute tetiklenir.
 class MinaAnalyticsController extends GetxController {
-  MinaAnalyticsController({MinaAnalyticsService? service})
-      : _service = service ?? Get.find<MinaAnalyticsService>();
+  MinaAnalyticsController({
+    MinaAnalyticsService? service,
+    UserHistoryService? history,
+  })  : _service = service ?? Get.find<MinaAnalyticsService>(),
+        _history = history ??
+            (Get.isRegistered<UserHistoryService>()
+                ? Get.find<UserHistoryService>()
+                : null);
 
   final MinaAnalyticsService _service;
+  final UserHistoryService? _history;
 
   AppSettingsService get _settings => Get.find<AppSettingsService>();
 
   final selectedRange = MinaAnalyticsRange.month.obs;
   final snapshot = MinaAnalyticsSnapshot.empty.obs;
+
+  /// Kronolojik izleme şeridi — en yeni en üstte. Timeline kartı bunu çizer.
+  final timeline = <UserHistoryEntry>[].obs;
+
+  /// Timeline kartında gösterilecek azami öğe.
+  static const int kTimelineLimit = 14;
 
   /// UI bunu okuyarak gizlilik toggle'ı çizer. Master switch ile aynı
   /// kaynağa (`AppSettingsService.minaWrappedEnabled`) bağlıdır — Ana
@@ -31,8 +45,24 @@ class MinaAnalyticsController extends GetxController {
   void onInit() {
     super.onInit();
     _recompute();
+    _reloadTimeline();
     // Servis her flush'ta version'u artırır → otomatik recompute.
     ever<int>(_service.version, (_) => _recompute());
+    // Yeni izleme kaydı geldikçe timeline tazelensin.
+    final h = _history;
+    if (h != null) {
+      ever<int>(h.revision, (_) => _reloadTimeline());
+    }
+  }
+
+  Future<void> _reloadTimeline() async {
+    final h = _history;
+    if (h == null) {
+      timeline.value = const [];
+      return;
+    }
+    final all = await h.getAll();
+    timeline.value = all.take(kTimelineLimit).toList(growable: false);
   }
 
   void selectRange(MinaAnalyticsRange r) {
@@ -49,6 +79,7 @@ class MinaAnalyticsController extends GetxController {
   Future<void> clearAll() async {
     await _service.clearAll();
     _recompute();
+    await _reloadTimeline();
   }
 
   void _recompute() {

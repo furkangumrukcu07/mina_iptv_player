@@ -2,6 +2,7 @@ import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 
 import '../core/haptics/adaptive_haptics_service.dart';
@@ -94,6 +95,7 @@ class GlassListTile extends StatefulWidget {
     this.leading,
     this.trailing,
     this.onTap,
+    this.onLongPress,
     this.selected = false,
     this.dense = false,
     this.autofocus = false,
@@ -104,6 +106,9 @@ class GlassListTile extends StatefulWidget {
   final Widget? leading;
   final Widget? trailing;
   final VoidCallback? onTap;
+
+  /// Satıra uzun basınca tetiklenir (ör. bağlam menüsü / sil).
+  final VoidCallback? onLongPress;
   final bool selected;
   final bool dense;
   final bool autofocus;
@@ -144,7 +149,29 @@ class _GlassListTileState extends State<GlassListTile> {
                 ? Colors.white.withValues(alpha: 0.22)
                 : ga.listTileBorder(false));
 
-    return AnimatedContainer(
+    final onTap = Get.isRegistered<AdaptiveHapticsService>()
+        ? Get.find<AdaptiveHapticsService>().wrapTap(widget.onTap)
+        : widget.onTap;
+
+    return Focus(
+      autofocus: widget.autofocus,
+      onFocusChange: (v) => setState(() => _focused = v),
+      onKeyEvent: (node, event) {
+        if (event is KeyUpEvent) return KeyEventResult.ignored;
+        if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+          return KeyEventResult.ignored;
+        }
+        final k = event.logicalKey;
+        if (k == LogicalKeyboardKey.enter ||
+            k == LogicalKeyboardKey.select ||
+            k == LogicalKeyboardKey.numpadEnter ||
+            k == LogicalKeyboardKey.space) {
+          onTap?.call();
+          return KeyEventResult.handled;
+        }
+        return KeyEventResult.ignored;
+      },
+      child: AnimatedContainer(
       duration:
           isTvAndroid ? Duration.zero : const Duration(milliseconds: 150),
       margin: const EdgeInsets.symmetric(vertical: 2, horizontal: 4),
@@ -156,23 +183,21 @@ class _GlassListTileState extends State<GlassListTile> {
           width: _focused ? 2.2 : 1.2,
         ),
         boxShadow: _focused
-            ? [
+            ? AppPerformance.liteShadow(settings, [
                 BoxShadow(
                   color: Colors.black.withValues(alpha: 0.25),
                   blurRadius: 10,
                   offset: const Offset(0, 4),
                 )
-              ]
+              ])
             : null,
       ),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
-          onFocusChange: (v) => setState(() => _focused = v),
-          onTap: Get.isRegistered<AdaptiveHapticsService>()
-              ? Get.find<AdaptiveHapticsService>().wrapTap(widget.onTap)
-              : widget.onTap,
-          autofocus: widget.autofocus,
+          canRequestFocus: false,
+          onTap: onTap,
+          onLongPress: widget.onLongPress,
           borderRadius: BorderRadius.circular(12),
           child: Padding(
             padding: EdgeInsets.symmetric(
@@ -222,6 +247,7 @@ class _GlassListTileState extends State<GlassListTile> {
           ),
         ),
       ),
+    ),
     );
   }
 }
@@ -281,7 +307,27 @@ class _GlassDialogActionButtonState extends State<GlassDialogActionButton> {
 
     final textColor = widget.primary ? Colors.white : secondaryText;
 
-    return AnimatedContainer(
+    return Focus(
+      autofocus: widget.autofocus,
+      focusNode: widget.focusNode,
+      onFocusChange: (v) => setState(() => _focused = v),
+      onKeyEvent: (node, event) {
+        if (widget.onPressed == null) return KeyEventResult.ignored;
+        if (event is KeyUpEvent) return KeyEventResult.ignored;
+        if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+          return KeyEventResult.ignored;
+        }
+        final k = event.logicalKey;
+        if (k == LogicalKeyboardKey.enter ||
+            k == LogicalKeyboardKey.select ||
+            k == LogicalKeyboardKey.numpadEnter ||
+            k == LogicalKeyboardKey.space) {
+          widget.onPressed!();
+          return KeyEventResult.handled;
+        }
+        return KeyEventResult.ignored;
+      },
+      child: AnimatedContainer(
       duration: const Duration(milliseconds: 150),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(10),
@@ -292,10 +338,7 @@ class _GlassDialogActionButtonState extends State<GlassDialogActionButton> {
         type: MaterialType.transparency,
         child: InkWell(
           onTap: widget.onPressed,
-          onFocusChange: (v) => setState(() => _focused = v),
-          autofocus: widget.autofocus,
-          focusNode: widget.focusNode,
-          canRequestFocus: true,
+          canRequestFocus: false,
           borderRadius: BorderRadius.circular(10),
           child: Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -310,6 +353,7 @@ class _GlassDialogActionButtonState extends State<GlassDialogActionButton> {
           ),
         ),
       ),
+    ),
     );
   }
 }
@@ -377,13 +421,13 @@ class GlassPopupPanel extends StatelessWidget {
               end: Alignment.bottomRight,
               colors: gradientColors,
             ),
-            boxShadow: [
+            boxShadow: AppPerformance.liteShadow(settings, [
               BoxShadow(
                 color: ga.popupShadowColor,
                 blurRadius: 24,
                 offset: const Offset(0, 12),
               ),
-            ],
+            ]),
           ),
           child: child,
         );
@@ -453,9 +497,29 @@ class GlassAlertDialog extends StatelessWidget {
       mq.size.height * 0.88,
       mq.size.height - mq.padding.vertical - 32,
     );
-    final maxBodyScroll = math.max(120.0, maxPanelH - 210);
     final hasActions = actions != null && actions!.isNotEmpty;
 
+    // TV/kumanda: İptal/Kaydet dış şeritte kalınca liste öğelerinden odağa
+    // geçilemiyordu (ScrollView sınırı). Düğümleri gövdeye göm — altyazı
+    // seçici diyalogundaki desenle aynı.
+    final inlineTvActions = tvOsdStyle && hasActions;
+    final effectiveBody = inlineTvActions
+        ? Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              body,
+              _GlassDialogActionsFooter(
+                tvOsdStyle: tvOsdStyle,
+                actions: actions!,
+              ),
+            ],
+          )
+        : body;
+    final effectiveScrollable = scrollable || inlineTvActions;
+
+    // Gövde [Flexible] ile kalan alanı doldurur; başlık + alt düğmeler her
+    // zaman görünür kalır (sabit maxBodyScroll tahmini taşma yapıyordu).
     final column = FocusTraversalGroup(
       policy: WidgetOrderTraversalPolicy(),
       child: Column(
@@ -463,19 +527,18 @@ class GlassAlertDialog extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           titleBlock,
-          if (scrollable)
-            ConstrainedBox(
-              constraints: BoxConstraints(maxHeight: maxBodyScroll),
-              child: ListView(
-                shrinkWrap: true,
+          if (effectiveScrollable)
+            Flexible(
+              fit: FlexFit.loose,
+              child: SingleChildScrollView(
                 physics: AppScrollPhysics.list(context: context),
                 padding: EdgeInsets.zero,
-                children: [body],
+                child: effectiveBody,
               ),
             )
           else
-            body,
-          if (hasActions)
+            effectiveBody,
+          if (hasActions && !inlineTvActions)
             _GlassDialogActionsFooter(
               tvOsdStyle: tvOsdStyle,
               actions: actions!,
@@ -524,6 +587,11 @@ class _GlassDialogActionsFooter extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // TV OSD: kumanda ile dikey düğüm sırası. Portre telefonda yatay Wrap
+    // kullan — iki tam genişlik düğme alt şeridi taşırıp "Kapat"ı keser.
+    final stackVertical = tvOsdStyle &&
+        actions.length > 1 &&
+        MediaQuery.orientationOf(context) != Orientation.portrait;
     return Padding(
       padding: const EdgeInsets.only(top: 14),
       child: DecoratedBox(
@@ -541,7 +609,7 @@ class _GlassDialogActionsFooter extends StatelessWidget {
         ),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-          child: tvOsdStyle && actions.length > 1
+          child: stackVertical
               ? Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   mainAxisSize: MainAxisSize.min,
