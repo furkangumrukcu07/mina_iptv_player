@@ -7,7 +7,6 @@ import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:media_kit/media_kit.dart';
 
-import '../../../core/player/video_player_engine.dart';
 import '../../../core/layout/app_layout_mode.dart';
 import '../../../core/services/app_settings_service.dart';
 import '../../../core/theme/app_performance.dart';
@@ -229,7 +228,7 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
   }
 
   void _attachMediaKitListener() {
-    final p = _player;
+    final p = _pc.mediaKitPlayer;
     if (identical(_mkListenerTarget, p)) return;
     _cancelMkSubs();
     _mkListenerTarget = p;
@@ -1173,23 +1172,31 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
               return KeyEventResult.handled;
             }
 
-            if (key == LogicalKeyboardKey.arrowUp) {
+            if (key == LogicalKeyboardKey.arrowUp ||
+                key == LogicalKeyboardKey.arrowDown) {
+              final zapDelta =
+                  key == LogicalKeyboardKey.arrowUp ? -1 : 1;
+              final liveTimeshift = live && _pc.liveTimeshiftSeekAvailable;
+              if (live && !liveTimeshift) {
+                if (!_visible) {
+                  _showControls();
+                } else {
+                  _restartHideTimer();
+                }
+                if (event is KeyRepeatEvent) {
+                  return KeyEventResult.handled;
+                }
+                _zap(zapDelta);
+                return KeyEventResult.handled;
+              }
               if (!_visible) {
                 _showControls();
                 return KeyEventResult.handled;
               }
-              if (live) {
-                _zap(-1);
-              }
-              return KeyEventResult.handled;
-            }
-            if (key == LogicalKeyboardKey.arrowDown) {
-              if (!_visible) {
-                _showControls();
-                return KeyEventResult.handled;
-              }
-              if (live) {
-                _zap(1);
+              if (zapDelta < 0) {
+                _skipBack15();
+              } else {
+                _skipForward15();
               }
               return KeyEventResult.handled;
             }
@@ -1396,7 +1403,9 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
                                               osdContentTypeAndEngineRow(
                                                 live: live,
                                                 isSeries: _pc.isSeries,
-                                                engine: VideoPlayerEngine.mediaKit,
+                                                engine: _pc.activeVideoEngine,
+                                                transportFormat: _pc
+                                                    .osdStreamTransportFormatLabel,
                                               ),
                                             ],
                                           ),

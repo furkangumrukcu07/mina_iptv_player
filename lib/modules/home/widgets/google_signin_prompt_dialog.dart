@@ -4,10 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../../../core/layout/app_layout_mode.dart';
-import '../../../core/routes/app_routes.dart';
 import '../../../core/services/app_settings_service.dart';
 import '../../../core/services/auth_service.dart';
-import '../../../ui/cloud_sync_loading_dialog.dart';
+import '../../../core/services/cloud_restore_coordinator.dart';
 import '../../../ui/glass_overlays.dart';
 
 /// Google ile oturum açmamış kullanıcılara **bir kerelik** gösterilen teşvik
@@ -79,40 +78,29 @@ class _GoogleSignInPromptDialogState extends State<GoogleSignInPromptDialog> {
   }
 
   /// Giriş sonrası senkron akışı (promo kapandıktan sonra `Get` üzerinden):
-  /// 1. Kapatılamaz "Ayarlarınız yükleniyor…" popup'ı açılır.
-  /// 2. Bulutta veri varsa yerele uygulanır ve uygulama yeniden başlatılır
-  ///    (splash) — tüm servisler tazelensin.
-  /// 3. Bulut boşsa (ilk kez) yerel ayarlar buluta yedeklenir.
-  /// 4. Popup otomatik kapanır.
+  /// Bulutta veri varsa şık ilerleme popup'ı ile geri yüklenir ve uygulama
+  /// yeniden başlatılır; bulut boşsa yerel ayarlar buluta yedeklenir.
   static Future<void> _syncAfterSignIn(AuthService auth) async {
-    showCloudSyncLoadingDialog();
+    final restore = await CloudRestoreCoordinator.restoreWithProgressDialog(
+      auth: auth,
+      navigateToSplashOnSuccess: true,
+    );
 
-    Map<String, dynamic>? cloud;
-    try {
-      cloud = await auth.loadUserSettingsFromCloud();
-    } catch (_) {}
-
-    if (cloud != null && cloud.isNotEmpty) {
-      try {
-        await auth.applyCloudSettingsLocally(cloud);
-      } catch (_) {}
-      dismissCloudSyncLoadingDialog();
-      // Tam yeniden başlatma: tüm servisler diskten tazelensin.
-      await Get.offAllNamed<void>(AppRoutes.splash);
+    if (restore.outcome == CloudRestoreOutcome.success) {
       return;
     }
 
-    // Bulut boş → yerel ayarları ilk kez buluta yedekle.
-    try {
-      await auth.saveUserSettingsToCloud();
-    } catch (_) {}
-    dismissCloudSyncLoadingDialog();
-    unawaited(auth.maybeAutoBackup());
-    GlassSnackbar.show(
-      'cloud.title'.tr,
-      'cloud.prompt.signedIn'.tr,
-      snackPosition: SnackPosition.BOTTOM,
-    );
+    if (restore.outcome == CloudRestoreOutcome.empty) {
+      try {
+        await auth.saveUserSettingsToCloud();
+      } catch (_) {}
+      unawaited(auth.maybeAutoBackup());
+      GlassSnackbar.show(
+        'cloud.title'.tr,
+        'cloud.prompt.signedIn'.tr,
+        snackPosition: SnackPosition.BOTTOM,
+      );
+    }
   }
 
   @override

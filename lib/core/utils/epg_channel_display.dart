@@ -47,6 +47,34 @@ abstract final class EpgChannelDisplay {
     return true;
   }
 
+  /// Kanal adından kalite etiketi (SD / HD / FHD / 4K). Bulunamazsa null.
+  static String? qualityTierFromName(String raw) {
+    final name = raw.trim();
+    if (name.isEmpty) return null;
+    final u = name.toUpperCase();
+
+    final prefix = RegExp(
+      r'^\s*(8K|UHD|4K|FHD|FULL\s*HD|HD|SD)\s*[:|·•\-–—]',
+      caseSensitive: false,
+    ).firstMatch(name);
+    if (prefix != null) {
+      final t = prefix.group(1)!.toUpperCase().replaceAll(RegExp(r'\s+'), '');
+      if (t == 'FULLHD') return 'FHD';
+      if (t == 'UHD' || t == '8K') return '4K';
+      return t;
+    }
+
+    if (RegExp(r'\b(8K|UHD|4K|2160)\b').hasMatch(u)) return '4K';
+    if (RegExp(r'\b(FHD|FULL\s*HD|1080)\b').hasMatch(u)) return 'FHD';
+    if (RegExp(r'\bHD\b').hasMatch(u) || RegExp(r'\b720\b').hasMatch(u)) {
+      return 'HD';
+    }
+    if (RegExp(r'\bSD\b').hasMatch(u) || RegExp(r'\b480\b').hasMatch(u)) {
+      return 'SD';
+    }
+    return null;
+  }
+
   /// Ayarlar → «Kanal ön eki» açıksa TR:/BR:/[EN] vb. kaldırılır.
   static String liveChannelName(String raw) {
     final trimmed = raw.trim();

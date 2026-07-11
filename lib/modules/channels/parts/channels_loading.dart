@@ -67,6 +67,45 @@ Future<void> _reloadDbVisibleChannelsNow() async {
     );
   }
 
+/// Liste geçişi gibi kritik yollarda yalnızca ilk hızlı parti beklenir; kalan
+  /// pencere arka planda genişletilir (ANR önlenir).
+  Future<void> _reloadDbVisibleChannelsFastNow() async {
+    final id = selectedCategoryId.value;
+    final search = effectiveSearchQuery.value;
+    final favLen =
+        id == kFavoritesVirtualCategoryId ? _fav.channelIds.length : 0;
+    final histRev = id == kRecentlyWatchedVirtualCategoryId
+        ? _userHistoryRevisionSafe()
+        : 0;
+    final cacheKey = _visibleListCacheKey(
+      categoryId: id,
+      search: search,
+      favLen: favLen,
+      histRev: histRev,
+    );
+    final gen = ++_dbVisibleLoadGen;
+    if (!_dbBacked) return;
+    final fullCap = search.isEmpty
+        ? _effectiveVisibleChannelWindowSize()
+        : ChannelsController._kVisibleChannelSearchCap;
+    final fastCap = fullCap <= ChannelsController.kChannelListFastBatch
+        ? fullCap
+        : ChannelsController.kChannelListFastBatch;
+
+    final list = await _fetchDbVisibleChannels(
+      categoryId: id,
+      search: search,
+      maxCount: fastCap,
+    );
+    if (gen != _dbVisibleLoadGen || isClosed) return;
+    _visibleChannelsCacheKey = cacheKey;
+    _visibleChannelsCache = list;
+    playlistRevision.value++;
+
+    if (list.length >= fullCap || !_visibleChannelsDbHasMore) return;
+    unawaited(_expandVisibleChannelsToCap(gen: gen, fullCap: fullCap));
+  }
+
 /// Faz 1: ilk [ChannelsController._kChannelListFastBatch] kanal hemen; faz 2: kalan pencere arka planda.
   Future<void> _loadVisibleChannelsPhased({
     required int gen,
@@ -303,7 +342,71 @@ void _scheduleDbCategoryCountReload() {
       return;
     }
     if (_categoryCountLoadingKey == cacheKey) return;
+    if (!_dbBacked && _shouldAvoidRamFullScan(this)) {
+      _scheduleRamCategoryCountBuild(cacheKey);
+      return;
+    }
     unawaited(_reloadDbCategoryCountsNow());
+  }
+
+void _scheduleRamCategoryCountBuild(String cacheKey) {
+    if (_ramCategoryCountBuildRunning && _categoryCountCacheKey == cacheKey) {
+      return;
+    }
+    if (_categoryCountCacheKey == cacheKey && _categoryCountCache != null) {
+      return;
+    }
+    unawaited(_buildRamCategoryCountSnapshot(cacheKey));
+  }
+
+Future<void> _buildRamCategoryCountSnapshot(String cacheKey) async {
+    if (_dbBacked || !_shouldAvoidRamFullScan(this)) return;
+    final d = _data;
+    if (d == null) return;
+    final gen = ++_ramCategoryCountBuildGen;
+    _ramCategoryCountBuildRunning = true;
+    final counts = <int, int>{};
+    var visibleAll = 0;
+    var favCount = 0;
+    const chunk = 500;
+    var i = 0;
+    try {
+      for (final channel in d.channels) {
+        i++;
+        if (PlaylistCategoryHide.channelHiddenInLive(_app, _cache, d, channel)) {
+          continue;
+        }
+        visibleAll++;
+        if (_fav.hasChannel(channel.id)) favCount++;
+        counts[channel.categoryId] = (counts[channel.categoryId] ?? 0) + 1;
+        if (i % chunk == 0) {
+          if (isClosed || gen != _ramCategoryCountBuildGen) return;
+          _categoryCountCache = (
+            allVisibleCount: visibleAll,
+            favoritesVisibleCount: favCount,
+            recentlyWatchedVisibleCount:
+                _categoryCountCache?.recentlyWatchedVisibleCount ?? 0,
+            categoryCounts: Map<int, int>.from(counts),
+          );
+          playlistRevision.value++;
+          await Future<void>.delayed(Duration.zero);
+        }
+      }
+      if (isClosed || gen != _ramCategoryCountBuildGen) return;
+      final recentCount = _recentlyWatchedVisibleCount();
+      _categoryCountCacheKey = cacheKey;
+      _categoryCountCache = (
+        allVisibleCount: visibleAll,
+        favoritesVisibleCount: favCount,
+        recentlyWatchedVisibleCount: recentCount,
+        categoryCounts: counts,
+      );
+      playlistRevision.value++;
+    } finally {
+      if (gen == _ramCategoryCountBuildGen) {
+        _ramCategoryCountBuildRunning = false;
+      }
+    }
   }
 
 Future<void> _reloadDbCategoryCountsNow() async {
@@ -351,6 +454,10 @@ Future<int> _recentlyWatchedVisibleCountAsync() async {
     if (ids.isEmpty) return 0;
     final d = _data;
     if (d == null) return 0;
+    final k = _cache.dbSourceKey.value?.trim();
+    if (k != null && k.isNotEmpty) {
+      return PlaylistSqliteStore.countVisibleChannelsByIds(k, ids);
+    }
     var n = 0;
     for (final cid in ids) {
       final ch = await _lookupChannelById(cid);

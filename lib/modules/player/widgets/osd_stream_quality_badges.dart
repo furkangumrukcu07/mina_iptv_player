@@ -51,12 +51,12 @@ List<Widget> osdStreamQualityBadgeWidgets({
 }
 
 /// OSD sol bilgi sütununda içerik bilgisinin altındaki rozet satırı:
-/// içerik türü (CANLI / FİLM / DİZİ) + hemen sağında o an aktif oynatıcı
-/// motoru (BETTER / MEDIAKIT). Hangi motorla açıldıysa o gösterilir.
+/// içerik türü (CANLI / FİLM / DİZİ) + taşıma (HLS/TS) + oynatıcı (Better/MediaKit).
 Widget osdContentTypeAndEngineRow({
   required bool live,
   required bool isSeries,
   required VideoPlayerEngine engine,
+  String? transportFormat,
   bool portrait = false,
 }) {
   // TV'de uzaktan okunabilirlik için yatayda biraz daha büyük punto; ancak
@@ -82,8 +82,6 @@ Widget osdContentTypeAndEngineRow({
     typeColor = const Color(0xFF2980B9);
   }
 
-
-
   Widget typeChip = Container(
     padding: pad,
     decoration: BoxDecoration(
@@ -103,22 +101,82 @@ Widget osdContentTypeAndEngineRow({
     ),
   );
 
-  Widget engineChip = osdEngineBadge(
-    engine: engine,
-    fontSize: fontSize,
-    radius: radius,
-    hPad: hPad,
-    vPad: vPad,
-    portrait: portrait,
+  final gap = SizedBox(width: portrait ? 4 : 6);
+  final children = <Widget>[typeChip];
+
+  final transport = transportFormat?.trim();
+  if (transport != null && transport.isNotEmpty) {
+    children.add(gap);
+    children.add(
+      osdTransportBadge(
+        transportFormat: transport,
+        fontSize: fontSize,
+        radius: radius,
+        hPad: hPad,
+        vPad: vPad,
+        portrait: portrait,
+      ),
+    );
+  }
+
+  children.add(gap);
+  children.add(
+    osdEngineBadge(
+      engine: engine,
+      fontSize: fontSize,
+      radius: radius,
+      hPad: hPad,
+      vPad: vPad,
+      portrait: portrait,
+    ),
   );
 
   return Row(
     mainAxisSize: MainAxisSize.min,
-    children: [
-      typeChip,
-      SizedBox(width: portrait ? 4 : 6),
-      engineChip,
-    ],
+    children: children,
+  );
+}
+
+/// HLS / MPEG-TS taşıma biçimi rozeti — [osdEngineBadge] ile aynı dil.
+Widget osdTransportBadge({
+  required String transportFormat,
+  required double fontSize,
+  required double radius,
+  required double hPad,
+  required double vPad,
+  bool portrait = false,
+}) {
+  final ts = transportFormat.toUpperCase() == 'TS';
+  final color = ts
+      ? const Color(0xFF9B59B6)
+      : const Color(0xFFE67E22);
+  final label = ts ? 'TS' : 'HLS';
+  final icon = ts ? Icons.view_stream_rounded : Icons.stream_rounded;
+
+  return Container(
+    padding: EdgeInsets.fromLTRB(hPad - 2, vPad, hPad, vPad),
+    decoration: BoxDecoration(
+      color: color,
+      borderRadius: BorderRadius.circular(radius),
+      border: Border.all(color: Colors.white.withValues(alpha: 0.45)),
+    ),
+    child: Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: fontSize + 3, color: Colors.white),
+        SizedBox(width: portrait ? 2 : 4),
+        Text(
+          label,
+          style: TextStyle(
+            color: Colors.white,
+            fontSize: fontSize,
+            fontWeight: FontWeight.w800,
+            letterSpacing: 0.2,
+            height: 1,
+          ),
+        ),
+      ],
+    ),
   );
 }
 
@@ -131,9 +189,12 @@ Widget osdEngineBadge({
   bool portrait = false,
 }) {
   final mk = engine.isMediaKit;
-  final engineColor = mk ? const Color(0xFF16A085) : const Color(0xFF2E86DE);
+  final engineColor = mk
+      ? const Color(0xFF16A085)
+      : const Color(0xFF2E86DE);
   final engineLabel = mk ? 'MediaKit' : 'Better';
-  final engineIcon = mk ? Icons.memory_rounded : Icons.bolt_rounded;
+  final engineIcon =
+      mk ? Icons.memory_rounded : Icons.bolt_rounded;
 
   return Container(
     padding: EdgeInsets.fromLTRB(hPad - 2, vPad, hPad, vPad),

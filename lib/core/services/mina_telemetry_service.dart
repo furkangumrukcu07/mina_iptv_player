@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 
 import '../layout/app_layout_mode.dart';
+import '../player/playback_engine_kind.dart';
 import 'app_settings_service.dart';
 import 'auth_service.dart';
 import 'firebase_bootstrap.dart';
@@ -188,8 +189,8 @@ class MinaTelemetryService extends GetxService {
       'theme': _slug(s.themeLabel.value),
       'layout_mode': _layoutName(s.layoutMode.value),
       'app_language': s.languageCode.value,
-      'video_engine_vod': s.useMediaKit.value ? 'media_kit' : 'exo',
-      'video_engine_live': s.liveUseMediaKit.value ? 'media_kit' : 'exo',
+      'video_engine_vod': _videoEngineTelemetry(s.vodPlaybackEngine.value),
+      'video_engine_live': _videoEngineTelemetry(s.livePlaybackEngine.value),
       'hide_adult': s.effectiveHideAdultContent,
       'reduce_blur': s.reduceBlur.value,
       'external_player': s.externalPlayerEnabled.value,
@@ -219,5 +220,12 @@ class MinaTelemetryService extends GetxService {
   static String _capValue(Object v) {
     final s = v is bool ? (v ? 'true' : 'false') : v.toString();
     return s.length <= 36 ? s : s.substring(0, 36);
+  }
+
+  static String _videoEngineTelemetry(PlaybackEngineKind kind) {
+    return switch (kind) {
+      PlaybackEngineKind.better => 'exo',
+      PlaybackEngineKind.mediaKit => 'media_kit',
+    };
   }
 }

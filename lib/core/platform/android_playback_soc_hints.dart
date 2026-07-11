@@ -165,10 +165,10 @@ class AndroidPlaybackSocHints {
     if (ram != null && ram < oneGiBRamClassMaxBytes) {
       switch (s) {
         case 0:
-          return const MediaKitLiveMpvBufferStep(
-            cacheSizeKiB: 512,
-            demuxerMaxBytes: 786432,
-            demuxerMaxBackBytes: 262144,
+          return MediaKitLiveMpvBufferStep(
+            cacheSizeKiB: 2048,
+            demuxerMaxBytes: 2 * 1024 * 1024,
+            demuxerMaxBackBytes: 1024 * 1024,
           );
         case 1:
           return MediaKitLiveMpvBufferStep(
@@ -256,10 +256,12 @@ class AndroidPlaybackSocHints {
 
     switch (s) {
       case 0:
-        return const MediaKitLiveMpvBufferStep(
-          cacheSizeKiB: 512,
-          demuxerMaxBytes: 786432,
-          demuxerMaxBackBytes: 262144,
+        // Telefon/tablet (≥3 GiB): eski 512 KiB + 768 KB demuxer canlı HLS'de
+        // readahead=30 ile çakışıp açılmama / siyah ekran yapıyordu.
+        return MediaKitLiveMpvBufferStep(
+          cacheSizeKiB: 4096,
+          demuxerMaxBytes: 4 * 1024 * 1024,
+          demuxerMaxBackBytes: 2 * 1024 * 1024,
         );
       case 1:
         return MediaKitLiveMpvBufferStep(
@@ -339,6 +341,9 @@ class AndroidPlaybackSocHints {
 
   /// Xiaomi / Redmi / POCO / Black Shark. Adaptif tavan ve [useTextureView] ipucu için.
   static bool get xiaomiFamily => _xiaomiFamily ?? false;
+
+  /// Xiaomi telefon/tablet (Mi Box / MITV değil).
+  static bool get xiaomiHandheld => xiaomiFamily && !androidTv;
 
   /// [Build.MODEL] (ör. `SM-T530`). [ensureLoaded] sonrası; aksi `null`.
   static String? get buildModel => _buildModel;

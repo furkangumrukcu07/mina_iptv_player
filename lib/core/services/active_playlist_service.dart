@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../../core/error/app_exception.dart';
 import '../../core/perf/playlist_memory_diagnostics.dart';
 import '../../data/local/playlist_sqlite_store.dart';
 import '../../data/remote/m3u_xtream_sniffer.dart';
@@ -14,6 +15,7 @@ import 'app_settings_service.dart';
 import 'live_hls_stream_profile_service.dart';
 import 'playlist_cache_service.dart';
 import 'playlist_channel_layout_sync.dart';
+import 'playlist_sqlite_backfill_service.dart';
 
 /// "Listeler" barında gösterilecek tek bir liste girişi.
 class PlaylistListInfo {
@@ -143,6 +145,7 @@ class ActivePlaylistService extends GetxService {
         slot,
         preferSnapshot: true,
         publish: false,
+        forSlot: slot,
       );
       if (loaded == null) return false;
       final src = await _repo.readSourceAt(slot);
@@ -156,6 +159,9 @@ class ActivePlaylistService extends GetxService {
       activeSlot.value = slot;
       await _persistActiveSlot();
       _trimMemCacheKeeping(slot);
+      if (lastLoadFromSnapshot) {
+        unawaited(_backgroundRefreshSlot(slot));
+      }
       return true;
     } finally {
       isSwitching.value = false;
@@ -170,7 +176,11 @@ class ActivePlaylistService extends GetxService {
     final dbKey = await _repo.slotDbKey(slot);
     var dbReady = await _isDbReady(dbKey);
     if (!dbReady && dbKey != null && _hasListPayload(result)) {
-      dbReady = await _ensureSqliteFromSnapshot(dbKey, result);
+      dbReady = await _ensureSqliteFromSnapshot(
+        dbKey,
+        result,
+        forSlot: slot,
+      );
     }
     final forCache = dbReady ? result.slimForSqliteCache() : result;
     _memCache[slot] = forCache;
@@ -195,6 +205,7 @@ class ActivePlaylistService extends GetxService {
     int slot, {
     required bool preferSnapshot,
     bool publish = true,
+    int? forSlot,
   }) async {
     lastLoadFromSnapshot = false;
     final src = await _repo.readSourceAt(slot);
@@ -207,7 +218,11 @@ class ActivePlaylistService extends GetxService {
       var dbReady = await _isDbReady(dbKey);
       if (!dbReady && dbKey != null) {
         if (_hasListPayload(mem)) {
-          dbReady = await _ensureSqliteFromSnapshot(dbKey, mem);
+          dbReady = await _ensureSqliteFromSnapshot(
+            dbKey,
+            mem,
+            forSlot: forSlot ?? slot,
+          );
         } else {
           // Slim önbellek + boş DB → geçersiz; snapshot veya ağ yoluna düş.
           _memCache.remove(slot);
@@ -234,34 +249,61 @@ class ActivePlaylistService extends GetxService {
         lastLoadFromSnapshot = true;
         var dbReady = await _isDbReady(dbKey);
         if (!dbReady && dbKey != null && _hasListPayload(snap)) {
-          dbReady = await _ensureSqliteFromSnapshot(dbKey, snap);
-        }
-        if (!dbReady && dbKey != null && _hasListPayload(snap)) {
-          debugPrint(
-            'mina_iptv: snapshot SQLite backfill failed slot $slot → fresh load',
+          dbReady = await _ensureSqliteFromSnapshot(
+            dbKey,
+            snap,
+            forSlot: forSlot ?? slot,
           );
-        } else {
-          final forCache = dbReady ? snap.slimForSqliteCache() : snap;
-          _memCache[slot] = forCache;
-          _publishLoaded(
-            forCache,
-            src,
-            dbReady ? dbKey : null,
-            publish: publish,
-          );
-          return forCache;
         }
+        final forCache = dbReady ? snap.slimForSqliteCache() : snap;
+        _memCache[slot] = forCache;
+        _publishLoaded(
+          forCache,
+          src,
+          dbReady ? dbKey : null,
+          publish: publish,
+        );
+        return forCache;
       }
     }
 
-    // 3) Ağ / yerel dosya (taze) — bu yol SQLite'ı da doldurur. Kaynak
-    // düzenlendiyse (URL / dosya mtime değişti) yeni bir `source_key` oluşur;
-    // eski parmak izine ait satırlar artık yetim → arka planda temizle.
-    final fresh = await _repo.loadSlotPlaylist(slot);
+    // 3) Ağ / yerel dosya (taze) — bu yol SQLite'ı da doldurur.
+    M3uResult? fresh;
+    try {
+      fresh = await _repo.loadSlotPlaylist(slot);
+    } on AppException catch (e) {
+      // Panel geçici yanıt vermiyorsa önbellek/SQLite ile ana ekrana izin ver.
+      final dbReady = await _isDbReady(dbKey);
+      if (dbReady && dbKey != null) {
+        debugPrint(
+          'mina_iptv: slot $slot network load failed → sqlite offline ($dbKey): $e',
+        );
+        lastLoadFromSnapshot = true;
+        final snap = await _repo.restoreSlotSnapshot(slot);
+        final offline = snap ??
+            const M3uResult(
+              channels: [],
+              channelCategories: [],
+              vod: [],
+              vodCategories: [],
+              series: [],
+              seriesCategories: [],
+            );
+        final forCache = offline.slimForSqliteCache();
+        _memCache[slot] = forCache;
+        _publishLoaded(forCache, src, dbKey, publish: publish);
+        return forCache;
+      }
+      rethrow;
+    }
     if (fresh == null) return null;
     var dbReady = await _isDbReady(dbKey);
     if (!dbReady && dbKey != null && _hasListPayload(fresh)) {
-      dbReady = await _ensureSqliteFromSnapshot(dbKey, fresh);
+      dbReady = await _ensureSqliteFromSnapshot(
+        dbKey,
+        fresh,
+        forSlot: forSlot ?? slot,
+      );
     }
     final forCache = dbReady ? fresh.slimForSqliteCache() : fresh;
     _memCache[slot] = forCache;
@@ -302,7 +344,9 @@ class ActivePlaylistService extends GetxService {
     }
     final xk = src is XtreamSource
         ? AppSettingsService.xtreamPreferenceKey(src)
-        : null;
+        : (src is StalkerSource
+            ? AppSettingsService.stalkerPreferenceKey(src)
+            : null);
     final m3uK =
         src is M3uSource ? AppSettingsService.m3uPreferenceKey(src.url) : null;
     // [dbKey] yalnızca SQLite gerçekten doluysa geçilir — aksi halde
@@ -339,6 +383,7 @@ class ActivePlaylistService extends GetxService {
   String _labelFor(PlaylistSource src) => switch (src) {
         M3uSource(:final url) => url,
         XtreamSource(:final baseUrl) => baseUrl,
+        StalkerSource(:final baseUrl) => baseUrl,
       };
 
   Future<void> _persistActiveSlot() async {
@@ -368,30 +413,60 @@ class ActivePlaylistService extends GetxService {
       dbKey.isNotEmpty &&
       await PlaylistSqliteStore.hasData(dbKey);
 
-  /// Eski kurulum: snapshot'ta tam liste var, SQLite boş — tek seferlik doldur.
+  /// SQLite arka plan backfill tamamlandığında aktif slot hâlâ aynıysa önbelleği
+  /// slim + dbKey ile günceller.
+  Future<void> onSqliteBackfillReady({
+    required int slot,
+    required String dbKey,
+  }) async {
+    if (activeSlot.value != slot) return;
+    if (!await _isDbReady(dbKey)) return;
+    final current = _cache.result.value;
+    if (current == null) return;
+    final src = await _repo.readSourceAt(slot);
+    if (src == null) return;
+    if (_cache.dbSourceKey.value == dbKey) return;
+    final slim = _hasListPayload(current)
+        ? current.slimForSqliteCache()
+        : current;
+    _memCache[slot] = slim;
+    _pushToCache(slim, src, dbKey);
+  }
+
+  /// Snapshot'tan yüklendikten sonra ağ/dosya yolunu UI'ı bloklamadan tazeler.
+  Future<void> _backgroundRefreshSlot(int slot) async {
+    if (activeSlot.value != slot) return;
+    try {
+      final fresh = await _repo.loadSlotPlaylist(slot);
+      if (fresh == null || activeSlot.value != slot) return;
+      final src = await _repo.readSourceAt(slot);
+      if (src == null) return;
+      final dbKey = await _repo.slotDbKey(slot);
+      final dbReady = await _isDbReady(dbKey);
+      final forCache = dbReady ? fresh.slimForSqliteCache() : fresh;
+      _memCache[slot] = forCache;
+      _pushToCache(forCache, src, dbReady ? dbKey : null);
+    } catch (e, st) {
+      debugPrint('mina_iptv: background refresh slot $slot failed: $e\n$st');
+    }
+  }
+
+  /// Eski kurulum: snapshot'ta tam liste var, SQLite boş — arka planda doldur.
   static Future<bool> _ensureSqliteFromSnapshot(
     String dbKey,
-    M3uResult full,
-  ) async {
+    M3uResult full, {
+    int? forSlot,
+  }) async {
     if (!_hasListPayload(full)) return false;
     if (await _isDbReady(dbKey)) return true;
-    Object? lastError;
-    for (var attempt = 0; attempt < 2; attempt++) {
-      try {
-        await PlaylistSqliteStore.replaceFromResult(dbKey, full);
-        if (await _isDbReady(dbKey)) return true;
-      } catch (e) {
-        lastError = e;
-        debugPrint(
-          'mina_iptv: SQLite backfill attempt ${attempt + 1} failed: $e',
-        );
-        if (attempt == 0) {
-          await Future<void>.delayed(const Duration(milliseconds: 150));
-        }
-      }
-    }
-    if (lastError != null) {
-      debugPrint('mina_iptv: SQLite backfill from snapshot failed: $lastError');
+    if (Get.isRegistered<PlaylistSqliteBackfillService>()) {
+      unawaited(
+        Get.find<PlaylistSqliteBackfillService>().scheduleReplaceFromResult(
+          dbKey: dbKey,
+          full: full,
+          forSlot: forSlot,
+        ),
+      );
     }
     return false;
   }

@@ -5,8 +5,8 @@ import 'package:get/get.dart';
 import 'dart:async';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/home/film_dizi_detail_args.dart';
+import '../../core/services/showcase_in_app_pip_service.dart';
 import '../../core/services/licensing_service.dart';
-
 import '../../core/epg/epg_mix_catalog.dart';
 import '../../core/epg/epg_mix_category.dart';
 import '../../core/epg/home_epg_catalog_cache.dart';
@@ -18,7 +18,6 @@ import '../../core/services/active_playlist_service.dart';
 import '../../core/services/app_install_source_service.dart';
 import '../../core/services/app_bootstrap_service.dart';
 import '../../core/services/app_settings_service.dart';
-import '../../core/services/device_performance_advisor.dart';
 import '../../core/services/epg_service.dart';
 import '../../core/services/favorites_service.dart';
 import '../../core/services/playlist_cache_service.dart';
@@ -36,6 +35,7 @@ import '../../data/local/playlist_sqlite_store.dart';
 import '../../core/services/playlist_data_source.dart';
 import '../tv_shell/tv_shell_controller.dart';
 import 'widgets/global_search_dialog.dart';
+import 'widgets/in_app_pip_suggest_dialog.dart';
 import 'home_card_counts.dart';
 
 /// Dikey mod arama popup’ı için gruplu sonuçlar.
@@ -692,89 +692,30 @@ class HomeController extends GetxController {
   void onReady() {
     super.onReady();
     now.value = DateTime.now();
+    if (Get.isRegistered<ShowcaseInAppPipService>()) {
+      final pip = Get.find<ShowcaseInAppPipService>();
+      if (pip.active.value) {
+        unawaited(pip.recoverHomeInteractionAfterPipHandoff());
+      }
+    }
     unawaited(_maybeShowPlayStoreRatePrompt());
-    _wireLowEndModeSuggestion();
     unawaited(_checkAndShowTrialWelcomeDialog());
+    unawaited(_maybeShowInAppPipSuggestion());
   }
 
-  Worker? _lowEndSuggestWorker;
-  bool _lowEndSuggestShown = false;
+  bool _inAppPipSuggestShown = false;
 
-  /// [DevicePerformanceAdvisor] jank tespit edip bayrağı kaldırınca (2 GB RAM +
-  /// mod kapalı + uyarı kapatılmamış) ana ekranda öneri popup'ı göster.
-  void _wireLowEndModeSuggestion() {
-    if (!Get.isRegistered<DevicePerformanceAdvisor>()) return;
-    final advisor = Get.find<DevicePerformanceAdvisor>();
-    if (advisor.shouldSuggestLowEndMode.value) {
-      unawaited(_maybeShowLowEndModeSuggestion());
-      return;
-    }
-    _lowEndSuggestWorker = ever<bool>(advisor.shouldSuggestLowEndMode, (v) {
-      if (v) unawaited(_maybeShowLowEndModeSuggestion());
-    });
-  }
+  /// PiP kapalı mobil/tablet kullanıcılarına bir kerelik teşvik popup'ı.
+  Future<void> _maybeShowInAppPipSuggestion() async {
+    if (_inAppPipSuggestShown) return;
+    _inAppPipSuggestShown = true;
 
-  Future<void> _maybeShowLowEndModeSuggestion() async {
-    if (_lowEndSuggestShown) return;
-    final settings = Get.find<AppSettingsService>();
-    if (settings.lowEndDeviceMode.value ||
-        settings.lowEndSuggestionDismissed.value) {
-      return;
-    }
-    _lowEndSuggestShown = true;
-
-    // Kısa bir gecikme: açılıştaki diğer popup'larla (ör. puanlama) çakışmasın.
-    await Future<void>.delayed(const Duration(milliseconds: 1200));
+    // Diğer açılış popup'ları (Google oturum, deneme, puanlama) otursun.
+    await Future<void>.delayed(const Duration(milliseconds: 2800));
     if (isClosed) return;
     if (Get.currentRoute != AppRoutes.home) return;
-    final ctx = Get.context;
-    if (ctx == null || !ctx.mounted) return;
 
-    final tv = settings.layoutMode.value == AppLayoutMode.tv;
-    var enable = false;
-    try {
-      await Get.dialog<void>(
-        GlassAlertDialog(
-          tvOsdStyle: tv,
-          title: Row(
-            children: [
-              const Icon(
-                Icons.speed_rounded,
-                color: Color(0xFFFCD34D),
-                size: 22,
-              ),
-              const SizedBox(width: 8),
-              Expanded(child: Text('lowEndMode.suggest.title'.tr)),
-            ],
-          ),
-          content: Text('lowEndMode.suggest.body'.tr),
-          actions: [
-            GlassDialogActionButton(
-              label: 'lowEndMode.suggest.enable'.tr,
-              primary: true,
-              autofocus: true,
-              onPressed: () {
-                enable = true;
-                Navigator.of(Get.overlayContext ?? ctx).pop();
-              },
-            ),
-            GlassDialogActionButton(
-              label: 'lowEndMode.suggest.later'.tr,
-              onPressed: () => Navigator.of(Get.overlayContext ?? ctx).pop(),
-            ),
-          ],
-        ),
-        barrierDismissible: !tv,
-      );
-    } catch (e, st) {
-      debugPrint('mina_iptv: low-end suggest dialog: $e\n$st');
-    }
-
-    // Bir daha gösterme (kullanıcı seçeneğini yaptı).
-    await settings.setLowEndSuggestionDismissed(true);
-    if (enable) {
-      await settings.setLowEndDeviceMode(true);
-    }
+    await InAppPipSuggestDialog.maybeShow();
   }
 
   Future<void> _maybeShowPlayStoreRatePrompt() async {
@@ -1070,7 +1011,6 @@ class HomeController extends GetxController {
     _hideRevisionWorker?.dispose();
     _layoutStyleWorker?.dispose();
     _playerActiveWorker?.dispose();
-    _lowEndSuggestWorker?.dispose();
     _lastLiveChannelWorker?.dispose();
     homeSearchIconFocus.dispose();
     super.onClose();

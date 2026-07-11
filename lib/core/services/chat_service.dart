@@ -1,7 +1,7 @@
 import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 import 'package:get/get.dart';
 
 import 'auth_service.dart';
@@ -198,10 +198,11 @@ enum ChatStatusTag {
 ///   döndürmez.
 /// * **Yetki**: yazma yalnızca Google ile oturum açmış (bulut senkronu aktif)
 ///   kullanıcılar için. Kurallar Firestore tarafında da zorlanır.
-class ChatService extends GetxService {
+class ChatService extends GetxService with WidgetsBindingObserver {
   ChatService({AuthService? authService}) : _authOverride = authService;
 
   final AuthService? _authOverride;
+  Worker? _authPresenceWorker;
 
   /// `chats/rooms/{lang}` — her dil kodu, mesaj dökümanlarını tutan bir
   /// koleksiyondur. (Kullanıcının istediği `chats/rooms/{lang}/messages`
@@ -236,8 +237,14 @@ class ChatService extends GetxService {
     return Get.find<AuthService>();
   }
 
-  /// Bulut + oturum hazır mı? Chat yalnızca senkron aktif kullanıcılara açık.
-  bool get isReady => gFirebaseReady && _auth.isSignedIn;
+  /// Bulut + **Google** oturumu hazır mı? Anonim deneme hesabı sohbet yazamaz.
+  bool get isReady => gFirebaseReady && isGoogleSignedIn;
+
+  /// Google (veya anonim olmayan) oturum — sohbet kapısı / mesaj yazma.
+  bool get isGoogleSignedIn {
+    final user = _auth.currentUser.value;
+    return user != null && !user.isAnonymous;
+  }
 
   /// Oturum açmış kullanıcının görünen adı (Google profil ismi) veya yedek.
   String get currentUserName {
@@ -520,75 +527,129 @@ class ChatService extends GetxService {
   }
 
   // -------------------------------------------------------------------------
-  // Çevrimiçi varlık (presence) — sohbet bölümündeki "N Online" rozeti için.
+  // Çevrimiçi varlık (presence) — uygulamada oturumu açık kullanıcılar.
   //
-  // Realtime Database olmadığından Firestore tabanlı hafif bir yaklaşım:
-  // chat bölümündeki her aktif kullanıcı `presence/{uid}` dökümanına periyodik
-  // `lastSeen` (heartbeat) yazar. Çevrimiçi sayısı, son [_presenceStaleWindow]
-  // içinde görülmüş dökümanların aggregate `count()`'u ile hesaplanır (tüm
-  // dökümanları indirmez → ucuz). Bölümden çıkınca döküman silinir.
-  //
-  // Yalnızca chat ekranlarındayken çalışır: [acquirePresence] / [releasePresence]
-  // ref-count'u ile başlatılıp durdurulur → ana ekranda hiçbir trafik yok.
+  // Heartbeat (lastSeen) uygulama genelinde yazılır. Aggregate/filtre sayımı
+  // sohbet açıkken yapılır. lastSeen bayatlayınca (~3 dk) «offline» sayılır;
+  // kısa pause/hidden'da döküman SİLİNMEZ (aksi halde rozet 1'e düşer).
   // -------------------------------------------------------------------------
 
   static const String _presenceCollection = 'presence';
-  static const Duration _presenceHeartbeat = Duration(seconds: 25);
-  static const Duration _presenceStaleWindow = Duration(seconds: 75);
-  static const Duration _presenceOfflineGrace = Duration(seconds: 4);
+  static const Duration _presenceHeartbeat = Duration(seconds: 35);
+  static const Duration _presenceStaleWindow = Duration(minutes: 3);
+  static const Duration _onlineCountPoll = Duration(seconds: 20);
 
-  /// O an çevrimiçi (son ~75 sn içinde görülmüş) kullanıcı sayısı. Rozet bunu
-  /// reaktif dinler; 0 iken rozet gizlenir.
+  /// O an uygulamada çevrimiçi (son ~3 dk lastSeen) kullanıcı sayısı.
   final RxInt onlineCount = 0.obs;
 
-  int _presenceRefs = 0;
   Timer? _presenceTimer;
-  Timer? _presenceOfflineTimer;
+  Timer? _onlineCountTimer;
+  bool _presenceActive = false;
+  int _presenceEpoch = 0;
+  int _chatCountInterest = 0;
 
   CollectionReference<Map<String, dynamic>> _presenceRef() =>
       FirebaseFirestore.instance.collection(_presenceCollection);
 
-  /// Bir sohbet ekranı açılınca çağrılır. İlk referansta heartbeat + sayım
-  /// döngüsünü başlatır (idempotent).
-  void acquirePresence() {
-    _presenceOfflineTimer?.cancel();
-    _presenceOfflineTimer = null;
-    _presenceRefs++;
-    if (_presenceRefs == 1) _startPresence();
+  @override
+  void onInit() {
+    super.onInit();
+    WidgetsBinding.instance.addObserver(this);
+    _authPresenceWorker = ever(_auth.currentUser, (_) => syncAppPresence());
+    // Auth / Firebase biraz gecikebilir; kısa gecikmeyle bir kez daha dene.
+    unawaited(Future<void>.delayed(const Duration(seconds: 2), () {
+      if (isClosed) return;
+      syncAppPresence();
+    }));
+    syncAppPresence();
   }
 
-  /// Sohbet ekranı kapanınca çağrılır. Son referans da bırakılınca, ekranlar
-  /// arası geçişte titremeyi önlemek için kısa bir gecikmeyle durdurur.
-  void releasePresence() {
-    if (_presenceRefs > 0) _presenceRefs--;
-    if (_presenceRefs == 0) {
-      _presenceOfflineTimer?.cancel();
-      _presenceOfflineTimer = Timer(_presenceOfflineGrace, _stopPresence);
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      syncAppPresence();
+      if (_chatCountInterest > 0) {
+        unawaited(_refreshOnlineCount());
+      }
+    } else if (state == AppLifecycleState.detached) {
+      // Yalnızca süreç kapanırken sil — pause/hidden'da dokunma (sayım çöker).
+      _stopPresence(removeDoc: true);
+    } else if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden) {
+      // Heartbeat'i durdur; lastSeen bayatlayınca sayım düşer.
+      _stopPresence(removeDoc: false);
     }
   }
 
+  /// Ön plan + oturum açıksa heartbeat başlat; aksi halde durdur.
+  void syncAppPresence() {
+    if (!gFirebaseReady || currentUserId == null) {
+      _stopPresence(removeDoc: true);
+      return;
+    }
+    final life = WidgetsBinding.instance.lifecycleState;
+    if (life != null &&
+        life != AppLifecycleState.resumed &&
+        life != AppLifecycleState.inactive) {
+      return;
+    }
+    _startPresence();
+  }
+
+  /// Sohbet rozeti görünürken count sorgusunu açar.
+  void acquirePresence() {
+    _chatCountInterest++;
+    syncAppPresence();
+    _armOnlineCountPoll();
+    unawaited(_refreshOnlineCount());
+  }
+
+  /// Sohbet kapanınca count sorgusunu kapatır (heartbeat uygulama genelinde kalır).
+  void releasePresence() {
+    if (_chatCountInterest > 0) _chatCountInterest--;
+    if (_chatCountInterest <= 0) {
+      _onlineCountTimer?.cancel();
+      _onlineCountTimer = null;
+    }
+  }
+
+  void _armOnlineCountPoll() {
+    _onlineCountTimer?.cancel();
+    if (_chatCountInterest <= 0) return;
+    _onlineCountTimer = Timer.periodic(_onlineCountPoll, (_) {
+      if (_chatCountInterest > 0) unawaited(_refreshOnlineCount());
+    });
+  }
+
   void _startPresence() {
-    if (!gFirebaseReady) return;
-    _beat();
+    if (!gFirebaseReady || currentUserId == null) return;
+    if (_presenceActive) {
+      unawaited(_beat());
+      return;
+    }
+    _presenceActive = true;
+    unawaited(_beat());
     _presenceTimer?.cancel();
     _presenceTimer = Timer.periodic(_presenceHeartbeat, (_) => _beat());
   }
 
-  void _stopPresence() {
+  void _stopPresence({required bool removeDoc}) {
+    _presenceEpoch++;
+    _presenceActive = false;
     _presenceTimer?.cancel();
     _presenceTimer = null;
+    if (!removeDoc) return;
     final uid = currentUserId;
     if (gFirebaseReady && uid != null) {
       _presenceRef().doc(uid).delete().catchError((_) {});
     }
   }
 
-  /// Tek heartbeat: kendi presence dökümanını tazele + çevrimiçi sayısını
-  /// yeniden hesapla.
   Future<void> _beat() async {
-    if (!isReady) return;
+    if (!_presenceActive || !gFirebaseReady) return;
     final uid = currentUserId;
     if (uid == null) return;
+    final epoch = _presenceEpoch;
     try {
       await _presenceRef().doc(uid).set(<String, dynamic>{
         'lastSeen': FieldValue.serverTimestamp(),
@@ -597,29 +658,64 @@ class ChatService extends GetxService {
     } catch (e) {
       debugPrint('[ChatService] presence beat error: $e');
     }
-    await _refreshOnlineCount();
+    if (!_presenceActive || epoch != _presenceEpoch) return;
+    if (_chatCountInterest > 0) {
+      await _refreshOnlineCount();
+    }
+  }
+
+  /// [lastSeen] Timestamp veya epoch-ms olabilir (eski istemciler).
+  static DateTime? _readLastSeen(dynamic raw) {
+    if (raw is Timestamp) return raw.toDate().toUtc();
+    if (raw is int) {
+      return DateTime.fromMillisecondsSinceEpoch(raw, isUtc: true);
+    }
+    if (raw is num) {
+      return DateTime.fromMillisecondsSinceEpoch(raw.toInt(), isUtc: true);
+    }
+    return null;
   }
 
   Future<void> _refreshOnlineCount() async {
-    if (!gFirebaseReady) return;
+    if (!gFirebaseReady || currentUserId == null) return;
     try {
-      final cutoff = Timestamp.fromDate(
-        DateTime.now().subtract(_presenceStaleWindow),
+      // Aggregate + inequality bazı cihazlarda eksik sonuç verebiliyor;
+      // sunucudan tüm presence dokümanlarını alıp lastSeen'e göre say.
+      final snap = await _presenceRef().get(
+        const GetOptions(source: Source.server),
       );
-      final agg = await _presenceRef()
-          .where('lastSeen', isGreaterThan: cutoff)
-          .count()
-          .get();
-      onlineCount.value = agg.count ?? onlineCount.value;
+      final cutoff = DateTime.now().toUtc().subtract(_presenceStaleWindow);
+      var n = 0;
+      for (final doc in snap.docs) {
+        final t = _readLastSeen(doc.data()['lastSeen']);
+        if (t != null && !t.isBefore(cutoff)) n++;
+      }
+      onlineCount.value = n;
     } catch (e) {
       debugPrint('[ChatService] online count error: $e');
+      // Yedek: aggregate count (indeks / kurallar uygunsa).
+      try {
+        final cutoff = Timestamp.fromDate(
+          DateTime.now().toUtc().subtract(_presenceStaleWindow),
+        );
+        final agg = await _presenceRef()
+            .where('lastSeen', isGreaterThan: cutoff)
+            .count()
+            .get(source: AggregateSource.server);
+        if (agg.count != null) onlineCount.value = agg.count!;
+      } catch (e2) {
+        debugPrint('[ChatService] online count fallback error: $e2');
+      }
     }
   }
 
   @override
   void onClose() {
-    _presenceTimer?.cancel();
-    _presenceOfflineTimer?.cancel();
+    _authPresenceWorker?.dispose();
+    WidgetsBinding.instance.removeObserver(this);
+    _onlineCountTimer?.cancel();
+    _onlineCountTimer = null;
+    _stopPresence(removeDoc: true);
     super.onClose();
   }
 }

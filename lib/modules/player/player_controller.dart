@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:dio/dio.dart';
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
@@ -7,23 +8,27 @@ import 'package:better_player_plus/better_player_plus.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
 import 'package:media_kit/media_kit.dart';
+import 'package:media_kit_video/media_kit_video.dart';
 import 'package:get/get.dart' hide Response;
 import 'package:wakelock_plus/wakelock_plus.dart';
 
 import '../../core/player/audio_codec_playback_hint.dart';
 import '../../core/player/better_player_iptv_config.dart';
+import '../../core/player/media_kit_mpv_crispy_config.dart';
 import '../../core/player/media_kit_mpv_low_power_display.dart';
 import '../../core/player/media_kit_subtitle_font.dart';
 import '../../core/player/subtitle_font_family.dart';
 import '../../core/player/exo_native_track_option.dart';
 import '../../core/player/vod_subtitle_discovery.dart';
 import '../../core/player/iptv_playback_defaults.dart';
+import '../../core/player/playback_engine_kind.dart';
 import '../../core/player/video_player_engine.dart';
 import '../../core/layout/app_layout_mode.dart';
 import '../../core/player/playback_orientation_manager.dart';
 import '../../core/platform/android_playback_soc_hints.dart';
 import '../../core/home/home_layout_style.dart';
 import '../../core/services/app_settings_service.dart';
+import '../../core/routes/app_routes.dart';
 import '../../core/services/showcase_in_app_pip_service.dart';
 import '../../core/services/equalizer_service.dart';
 import '../../core/services/external_player_service.dart';
@@ -48,6 +53,9 @@ import '../../domain/entities/channel.dart';
 import '../../domain/entities/m3u_result.dart';
 import '../../domain/entities/series.dart';
 import '../../domain/entities/series_episode_option.dart';
+import '../../domain/entities/playlist_source.dart';
+import '../../data/remote/stalker_api.dart';
+import '../../core/services/active_playlist_service.dart';
 import '../../domain/repositories/playlist_repository.dart';
 import '../channels/channels_controller.dart';
 import '../tv_shell/tv_shell_controller.dart';
@@ -57,14 +65,16 @@ import 'widgets/tv_better_player_controls.dart';
 import 'widgets/vod_resume_dialog.dart';
 
 
-part 'parts/player_playback.dart';
-part 'parts/player_ui.dart';
-part 'parts/player_navigation.dart';
+part 'controllers/player_playback_controller.dart';
+part 'controllers/player_ui_controller.dart';
+part 'controllers/player_navigation_controller.dart';
 
 const MethodChannel _androidPipChannel = MethodChannel('mina.player/pip');
 const MethodChannel _activityLifecycleChannel =
     MethodChannel('mina.app/activity_lifecycle');
 
+/// Tek GetX kaydı; mantık [PlayerPlaybackController], [PlayerUiController] ve
+/// [PlayerNavigationController] extension dosyalarında ayrılmıştır.
 class PlayerController extends GetxController with WidgetsBindingObserver {
   PlayerController({
     required Channel channel,
@@ -75,6 +85,8 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
     List<PlayerBrowseCategoryTape<Channel>>? movieBrowseCategoryTapes,
     List<PlayerBrowseCategoryTape<SeriesItem>>? seriesBrowseCategoryTapes,
     this.showcaseInAppPipHandoff = false,
+    this.showcasePipRestoreEngine,
+    this.reopenFromInAppPip = false,
     String? initialAudioCodecHint,
   })  : _currentAudioCodecHint = initialAudioCodecHint,
         channel = channel.obs,
@@ -104,6 +116,22 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
 /// [PlayerScreenArgs] ile açıldıysa geri dönüşte gözat listesi restore edilir.
 /// Vitrin ana ekranından doğrudan açıldı; çıkışta dock mini oynatıcı handoff.
   final bool showcaseInAppPipHandoff;
+
+/// PiP balonundan tam ekrana dönüşte handoff motoru (rota açılışında sabitlenir).
+  final PlaybackEngineKind? showcasePipRestoreEngine;
+
+  /// PiP önizlemeden tam ekrana dönüş — [_boot] ile yeniden başlatma yapılmaz.
+  final bool reopenFromInAppPip;
+
+  bool _pipReopenHandled = false;
+
+  bool get isReopeningFromInAppPipPending =>
+      reopenFromInAppPip && !_pipReopenHandled;
+
+  bool get isReopeningFromInAppPip =>
+      isReopeningFromInAppPipPending ||
+      showcasePipRestoreEngine != null ||
+      _showcasePipRestoreEngine != null;
 
 /// O an oynayan akışın Xtream ses kodeği ipucu (ör. `ac3`, `eac3`, `dts`).
   /// Açılışta [PlayerScreenArgs.audioCodecHint] ile gelir; kanal/bölüm
@@ -153,10 +181,48 @@ bool _seriesPanelDataLoaded = false;
         l.contains('file not found');
   }
 
+/// HTTP 401/403 — sunucu reddi. HLS↔TS swap veya decoder retry uygun değil.
+  static bool _isHttpForbiddenOrUnauthorizedError(String msg) {
+    if (msg.isEmpty) return false;
+    final l = msg.toLowerCase();
+    if (l.contains('response code: 403') ||
+        l.contains('response code: 401') ||
+        l.contains('status code: 403') ||
+        l.contains('status code: 401') ||
+        l.contains('http 403') ||
+        l.contains('http 401') ||
+        l.contains('http_403') ||
+        l.contains('http_401')) {
+      return true;
+    }
+    if (l.contains('invalidresponsecodeexception') &&
+        (l.contains('403') || l.contains('401'))) {
+      return true;
+    }
+    return false;
+  }
+
+/// Canlı progressive MPEG-TS: Exo [TsExtractor.seek] IllegalStateException.
+  /// Ağ veya donanım kod çözücü hatası değildir.
+  static bool _isExoTsExtractorSeekFailure(String msg) {
+    if (msg.isEmpty) return false;
+    final l = msg.toLowerCase();
+    if (l.contains('tsextractor')) return true;
+    if (l.contains('bundledextractorsadapter') && l.contains('seek')) {
+      return true;
+    }
+    if (l.contains('unexpectedloaderexception') &&
+        l.contains('illegalstateexception')) {
+      return true;
+    }
+    return false;
+  }
+
 /// İnternet / sunucu geçişi gibi tekrar denemeye uygun hatalar (kod çözücü değil).
   static bool _isLikelyNetworkOrTransientError(String msg) {
     if (msg.isEmpty) return false;
     if (_isNotFoundStyleError(msg)) return false;
+    if (_isExoTsExtractorSeekFailure(msg)) return false;
     if (_isPlaybackDecoderFailure(msg)) return false;
     final l = msg.toLowerCase();
     if (l.contains('unsupported') && l.contains('format')) return false;
@@ -212,6 +278,9 @@ bool _seriesPanelDataLoaded = false;
   static bool _shouldTryXtreamFormatSwapOnSourceError(String msg) {
     if (msg.isEmpty) return false;
     if (_isNotFoundStyleError(msg)) return false;
+    // 403/401 → TS'ye düşme; TsExtractor.seek → aynı TS döngüsü.
+    if (_isHttpForbiddenOrUnauthorizedError(msg)) return false;
+    if (_isExoTsExtractorSeekFailure(msg)) return false;
     final l = msg.toLowerCase();
     if (l.contains('mediacodec') ||
         l.contains('codecexception') ||
@@ -254,6 +323,46 @@ bool _seriesPanelDataLoaded = false;
         (l.contains('video/mp2t') && l.contains('renderer'));
   }
 
+/// Canlı Better hatası kaynak/ağ kökenli mi? (MediaKit yerine swap/yeniden bağlan.)
+  static bool _isLikelyLiveSourceOrNetworkExoError(String msg) {
+    if (msg.isEmpty) return false;
+    final l = msg.toLowerCase();
+    if (_isNotFoundStyleError(msg)) return false;
+    // Açık kod çözücü/renderer imzası → kaynak sayma.
+    if (l.contains('mediacodec') ||
+        l.contains('codecexception') ||
+        l.contains('decoder initialization failed') ||
+        l.contains('decoder failed') ||
+        (l.contains('videoerror') && l.contains('renderer')) ||
+        (l.contains('video/mp2t') && l.contains('renderer'))) {
+      return false;
+    }
+    if (l.contains('source error') ||
+        l.contains('source_error') ||
+        l.contains('sourcenotfound') ||
+        l.contains('behind live window') ||
+        l.contains('timeout') ||
+        l.contains('timed out') ||
+        l.contains('connection') ||
+        l.contains('network') ||
+        l.contains('socket') ||
+        l.contains('unreachable') ||
+        l.contains('failed to connect') ||
+        l.contains('unable to connect') ||
+        l.contains('cleartext') ||
+        l.contains('http') ||
+        (l.contains('ssl') && !l.contains('handshake failed'))) {
+      return true;
+    }
+    if (l.contains('exoplaybackexception') &&
+        (l.contains('source') ||
+            l.contains('unexpected') ||
+            l.contains('response code'))) {
+      return true;
+    }
+    return false;
+  }
+
 /// VOD’da Exo’nun seçtiği / bildirdiği parça AC3/DTS vb. olabilir; cihaz çözemezse sessiz kalır.
   static bool _riskyVodAudioCodecSnippet(String raw) {
     final s = raw.toLowerCase();
@@ -285,6 +394,12 @@ BetterPlayerController? better;
   final betterSurfaceEpoch = 0.obs;
 
 Player? _mediaKitPlayer;
+
+bool get mediaKitPlaybackAttached => _mediaKitPlayer != null;
+
+PlaybackEngineKind? _showcasePipRestoreEngine;
+
+VideoController? _showcasePipMediaKitVideo;
 
 StreamSubscription<String?>? _mediaKitErrorSub;
 
@@ -529,7 +644,24 @@ int _networkResumeAttempt = 0;
   /// uygulanmadı.
   int _appliedExoLiveBufferSeconds = -1;
 
-/// Smart Route auto-buffer override değişimini izleyen worker.
+  /// Zap / kanal değişiminde uzun segment HLS tamponunu atla (hızlı açılış).
+  bool _preferFastLiveStartBuffer = false;
+
+  /// Kademeli tampon takılması kurtarma aşaması (0 = henüz yok).
+  int _liveStallRecoveryStage = 0;
+
+/// Canlı Better/Exo: ağ stresinde otomatik tampon yükseltme (sn).
+  static const int liveAutoBufferBoostMinSec = 6;
+  static const int liveAutoBufferBoostStepSec = 4;
+  static const int liveAutoBufferBoostMaxSec = 10;
+  static const Duration liveAutoBufferHealthyRevertAfter =
+      Duration(seconds: 90);
+
+  Timer? _liveAutoBufferRevertTimer;
+
+  DateTime? _liveAutoBufferHealthySince;
+
+/// Oynatma sırasında otomatik tampon override değişimini izleyen worker.
   Worker? _liveBufferOverrideWorker;
 
 /// Canlı «keep-alive»: durma/EOF/sessiz takılma kullanıcı duraklatması
@@ -555,6 +687,9 @@ DateTime? _liveTvBufferingSince;
 int _liveTvStallRecoveryAttempts = 0;
 
 Timer? _liveTvStartupWatchdog;
+
+  /// MediaKit canlı `.ts` takılırsa HLS'e geçiş zamanlayıcısı.
+  Timer? _mediaKitLiveTsHlsWatchdog;
 
 Timer? _betterBufferingRecoveryTimer;
 
@@ -587,7 +722,8 @@ final decoderFallbackStep = 0.obs;
 
 final videoFit = BoxFit.fill.obs;
 
-final bool _recovering = false;
+/// Ağ kurtarma / motor yeniden boot eşzamanlılığı (paralel Exo sızıntısını önler).
+  bool _networkResumeInFlight = false;
 
 /// Canlıda kullanıcı OSD’den duraklattıysa [play] yalnızca devam ettirir; yayın kesildiyse tam yeniden yükleme yapılır.
   bool _userPausedLive = false;
@@ -613,6 +749,50 @@ bool _forceSoftwareVideoDecoder = false;
   /// değişiminde sıfırlanır. `false` iken mevcut güvenli `mediacodec` /
   /// `mediacodec-copy` mantığı korunur.
   bool _mediaKitFallbackForceSoftwareDecode = false;
+
+/// Canlı MediaKit: ses var görüntü yok → bir kez yazılım kod çözücüye düş.
+  bool _mediaKitBlackScreenRecoveryUsed = false;
+
+  Timer? _mediaKitBlackScreenWatchdog;
+
+/// MediaKit canlı: pozisyon 10 sn ilerlemezse yeniden bağlan (Crispy watchdog).
+  Timer? _mediaKitLiveStallWatchdog;
+
+  Duration _mediaKitLastKnownPosition = Duration.zero;
+
+  int _mediaKitStallTicks = 0;
+
+  static const int _kMediaKitStallThresholdTicks = 5;
+
+  static const Duration _kMediaKitStallWatchdogInterval = Duration(seconds: 2);
+
+/// Hızlı canlı zap sonrası yalnızca Exo (Better) için yazılım kod çözücü.
+  bool _preferExoSoftwareForFastZap = false;
+
+/// Canlı UHD/4K HLS: runtime geniş Exo tampon profili.
+  bool _liveUhdBufferActive = false;
+  bool _liveUhdBufferPromotionInFlight = false;
+
+/// Bir sonraki canlı kanal ön-yükleme (zap hızlandırma).
+  Timer? _livePreloadTimer;
+  String? _livePreloadScheduledUrl;
+
+/// Canlı oynatma kuruldu — tam URL yeniden açmayı sınırlamak için.
+  bool _livePlaybackEstablished = false;
+  StreamSubscription<VideoEvent>? _exoStallEventSub;
+  bool _conservativeRecoverInFlight = false;
+  DateTime? _liveSoftRecoverLastAt;
+
+/// Kanal önbelleği MPEG-TS ise bir sonraki [_boot]'ta .m3u8'e çevrilmesin.
+  bool _cachedTsFormatForBoot = false;
+
+/// MediaKit/mpv yazılım kod çözücü (`hwdec=no`) — ayar, önbellek (software),
+  /// Exo'dan düşüş veya bilinen sorunlu cihaz. Hızlı zap burada **yok** (siyah/gri ekran yapıyordu).
+  bool get mediaKitShouldUseSoftwareDecode =>
+      _settings.preferSoftwareVideoDecoder.value ||
+      _forceSoftwareVideoDecoder ||
+      _mediaKitFallbackForceSoftwareDecode ||
+      (Platform.isAndroid && AndroidPlaybackSocHints.isSamsungSmT530);
 
 /// Canlı yayın MediaKit/mpv ile açılamadığında ~768 KB düşük gecikme zap
   /// buffer'ı kademeli olarak büyütülür (0 → ~16 MB → ~64 MB). Yalnızca canlı;
@@ -684,6 +864,9 @@ DateTime? _autoQPlaybackStartedAt;
 /// MediaKit (mpv) `Failed to open` + get.php yedeği de başarısız → Exo bir kez dene.
   bool _vodAutoTriedBetterAfterMpvFail = false;
 
+  /// Canlı MediaKit `.ts` açılamayınca bir kez `.m3u8` dene.
+  bool _mediaKitLiveTriedHlsAfterTs = false;
+
 /// Bu yayın için motorlar arası **otomatik** geçiş (Better↔MediaKit) bir kez
   /// yapıldı mı? Ping-pong'u (Better→MK→Better…) engeller; kanal değişiminde
   /// (zapTo) sıfırlanır.
@@ -691,6 +874,15 @@ DateTime? _autoQPlaybackStartedAt;
 
 /// MediaCodec hatasında MPEG-TS yerine HLS (m3u8) bir kez dene.
   bool _decoderTriedTsToM3u8Swap = false;
+
+/// Canlı TS [TsExtractor.seek] sonrası HLS geri dönüş / MediaKit bir kez denendi.
+  bool _liveTsSeekFailureHandled = false;
+
+  /// [_armLiveTvStartupWatchdog] kurulum anı — buffering grace için.
+  DateTime? _liveStartupWatchdogArmedAt;
+
+/// Canlı HTTP 403 sonrası aynı HLS için sınırlı yeniden deneme sayısı.
+  int _liveHttpForbiddenRetryCount = 0;
 
 /// Son oynatılan URL (decoder kurtarma için TS→m3u8 vb.).
   String? _lastPlaybackUrl;
@@ -793,21 +985,37 @@ static int _mediaKitTrackPixels(VideoTrack t) {
     return w * h;
   }
 
-/// TV kutularında (özellikle MPEG-TS / zayıf SoC) 15 sn pek kısaydı: sürekli yeniden bağlanma
-  /// Exo’da hata + kullanıcıda «MediaKit’e düşüyor» algısı yaratıyordu. Mobil/tablet yolu ayrı (72 sn).
-  static const Duration _liveTvStallThreshold = Duration(seconds: 48);
+/// TV kutularında kademeli tampon takılması eşikleri (eski tek 48 sn yerine).
+  static const Duration _liveTvStallReconnectThreshold = Duration(seconds: 10);
+  static const Duration _liveTvStallSwapThreshold = Duration(seconds: 22);
+  static const Duration _liveTvStallFullRecoveryThreshold = Duration(seconds: 38);
 
-/// Canlı Better/Exo başlangıç eşiği (TV dahil). Bu süre içinde stabil oynatma
-  /// başlamazsa (siyah ekran / 0. saniyede sonsuz buffer, hata event'i gelmese
-  /// bile) kullanıcıyı bekletmeden hızlı kurtarma zinciri başlar:
-  /// önce HLS↔TS taşıma biçimi swap, o da açmazsa MediaKit yedek. Normal HLS
-  /// başlangıç buffer'ına izin verecek kadar uzun (ilk segmentler), ama boş
-  /// ekranda gereksiz bekletmeyecek kadar kısa. Oynatma BAŞLAMIŞ (konum
-  /// ilerlemiş) ama anlık tampon yaşayan sağlıklı kanallar bundan etkilenmez;
-  /// onları uzun [_startLiveStallWatchdog] üstlenir.
+  /// Mobil/tablet kademeli tampon takılması eşikleri (eski tek 72 sn yerine).
+  static const Duration _liveMobileStallReconnectThreshold = Duration(seconds: 12);
+  static const Duration _liveMobileStallSwapThreshold = Duration(seconds: 28);
+  static const Duration _liveMobileStallFullRecoveryThreshold = Duration(seconds: 40);
+
+  /// Canlı Better/Exo başlangıç eşiği (TV dahil). Bu süre içinde stabil oynatma
+  /// başlamazsa hızlı kurtarma (HLS↔TS / MediaKit). HLS tampon doluyorsa
+  /// [_liveStartupHlsBufferingDeadline] kadar uzatılır.
   static const Duration _liveStartupSwapThreshold = Duration(seconds: 10);
 
-Worker? _mediaKitSettingsWorker;
+  /// HLS (.m3u8) ilk kontrol eşiği.
+  static const Duration _liveStartupHlsSwapThreshold = Duration(seconds: 10);
+
+  /// HLS hâlâ buffering / initialized iken sabırsız swap yapma — en az bu süre.
+  static const Duration _liveStartupHlsBufferingDeadline = Duration(seconds: 15);
+
+  /// Better dispose → MediaKit: panel slot + MediaCodec settle.
+  static const Duration _betterToMediaKitCooldown = Duration(milliseconds: 1200);
+
+  /// Yeni BetterController CREATE öncesi eski oyuncu + MediaCodec settle (Xiaomi).
+  static const Duration _betterHardResetSettle = Duration(milliseconds: 300);
+
+  /// Network recovery / light-retry: Exo BUFFERING→READY için alt sınır.
+  static const Duration _networkResumeMinDelay = Duration(seconds: 10);
+
+  Worker? _mediaKitSettingsWorker;
 
 Worker? _playbackWakelockLayoutWorker;
 
@@ -826,7 +1034,7 @@ final List<StreamSubscription<dynamic>> _mediaKitWakelockSubs = [];
   // (lifecycle/boot) yeniden uygular.
   bool? _lastWakelockApplied;
 
-/// Vitrin uygulama içi PiP için mevcut oynatma bağlamını dışa aktarır.
+  /// Vitrin uygulama içi PiP için mevcut oynatma bağlamını dışa aktarır.
   PlayerScreenArgs toPlayerScreenArgs() => PlayerScreenArgs(
         channel: channel.value,
         movieBrowseTape: _movieBrowseTape,
@@ -839,22 +1047,19 @@ final List<StreamSubscription<dynamic>> _mediaKitWakelockSubs = [];
         showcaseInAppPipHandoff: showcaseInAppPipHandoff,
       );
 
-@override
+  @override
   void onInit() {
     super.onInit();
+    if (showcasePipRestoreEngine != null) {
+      applyShowcasePipRestoreEngine(showcasePipRestoreEngine!);
+    }
     WidgetsBinding.instance.addObserver(this);
     if (Platform.isAndroid) {
       _activityLifecycleChannel.setMethodCallHandler(
         _onNativeActivityLifecycleCall,
       );
     }
-    // Oynatıcı rota üstte: arka plandaki görünmeyen periyodik işleri duraklat
-    // (Home logo döngüsü, alt liste saat/EPG tazeleme). onClose'da temizlenir.
     _settings.playerScreenActive.value = true;
-    // Harici Oynatıcı modu: kullanıcı VLC/MX Player vb. seçtiyse dahili
-    // oynatıcıyı hiç başlatmadan stream URL'sini harici uygulamaya gönder,
-    // sonra route'tan geri dön. _boot() çağrılmaz → MediaKit/BetterPlayer
-    // hiç ayağa kalkmaz; saniyelik gecikme yok.
     if (_settings.externalPlayerEnabled.value &&
         Get.isRegistered<ExternalPlayerService>() &&
         Get.find<ExternalPlayerService>().isPlatformSupported) {
@@ -866,12 +1071,8 @@ final List<StreamSubscription<dynamic>> _mediaKitWakelockSubs = [];
       return;
     }
     decoderFallbackStep.value = 0;
-    // Kullanıcının tür bazında (canlı vs film/dizi) hatırlanan görüntü oranını
-    // ilk kareden önce uygula; yayın bu modda açılsın.
     _applyRememberedVideoFit();
     _refreshForceMediaKitForCurrentUrl();
-    // Açılışta ses kodek ipucu: dizi bölümüyse şeritteki bölümün kodeği,
-    // değilse [PlayerScreenArgs] ile gelen ilk ipucu (film) korunur.
     _refreshAudioCodecHintForCurrent(fallbackToCurrent: _currentAudioCodecHint);
     _playbackWakelockLayoutWorker =
         ever(_settings.layoutMode, (_) => _syncPlaybackWakelock(force: true));
@@ -888,11 +1089,12 @@ final List<StreamSubscription<dynamic>> _mediaKitWakelockSubs = [];
     _syncPlaybackWakelock(force: true);
     _applyBackgroundPlaybackPolicy();
     _mediaKitSettingsWorker = everAll(
-      [_settings.useMediaKit, _settings.liveUseMediaKit],
+      [_settings.livePlaybackEngine, _settings.vodPlaybackEngine],
       (_) {
         betterOsdOverride.value = false;
         mediaKitFallbackSession.value = false;
         _autoEngineSwitchUsed = false;
+        _mediaKitLiveTriedHlsAfterTs = false;
         unawaited(zapTo(channel.value));
       },
     );
@@ -902,9 +1104,6 @@ final List<StreamSubscription<dynamic>> _mediaKitWakelockSubs = [];
     ever(_settings.layoutMode, (_) {
       unawaited(_syncAndroidPipAutoEnterEligible(force: true));
     });
-    // Ses Equalizer (lavfi=…) kapsam değişikliğini reaktif izle ve mevcut
-    // MediaKit player'ına gerçek zamanlı uygula. Servis kayıtlı değilse
-    // (test / lite build) atla.
     if (Get.isRegistered<EqualizerService>()) {
       _equalizerWorker = ever<int>(EqualizerService.to.revision, (_) {
         final mk = _mediaKitPlayer;
@@ -912,35 +1111,22 @@ final List<StreamSubscription<dynamic>> _mediaKitWakelockSubs = [];
         unawaited(EqualizerService.to.applyToMediaKit(mk));
       });
     }
-    // Smart Route auto-buffer override değişimi → aktif canlı yayında tamponu
-    // dinamik yeniden uygula (ağ iyileşince tampon eski değerine döner).
     _liveBufferOverrideWorker = ever<int>(
       _settings.liveBufferOverrideRev,
       (_) => _onRuntimeLiveBufferOverrideChanged(),
     );
-    // Akıllı Jenerik Atlatıcı: bölüm/dizi değişince intro süresini yenile.
     ever<Channel>(channel, (_) => refreshIntroDurationForCurrent());
     ever<bool>(_settings.smartStreamCutterEnabled,
         (_) => refreshIntroDurationForCurrent());
     refreshIntroDurationForCurrent();
     _settings.onSubtitleFontPtApplied = applySubtitleFontFromSettings;
-    // İlk kare öncesi ana iş parçacığı sıkışıksa (eski tablet / ağır splash) hemen _boot,
-    // bazen yüzey/orphan yollarıyla üst üste ikinci Exo yaratımına yol açabiliyor.
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      if (isClosed) return;
-      if (Get.isRegistered<ShowcaseInAppPipService>()) {
-        final restored =
-            await Get.find<ShowcaseInAppPipService>().tryRestoreInto(this);
-        if (restored) return;
-      }
-      unawaited(_boot());
-    });
+    unawaited(_tryRestoreFromShowcaseInAppPipOrBoot());
     if (isSeries) {
       unawaited(_loadSeriesPanelDataAsync());
     }
   }
 
-@override
+  @override
   void didChangeMetrics() {
     super.didChangeMetrics();
     _syncPlaybackWakelock(force: true);
@@ -949,7 +1135,7 @@ final List<StreamSubscription<dynamic>> _mediaKitWakelockSubs = [];
     }
   }
 
-@override
+  @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.paused ||
         state == AppLifecycleState.hidden) {
@@ -958,15 +1144,22 @@ final List<StreamSubscription<dynamic>> _mediaKitWakelockSubs = [];
 
     final bgPlayback = _settings.backgroundPlayback.value;
 
-    if (bgPlayback && state == AppLifecycleState.resumed) {
-      _applyBackgroundPlaybackPolicy();
-      _lastWakelockApplied = null;
-      _syncPlaybackWakelock(force: true);
-      unawaited(_resumePlaybackAfterBackgroundIfNeeded());
+    if (bgPlayback) {
+      if (state == AppLifecycleState.resumed) {
+        _nativeActivityBackground = false;
+        _applyBackgroundPlaybackPolicy();
+        _lastWakelockApplied = null;
+        _syncPlaybackWakelock(force: true);
+        unawaited(_resumePlaybackAfterBackgroundIfNeeded());
+        return;
+      }
+      if (state == AppLifecycleState.paused ||
+          state == AppLifecycleState.hidden ||
+          state == AppLifecycleState.inactive) {
+        unawaited(_maintainBackgroundPlayback());
+      }
       return;
     }
-
-    if (bgPlayback) return;
 
     if (state == AppLifecycleState.resumed) {
       _nativeActivityBackground = false;
@@ -974,9 +1167,6 @@ final List<StreamSubscription<dynamic>> _mediaKitWakelockSubs = [];
       if (!inPip) {
         _disarmManualPipPauseGuards();
       }
-      // Arka plandan dönüşte native wakelock/PiP uygunluğu sıfırlanmış
-      // olabilir; guard önbelleğini temizle ki bir sonraki sync yeniden
-      // uygulasın.
       _lastWakelockApplied = null;
       _lastPipAutoEnterEligibleApplied = null;
       _syncPlaybackWakelock(force: true);
@@ -985,15 +1175,12 @@ final List<StreamSubscription<dynamic>> _mediaKitWakelockSubs = [];
       }
     }
 
-    // Otomatik PiP (ayar açık): arka plana geçerken duraklatmayı atla.
     if (state == AppLifecycleState.paused) {
       if (_tryEnterMiniPlayerPipInsteadOfPause()) {
         return;
       }
     }
 
-    // `inactive` yönlendirme / config değişiminde de gelir; TV kutusunda ana menü
-    // çoğu zaman yalnızca inactive üretir — burada duraklatmak gerekir.
     final pauseForBackground = state == AppLifecycleState.paused ||
         state == AppLifecycleState.hidden ||
         (_settings.layoutMode.value == AppLayoutMode.tv &&
@@ -1007,13 +1194,11 @@ final List<StreamSubscription<dynamic>> _mediaKitWakelockSubs = [];
     }
   }
 
-@override
+  @override
   void onClose() {
-    // Tüm devam eden oynatma işlemlerini geçersiz kılmak için nesil numarasını artır
     if (!_playbackEnginesHaltedForRouteExit) {
       _bumpPlaybackGeneration();
     }
-    // Arka plan controller'ları görünmeyen periyodik işleri sürdürsün.
     _settings.playerScreenActive.value = false;
 
     unawaited(
@@ -1031,6 +1216,10 @@ final List<StreamSubscription<dynamic>> _mediaKitWakelockSubs = [];
     _persistWatchProgressTick(force: true);
     _flushUserHistory(force: true);
     _androidPipFallbackPauseTimer?.cancel();
+    _livePreloadTimer?.cancel();
+    _livePreloadTimer = null;
+    unawaited(_exoStallEventSub?.cancel());
+    _exoStallEventSub = null;
     _pipAutoEnterWorker?.dispose();
     _settings.onSubtitleFontPtApplied = null;
     _playbackWakelockLayoutWorker?.dispose();
@@ -1056,8 +1245,7 @@ final List<StreamSubscription<dynamic>> _mediaKitWakelockSubs = [];
     _cancelLiveStallWatchdog();
     _cancelLiveTvStartupWatchdog();
     _cancelLiveAutoNextWatchdog();
-
-    // --- UNIFIED TIMER CLEANUP ---
+    _cancelLiveAutoBufferGuard();
     _cancelUnifiedUiTimer();
     _cancelUnifiedNetworkTimer();
     _cancelUnifiedProgressTimer();
@@ -1067,15 +1255,10 @@ final List<StreamSubscription<dynamic>> _mediaKitWakelockSubs = [];
       _activityLifecycleChannel.setMethodCallHandler(null);
     }
     WidgetsBinding.instance.removeObserver(this);
-    // Sızıntı önleme: aktif motor ([activeVideoEngine]) kesin temizlenir; pasif
-    // motorun referansı normalde null'dır ama motor geçişinden kalmış bayat bir
-    // örnek varsa o da null-güvenli biçimde serbest bırakılır. Böylece hangi
-    // motor aktif olursa olsun iki yüzey de RAM'de asılı kalmaz.
     if (!_playbackEnginesHaltedForRouteExit) {
       try {
         final mk = _mediaKitPlayer;
         if (mk != null) {
-          // native tarafta sesin hemen kesilmesi için
           unawaited(
               mk.pause().then((_) => mk.stop()).then((_) => mk.dispose()));
         }
@@ -1091,43 +1274,27 @@ final List<StreamSubscription<dynamic>> _mediaKitWakelockSubs = [];
     _mediaKitErrorSub = null;
     _cancelMediaKitDimSubs();
 
-    // --- COMPLETE WORKER AND SUBSCRIPTION CLEANUP ---
-
-    // Cancel all MediaKit busy dims subscriptions
     for (final s in _mediaKitBusyDimsSubs) {
       unawaited(s.cancel());
     }
     _mediaKitBusyDimsSubs.clear();
 
-    // Cancel busy hold timeout
     _busyHoldTimeout?.cancel();
     _busyHoldTimeout = null;
-
-    // Cancel zap relative debounce timer
     _zapRelativeDebounceTimer?.cancel();
     _zapRelativeDebounceTimer = null;
-
-    // Cancel channel-number direct entry commit timer
     _channelNumberCommitTimer?.cancel();
     _channelNumberCommitTimer = null;
-
-    // Cancel Android PiP fallback pause timer
     _androidPipFallbackPauseTimer?.cancel();
     _androidPipFallbackPauseTimer = null;
-
-    // Cancel watch progress timer
     _watchProgressTimer?.cancel();
     _watchProgressTimer = null;
     _userHistoryTickTimer?.cancel();
     _userHistoryTickTimer = null;
-
-    // Cancel VOD autoplay timers
     _vodEndAutoplayMonitor?.cancel();
     _vodEndAutoplayMonitor = null;
     _vodAutoplayCountdownTimer?.cancel();
     _vodAutoplayCountdownTimer = null;
-
-    // Cancel network and live timers
     _networkAutoResumeTimer?.cancel();
     _networkAutoResumeTimer = null;
     _liveStallWatchdogTimer?.cancel();
@@ -1138,13 +1305,14 @@ final List<StreamSubscription<dynamic>> _mediaKitWakelockSubs = [];
     _liveTvStallPollTimer = null;
     _liveTvStartupWatchdog?.cancel();
     _liveTvStartupWatchdog = null;
+    _mediaKitLiveTsHlsWatchdog?.cancel();
+    _mediaKitLiveTsHlsWatchdog = null;
     _liveAutoNextPollTimer?.cancel();
     _liveAutoNextPollTimer = null;
-
-    // Cancel TV OSD auto hide timer (handled by unified UI timer)
     _tvOsdAutoHideAt = null;
 
     _mediaKitPlayer = null;
+    clearShowcasePipRestoreEngine();
     super.onClose();
   }
 }

@@ -163,4 +163,12 @@ dependencies {
     // HLS master + WEBVTT altyazı track’leri için Media3 HLS modülü zorunlu.
     // better_player_plus bunu transitif taşır; sürümü hizalayıp APK’da kesin bulunmasını sağlar.
     implementation("androidx.media3:media3-exoplayer-hls:1.8.0")
+    // Media3 FFmpeg uzantısı (Maven’da yok). Plugin library’de local AAR AGP’yi
+    // kırdığı için APK runtime’ına burada eklenir.
+    listOf(
+        file("../../packages/better_player_plus/android/third_party/decoder_ffmpeg/lib-decoder-ffmpeg-release.aar"),
+        file("../../packages/better_player_plus/android/third_party/decoder_ffmpeg/decoder-ffmpeg-release.aar"),
+    ).firstOrNull { it.isFile }?.let { aar ->
+        implementation(files(aar))
+    }
 }

@@ -8,6 +8,7 @@ import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
 import '../../../core/player/iptv_playback_defaults.dart';
+import '../../../core/player/media_kit_mpv_crispy_config.dart';
 import '../../../core/player/video_player_engine.dart';
 import '../../../core/player/media_kit_subtitle_font.dart';
 import '../../../core/platform/android_playback_soc_hints.dart';
@@ -26,16 +27,16 @@ String _normalizePlaybackUrlForWidget(String raw) {
 }
 
 bool _isLiveForMpvTuning(String rawUrl) {
-  if (Get.isRegistered<PlayerController>() &&
-      Get.find<PlayerController>().isSeries) {
-    return false;
+  if (Get.isRegistered<PlayerController>()) {
+    final pc = Get.find<PlayerController>();
+    if (pc.isSeries || pc.isMovie) return false;
   }
   return IptvPlaybackDefaults.isLikelyLiveStream(
     _normalizePlaybackUrlForWidget(rawUrl),
   );
 }
 
-/// Android’de [vo] burada **ayarlanmaz**: [VideoController] yüzeyi hazır olmadan
+/// Android'de [vo] burada **ayarlanmaz**: [VideoController] yüzeyi hazır olmadan
 /// `vo=gpu` SIGSEGV üretebilir; media_kit [AndroidVideoController] `vo`/`wid` sırasını yönetir.
 PlayerConfiguration minaMediaKitPlayerConfiguration() {
   return const PlayerConfiguration(title: 'Mina IPTV');
@@ -44,8 +45,10 @@ PlayerConfiguration minaMediaKitPlayerConfiguration() {
 VideoControllerConfiguration _minaVideoControllerConfiguration() {
   if (Platform.isAndroid && Get.isRegistered<AppSettingsService>()) {
     final s = Get.find<AppSettingsService>();
-    final swPurpleFix = s.preferSoftwareVideoDecoder.value ||
-        AndroidPlaybackSocHints.isSamsungSmT530;
+    final swPurpleFix = Get.isRegistered<PlayerController>()
+        ? Get.find<PlayerController>().mediaKitShouldUseSoftwareDecode
+        : (s.preferSoftwareVideoDecoder.value ||
+            AndroidPlaybackSocHints.isSamsungSmT530);
     if (swPurpleFix) {
       return const VideoControllerConfiguration(
         hwdec: 'no',
@@ -62,6 +65,10 @@ VideoControllerConfiguration _minaVideoControllerConfiguration() {
   return const VideoControllerConfiguration();
 }
 
+/// PiP handoff / restore için [VideoController] yapılandırması.
+VideoControllerConfiguration minaVideoControllerConfiguration() =>
+    _minaVideoControllerConfiguration();
+
 /// libmpv ayarları: [Player.platform] üzerinden (media_kit varsayılanlarından sonra).
 Future<void> _applyMpvIptvTuning(Player player, String rawUrl) async {
   final plat = player.platform;
@@ -76,11 +83,6 @@ Future<void> _applyMpvIptvTuning(Player player, String rawUrl) async {
     }
   }
 
-  // Zayıf cihaz / zorlu TV box / düşük segment: yazılım veya `mediacodec-copy`
-  // kod çözme CPU'yu zorlar → kareler birikir, ses-görüntü kayar (A/V desync) ve
-  // oynatma takılır. libavcodec hızlandırma + kare düşürme ile çözücü güncel
-  // kalır; `framedrop=decoder+vo` geç kalan kareleri atıp sesi ana saatle hizalı
-  // tutar (varsayılan `video-sync=audio`).
   final bool weak = Platform.isAndroid &&
       (AndroidPlaybackSocHints.weakMpvDevice ||
           AndroidPlaybackSocHints.playbackChallengedTv ||
@@ -88,64 +90,43 @@ Future<void> _applyMpvIptvTuning(Player player, String rawUrl) async {
 
   if (weak) {
     await set('framedrop', 'decoder+vo');
-    // H.264/HEVC deblocking loop filtresini atla: büyük CPU tasarrufu, küçük
-    // görsel kayıp (zayıf çözücüde takılmayı belirgin azaltır).
     await set('vd-lavc-skiploopfilter', 'all');
-    // Daha hızlı (biraz daha az kesin) kod çözme yolu.
     await set('vd-lavc-fast', 'yes');
-    // Tüm çekirdekleri kullan (0 = mpv otomatik çekirdek sayısı).
     await set('vd-lavc-threads', '0');
   }
 
-  // Çözünürlük sınırı: ~1 GiB ve ucuz 2 GiB kutularda en düşük HLS varyantı.
-  if (Platform.isAndroid &&
-      (AndroidPlaybackSocHints.oneGiBRamClass ||
-          AndroidPlaybackSocHints.budgetTwoGiBRamClass)) {
-    await set('hls-bitrate', 'min');
+  if (MediaKitMpvCrispyConfig.shouldApplyHlsBitrate(
+    _normalizePlaybackUrlForWidget(rawUrl),
+  )) {
+    await set(
+      'hls-bitrate',
+      MediaKitMpvCrispyConfig.resolveHlsBitrate(),
+    );
   }
 
   if (live) {
-    // HLS/MPEG-TS: yayın seek edilebilir olarak işaretlenir (hr-seek [PlayerController]'da).
     await set('force-seekable', 'yes');
-    // ── Cache / buffer / readahead BURADA AYARLANMAZ ─────────────────────────
-    // Bu değerler [applyMediaKitLibmpvPlaybackOptions] (player_playback.dart)
-    // tarafından cihaz segmentine göre (low/mid/high) çok daha ayrıntılı biçimde
-    // hesaplanır. O fonksiyon controller'a player bağlandığında çalışır (PATH-2)
-    // ve bu fonksiyondan (PATH-1) ÖNCE tamamlanır.
-    // Burada yeniden ayarlamak PATH-2'nin gelişmiş değerlerini kaba
-    // `weak ? X : Y` mantığıyla ezeceğinden — örn. high segment için
-    // `cache-secs=2` yerine `cache-secs=20`, `readahead=30` yerine `readahead=10`
-    // girilir — BÜTÜN cache/buffer satırları bu bloktan çıkarıldı.
-    // ─────────────────────────────────────────────────────────────────────────
   } else {
-    // VOD: gömülü / harici altyazı parçalarının listelenmesi ve seçimi.
     await set('sub-visibility', 'yes');
     await set('subs-fallback', 'yes');
     await set('sub-auto', 'fuzzy');
-    // ── VOD Tampon Ayarları ──────────────────────────────────────────────────
-    // VOD tampon/cache ayarları (cache, demuxer-max-bytes, demuxer-readahead-secs vb.)
-    // bu widget yerine [applyMediaKitLibmpvPlaybackOptions] (player_playback.dart)
-    // içerisinde cihaz segmentine ve donanım gücüne göre merkezi olarak belirlenir.
-    // ─────────────────────────────────────────────────────────────────────────
   }
 }
 
-/// Tam ekran oynatıcı: [BetterPlayer]; canlıda [useMediaKit] yalnızca kullanıcı OSD’den yedek seçerse.
-/// VOD’da [useMediaKit] true ise media_kit / mpv.
+/// Tam ekran oynatıcı: Better / MediaKit — [engine] ile seçilir.
 class UniversalVideoPlayer extends StatefulWidget {
   final String url;
-  final bool useMediaKit;
+  final VideoPlayerEngine engine;
   final BetterPlayerController? betterPlayerController;
   final BoxFit fit;
 
   /// [Player] oluşturulduğunda veya URL değişiminde dispose öncesi `null` ile bildirilir.
-  /// [open] öncesi libmpv ayarları için [Future] tamamlanır.
   final Future<void> Function(Player?)? onMediaKitPlayerChanged;
 
   const UniversalVideoPlayer({
     super.key,
     required this.url,
-    required this.useMediaKit,
+    required this.engine,
     this.betterPlayerController,
     this.fit = BoxFit.contain,
     this.onMediaKitPlayerChanged,
@@ -159,31 +140,174 @@ class _UniversalVideoPlayerState extends State<UniversalVideoPlayer> {
   Player? _player;
   VideoController? _videoController;
   int _initId = 0;
+  /// Ana yüzey [Video] remount — Texture yeniden bağlansın (PiP restore ile aynı fikir).
+  int _mediaKitSurfaceEpoch = 0;
+  bool _mediaKitOpenSurfaceRebindDone = false;
 
-  /// Bu yüzeyde o an aktif olan motor. [widget.useMediaKit] türevi; render ve
-  /// dispose bu enum üzerinden yürür ([PlayerController.activeVideoEngine] ile
-  /// aynı kaynak — `effectiveUseMediaKit`).
-  VideoPlayerEngine get _engine =>
-      VideoPlayerEngine.fromUseMediaKit(widget.useMediaKit);
-  /// Son MediaKit kurulumunda mor/pembe yazılım çözücü yolu (düşük güç veya SM-T530).
+  VideoPlayerEngine get _engine => widget.engine;
   bool _mediaKitPurpleFixAtLastInit = false;
   final GlobalKey _betterPlayerKey = GlobalKey();
 
   void _attachBetterPlayerGlobalKey() {
     final c = widget.betterPlayerController;
     if (c == null) return;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        c.setBetterPlayerGlobalKey(_betterPlayerKey);
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
+      if (!mounted) return;
+      c.setBetterPlayerGlobalKey(_betterPlayerKey);
+
+      if (_pendingShowcasePipRestore()) {
+        // Run a delayed retry loop to ensure surface reattachment succeeds
+        // after route animations settle and the old PiP bubble is disposed.
+        unawaited(Future.microtask(() async {
+          for (var attempt = 0; attempt < 5; attempt++) {
+            if (!mounted) break;
+            try {
+              debugPrint('mina_iptv: reattaching BetterPlayer surface attempt#$attempt');
+              await c.videoPlayerController?.reattachPlatformSurface();
+            } catch (e) {
+              debugPrint('mina_iptv: error reattaching BetterPlayer surface attempt#$attempt: $e');
+            }
+            await Future<void>.delayed(Duration(milliseconds: 100 * (attempt + 1)));
+          }
+        }));
+      } else {
+        try {
+          await c.videoPlayerController?.reattachPlatformSurface();
+        } catch (_) {}
       }
     });
+  }
+
+  bool _pendingShowcasePipRestore() {
+    if (!Get.isRegistered<ShowcaseInAppPipService>()) return false;
+    final svc = Get.find<ShowcaseInAppPipService>();
+    if (svc.hasPendingRestoreForReopen) return true;
+    if (Get.isRegistered<PlayerController>()) {
+      return Get.find<PlayerController>().isReopeningFromInAppPipPending;
+    }
+    return false;
+  }
+
+  Future<void> _tryAdoptShowcasePipRestore() async {
+    if (!mounted || !Get.isRegistered<PlayerController>()) return;
+    final ctrl = Get.find<PlayerController>();
+
+    if (_engine.isMediaKit && _player == null) {
+      final bundle = ctrl.takeShowcasePipMediaKitSurface();
+      if (bundle != null) {
+        _player = bundle.player;
+        _videoController = bundle.video; // Reuse the same VideoController to maintain layout texture ID.
+
+        await _forceMediaKitVoSurfaceRebind(
+          _player!,
+          seekAfter: true,
+          bumpVideoWidget: true,
+        );
+        return;
+      }
+    }
+
+    if (_pendingShowcasePipRestore()) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        unawaited(_tryAdoptShowcasePipRestore());
+      });
+    }
+  }
+
+  /// mpv Vo'yu koparıp yeniden bağlar — Texture siyah kalınca / PiP→fullscreen.
+  Future<void> _forceMediaKitVoSurfaceRebind(
+    Player player, {
+    required bool seekAfter,
+    required bool bumpVideoWidget,
+  }) async {
+    final currentVideoTrack = player.state.track.video;
+    try {
+      await player.setVideoTrack(VideoTrack.no());
+    } catch (_) {}
+    await Future<void>.delayed(const Duration(milliseconds: 100));
+    try {
+      await player.setVideoTrack(currentVideoTrack);
+    } catch (_) {
+      try {
+        await player.setVideoTrack(VideoTrack.auto());
+      } catch (_) {}
+    }
+    if (seekAfter) {
+      try {
+        final pos = player.state.position;
+        await player.seek(pos);
+      } catch (_) {}
+    }
+    if (!mounted) return;
+    if (bumpVideoWidget) {
+      setState(() => _mediaKitSurfaceEpoch++);
+    } else {
+      setState(() {});
+    }
+  }
+
+  /// İlk open sonrası: dims/playing gelince bir kez yüzey rebind (ana ekran siyah, PiP OK).
+  Future<void> _scheduleMediaKitOpenSurfaceRebind(
+    Player player,
+    int initId,
+  ) async {
+    if (!Platform.isAndroid) return;
+    if (_mediaKitOpenSurfaceRebindDone) return;
+
+    StreamSubscription<bool>? playingSub;
+    StreamSubscription<int?>? widthSub;
+    StreamSubscription<int?>? heightSub;
+    Timer? timeout;
+    var completed = false;
+
+    Future<void> finish() async {
+      if (completed) return;
+      completed = true;
+      timeout?.cancel();
+      await playingSub?.cancel();
+      await widthSub?.cancel();
+      await heightSub?.cancel();
+      if (!mounted || initId != _initId || !identical(_player, player)) return;
+      if (_mediaKitOpenSurfaceRebindDone) return;
+      _mediaKitOpenSurfaceRebindDone = true;
+      debugPrint('mina_iptv: MediaKit open surface rebind');
+      await _forceMediaKitVoSurfaceRebind(
+        player,
+        seekAfter: false,
+        bumpVideoWidget: true,
+      );
+    }
+
+    void maybeReady() {
+      if (!mounted || initId != _initId || !identical(_player, player)) return;
+      final st = player.state;
+      final w = st.width ?? 0;
+      final h = st.height ?? 0;
+      if (st.playing && w > 0 && h > 0) {
+        unawaited(finish());
+      }
+    }
+
+    playingSub = player.stream.playing.listen((_) => maybeReady());
+    widthSub = player.stream.width.listen((_) => maybeReady());
+    heightSub = player.stream.height.listen((_) => maybeReady());
+    timeout = Timer(const Duration(milliseconds: 2200), () {
+      unawaited(finish());
+    });
+    maybeReady();
   }
 
   @override
   void initState() {
     super.initState();
     _attachBetterPlayerGlobalKey();
-    if (widget.useMediaKit) {
+    if (_pendingShowcasePipRestore()) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        unawaited(_tryAdoptShowcasePipRestore());
+      });
+      return;
+    }
+    if (_engine.isMediaKit) {
       unawaited(_initMediaKit());
     }
   }
@@ -192,22 +316,28 @@ class _UniversalVideoPlayerState extends State<UniversalVideoPlayer> {
   void didUpdateWidget(UniversalVideoPlayer oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (widget.betterPlayerController != oldWidget.betterPlayerController ||
-        widget.useMediaKit != oldWidget.useMediaKit) {
+        widget.engine != oldWidget.engine) {
       _attachBetterPlayerGlobalKey();
     }
-    if (widget.useMediaKit != oldWidget.useMediaKit ||
-        widget.url != oldWidget.url) {
-      if (widget.useMediaKit) {
+    if (_engine.isMediaKit && _player == null) {
+      unawaited(_tryAdoptShowcasePipRestore());
+    }
+    if (widget.engine != oldWidget.engine || widget.url != oldWidget.url) {
+      if (_pendingShowcasePipRestore()) {
+        unawaited(_tryAdoptShowcasePipRestore());
+        return;
+      }
+      if (_engine.isMediaKit) {
         unawaited(_initMediaKit());
       } else {
         unawaited(_disposeMediaKit());
       }
-    } else if (widget.useMediaKit &&
+    } else if (_engine.isMediaKit &&
         Platform.isAndroid &&
-        Get.isRegistered<AppSettingsService>()) {
-      final nowPurpleFix = Get.find<AppSettingsService>().mediaKitLowPowerHwdec
-              .value ||
-          AndroidPlaybackSocHints.isSamsungSmT530;
+        Get.isRegistered<AppSettingsService>() &&
+        Get.isRegistered<PlayerController>()) {
+      final nowPurpleFix =
+          Get.find<PlayerController>().mediaKitShouldUseSoftwareDecode;
       if (nowPurpleFix != _mediaKitPurpleFixAtLastInit &&
           _videoController != null) {
         unawaited(_initMediaKit());
@@ -217,9 +347,22 @@ class _UniversalVideoPlayerState extends State<UniversalVideoPlayer> {
 
   Future<void> _initMediaKit() async {
     final currentId = ++_initId;
+    _mediaKitOpenSurfaceRebindDone = false;
     await AndroidPlaybackSocHints.ensureLoaded();
+    if (_pendingShowcasePipRestore() ||
+        (Get.isRegistered<PlayerController>() &&
+            Get.find<PlayerController>().isReopeningFromInAppPip)) {
+      await _tryAdoptShowcasePipRestore();
+      if (_player != null) return;
+    }
+    if (Get.isRegistered<PlayerController>() &&
+        Get.find<PlayerController>().mediaKitPlaybackAttached &&
+        _player == null) {
+      await _tryAdoptShowcasePipRestore();
+      if (_player != null) return;
+    }
     await _disposeMediaKit();
-    if (!mounted || !widget.useMediaKit || currentId != _initId) return;
+    if (!mounted || !_engine.isMediaKit || currentId != _initId) return;
 
     if (AndroidPlaybackSocHints.amlogicLike) {
       debugPrint(
@@ -246,7 +389,7 @@ class _UniversalVideoPlayerState extends State<UniversalVideoPlayer> {
       return;
     }
 
-    if (!mounted || !widget.useMediaKit || currentId != _initId) {
+    if (!mounted || !_engine.isMediaKit || currentId != _initId) {
       try {
         await player.dispose();
       } catch (_) {}
@@ -257,8 +400,8 @@ class _UniversalVideoPlayerState extends State<UniversalVideoPlayer> {
     _videoController = videoController;
     if (Get.isRegistered<AppSettingsService>()) {
       _mediaKitPurpleFixAtLastInit =
-          Get.find<AppSettingsService>().mediaKitLowPowerHwdec.value ||
-              AndroidPlaybackSocHints.isSamsungSmT530;
+          Get.isRegistered<PlayerController>() &&
+              Get.find<PlayerController>().mediaKitShouldUseSoftwareDecode;
     }
     await (widget.onMediaKitPlayerChanged?.call(player) ?? Future.value());
     if (mounted) setState(() {});
@@ -284,6 +427,9 @@ class _UniversalVideoPlayerState extends State<UniversalVideoPlayer> {
         ),
         play: true,
       );
+      if (currentId == _initId && identical(_player, player)) {
+        unawaited(_scheduleMediaKitOpenSurfaceRebind(player, currentId));
+      }
       if (Get.isRegistered<AppSettingsService>()) {
         final s = Get.find<AppSettingsService>();
         await applyMediaKitSubtitleAppearance(
@@ -294,8 +440,6 @@ class _UniversalVideoPlayerState extends State<UniversalVideoPlayer> {
           outlineEnabled: s.subtitleOutlineEnabled.value,
         );
       }
-      // VOD: altyazı varsayılan kapalı; yalnızca hatırlanan dile uyan parça
-      // varsa otomatik seç (parçalar açılıştan sonra gelir → kısa yoklama).
       if (Get.isRegistered<PlayerController>()) {
         unawaited(
           Get.find<PlayerController>().applyMediaKitVodSubtitlePreference(),
@@ -317,20 +461,14 @@ class _UniversalVideoPlayerState extends State<UniversalVideoPlayer> {
     if (p != null &&
         Get.isRegistered<ShowcaseInAppPipService>() &&
         Get.find<ShowcaseInAppPipService>().retainsMediaKitPlayer(p)) {
-      // Vitrin uygulama içi PiP servisi bu [Player] örneğini devraldı;
-      // route kapanırken dispose etme (ses+video dock'ta devam eder).
       return;
     }
 
     if (p != null) {
-      // Önce controller’dan [Player] referansını düşür; native dispose aşağıda.
-      // Rx güncellemesi [PlayerController.attachMediaKitPlayer] içinde microtask’ta.
       await (widget.onMediaKitPlayerChanged?.call(null) ?? Future.value());
       try {
-        // Native tarafta sesin hemen kesilmesi için önce pause ve stop, beklemeden
         p.pause();
         p.stop();
-        // Sonra native kaynakları serbest bırakmak için dispose
         await p.dispose();
       } catch (e) {
         debugPrint('mina_iptv: media_kit dispose error: $e');
@@ -340,13 +478,6 @@ class _UniversalVideoPlayerState extends State<UniversalVideoPlayer> {
 
   @override
   void dispose() {
-    // Sızıntı önleme: bu widget YALNIZCA kendi oluşturduğu motoru (media_kit
-    // [Player]/[VideoController]) sahiplenir; Better Player'ın ömrü
-    // [PlayerController]'a aittir (onun [onClose]'unda dispose edilir). Bu
-    // yüzden burada Better'a dokunulmaz, yalnızca MediaKit kaynağı serbest
-    // bırakılır. `_disposeMediaKit` null-güvenlidir: motor Better iken
-    // (_player == null) no-op'tur, geçişte kalmış bir mpv örneği varsa da
-    // güvenle temizlenir.
     if (_engine.isMediaKit || _player != null) {
       unawaited(_disposeMediaKit());
     }
@@ -355,9 +486,6 @@ class _UniversalVideoPlayerState extends State<UniversalVideoPlayer> {
 
   @override
   Widget build(BuildContext context) {
-    // Yüzeyi her zaman o an aktif olan motora göre kur. Yalnızca tek motorun
-    // ağaca eklenmesi, ikinci bir oynatma yüzeyinin RAM'de asılı kalmasını
-    // (leak) önler.
     switch (_engine) {
       case VideoPlayerEngine.mediaKit:
         return _buildMediaKitSurface();
@@ -369,35 +497,23 @@ class _UniversalVideoPlayerState extends State<UniversalVideoPlayer> {
   Widget _buildMediaKitSurface() {
     final vc = _videoController;
     if (vc == null) {
-      // Yüzey bağlanana kadar çıplak spinner gösterme; görünür yükleme
-      // göstergesi üst kattaki logo + yanıp sönen şemsiye splash'ıdır.
       return const ColoredBox(color: Colors.black);
     }
-    // Fit OSD ([PlayerController.videoFit]) — üst [Obx] `videoFit` ile yenilenir.
-    final fit = widget.fit;
+    // media_kit [Video] zaten iç FittedBox + texture boyutlandırması yapar.
+    // Dışarıda 1920×1080 FittedBox (fill/cover) Android'de Texture'ı bozup
+    // «ses var, ana yüzey siyah / PiP'de görüntü var» üretebiliyor — PiP yolu
+    // doğrudan Video kullandığı için orada sorun yok.
     return LayoutBuilder(
       builder: (context, constraints) {
         if (constraints.maxWidth < 2 || constraints.maxHeight < 2) {
           return const ColoredBox(color: Colors.black);
         }
-        final video = Video(
-          controller: vc,
-          fit: fit,
-          controls: null,
-        );
-        if (fit == BoxFit.contain) {
-          return video;
-        }
-        return ClipRect(
-          child: FittedBox(
-            fit: fit,
-            clipBehavior: Clip.hardEdge,
-            alignment: Alignment.center,
-            child: SizedBox(
-              width: 1920,
-              height: 1080,
-              child: video,
-            ),
+        return SizedBox.expand(
+          child: Video(
+            key: ValueKey('mk_surf_$_mediaKitSurfaceEpoch'),
+            controller: vc,
+            fit: widget.fit,
+            controls: null,
           ),
         );
       },
@@ -408,8 +524,6 @@ class _UniversalVideoPlayerState extends State<UniversalVideoPlayer> {
     if (widget.betterPlayerController == null) {
       return const ColoredBox(color: Colors.black);
     }
-    // Android Exo yüzeyinin üst widget sınırlarının dışına taşmasını
-    // engelle (dikey modda video altında beyaz/gri boşluk).
     return ClipRect(
       child: BetterPlayer(
         key: _betterPlayerKey,

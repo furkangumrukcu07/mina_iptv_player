@@ -53,15 +53,9 @@ android {
 }
 
 dependencies {
-    // Jellyfin Maven kullanılmıyor. Resmi androidx/media `libraries/decoder_ffmpeg` çıktısı:
-    // bu klasöre .aar koyun (sürüm Media3 ile aynı olmalı — şu an $media3Version).
-    val ffmpegAarCandidates = listOf(
-        file("third_party/decoder_ffmpeg/lib-decoder-ffmpeg-release.aar"),
-        file("third_party/decoder_ffmpeg/decoder-ffmpeg-release.aar"),
-    )
-    ffmpegAarCandidates.firstOrNull { it.isFile }?.let { aar ->
-        implementation(files(aar))
-    }
+    // FFmpeg AAR burada `implementation(files(...))` olamaz: AGP library AAR
+    // paketlerken local .aar'ı reddeder. Runtime classpath için app modülüne
+    // eklenir (android/app/build.gradle.kts). Kod Class.forName ile yükler.
 
     implementation("androidx.media:media:1.7.1")
 

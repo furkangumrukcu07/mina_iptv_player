@@ -1393,6 +1393,7 @@ class BetterPlayerController {
       maxCacheFileSize: cacheConfig.maxCacheFileSize,
       cacheKey: cacheConfig.key,
       videoExtension: betterPlayerDataSource.videoExtension,
+      formatHint: _getVideoFormat(betterPlayerDataSource.videoFormat),
     );
 
     return VideoPlayerController.preCache(dataSource, cacheConfig.preCacheSize);
@@ -1419,16 +1420,28 @@ class BetterPlayerController {
   ///Dispose BetterPlayerController. When [forceDispose] parameter is true, then
   ///autoDispose parameter will be overridden and controller will be disposed
   ///(if it wasn't disposed before).
-  void dispose({bool forceDispose = false}) {
+  ///
+  /// Native ExoPlayer release is awaited so engine switches (Better→MediaKit)
+  /// cannot leave a ghost audio track behind softRecover / late dispose.
+  Future<void> dispose({bool forceDispose = false}) async {
     if (!betterPlayerConfiguration.autoDispose && !forceDispose) {
       return;
     }
     if (!_disposed) {
-      if (videoPlayerController != null) {
-        pause();
-        videoPlayerController!.removeListener(_onFullScreenStateChanged);
-        videoPlayerController!.removeListener(_onVideoPlayerChanged);
-        videoPlayerController!.dispose();
+      final vpc = videoPlayerController;
+      if (vpc != null) {
+        try {
+          await vpc.setVolume(0);
+        } catch (_) {}
+        try {
+          await vpc.stop();
+        } catch (_) {}
+        try {
+          await vpc.pause();
+        } catch (_) {}
+        vpc.removeListener(_onFullScreenStateChanged);
+        vpc.removeListener(_onVideoPlayerChanged);
+        await vpc.dispose(forceDispose: forceDispose);
       }
       _eventListeners.clear();
       _nextVideoTimer?.cancel();

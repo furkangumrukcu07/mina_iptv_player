@@ -1,6 +1,6 @@
 part of '../player_controller.dart';
 
-extension PlayerUiExtension on PlayerController {
+extension PlayerUiController on PlayerController {
 /// Logical 0..maxPlaybackVolume aralığında ses seviyesini uygular.
   ///
   /// * 0..1.0 → sistem ses seviyesi; oynatıcı (mpv) kazancı sabit (130).

@@ -2,12 +2,10 @@ import 'dart:async' show unawaited;
 import 'dart:math';
 import 'dart:ui' show ImageFilter;
 
-import 'package:better_player_plus/better_player_plus.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:get/get.dart';
-import 'package:media_kit_video/media_kit_video.dart';
 
 import '../../../core/home/film_dizi_catalog.dart';
 import '../../../core/home/film_dizi_detail_args.dart';
@@ -22,6 +20,7 @@ import '../../../core/services/favorites_service.dart';
 import '../../../core/services/playlist_cache_service.dart';
 import '../../../core/services/playlist_category_hide.dart';
 import '../../../core/services/playlist_data_source.dart';
+import '../../../core/home/showcase_in_app_pip_overlay_host.dart';
 import '../../../core/services/showcase_in_app_pip_service.dart';
 import '../../../core/services/watch_progress_service.dart';
 import '../../../core/theme/app_scroll_physics.dart';
@@ -1877,9 +1876,6 @@ class _GlassDock extends StatefulWidget {
   /// için [HomeShowcaseView] tarafından kullanılır.
   static const double height = 64;
 
-  /// Uygulama içi PiP aktifken son-izlenen butonunun büyütülmüş çapı.
-  static const double inAppPipSize = 92;
-
   @override
   State<_GlassDock> createState() => _GlassDockState();
 }
@@ -2004,21 +2000,6 @@ class _GlassDockState extends State<_GlassDock> {
             children: [
               Obx(() {
                 final settings = Get.find<AppSettingsService>();
-                if (Get.isRegistered<ShowcaseInAppPipService>()) {
-                  final pip = Get.find<ShowcaseInAppPipService>();
-                  if (pip.active.value) {
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 8),
-                      child: _ShowcaseInAppPipDockButton(
-                        service: pip,
-                        accent: const Color(0xFF4CAF50),
-                        size: _GlassDock.inAppPipSize,
-                        decoration: _glassDecoration()
-                            .copyWith(shape: BoxShape.circle),
-                      ),
-                    );
-                  }
-                }
                 if (!settings.showcaseLastWatchedButtonEnabled.value) {
                   return const SizedBox.shrink();
                 }
@@ -2180,149 +2161,6 @@ class _DockButtonState extends State<_DockButton>
         ),
       ),
     );
-  }
-}
-
-/// Vitrin uygulama içi PiP: dock'ta canlı video önizlemeli büyük dairesel buton.
-class _ShowcaseInAppPipDockButton extends StatefulWidget {
-  const _ShowcaseInAppPipDockButton({
-    required this.service,
-    required this.accent,
-    required this.size,
-    required this.decoration,
-  });
-
-  final ShowcaseInAppPipService service;
-  final Color accent;
-  final double size;
-  final BoxDecoration decoration;
-
-  @override
-  State<_ShowcaseInAppPipDockButton> createState() =>
-      _ShowcaseInAppPipDockButtonState();
-}
-
-class _ShowcaseInAppPipDockButtonState extends State<_ShowcaseInAppPipDockButton>
-    with SingleTickerProviderStateMixin {
-  late final AnimationController _bloom = AnimationController(
-    vsync: this,
-    duration: const Duration(milliseconds: 480),
-  );
-  bool _pressed = false;
-
-  @override
-  void dispose() {
-    _bloom.dispose();
-    super.dispose();
-  }
-
-  void _down(TapDownDetails _) => setState(() => _pressed = true);
-  void _cancel() => setState(() => _pressed = false);
-  void _up(TapUpDetails _) {
-    setState(() => _pressed = false);
-    _bloom.forward(from: 0);
-    widget.service.openPlayer();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final accent = widget.accent;
-    return Obx(() {
-      final svc = widget.service;
-      final ready = svc.active.value &&
-          (svc.usesMediaKit
-              ? svc.mediaKitVideo != null
-              : svc.better != null);
-
-      return GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onTapDown: _down,
-        onTapUp: _up,
-        onTapCancel: _cancel,
-        child: AnimatedScale(
-          scale: _pressed ? 0.86 : 1.0,
-          duration: const Duration(milliseconds: 130),
-          curve: Curves.easeOut,
-          child: RepaintBoundary(
-            child: Container(
-              width: widget.size,
-              height: widget.size,
-              decoration: widget.decoration.copyWith(
-                border: Border.all(
-                  color: accent.withValues(alpha: 0.55),
-                  width: 2,
-                ),
-              ),
-              child: ClipOval(
-                clipBehavior: Clip.antiAliasWithSaveLayer,
-                child: Stack(
-                  fit: StackFit.expand,
-                  alignment: Alignment.center,
-                  children: [
-                    if (ready && svc.usesMediaKit && svc.mediaKitVideo != null)
-                      ExcludeFocus(
-                        child: Video(
-                          controller: svc.mediaKitVideo!,
-                          fit: BoxFit.cover,
-                          controls: null,
-                        ),
-                      )
-                    else if (ready && svc.better != null)
-                      ExcludeFocus(
-                        child: BetterPlayer(controller: svc.better!),
-                      )
-                    else
-                      ColoredBox(
-                        color: Colors.black.withValues(alpha: 0.55),
-                        child: Icon(
-                          Icons.play_circle_rounded,
-                          color: Colors.white.withValues(alpha: 0.35),
-                          size: widget.size * 0.42,
-                        ),
-                      ),
-                    Positioned.fill(
-                      child: IgnorePointer(
-                        child: AnimatedBuilder(
-                          animation: _bloom,
-                          builder: (context, _) {
-                            final t = _bloom.value;
-                            final pressGlow = _pressed ? 0.32 : 0.0;
-                            final waveOpacity = t == 0 ? 0.0 : (1 - t) * 0.55;
-                            final opacity = pressGlow + waveOpacity;
-                            if (opacity <= 0.001) {
-                              return const SizedBox.shrink();
-                            }
-                            final scale = 0.45 + t * 0.95;
-                            return Center(
-                              child: Transform.scale(
-                                scale: scale,
-                                child: Container(
-                                  width: widget.size,
-                                  height: widget.size,
-                                  decoration: BoxDecoration(
-                                    shape: BoxShape.circle,
-                                    gradient: RadialGradient(
-                                      colors: [
-                                        accent.withValues(alpha: opacity),
-                                        accent.withValues(alpha: 0),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      );
-    });
   }
 }
 

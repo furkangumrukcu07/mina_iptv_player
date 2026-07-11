@@ -21,6 +21,20 @@ class MethodChannelVideoPlayer extends VideoPlayerPlatform {
       _channel.invokeMethod<void>('dispose', <String, dynamic>{'textureId': textureId});
 
   @override
+  Future<void> markSurfaceHandoffRetain(int? textureId, {required bool retain}) =>
+      _channel.invokeMethod<void>(
+        'markSurfaceHandoffRetain',
+        <String, dynamic>{'textureId': textureId, 'retain': retain},
+      );
+
+  @override
+  Future<void> reattachVideoSurface(int? textureId) =>
+      _channel.invokeMethod<void>(
+        'reattachVideoSurface',
+        <String, dynamic>{'textureId': textureId},
+      );
+
+  @override
   Future<int?> create({
     BetterPlayerBufferingConfiguration? bufferingConfiguration,
     bool useTextureView = false,
@@ -38,6 +52,9 @@ class MethodChannelVideoPlayer extends VideoPlayerPlatform {
       args['maxBufferMs'] = cfg.maxBufferMs;
       args['bufferForPlaybackMs'] = cfg.bufferForPlaybackMs;
       args['bufferForPlaybackAfterRebufferMs'] = cfg.bufferForPlaybackAfterRebufferMs;
+      if (cfg.targetBufferBytes > 0) {
+        args['targetBufferBytes'] = cfg.targetBufferBytes;
+      }
     }
     final responseLinkedHashMap =
         await _channel.invokeMethod<Map<Object?, dynamic>?>('create', args);
@@ -246,12 +263,24 @@ class MethodChannelVideoPlayer extends VideoPlayerPlatform {
       'cacheKey': dataSource.cacheKey,
       'videoExtension': dataSource.videoExtension,
     };
+    if (dataSource.rawFormalHint != null) {
+      dataSourceDescription['formatHint'] = dataSource.rawFormalHint;
+    }
     return _channel.invokeMethod<void>('preCache', <String, dynamic>{'dataSource': dataSourceDescription});
   }
 
   @override
   Future<void> stopPreCache(String url, String? cacheKey) =>
       _channel.invokeMethod<void>('stopPreCache', <String, dynamic>{'url': url, 'cacheKey': cacheKey});
+
+  @override
+  Future<bool> softRecoverPlayback(int? textureId) async {
+    final result = await _channel.invokeMethod<bool>(
+      'softRecoverPlayback',
+      <String, dynamic>{'textureId': textureId},
+    );
+    return result ?? false;
+  }
 
   @override
   Stream<VideoEvent> videoEventsFor(int? textureId) =>
@@ -362,6 +391,15 @@ class MethodChannelVideoPlayer extends VideoPlayerPlatform {
               key: key,
               embeddedExoCues: map['cues'] as List<dynamic>?,
             );
+
+          case 'playbackEstablished':
+            return VideoEvent(eventType: VideoEventType.playbackEstablished, key: key);
+
+          case 'videoStall':
+            return VideoEvent(eventType: VideoEventType.videoStall, key: key);
+
+          case 'bufferingStall':
+            return VideoEvent(eventType: VideoEventType.bufferingStall, key: key);
 
           default:
             return VideoEvent(eventType: VideoEventType.unknown, key: key);

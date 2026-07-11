@@ -1,6 +1,8 @@
 import 'package:get/get.dart';
 
 import '../../core/home/showcase_player_launch.dart';
+import '../../core/player/playback_engine_kind.dart';
+import '../../core/services/showcase_in_app_pip_service.dart';
 import '../../domain/entities/channel.dart';
 import '../../domain/entities/series.dart';
 import '../../domain/entities/series_episode_option.dart';
@@ -20,6 +22,8 @@ class PlayerBinding extends Bindings {
     List<PlayerBrowseCategoryTape<SeriesItem>>? seriesCategoryTapes;
     String? audioCodecHint;
     var showcasePipHandoff = false;
+    var reopenFromInAppPip = false;
+    PlaybackEngineKind? showcasePipRestoreEngine;
 
     if (arg is PlayerScreenArgs) {
       channel = arg.channel;
@@ -30,9 +34,33 @@ class PlayerBinding extends Bindings {
       movieCategoryTapes = arg.movieBrowseCategoryTapes;
       seriesCategoryTapes = arg.seriesBrowseCategoryTapes;
       audioCodecHint = arg.audioCodecHint;
-      showcasePipHandoff = arg.showcaseInAppPipHandoff;
+      final reopeningFromPip = Get.isRegistered<ShowcaseInAppPipService>() &&
+          Get.find<ShowcaseInAppPipService>().isReopeningFromPipBubble;
+      if (Get.isRegistered<ShowcaseInAppPipService>()) {
+        final pip = Get.find<ShowcaseInAppPipService>();
+        pip.hideOverlayForNewPlayerRoute(reopeningFromPipBubble: reopeningFromPip);
+        if (!reopeningFromPip) {
+          pip.clearReopenedFromPipBubble();
+        }
+      }
+      if (reopeningFromPip && Get.isRegistered<ShowcaseInAppPipService>()) {
+        showcasePipRestoreEngine =
+            Get.find<ShowcaseInAppPipService>().pendingRestoreEngine;
+      }
+      showcasePipHandoff =
+          !reopeningFromPip && showcaseInAppPipHandoffEligibleNow();
+      reopenFromInAppPip = arg.reopenFromInAppPip || reopeningFromPip;
     } else if (arg is Channel) {
       channel = arg;
+      final reopeningFromPip = Get.isRegistered<ShowcaseInAppPipService>() &&
+          Get.find<ShowcaseInAppPipService>().isReopeningFromPipBubble;
+      if (Get.isRegistered<ShowcaseInAppPipService>()) {
+        final pip = Get.find<ShowcaseInAppPipService>();
+        pip.hideOverlayForNewPlayerRoute(reopeningFromPipBubble: reopeningFromPip);
+        if (!reopeningFromPip) {
+          pip.clearReopenedFromPipBubble();
+        }
+      }
       showcasePipHandoff = showcaseInAppPipHandoffEligibleNow();
     } else {
       throw ArgumentError(
@@ -50,6 +78,8 @@ class PlayerBinding extends Bindings {
         movieBrowseCategoryTapes: movieCategoryTapes,
         seriesBrowseCategoryTapes: seriesCategoryTapes,
         showcaseInAppPipHandoff: showcasePipHandoff,
+        showcasePipRestoreEngine: showcasePipRestoreEngine,
+        reopenFromInAppPip: reopenFromInAppPip,
         initialAudioCodecHint: audioCodecHint,
       ),
     );

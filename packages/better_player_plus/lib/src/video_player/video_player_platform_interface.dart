@@ -65,6 +65,16 @@ abstract class VideoPlayerPlatform {
     throw UnimplementedError('dispose() has not been implemented.');
   }
 
+  /// Handoff sırasında native [onSurfaceCleanup] ile Exo yüzeyinin kopmasını önler.
+  Future<void> markSurfaceHandoffRetain(int? textureId, {required bool retain}) {
+    return Future<void>.value();
+  }
+
+  /// Handoff sonrası ExoPlayer video yüzeyini yeniden bağlar.
+  Future<void> reattachVideoSurface(int? textureId) {
+    return Future<void>.value();
+  }
+
   /// Creates an instance of a video player and returns its textureId.
   Future<int?> create({
     BetterPlayerBufferingConfiguration? bufferingConfiguration,
@@ -82,6 +92,11 @@ abstract class VideoPlayerPlatform {
   /// Pre-caches a video.
   Future<void> stopPreCache(String url, String? cacheKey) {
     throw UnimplementedError('stopPreCache() has not been implemented.');
+  }
+
+  /// Android: oynatma başladıktan sonra tam URL yeniden açmadan hafif kurtarma.
+  Future<bool> softRecoverPlayback(int? textureId) {
+    throw UnimplementedError('softRecoverPlayback() has not been implemented.');
   }
 
   /// Set data source of video.
@@ -494,6 +509,15 @@ enum VideoEventType {
 
   /// Android: çözünürlük veya kare hızı güncellendi (ör. ilk kare sonrası FPS).
   videoFormat,
+
+  /// Android canlı: oynatma kuruldu (pozisyon > 0, oynuyor).
+  playbackEstablished,
+
+  /// Android canlı: kare ilerlemesi durdu.
+  videoStall,
+
+  /// Android canlı: uzun buffering takılması.
+  bufferingStall,
 
   /// An unknown event has been received.
   unknown,

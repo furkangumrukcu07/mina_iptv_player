@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../../core/layout/app_layout_mode.dart';
+import '../../core/player/playback_engine_kind.dart';
 import '../../core/services/app_settings_service.dart';
 import '../../core/services/equalizer_service.dart';
 import '../../core/services/external_player_service.dart';
@@ -66,14 +67,10 @@ class PlaybackSettingsView extends StatelessWidget {
                       children: [
                         if (Platform.isAndroid) ...[
                           Obx(() {
-                            final liveName = (settings.liveUseMediaKit.value
-                                    ? 'player.engine.mediaKit'
-                                    : 'player.engine.better')
-                                .tr;
-                            final vodName = (settings.useMediaKit.value
-                                    ? 'player.engine.mediaKit'
-                                    : 'player.engine.better')
-                                .tr;
+                            final liveName =
+                                _playbackEngineLabel(settings.livePlaybackEngine.value);
+                            final vodName =
+                                _playbackEngineLabel(settings.vodPlaybackEngine.value);
                             return _PlaybackTile(
                               tvDpadIndex: 0,
                               icon: Icons.play_circle_outline_rounded,
@@ -94,9 +91,36 @@ class PlaybackSettingsView extends StatelessWidget {
                             );
                           }),
                           const SizedBox(height: 10),
+                          Obx(() {
+                            final on = settings.smartPlayerSelection.value;
+                            return _PlaybackTile(
+                              tvDpadIndex: 1,
+                              icon: Icons.auto_awesome_rounded,
+                              title: 'settings.tile.smartPlayerSelection'.tr,
+                              subtitle: on
+                                  ? 'settings.tile.smartPlayerSelection.subOn'
+                                      .tr
+                                  : 'settings.tile.smartPlayerSelection.subOff'
+                                      .tr,
+                              primary: primary,
+                              onTap: () => unawaited(
+                                showSmartPlayerSelectionDialog(context),
+                              ),
+                              trailing: ExcludeFocus(
+                                child: IgnorePointer(
+                                  child: Switch.adaptive(
+                                    value: on,
+                                    onChanged: (_) {},
+                                    activeTrackColor: primary,
+                                  ),
+                                ),
+                              ),
+                            );
+                          }),
+                          const SizedBox(height: 10),
                           Obx(
                             () => _PlaybackTile(
-                              tvDpadIndex: 1,
+                              tvDpadIndex: 2,
                               icon: Icons.hd_rounded,
                               title: 'settings.tile.mediaKitHwdec'.tr,
                               subtitle: settings.mediaKitHwdecModeSubtitle,
@@ -109,7 +133,7 @@ class PlaybackSettingsView extends StatelessWidget {
                           const SizedBox(height: 10),
                           Obx(
                             () => _PlaybackTile(
-                              tvDpadIndex: 2,
+                              tvDpadIndex: 3,
                               icon: Icons.memory_rounded,
                               title: 'settings.tile.videoDecoder'.tr,
                               subtitle: settings.videoDecoderModeSubtitle,
@@ -124,7 +148,7 @@ class PlaybackSettingsView extends StatelessWidget {
                         ],
                         Obx(
                           () => _PlaybackTile(
-                            tvDpadIndex: 3,
+                            tvDpadIndex: 4,
                             icon: Icons.swap_horiz_rounded,
                             title: 'settings.tile.streamFormat'.tr,
                             subtitle: controller.liveStreamFormatSubtitle,
@@ -145,7 +169,7 @@ class PlaybackSettingsView extends StatelessWidget {
                         if (Get.isRegistered<ExternalPlayerService>() &&
                             Get.find<ExternalPlayerService>()
                                 .isPlatformSupported) ...[
-                          const _ExternalPlayerSection(baseIndex: 4),
+                          const _ExternalPlayerSection(baseIndex: 5),
                           const SizedBox(height: 10),
                         ],
                         Obx(
@@ -253,8 +277,8 @@ class PlaybackSettingsView extends StatelessWidget {
                         // ─────────────────────────────────────────
                         // Ana ayarlardan taşınanlar:
                         // OSD gizleme süresi, yayın önizlemesi,
-                        // arka planda oynatma, küçük ekran PIP,
-                        // cihaz açılışında başlat.
+                        // arka planda oynatma, küçük ekran PIP.
+                        // («Cihaz açılışında başlat» → Diğer Araçlar.)
                         // ─────────────────────────────────────────
                         Obx(
                           () => _PlaybackTile(
@@ -347,15 +371,18 @@ class PlaybackSettingsView extends StatelessWidget {
                         Obx(
                           () => _PlaybackTile(
                             tvDpadIndex: 17,
-                            icon: Icons.power_settings_new_rounded,
-                            title: 'settings.tile.launchBoot'.tr,
-                            subtitle: settings.launchOnBoot.value
-                                ? 'common.active'.tr
-                                : 'common.inactive'.tr,
+                            icon: Icons.lens_rounded,
+                            title: 'playbackSettings.inAppPip.title'.tr,
+                            subtitle: _showcaseInAppPipSubtitle(settings),
                             primary: primary,
-                            onTap: () => settings.setLaunchOnBoot(
-                              !settings.launchOnBoot.value,
-                            ),
+                            onTap: () {
+                              if (settings.isShowcaseInAppPipBlockedByLiveMediaKit) {
+                                return;
+                              }
+                              settings.setShowcaseInAppPipEnabled(
+                                !settings.showcaseInAppPipEnabled.value,
+                              );
+                            },
                           ),
                         ),
                         const SizedBox(height: 18),
@@ -398,23 +425,6 @@ class PlaybackSettingsView extends StatelessWidget {
                         Obx(
                           () => _PlaybackTile(
                             tvDpadIndex: 20,
-                            icon: Icons.high_quality_rounded,
-                            title: 'settings.tile.adaptiveQuality'.tr,
-                            subtitle: settings.adaptiveStreamQualityCeilingSubtitle,
-                            primary: primary,
-                            onTap: () => unawaited(
-                              controller.showAdaptiveQualityCeilingDialog(),
-                            ),
-                            trailing: const Icon(
-                              Icons.chevron_right_rounded,
-                              color: Colors.white70,
-                            ),
-                          ),
-                        ),
-                        const SizedBox(height: 10),
-                        Obx(
-                          () => _PlaybackTile(
-                            tvDpadIndex: 21,
                             icon: Icons.sync_rounded,
                             title: 'settings.tile.silentSync'.tr,
                             subtitle: settings.silentBackgroundSyncEnabled.value
@@ -437,6 +447,27 @@ class PlaybackSettingsView extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+String _showcaseInAppPipSubtitle(AppSettingsService settings) {
+  if (settings.layoutMode.value == AppLayoutMode.tv) {
+    return 'playbackSettings.inAppPip.handheldOnly'.tr;
+  }
+  if (settings.isShowcaseInAppPipBlockedByLiveMediaKit) {
+    return 'playbackSettings.inAppPip.blockedLiveMediaKit'.tr;
+  }
+  return settings.showcaseInAppPipEnabled.value
+      ? 'playbackSettings.inAppPip.subOn'.tr
+      : 'playbackSettings.inAppPip.subOff'.tr;
+}
+
+String _playbackEngineLabel(PlaybackEngineKind kind) {
+  switch (kind) {
+    case PlaybackEngineKind.better:
+      return 'player.engine.better'.tr;
+    case PlaybackEngineKind.mediaKit:
+      return 'player.engine.mediaKit'.tr;
   }
 }
 
@@ -467,6 +498,144 @@ String _vodInfoEngineSubtitle(AppSettingsService settings) {
 // =============================================================================
 // Oynatıcı Motoru Tercihleri — Canlı ve Film/Dizi için ayrı motor seçimi.
 // =============================================================================
+
+/// Akıllı oynatıcı seçimi: açıklama + aç/kapa (TV D-pad destekli).
+Future<void> showSmartPlayerSelectionDialog(BuildContext context) async {
+  await Get.dialog<void>(
+    const _SmartPlayerSelectionDialog(),
+    barrierDismissible: true,
+  );
+}
+
+class _SmartPlayerSelectionDialog extends StatelessWidget {
+  const _SmartPlayerSelectionDialog();
+
+  @override
+  Widget build(BuildContext context) {
+    final settings = Get.find<AppSettingsService>();
+    final primary = Theme.of(context).colorScheme.primary;
+    final tvDpad = settings.layoutMode.value == AppLayoutMode.tv;
+
+    return TvSettingsDpadScope(
+      enabled: tvDpad,
+      onBack: () => Get.back<void>(),
+      child: FocusTraversalGroup(
+        policy: OrderedTraversalPolicy(),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 460),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: GlassPopupPanel(
+                padding: const EdgeInsets.fromLTRB(20, 18, 20, 16),
+                gradientBlendTowardBlack: 0.22,
+                child: Material(
+                  type: MaterialType.transparency,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Text(
+                        'settings.dialog.smartPlayerSelection.title'.tr,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 17,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(height: 10),
+                      Text(
+                        'settings.dialog.smartPlayerSelection.body'.tr,
+                        style: TextStyle(
+                          color: Colors.white.withValues(alpha: 0.72),
+                          fontSize: 13,
+                          height: 1.4,
+                        ),
+                      ),
+                      const SizedBox(height: 18),
+                      Obx(() {
+                        final on = settings.smartPlayerSelection.value;
+                        return tvSettingsDpadWrap(
+                          context,
+                          index: 0,
+                          autofocus: true,
+                          onActivate: () => unawaited(
+                            settings.setSmartPlayerSelection(!on),
+                          ),
+                          borderRadius: 12,
+                          child: Material(
+                            color: Colors.transparent,
+                            child: InkWell(
+                              borderRadius: BorderRadius.circular(12),
+                              onTap: () => unawaited(
+                                settings.setSmartPlayerSelection(!on),
+                              ),
+                              child: Container(
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withValues(alpha: 0.28),
+                                  borderRadius: BorderRadius.circular(12),
+                                  border: Border.all(
+                                    color: primary.withValues(alpha: 0.35),
+                                  ),
+                                ),
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 14,
+                                  vertical: 12,
+                                ),
+                                child: Row(
+                                  children: [
+                                    Expanded(
+                                      child: Text(
+                                        on
+                                            ? 'settings.dialog.smartPlayerSelection.switchOn'
+                                                .tr
+                                            : 'settings.dialog.smartPlayerSelection.switchOff'
+                                                .tr,
+                                        style: const TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 14.5,
+                                          fontWeight: FontWeight.w700,
+                                        ),
+                                      ),
+                                    ),
+                                    ExcludeFocus(
+                                      child: IgnorePointer(
+                                        child: Switch.adaptive(
+                                          value: on,
+                                          onChanged: (_) {},
+                                          activeTrackColor: primary,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ),
+                          ),
+                        );
+                      }),
+                      const SizedBox(height: 14),
+                      tvSettingsDpadWrap(
+                        context,
+                        index: 1,
+                        onActivate: () => Get.back<void>(),
+                        borderRadius: 12,
+                        child: TextButton(
+                          onPressed: () => Get.back<void>(),
+                          child: Text('common.close'.tr),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+}
 
 /// İki bölümlü (Canlı / Film-Dizi) motor seçim diyaloğunu açar. Seçim anında
 /// [AppSettingsService] üzerinden kaydedilir; oynatıcı worker'ı motor değişince
@@ -529,11 +698,13 @@ class _PlayerEnginePrefsDialog extends StatelessWidget {
                     const SizedBox(height: 8),
                     Obx(
                       () => _EngineChoiceRow(
-                        mediaKitSelected: settings.liveUseMediaKit.value,
-                        onBetter: () =>
-                            unawaited(settings.setLiveUseMediaKit(false)),
-                        onMediaKit: () =>
-                            unawaited(settings.setLiveUseMediaKit(true)),
+                        selected: settings.livePlaybackEngine.value,
+                        onBetter: () => unawaited(
+                          settings.setLivePlaybackEngine(PlaybackEngineKind.better),
+                        ),
+                        onMediaKit: () => unawaited(
+                          settings.setLivePlaybackEngine(PlaybackEngineKind.mediaKit),
+                        ),
                         primary: primary,
                       ),
                     ),
@@ -546,11 +717,13 @@ class _PlayerEnginePrefsDialog extends StatelessWidget {
                     const SizedBox(height: 8),
                     Obx(
                       () => _EngineChoiceRow(
-                        mediaKitSelected: settings.useMediaKit.value,
-                        onBetter: () =>
-                            unawaited(settings.setUseMediaKit(false)),
-                        onMediaKit: () =>
-                            unawaited(settings.setUseMediaKit(true)),
+                        selected: settings.vodPlaybackEngine.value,
+                        onBetter: () => unawaited(
+                          settings.setVodPlaybackEngine(PlaybackEngineKind.better),
+                        ),
+                        onMediaKit: () => unawaited(
+                          settings.setVodPlaybackEngine(PlaybackEngineKind.mediaKit),
+                        ),
                         primary: primary,
                       ),
                     ),
@@ -626,16 +799,16 @@ class _EngineSectionLabel extends StatelessWidget {
   }
 }
 
-/// Yan yana iki seçim kartı: Better Player | MediaKit.
+/// Yan yana motor seçim kartları: Better Player | MediaKit.
 class _EngineChoiceRow extends StatelessWidget {
   const _EngineChoiceRow({
-    required this.mediaKitSelected,
+    required this.selected,
     required this.onBetter,
     required this.onMediaKit,
     required this.primary,
   });
 
-  final bool mediaKitSelected;
+  final PlaybackEngineKind selected;
   final VoidCallback onBetter;
   final VoidCallback onMediaKit;
   final Color primary;
@@ -648,17 +821,17 @@ class _EngineChoiceRow extends StatelessWidget {
           child: _EngineOptionCard(
             label: 'player.engine.better'.tr,
             icon: Icons.smart_display_outlined,
-            selected: !mediaKitSelected,
+            selected: selected == PlaybackEngineKind.better,
             onTap: onBetter,
             primary: primary,
           ),
         ),
-        const SizedBox(width: 10),
+        const SizedBox(width: 8),
         Expanded(
           child: _EngineOptionCard(
             label: 'player.engine.mediaKit'.tr,
             icon: Icons.movie_filter_outlined,
-            selected: mediaKitSelected,
+            selected: selected == PlaybackEngineKind.mediaKit,
             onTap: onMediaKit,
             primary: primary,
           ),
@@ -696,7 +869,10 @@ class _EngineOptionCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(14),
           onTap: onTap,
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 14),
+            padding: const EdgeInsets.symmetric(
+              horizontal: 12,
+              vertical: 14,
+            ),
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(14),
               color: selected

@@ -60,7 +60,16 @@ import '../../modules/mina_analytics/mina_analytics_view.dart';
 import 'app_routes.dart';
 
 abstract final class AppPages {
-  static final routes = <GetPage>[
+  static final routes = _rawRoutes.map((page) {
+    if (page.name == AppRoutes.splash || page.name == AppRoutes.setupWizard) {
+      return page;
+    }
+    return page.copy(
+      customTransition: PageTransitionBuilder.customTransition,
+    );
+  }).toList();
+
+  static final _rawRoutes = <GetPage>[
     GetPage(
       name: AppRoutes.splash,
       page: SplashView.new,

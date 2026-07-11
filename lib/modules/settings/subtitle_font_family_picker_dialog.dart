@@ -47,6 +47,14 @@ class _SubtitleFontFamilyPickerDialogState
   late String _selectedKey;
   late int _focusId;
 
+  late final List<GlobalKey> _rowKeys = List.generate(
+    widget.options.length,
+    (_) => GlobalKey(),
+  );
+  final GlobalKey _cancelKey = GlobalKey();
+  final GlobalKey _saveKey = GlobalKey();
+  final ScrollController _listScroll = ScrollController();
+
   late final List<FocusNode> _rowNodes = List.generate(
     widget.options.length,
     (i) => FocusNode(debugLabel: 'subFontFamily$i'),
@@ -66,6 +74,7 @@ class _SubtitleFontFamilyPickerDialogState
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       _rowNodes[_focusId].requestFocus();
+      _ensureFocusVisible();
     });
   }
 
@@ -78,12 +87,35 @@ class _SubtitleFontFamilyPickerDialogState
 
   @override
   void dispose() {
+    _listScroll.dispose();
     for (final n in _rowNodes) {
       n.dispose();
     }
     _cancelNode.dispose();
     _saveNode.dispose();
     super.dispose();
+  }
+
+  void _ensureFocusVisible() {
+    if (!widget.tvRemote) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      BuildContext? target;
+      if (_focusId < widget.options.length) {
+        target = _rowKeys[_focusId].currentContext;
+      } else if (_focusId == _cancelFocusId) {
+        target = _cancelKey.currentContext;
+      } else {
+        target = _saveKey.currentContext;
+      }
+      if (target == null) return;
+      Scrollable.ensureVisible(
+        target,
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOutCubic,
+        alignment: 0.42,
+      );
+    });
   }
 
   KeyEventResult _onRowKey(int i, KeyEvent event) {
@@ -94,9 +126,11 @@ class _SubtitleFontFamilyPickerDialogState
       if (i < widget.options.length - 1) {
         setState(() => _focusId = i + 1);
         _rowNodes[i + 1].requestFocus();
+        _ensureFocusVisible();
       } else {
         setState(() => _focusId = _cancelFocusId);
         _cancelNode.requestFocus();
+        _ensureFocusVisible();
       }
       return KeyEventResult.handled;
     }
@@ -104,6 +138,7 @@ class _SubtitleFontFamilyPickerDialogState
       if (i > 0) {
         setState(() => _focusId = i - 1);
         _rowNodes[i - 1].requestFocus();
+        _ensureFocusVisible();
       }
       return KeyEventResult.handled;
     }
@@ -125,11 +160,13 @@ class _SubtitleFontFamilyPickerDialogState
       final last = widget.options.length - 1;
       setState(() => _focusId = last);
       _rowNodes[last].requestFocus();
+      _ensureFocusVisible();
       return KeyEventResult.handled;
     }
     if (k == LogicalKeyboardKey.arrowDown) {
       setState(() => _focusId = _saveFocusId);
       _saveNode.requestFocus();
+      _ensureFocusVisible();
       return KeyEventResult.handled;
     }
     if (_isActivateKey(k)) {
@@ -146,6 +183,7 @@ class _SubtitleFontFamilyPickerDialogState
     if (k == LogicalKeyboardKey.arrowUp) {
       setState(() => _focusId = _cancelFocusId);
       _cancelNode.requestFocus();
+      _ensureFocusVisible();
       return KeyEventResult.handled;
     }
     if (_isActivateKey(k)) {
@@ -211,102 +249,155 @@ class _SubtitleFontFamilyPickerDialogState
       ),
     );
     if (!widget.tvRemote) return Padding(padding: const EdgeInsets.only(bottom: 8), child: row);
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Focus(
-        focusNode: _rowNodes[i],
-        descendantsAreFocusable: false,
-        onFocusChange: (v) {
-          if (v) setState(() => _focusId = i);
-        },
-        onKeyEvent: (_, e) => _onRowKey(i, e),
-        child: AnimatedContainer(
-          duration: const Duration(milliseconds: 120),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(14),
-            border: Border.all(
-              color: focused ? Colors.white : Colors.transparent,
-              width: focused ? 2.5 : 0,
+    return KeyedSubtree(
+      key: _rowKeys[i],
+      child: Padding(
+        padding: const EdgeInsets.only(bottom: 8),
+        child: Focus(
+          focusNode: _rowNodes[i],
+          descendantsAreFocusable: false,
+          onFocusChange: (v) {
+            if (v) {
+              setState(() => _focusId = i);
+              _ensureFocusVisible();
+            }
+          },
+          onKeyEvent: (_, e) => _onRowKey(i, e),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 120),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(
+                color: focused ? Colors.white : Colors.transparent,
+                width: focused ? 2.5 : 0,
+              ),
             ),
+            child: row,
           ),
-          child: row,
         ),
       ),
     );
   }
 
+  Widget _tvActionButtons() {
+    return Column(
+      children: [
+        KeyedSubtree(
+          key: _cancelKey,
+          child: Focus(
+            focusNode: _cancelNode,
+            descendantsAreFocusable: false,
+            onFocusChange: (v) {
+              if (v) {
+                setState(() => _focusId = _cancelFocusId);
+                _ensureFocusVisible();
+              }
+            },
+            onKeyEvent: (_, e) => _onCancelKey(e),
+            child: _actionButton(
+              label: 'Iptal',
+              focused: _focusId == _cancelFocusId,
+              onTap: widget.onCancel,
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        KeyedSubtree(
+          key: _saveKey,
+          child: Focus(
+            focusNode: _saveNode,
+            descendantsAreFocusable: false,
+            onFocusChange: (v) {
+              if (v) {
+                setState(() => _focusId = _saveFocusId);
+                _ensureFocusVisible();
+              }
+            },
+            onKeyEvent: (_, e) => _onSaveKey(e),
+            child: _actionButton(
+              label: 'Kaydet',
+              focused: _focusId == _saveFocusId,
+              onTap: () => unawaited(widget.onSave(_selectedKey)),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final actions = widget.tvRemote
+    final mobileActions = Row(
+      mainAxisAlignment: MainAxisAlignment.end,
+      children: [
+        GlassDialogActionButton(
+          label: 'Iptal',
+          onPressed: widget.onCancel,
+          onDarkSurface: widget.tvOsdStyle,
+        ),
+        const SizedBox(width: 8),
+        GlassDialogActionButton(
+          label: 'Kaydet',
+          primary: true,
+          onPressed: () => unawaited(widget.onSave(_selectedKey)),
+          onDarkSurface: widget.tvOsdStyle,
+        ),
+      ],
+    );
+
+    final hintText = Text(
+      widget.hint,
+      style: TextStyle(
+        color: Colors.white.withValues(alpha: 0.75),
+        fontSize: 13,
+      ),
+    );
+
+    final fontRows = Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [for (var i = 0; i < widget.options.length; i++) _row(i)],
+    );
+
+    final content = widget.tvRemote
         ? Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Focus(
-                focusNode: _cancelNode,
-                descendantsAreFocusable: false,
-                onFocusChange: (v) {
-                  if (v) setState(() => _focusId = _cancelFocusId);
-                },
-                onKeyEvent: (_, e) => _onCancelKey(e),
-                child: _actionButton(
-                  label: 'Iptal',
-                  focused: _focusId == _cancelFocusId,
-                  onTap: widget.onCancel,
+              hintText,
+              const SizedBox(height: 12),
+              ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.sizeOf(context).height * 0.42,
+                ),
+                child: SingleChildScrollView(
+                  controller: _listScroll,
+                  child: fontRows,
                 ),
               ),
               const SizedBox(height: 8),
-              Focus(
-                focusNode: _saveNode,
-                descendantsAreFocusable: false,
-                onFocusChange: (v) {
-                  if (v) setState(() => _focusId = _saveFocusId);
-                },
-                onKeyEvent: (_, e) => _onSaveKey(e),
-                child: _actionButton(
-                  label: 'Kaydet',
-                  focused: _focusId == _saveFocusId,
-                  onTap: () => unawaited(widget.onSave(_selectedKey)),
-                ),
-              ),
+              _tvActionButtons(),
             ],
           )
-        : Row(
-            mainAxisAlignment: MainAxisAlignment.end,
+        : Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              GlassDialogActionButton(
-                label: 'Iptal',
-                onPressed: widget.onCancel,
-                onDarkSurface: widget.tvOsdStyle,
-              ),
-              const SizedBox(width: 8),
-              GlassDialogActionButton(
-                label: 'Kaydet',
-                primary: true,
-                onPressed: () => unawaited(widget.onSave(_selectedKey)),
-                onDarkSurface: widget.tvOsdStyle,
-              ),
+              hintText,
+              const SizedBox(height: 12),
+              fontRows,
+              const SizedBox(height: 4),
+              mobileActions,
             ],
           );
 
     return GlassAlertDialog(
-      scrollable: true,
+      scrollable: !widget.tvRemote,
       tvOsdStyle: widget.tvOsdStyle,
       title: Text(widget.title),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Text(
-            widget.hint,
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.75),
-              fontSize: 13,
-            ),
-          ),
-          const SizedBox(height: 12),
-          for (var i = 0; i < widget.options.length; i++) _row(i),
-          const SizedBox(height: 4),
-          actions,
-        ],
+      content: PopScope(
+        canPop: true,
+        child: content,
       ),
       actions: null,
     );

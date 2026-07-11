@@ -1,9 +1,10 @@
+import 'playback_engine_kind.dart';
+
 /// Oynatıcı sayfasında o an aktif olan video motoru.
 ///
 /// Tek bir gerçek kaynak: [PlayerController.activeVideoEngine] bunu
 /// `effectiveUseMediaKit` üzerinden türetir. Hem [UniversalVideoPlayer]
-/// (yüzey render'ı + dispose) hem de OSD/butonlar bu enum'a göre çalışır;
-/// böylece "hangi motor aktif" sorusunun tek ve net cevabı olur.
+/// (yüzey render'ı + dispose) hem de OSD/butonlar bu enum'a göre çalışır.
 enum VideoPlayerEngine {
   /// ExoPlayer tabanlı Better Player.
   betterPlayer,
@@ -16,4 +17,10 @@ enum VideoPlayerEngine {
 
   static VideoPlayerEngine fromUseMediaKit(bool useMediaKit) =>
       useMediaKit ? VideoPlayerEngine.mediaKit : VideoPlayerEngine.betterPlayer;
+
+  static VideoPlayerEngine fromPlaybackEngineKind(PlaybackEngineKind kind) =>
+      switch (kind) {
+        PlaybackEngineKind.better => VideoPlayerEngine.betterPlayer,
+        PlaybackEngineKind.mediaKit => VideoPlayerEngine.mediaKit,
+      };
 }

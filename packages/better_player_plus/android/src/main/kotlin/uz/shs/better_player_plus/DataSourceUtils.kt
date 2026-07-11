@@ -12,11 +12,8 @@ internal object DataSourceUtils {
 
     /**
      * IPTV (M3U veya Xtream URL’leri aynı fabrikayı kullanır).
-     * Çok kısa okuma zaman aşımı: HLS’te ara segment gecikmesi veya taşıyıcıdaki uzun
-     * yanıt aralığında [HttpDataSourceException] / yeniden bağlanma tetiklenebilir.
+     * Canlı: kısa timeout; VOD: uzun okuma süresi.
      */
-    private const val IPTV_CONNECT_TIMEOUT_MS = 30_000
-    private const val IPTV_READ_TIMEOUT_MS = 180_000
 
     @JvmStatic
     fun getUserAgent(headers: Map<String, String>?): String? {
@@ -33,13 +30,14 @@ internal object DataSourceUtils {
     @JvmStatic
     fun getDataSourceFactory(
         userAgent: String?,
-        headers: Map<String, String>?
+        headers: Map<String, String>?,
+        profile: MinaIptvHttpProfile = MinaIptvHttpProfile.VOD,
     ): DataSource.Factory {
         val dataSourceFactory: DataSource.Factory = DefaultHttpDataSource.Factory()
             .setUserAgent(userAgent)
             .setAllowCrossProtocolRedirects(true)
-            .setConnectTimeoutMs(IPTV_CONNECT_TIMEOUT_MS)
-            .setReadTimeoutMs(IPTV_READ_TIMEOUT_MS)
+            .setConnectTimeoutMs(profile.connectTimeoutMs)
+            .setReadTimeoutMs(profile.readTimeoutMs)
         if (headers != null) {
             val notNullHeaders = mutableMapOf<String, String>()
             headers.forEach { entry ->

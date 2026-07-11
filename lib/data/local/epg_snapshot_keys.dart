@@ -19,6 +19,9 @@ abstract final class EpgSnapshotKeys {
         if (u.isEmpty) return null;
         final h = md5.convert(utf8.encode(u)).toString();
         return 'v1|m3u|$h';
+      case StalkerSource():
+        final sk = AppSettingsService.stalkerPreferenceKey(source);
+        return 'v1|stalker|$sk';
     }
   }
 }

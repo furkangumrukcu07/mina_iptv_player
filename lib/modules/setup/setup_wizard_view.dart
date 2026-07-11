@@ -8,7 +8,10 @@ import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 
 import '../../core/i18n/theme_label_localized.dart';
+import '../../core/home/home_layout_style.dart';
+import '../../core/home/showcase_in_app_pip_setup_preview.dart';
 import '../../core/layout/app_layout_mode.dart';
+import '../../core/player/playback_engine_kind.dart';
 import '../../core/player/subtitle_font_family.dart';
 import '../../core/services/app_settings_service.dart';
 import '../../core/services/auth_service.dart';
@@ -16,6 +19,7 @@ import '../../core/theme/app_scroll_physics.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/glass_appearance.dart';
 import '../../ui/glass_overlays.dart';
+import '../../ui/google_cloud_sign_in_panel.dart';
 import '../../ui/tv_dpad_focus.dart';
 import '../playlist/playlist_controller.dart';
 import '../playlist/widgets/playlist_source_setup_form.dart';
@@ -266,6 +270,16 @@ class _SetupFeaturesPage extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              if (!tv) ...[
+                Obx(
+                  () => _SetupLayoutStyleSection(
+                    current: app.homeLayoutStyle.value,
+                    onSelect: (style) =>
+                        unawaited(app.setHomeLayoutStyle(style)),
+                  ),
+                ),
+                const SizedBox(height: 14),
+              ],
               Text(
                 'setup.featuresHint'.tr,
                 textAlign: TextAlign.center,
@@ -277,6 +291,16 @@ class _SetupFeaturesPage extends StatelessWidget {
                 ),
               ),
               const SizedBox(height: 14),
+              if (!tv) ...[
+                Obx(
+                  () => _SetupInAppPipPanel(
+                    enabled: app.showcaseInAppPipEnabled.value,
+                    onChanged: (v) =>
+                        unawaited(app.setShowcaseInAppPipEnabled(v)),
+                  ),
+                ),
+                const SizedBox(height: 14),
+              ],
               if (tv)
                 Obx(() {
                   final specs = _specs();
@@ -403,6 +427,202 @@ class _FeatureToggleSpec {
   final String subtitle;
   final bool value;
   final ValueChanged<bool> onChanged;
+}
+
+/// Kurulum: vitrin (varsayılan) veya kart düzeni seçimi.
+class _SetupLayoutStyleSection extends StatelessWidget {
+  const _SetupLayoutStyleSection({
+    required this.current,
+    required this.onSelect,
+  });
+
+  final HomeLayoutStyle current;
+  final ValueChanged<HomeLayoutStyle> onSelect;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+
+    return _GlassPanel(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 14, 12, 12),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Text(
+              'setup.stepLayoutMode'.tr,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: Colors.white,
+                fontWeight: FontWeight.w700,
+                fontSize: 16,
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              'setup.layoutModeHint'.tr,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.58),
+                fontSize: 11.5,
+                height: 1.35,
+              ),
+            ),
+            const SizedBox(height: 12),
+            _SetupLayoutChoiceCard(
+              cs: cs,
+              style: HomeLayoutStyle.showcase,
+              selected: current == HomeLayoutStyle.showcase,
+              onTap: () => onSelect(HomeLayoutStyle.showcase),
+            ),
+            const SizedBox(height: 10),
+            _SetupLayoutChoiceCard(
+              cs: cs,
+              style: HomeLayoutStyle.standard,
+              selected: current == HomeLayoutStyle.standard,
+              onTap: () => onSelect(HomeLayoutStyle.standard),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SetupLayoutChoiceCard extends StatelessWidget {
+  const _SetupLayoutChoiceCard({
+    required this.cs,
+    required this.style,
+    required this.selected,
+    required this.onTap,
+  });
+
+  final ColorScheme cs;
+  final HomeLayoutStyle style;
+  final bool selected;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 160),
+          padding: const EdgeInsets.fromLTRB(12, 10, 12, 10),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: selected
+                  ? cs.primary.withValues(alpha: 0.9)
+                  : Colors.white.withValues(alpha: 0.16),
+              width: selected ? 1.6 : 1,
+            ),
+            color: selected
+                ? cs.primary.withValues(alpha: 0.14)
+                : Colors.white.withValues(alpha: 0.04),
+          ),
+          child: Row(
+            children: [
+              Icon(
+                selected
+                    ? Icons.radio_button_checked_rounded
+                    : Icons.radio_button_off_rounded,
+                size: 22,
+                color: selected
+                    ? cs.primary
+                    : Colors.white.withValues(alpha: 0.55),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      style.labelKey.tr,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 14.5,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      style.subtitleKey.tr,
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.62),
+                        fontSize: 11.5,
+                        height: 1.25,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Image.asset(
+                  style.previewAsset,
+                  width: 42,
+                  height: 74,
+                  fit: BoxFit.cover,
+                  alignment: Alignment.topCenter,
+                  filterQuality: FilterQuality.low,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// Mobil/tablet kurulum: uygulama içi PiP önizlemesi + aç/kapa anahtarı.
+class _SetupInAppPipPanel extends StatelessWidget {
+  const _SetupInAppPipPanel({
+    required this.enabled,
+    required this.onChanged,
+  });
+
+  final bool enabled;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return _GlassPanel(
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 14, 12, 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            const ShowcaseInAppPipSetupPreview(),
+            const SizedBox(height: 10),
+            Text(
+              'setup.inAppPipPreviewCaption'.tr,
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.58),
+                fontSize: 11.5,
+                height: 1.35,
+              ),
+            ),
+            const SizedBox(height: 12),
+            _SetupIosSwitchRow(
+              icon: Icons.lens_rounded,
+              title: 'setup.inAppPipTitle'.tr,
+              subtitle: 'setup.inAppPipSub'.tr,
+              value: enabled,
+              onChanged: onChanged,
+              showDivider: false,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 /// TV/kumanda: özellik anahtarı kartı. Tüm kart tek D-pad odak hedefidir; OK
@@ -1190,11 +1410,20 @@ class _SetupSourcePageState extends State<_SetupSourcePage> {
                       children: [
                         // Google Play Hizmetleri olmayan cihazlarda (Fire TV /
                         // Amazon Appstore) Google ile giriş bölümünü tamamen gizle.
-                        if (cloudBackupSupported) ...const [
-                          _GoogleCloudSignInButton(),
-                          SizedBox(height: 14),
-                          _SetupOrDivider(),
-                          SizedBox(height: 14),
+                        if (cloudBackupSupported) ...[
+                          Obx(() {
+                            final ctrl = Get.find<SetupWizardController>();
+                            return GoogleCloudSignInCard(
+                              isBusy: ctrl.isCloudBusy.value,
+                              onSignIn: ctrl.isCloudBusy.value
+                                  ? null
+                                  : () =>
+                                      unawaited(ctrl.signInWithGoogleAndSync()),
+                            );
+                          }),
+                          const SizedBox(height: 14),
+                          const CloudSignInOrDivider(),
+                          const SizedBox(height: 14),
                         ],
                         PlaylistSourceSetupForm(
                           controller: pl,
@@ -1281,12 +1510,14 @@ class _SetupThemePage extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final themes = GlassThemeLabels.selectableThemeLabels;
-    return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-      child: _GlassPanel(
-        child: Obx(
-          () => Column(
+    return Obx(() {
+      final themes = GlassThemeLabels.selectableThemesForLayout(
+        tv: app.layoutMode.value == AppLayoutMode.tv,
+      );
+      return SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+        child: _GlassPanel(
+          child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
               for (final t in themes)
@@ -1313,8 +1544,8 @@ class _SetupThemePage extends StatelessWidget {
             ],
           ),
         ),
-      ),
-    );
+      );
+    });
   }
 }
 
@@ -1344,9 +1575,10 @@ class _SetupPlayerPage extends StatelessWidget {
                 cs,
                 label: 'settings.playerEngine.liveTitle'.tr,
                 icon: Icons.live_tv_rounded,
-                mediaKitSelected: app.liveUseMediaKit.value,
-                onBetter: () => app.setLiveUseMediaKit(false),
-                onMediaKit: () => app.setLiveUseMediaKit(true),
+                selected: app.livePlaybackEngine.value,
+                onBetter: () => app.setLivePlaybackEngine(PlaybackEngineKind.better),
+                onMediaKit: () =>
+                    app.setLivePlaybackEngine(PlaybackEngineKind.mediaKit),
               ),
               const SizedBox(height: 16),
               _engineSection(
@@ -1354,9 +1586,10 @@ class _SetupPlayerPage extends StatelessWidget {
                 cs,
                 label: 'settings.playerEngine.vodTitle'.tr,
                 icon: Icons.movie_outlined,
-                mediaKitSelected: app.useMediaKit.value,
-                onBetter: () => app.setUseMediaKit(false),
-                onMediaKit: () => app.setUseMediaKit(true),
+                selected: app.vodPlaybackEngine.value,
+                onBetter: () => app.setVodPlaybackEngine(PlaybackEngineKind.better),
+                onMediaKit: () =>
+                    app.setVodPlaybackEngine(PlaybackEngineKind.mediaKit),
               ),
             ],
           ),
@@ -1405,14 +1638,13 @@ class _SetupPlayerPage extends StatelessWidget {
     );
   }
 
-  /// Tek içerik tipi için (canlı veya film/dizi) başlık + yan yana iki motor
-  /// kartı (Better Player | MediaKit).
+  /// Tek içerik tipi için (canlı veya film/dizi) başlık + yan yana motor kartları.
   Widget _engineSection(
     BuildContext context,
     ColorScheme cs, {
     required String label,
     required IconData icon,
-    required bool mediaKitSelected,
+    required PlaybackEngineKind selected,
     required VoidCallback onBetter,
     required VoidCallback onMediaKit,
   }) {
@@ -1445,18 +1677,18 @@ class _SetupPlayerPage extends StatelessWidget {
                   context,
                   title: 'setup.playerExoTitle'.tr,
                   subtitle: 'setup.playerExoSub'.tr,
-                  selected: !mediaKitSelected,
+                  selected: selected == PlaybackEngineKind.better,
                   onTap: onBetter,
                   cs: cs,
                 ),
               ),
-              const SizedBox(width: 10),
+              const SizedBox(width: 8),
               Expanded(
                 child: _playerTile(
                   context,
                   title: 'setup.playerMkvTitle'.tr,
                   subtitle: 'setup.playerMkvSub'.tr,
-                  selected: mediaKitSelected,
+                  selected: selected == PlaybackEngineKind.mediaKit,
                   onTap: onMediaKit,
                   cs: cs,
                 ),
@@ -1542,150 +1774,6 @@ class _SetupPlayerPage extends StatelessWidget {
           ),
         ),
       ),
-    );
-  }
-}
-
-/// Mina Glassmorphism stilinde, D-Pad odaklanma destekli (InkWell + Focus
-/// vurgu kenarı) "Google ile Oturum Aç ve Listelerini Getir" butonu.
-class _GoogleCloudSignInButton extends StatelessWidget {
-  const _GoogleCloudSignInButton();
-
-  @override
-  Widget build(BuildContext context) {
-    final ctrl = Get.find<SetupWizardController>();
-    final cs = Theme.of(context).colorScheme;
-    return Obx(() {
-      final busy = ctrl.isCloudBusy.value;
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(16),
-        child: BackdropFilter(
-          filter: ImageFilter.blur(sigmaX: 10, sigmaY: 10),
-          child: Material(
-            color: Colors.transparent,
-            child: InkWell(
-              borderRadius: BorderRadius.circular(16),
-              focusColor: cs.primary.withValues(alpha: 0.28),
-              highlightColor: cs.primary.withValues(alpha: 0.16),
-              onTap:
-                  busy ? null : () => unawaited(ctrl.signInWithGoogleAndSync()),
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
-                decoration: BoxDecoration(
-                  borderRadius: BorderRadius.circular(16),
-                  border: Border.all(
-                    color: Colors.white.withValues(alpha: 0.28),
-                  ),
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [
-                      Colors.white.withValues(alpha: 0.16),
-                      Colors.white.withValues(alpha: 0.06),
-                    ],
-                  ),
-                ),
-                child: Row(
-                  children: [
-                    Container(
-                      width: 34,
-                      height: 34,
-                      decoration: const BoxDecoration(
-                        color: Colors.white,
-                        shape: BoxShape.circle,
-                      ),
-                      alignment: Alignment.center,
-                      child: busy
-                          ? const SizedBox(
-                              width: 18,
-                              height: 18,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            )
-                          : const Text(
-                              'G',
-                              style: TextStyle(
-                                color: Color(0xFF4285F4),
-                                fontWeight: FontWeight.w900,
-                                fontSize: 20,
-                                height: 1.0,
-                              ),
-                            ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'cloud.googleSignInTitle'.tr,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.w800,
-                              fontSize: 14.5,
-                            ),
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            'cloud.googleSignInSubtitle'.tr,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              color: Colors.white.withValues(alpha: 0.72),
-                              fontSize: 11.5,
-                              height: 1.25,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 8),
-                    Icon(
-                      Icons.cloud_download_rounded,
-                      color: Colors.white.withValues(alpha: 0.85),
-                      size: 20,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-        ),
-      );
-    });
-  }
-}
-
-/// "— veya —" ayraç satırı.
-class _SetupOrDivider extends StatelessWidget {
-  const _SetupOrDivider();
-
-  @override
-  Widget build(BuildContext context) {
-    final line = Expanded(
-      child: Container(
-        height: 1,
-        color: Colors.white.withValues(alpha: 0.18),
-      ),
-    );
-    return Row(
-      children: [
-        line,
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 10),
-          child: Text(
-            'common.or'.tr,
-            style: TextStyle(
-              color: Colors.white.withValues(alpha: 0.6),
-              fontSize: 12,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-        ),
-        line,
-      ],
     );
   }
 }

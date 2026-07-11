@@ -9,11 +9,13 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:get/get.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../core/constants/playlist_storage.dart';
 import '../../core/player/playback_user_agent.dart';
 import '../../core/services/app_settings_service.dart';
 import '../../core/services/active_playlist_service.dart';
+import '../../core/services/playlist_sqlite_backfill_service.dart';
 import '../../core/perf/playlist_memory_diagnostics.dart';
 import '../local/playlist_snapshot_store.dart';
 import '../local/playlist_sqlite_store.dart';
@@ -24,6 +26,7 @@ import '../../domain/entities/series_episode_option.dart';
 import '../../domain/entities/m3u_result.dart';
 import '../../domain/entities/playlist_source.dart';
 import '../../domain/entities/series.dart';
+import '../../domain/entities/stalker_compat.dart';
 import '../../domain/entities/vod.dart';
 import '../../domain/repositories/playlist_repository.dart';
 import '../m3u_live_merge.dart';
@@ -31,6 +34,7 @@ import '../recent_vod_selection.dart';
 import '../remote/m3u_parser.dart';
 import '../remote/m3u_stream_parser.dart';
 import '../remote/xtream_api.dart';
+import '../remote/stalker_api.dart';
 
 class PlaylistRepositoryImpl implements PlaylistRepository {
   PlaylistRepositoryImpl({
@@ -39,9 +43,11 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
   })  : _dio = dio ??
             Dio(
               BaseOptions(
-                connectTimeout: const Duration(seconds: 30),
+                connectTimeout: const Duration(seconds: 45),
                 receiveTimeout: const Duration(seconds: 120),
                 sendTimeout: const Duration(seconds: 30),
+                followRedirects: true,
+                maxRedirects: 8,
               ),
             )..interceptors.add(
               InterceptorsWrapper(
@@ -258,89 +264,31 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
       }
     }
 
-    // Kullanıcının yapıştırdığı URL'de yanlış şema (http vs https) olabilir
-    // (örn. modern OS panoları otomatik `https://` ekliyor). Şema swap
-    // mümkünse ilk denemeyi **paralel olarak başlatıyoruz**: iki şemayı
-    // aynı anda race ediyoruz; ilk başarılı olan kazanır. Böylece kullanıcı
-    // 30 sn TLS handshake timeout'unu beklemiyor. Sunucu HTTP cevabı
-    // (401/404/5xx) verdiyse şema değişimi anlamlı değil; orijinal hata
-    // yukarı fırlatılır. Maksimum 2 deneme — sonsuz döngü yok.
-    final swappedUrl = _swapHttpScheme(trimmed);
-    if (swappedUrl == null) {
-      // Tek şema mümkün (ftp://, file://, vs.) — race anlamsız.
-      final body = await _downloadM3uBody(trimmed);
-      final result = await compute(M3uParser.instance.parse, body);
-      return (result: result, resolvedUrl: trimmed);
-    }
-
-    final raced = await _raceSchemes(primary: trimmed, swap: swappedUrl);
-    return (
-      result: await compute(M3uParser.instance.parse, raced.body),
-      resolvedUrl: raced.winningUrl,
+    // Uzak M3U: tüm dosyayı belleğe almak yerine satır akışı kullan.
+    // Kısa URL yönlendirmeleri (tinyurl vb.) ve 40k+ film girişli listelerde
+    // OOM / zaman aşımı riskini azaltır. VOD SQLite'a yazılır (slot akışında)
+    // veya burada yalnızca kategori özeti tutulur.
+    final opened = await _openM3uLineStream(trimmed);
+    final result = await M3uStreamParser.parse(
+      lines: opened.lines,
+      sourceKey: '',
+      buildVodSeriesInMemory: false,
+      buildChannelsInMemory: true,
     );
+    return (result: result, resolvedUrl: opened.resolvedUrl);
   }
 
-  /// İki şemayı (primary + swap) **paralel** dener; ilk başarılı body kazanır.
-  ///
-  /// * Primary kısa timeout (8 sn) ile başlar — kullanıcının yazdığı şema
-  ///   doğruysa anında kazanır.
-  /// * Swap aynı anda normal timeout ile başlar — primary fail olursa
-  ///   beklemeden kazanır.
-  /// * İkisi de başarısızsa **primary'nin hatası** fırlatılır (kullanıcı o
-  ///   URL'yi yazdı, daha anlamlı). Sonsuz döngü yok — toplam 2 deneme.
-  Future<({String body, String winningUrl})> _raceSchemes({
-    required String primary,
-    required String swap,
-  }) async {
-    final winner = Completer<({String body, String winningUrl})>();
-    var pending = 2;
-    Object? primaryError;
-    Object? swapError;
-
-    void onFail() {
-      pending -= 1;
-      if (pending == 0 && !winner.isCompleted) {
-        winner.completeError(
-            _toAppException(primaryError ?? swapError ?? Exception('Unknown')));
-      }
+  @override
+  Future<M3uResult> loadM3uUrlIntoSlot(int slot, String url) async {
+    if (slot < 1 || slot > kPlaylistSlotCount) {
+      throw ArgumentError.value(slot, 'slot');
     }
-
-    unawaited(
-      _downloadM3uBody(primary).timeout(_kFastFirstTimeout).then(
-        (body) {
-          if (!winner.isCompleted) {
-            winner.complete((body: body, winningUrl: primary));
-          }
-        },
-        onError: (Object e, StackTrace _) {
-          primaryError = e;
-          onFail();
-        },
-      ),
-    );
-
-    unawaited(
-      _downloadM3uBody(swap).then(
-        (body) {
-          if (!winner.isCompleted) {
-            winner.complete((body: body, winningUrl: swap));
-          }
-        },
-        onError: (Object e, StackTrace _) {
-          swapError = e;
-          onFail();
-        },
-      ),
-    );
-
-    return winner.future;
+    final key = await _slotSnapshotKey(slot);
+    if (key == null || key.isEmpty) {
+      throw const ParseException('No playlist source configured for this slot');
+    }
+    return _loadM3uToDb(url.trim(), key);
   }
-
-  /// İlk denemede hızlı başarısızlık için süre. Bu süre içinde primary'den
-  /// başarılı cevap gelmezse (TLS / DNS / connect / timeout) swap'tan
-  /// gelecek body kabul edilir. 8 sn dengeli — yavaş 3G/4G'de bile
-  /// genelde yeterli, hatalı şemada bekleme süresini minimize eder.
-  static const _kFastFirstTimeout = Duration(seconds: 8);
 
   AppException _toAppException(Object error) {
     if (error is AppException) return error;
@@ -350,40 +298,10 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
     return NetworkException('Failed to load playlist', error);
   }
 
-  /// Ham M3U gövdesini indirir. Yalnızca [NetworkException] / [ParseException]
-  /// fırlatır; çağıran taraf şema swap fallback'inde kullanır.
-  Future<String> _downloadM3uBody(String url) async {
-    try {
-      final response = await _dio.get<String>(
-        url,
-        options: Options(
-          responseType: ResponseType.plain,
-          validateStatus: (s) => s != null && s < 500,
-        ),
-      );
-      final body = response.data;
-      if (body == null || body.isEmpty) {
-        throw NetworkException('Empty response', response.statusMessage);
-      }
-      if (response.statusCode != 200) {
-        throw NetworkException(
-            'HTTP ${response.statusCode}', response.statusMessage);
-      }
-      return body;
-    } on AppException {
-      rethrow;
-    } on DioException catch (e) {
-      throw NetworkException(e.message ?? 'Network error', e);
-    } catch (e) {
-      throw NetworkException('Failed to load playlist', e);
-    }
-  }
+  /// İlk şema denemesinde hızlı başarısızlık (http/https swap).
+  static const _kFastFirstTimeout = Duration(seconds: 8);
 
-  /// M3U gövdesini **stream** (satır satır) olarak açar. Tüm dosyayı belleğe
-  /// almak yerine baytları akış halinde UTF-8 → satır dönüşümünden geçirir.
-  /// Şema (http/https) yanlışsa **bağlantı aşamasında** swap'a düşer (gövde
-  /// indirilmeden); bu, [_raceSchemes] kadar agresif değildir ama dev gövdeyi
-  /// iki kez indirme riskini ortadan kaldırır.
+  /// M3U gövdesini **stream** (satır satır) olarak açar.
   Future<({Stream<String> lines, String resolvedUrl})> _openM3uLineStream(
       String url) async {
     final swapped = _swapHttpScheme(url);
@@ -448,12 +366,41 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
           password: source.password,
         );
         if (sourceKey != null && sourceKey.isNotEmpty) {
-          try {
-            await PlaylistSqliteStore.replaceFromResult(sourceKey, result);
-          } catch (e) {
-            debugPrint('mina_iptv: xtream SQLite populate failed: $e');
+          if (await PlaylistSqliteStore.hasData(sourceKey)) {
+            return result.slimForSqliteCache();
           }
-          return result.slimForSqliteCache();
+          if (Get.isRegistered<PlaylistSqliteBackfillService>()) {
+            unawaited(
+              Get.find<PlaylistSqliteBackfillService>().scheduleReplaceFromResult(
+                dbKey: sourceKey,
+                full: result,
+              ),
+            );
+          }
+          return result;
+        }
+        return result;
+      case StalkerSource():
+        final result = await loadFromStalker(
+          baseUrl: source.baseUrl,
+          macAddress: source.macAddress,
+          magPreset: source.magPreset,
+          linkType: source.linkType,
+          hwVersionOverride: source.hwVersionOverride,
+        );
+        if (sourceKey != null && sourceKey.isNotEmpty) {
+          if (await PlaylistSqliteStore.hasData(sourceKey)) {
+            return result.slimForSqliteCache();
+          }
+          if (Get.isRegistered<PlaylistSqliteBackfillService>()) {
+            unawaited(
+              Get.find<PlaylistSqliteBackfillService>().scheduleReplaceFromResult(
+                dbKey: sourceKey,
+                full: result,
+              ),
+            );
+          }
+          return result;
         }
         return result;
     }
@@ -671,6 +618,221 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
   }
 
   @override
+  Future<M3uResult> loadFromStalker({
+    required String baseUrl,
+    required String macAddress,
+    StalkerMagPreset magPreset = StalkerMagPreset.genericSafe,
+    StalkerLinkType linkType = StalkerLinkType.wifi,
+    String hwVersionOverride = '',
+  }) async {
+    var b = baseUrl.trim();
+    final mac = macAddress.trim();
+    if (b.isEmpty || mac.isEmpty) {
+      throw const ParseException('stalker.error.credentialsEmpty');
+    }
+    if (!b.contains('://')) {
+      b = 'http://$b';
+    }
+    final api = StalkerApi(
+      baseUrl: b,
+      macAddress: mac,
+      magPreset: magPreset,
+      linkType: linkType,
+      hwVersionOverride: hwVersionOverride,
+    );
+    try {
+      await api.handshake(_dio);
+
+      final liveCatsRaw = await api.getCategories(_dio, 'itv');
+      final vodCatsRaw = await api.getCategories(_dio, 'vod');
+      final seriesCatsRaw = await api.getCategories(_dio, 'series');
+
+      // Kategori + sayfa döngüsü; tek sayfalık eski çağrı çoğu portalda
+      // yalnızca ~14 kanal getiriyordu veya boş dönüyordu.
+      final liveChannelsRaw = await api.fetchAllItems(
+        _dio,
+        'itv',
+        categories: liveCatsRaw,
+      );
+      final vodStreamsRaw = await api.fetchAllItems(
+        _dio,
+        'vod',
+        categories: vodCatsRaw,
+      );
+      final seriesStreamsRaw = await api.fetchAllItems(
+        _dio,
+        'series',
+        categories: seriesCatsRaw,
+      );
+
+      if (liveChannelsRaw.isEmpty &&
+          vodStreamsRaw.isEmpty &&
+          seriesStreamsRaw.isEmpty) {
+        throw const ParseException('stalker.error.emptyCatalog');
+      }
+
+      final channelCats = <ChannelCategory>[];
+      final channelCatMap = <String, int>{};
+      var channelCatId = 1;
+      for (final cat in liveCatsRaw) {
+        final name = '${cat['title'] ?? cat['name'] ?? ''}'.trim();
+        if (name.isEmpty) continue;
+        final idStr = cat['id']?.toString() ?? '';
+        final id = int.tryParse(idStr) ?? channelCatId++;
+        channelCats.add(ChannelCategory(id: id, name: name));
+        if (idStr.isNotEmpty) channelCatMap[idStr] = id;
+      }
+      if (channelCats.isEmpty) {
+        channelCats.add(const ChannelCategory(id: 1, name: 'Live'));
+      }
+
+      final vodCats = <VodCategory>[];
+      final vodCatMap = <String, int>{};
+      var vodCatId = 1;
+      for (final cat in vodCatsRaw) {
+        final name = '${cat['title'] ?? cat['name'] ?? ''}'.trim();
+        if (name.isEmpty) continue;
+        final idStr = cat['id']?.toString() ?? '';
+        final id = int.tryParse(idStr) ?? vodCatId++;
+        vodCats.add(VodCategory(id: id, name: name));
+        if (idStr.isNotEmpty) vodCatMap[idStr] = id;
+      }
+      if (vodCats.isEmpty) {
+        vodCats.add(const VodCategory(id: 1, name: 'VOD'));
+      }
+
+      final seriesCats = <SeriesCategory>[];
+      final seriesCatMap = <String, int>{};
+      var seriesCatId = 1;
+      for (final cat in seriesCatsRaw) {
+        final name = '${cat['title'] ?? cat['name'] ?? ''}'.trim();
+        if (name.isEmpty) continue;
+        final idStr = cat['id']?.toString() ?? '';
+        final id = int.tryParse(idStr) ?? seriesCatId++;
+        seriesCats.add(SeriesCategory(id: id, name: name));
+        if (idStr.isNotEmpty) seriesCatMap[idStr] = id;
+      }
+      if (seriesCats.isEmpty) {
+        seriesCats.add(const SeriesCategory(id: 1, name: 'Series'));
+      }
+
+      final List<Channel> channels = [];
+      var channelAutoId = 1;
+      for (final ch in liveChannelsRaw) {
+        final name = '${ch['name'] ?? ''}'.trim();
+        final cmd = '${ch['cmd'] ?? ''}'.trim();
+        if (name.isEmpty && cmd.isEmpty) continue;
+        final logo = '${ch['logo'] ?? ch['logo_url'] ?? ''}'.trim();
+        final idStr = ch['id']?.toString() ?? ch['ch_id']?.toString() ?? '';
+        final id = int.tryParse(idStr) ?? channelAutoId++;
+        final catIdStr = ch['category_id']?.toString() ??
+            ch['tv_genre_id']?.toString() ??
+            '';
+        final catId = channelCatMap[catIdStr] ?? channelCats.first.id;
+
+        channels.add(Channel(
+          id: id,
+          name: name.isEmpty ? 'Channel $id' : name,
+          streamUrl: cmd,
+          categoryId: catId,
+          logoUrl: logo.isEmpty ? null : logo,
+          sortOrder: channels.length,
+        ));
+      }
+
+      final List<VodItem> vod = [];
+      var vodAutoId = 1;
+      for (final v in vodStreamsRaw) {
+        final name = '${v['name'] ?? ''}'.trim();
+        final cmd = '${v['cmd'] ?? ''}'.trim();
+        if (name.isEmpty && cmd.isEmpty) continue;
+        final poster =
+            '${v['screenshot_uri'] ?? v['logo'] ?? v['cover'] ?? ''}'.trim();
+        final idStr = v['id']?.toString() ?? '';
+        final id = int.tryParse(idStr) ?? vodAutoId++;
+        final catIdStr = v['category_id']?.toString() ??
+            v['genre_id']?.toString() ??
+            '';
+        final catId = vodCatMap[catIdStr] ?? vodCats.first.id;
+        final plot = '${v['plot'] ?? v['description'] ?? ''}'.trim();
+
+        vod.add(VodItem(
+          id: id,
+          name: name.isEmpty ? 'VOD $id' : name,
+          streamUrl: cmd,
+          categoryId: catId,
+          posterUrl: poster.isEmpty ? null : poster,
+          containerExtension: 'mp4',
+          plot: plot.isEmpty ? null : plot,
+        ));
+      }
+
+      final List<SeriesItem> series = [];
+      var seriesAutoId = 1;
+      for (final s in seriesStreamsRaw) {
+        final name = '${s['name'] ?? ''}'.trim();
+        final cmd = '${s['cmd'] ?? ''}'.trim();
+        if (name.isEmpty && cmd.isEmpty) continue;
+        final poster =
+            '${s['screenshot_uri'] ?? s['logo'] ?? s['cover'] ?? ''}'.trim();
+        final idStr = s['id']?.toString() ?? '';
+        final id = int.tryParse(idStr) ?? seriesAutoId++;
+        final catIdStr = s['category_id']?.toString() ??
+            s['genre_id']?.toString() ??
+            '';
+        final catId = seriesCatMap[catIdStr] ?? seriesCats.first.id;
+        final plot = '${s['plot'] ?? s['description'] ?? ''}'.trim();
+
+        series.add(SeriesItem(
+          id: id,
+          name: name.isEmpty ? 'Series $id' : name,
+          streamUrl: cmd,
+          categoryId: catId,
+          posterUrl: poster.isEmpty ? null : poster,
+          plot: plot.isEmpty ? null : plot,
+        ));
+      }
+
+      debugPrint(
+        'mina_iptv: Stalker catalog live=${channels.length} '
+        'vod=${vod.length} series=${series.length} '
+        'load=${api.resolvedLoadUrl}',
+      );
+
+      final recentVodIds = selectRecentVodIdsByAddedOrId([
+        for (final v in vod)
+          <String, int>{
+            'id': v.id,
+            'added': 0,
+          },
+      ]);
+
+      final recentSeriesIds = selectRecentVodIdsByAddedOrId([
+        for (final s in series)
+          <String, int>{
+            'id': s.id,
+            'added': 0,
+          },
+      ]);
+
+      return M3uResult(
+        channels: channels,
+        channelCategories: channelCats,
+        vod: vod,
+        vodCategories: vodCats,
+        series: series,
+        seriesCategories: seriesCats,
+        recentVodIds: recentVodIds,
+        recentSeriesIds: recentSeriesIds,
+      );
+    } on AppException {
+      rethrow;
+    } catch (e) {
+      throw NetworkException('Failed to load Stalker data', e);
+    }
+  }
+
+  @override
   Future<M3uResult> loadFromXtream({
     required String baseUrl,
     required String username,
@@ -709,26 +871,20 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
       ]);
       final vodStreams = vodSeries[0] as List<VodItem>;
       final seriesStreams = vodSeries[1] as List<SeriesItem>;
-      final recentVodIds = await compute(
-        selectRecentVodIdsByAddedOrId,
-        [
-          for (final v in vodStreams)
-            <String, int>{
-              'id': v.id,
-              'added': v.addedUnix ?? 0,
-            },
-        ],
-      );
-      final recentSeriesIds = await compute(
-        selectRecentVodIdsByAddedOrId,
-        [
-          for (final s in seriesStreams)
-            <String, int>{
-              'id': s.id,
-              'added': s.addedUnix ?? 0,
-            },
-        ],
-      );
+      final recentVodIds = selectRecentVodIdsByAddedOrId([
+        for (final v in vodStreams)
+          <String, int>{
+            'id': v.id,
+            'added': v.addedUnix ?? 0,
+          },
+      ]);
+      final recentSeriesIds = selectRecentVodIdsByAddedOrId([
+        for (final s in seriesStreams)
+          <String, int>{
+            'id': s.id,
+            'added': s.addedUnix ?? 0,
+          },
+      ]);
 
       final userInfo = _parseUserInfo(userInfoMap);
 
@@ -852,6 +1008,34 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
     required String username,
     required String password,
   }) async {
+    final b = baseUrl.trim();
+    final u = username.trim();
+    final p = password.trim();
+    if (b.isEmpty || u.isEmpty || p.isEmpty) return null;
+
+    final bases = <String>[b];
+    final swapped = _swapHttpScheme(b);
+    if (swapped != null && swapped != b) bases.add(swapped);
+
+    XtreamAccountSnapshot? last;
+    for (final base in bases) {
+      final snap = await _accountSnapshotAtBase(
+        baseUrl: base,
+        username: u,
+        password: p,
+      );
+      if (snap == null) continue;
+      last = snap;
+      if (snap.user != null || snap.server != null) return snap;
+    }
+    return last;
+  }
+
+  Future<XtreamAccountSnapshot?> _accountSnapshotAtBase({
+    required String baseUrl,
+    required String username,
+    required String password,
+  }) async {
     final api =
         XtreamApi(baseUrl: baseUrl, username: username, password: password);
     try {
@@ -859,7 +1043,8 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
       if (root.isEmpty) return null;
       final ui = root['user_info'];
       final si = root['server_info'];
-      final userMap = ui is Map ? Map<String, dynamic>.from(ui) : <String, dynamic>{};
+      final userMap =
+          ui is Map ? Map<String, dynamic>.from(ui) : <String, dynamic>{};
       final serverMap =
           si is Map ? Map<String, dynamic>.from(si) : <String, dynamic>{};
       return XtreamAccountSnapshot(
@@ -969,11 +1154,26 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
           username: source.username,
           password: source.password,
         ),
+      StalkerSource() => loadFromStalker(
+          baseUrl: source.baseUrl,
+          macAddress: source.macAddress,
+          magPreset: source.magPreset,
+          linkType: source.linkType,
+          hwVersionOverride: source.hwVersionOverride,
+        ),
     };
   }
 
   @override
-  Future<PlaylistSource?> readSource() => readSourceAt(1);
+  Future<PlaylistSource?> readSource() async {
+    final prefs = await SharedPreferences.getInstance();
+    final active = prefs.getInt('mina_active_playlist_slot') ?? 1;
+    final activeSource = await readSourceAt(active);
+    if (activeSource != null) return activeSource;
+    final all = await readAllSources();
+    if (all.isNotEmpty) return all.first.source;
+    return null;
+  }
 
   @override
   Future<PlaylistSource?> readSourceAt(int slot) async {
@@ -1005,6 +1205,26 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
           baseUrl: baseUrl,
           username: username,
           password: password,
+        );
+      }
+      if (type == 'stalker') {
+        final baseUrl = await _storage.read(key: keys.xtBase);
+        final macAddress = await _storage.read(key: keys.xtUser);
+        if (baseUrl == null ||
+            macAddress == null ||
+            baseUrl.trim().isEmpty ||
+            macAddress.trim().isEmpty) {
+          return null;
+        }
+        final compat = StalkerCompatOptions.decodeFromStorage(
+          await _storage.read(key: keys.xtPass),
+        );
+        return StalkerSource(
+          baseUrl: baseUrl,
+          macAddress: macAddress,
+          magPreset: compat.magPreset,
+          linkType: compat.linkType,
+          hwVersionOverride: compat.hwVersionOverride,
         );
       }
       return null;
@@ -1117,6 +1337,24 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
         password: password,
       );
     }
+    if (type == 'stalker') {
+      final baseUrl = all[keys.xtBase];
+      final macAddress = all[keys.xtUser];
+      if (baseUrl == null ||
+          macAddress == null ||
+          baseUrl.trim().isEmpty ||
+          macAddress.trim().isEmpty) {
+        return null;
+      }
+      final compat = StalkerCompatOptions.decodeFromStorage(all[keys.xtPass]);
+      return StalkerSource(
+        baseUrl: baseUrl,
+        macAddress: macAddress,
+        magPreset: compat.magPreset,
+        linkType: compat.linkType,
+        hwVersionOverride: compat.hwVersionOverride,
+      );
+    }
     return null;
   }
 
@@ -1146,6 +1384,18 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
         }
       case XtreamSource(:final baseUrl, :final username, :final password):
         buf.write('X|${baseUrl.trim()}|${username.trim()}|$password');
+      case StalkerSource(
+          :final baseUrl,
+          :final macAddress,
+          :final magPreset,
+          :final linkType,
+          :final hwVersionOverride
+        ):
+        buf.write(
+          'S|${baseUrl.trim()}|${macAddress.trim()}|'
+          '${magPreset.storageId}|${linkType.storageId}|'
+          '${hwVersionOverride.trim()}',
+        );
     }
   }
 
@@ -1219,11 +1469,14 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
           result.vod.isNotEmpty ||
           result.series.isNotEmpty;
       if (!dbReady && hasLists) {
-        try {
-          await PlaylistSqliteStore.replaceFromResult(key, result);
-          dbReady = await PlaylistSqliteStore.hasData(key);
-        } catch (e) {
-          debugPrint('mina_iptv: persist slot $slot SQLite backfill: $e');
+        if (Get.isRegistered<PlaylistSqliteBackfillService>()) {
+          unawaited(
+            Get.find<PlaylistSqliteBackfillService>().scheduleReplaceFromResult(
+              dbKey: key,
+              full: result,
+              forSlot: slot,
+            ),
+          );
         }
       }
       final toWrite =
@@ -1260,23 +1513,16 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
           snap.vod.isNotEmpty ||
           snap.series.isNotEmpty;
       if (!dbReady && hasLists) {
-        try {
-          await PlaylistSqliteStore.replaceFromResult(key, snap);
-          dbReady = await PlaylistSqliteStore.hasData(key);
-        } catch (e) {
-          debugPrint('mina_iptv: restore slot $slot SQLite backfill: $e');
+        if (Get.isRegistered<PlaylistSqliteBackfillService>()) {
+          unawaited(
+            Get.find<PlaylistSqliteBackfillService>().scheduleReplaceFromResult(
+              dbKey: key,
+              full: snap,
+              forSlot: slot,
+            ),
+          );
         }
-        if (!dbReady) {
-          await Future<void>.delayed(const Duration(milliseconds: 150));
-          try {
-            await PlaylistSqliteStore.replaceFromResult(key, snap);
-            dbReady = await PlaylistSqliteStore.hasData(key);
-          } catch (e) {
-            debugPrint(
-              'mina_iptv: restore slot $slot SQLite backfill retry: $e',
-            );
-          }
-        }
+        return snap;
       }
       if (dbReady) {
         if (hasLists) {
@@ -1369,6 +1615,19 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
           await _storage.write(key: keys.xtUser, value: source.username.trim());
           await _storage.write(key: keys.xtPass, value: source.password);
           await _storage.delete(key: keys.url);
+        case StalkerSource():
+          await _deleteLocalM3uFileAt(slot);
+          await _storage.write(key: keys.type, value: 'stalker');
+          await _storage.write(key: keys.xtBase, value: source.baseUrl.trim());
+          await _storage.write(key: keys.xtUser, value: source.macAddress.trim());
+          final compatJson =
+              StalkerCompatOptions.encodeForStorage(source.compat);
+          if (compatJson.isEmpty) {
+            await _storage.delete(key: keys.xtPass);
+          } else {
+            await _storage.write(key: keys.xtPass, value: compatJson);
+          }
+          await _storage.delete(key: keys.url);
       }
     } catch (e) {
       throw StorageException('Could not save source slot $slot', e);
@@ -1424,6 +1683,110 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
       // Birleşik snapshot artık geçersiz — yeniden hesaplansın.
       await PlaylistSnapshotStore.delete();
     }
+    return remap;
+  }
+
+  @override
+  Future<Map<int, int>> reorderSlots(List<int> orderedOldSlots) async {
+    final infos = await readAllSlotInfos();
+    if (infos.length < 2) return const <int, int>{};
+    if (orderedOldSlots.length != infos.length) {
+      throw ArgumentError(
+        'reorderSlots: expected ${infos.length} slots, got ${orderedOldSlots.length}',
+      );
+    }
+
+    final bySlot = <int, ({int slot, PlaylistSource source, bool disabled, String? name})>{
+      for (final e in infos) e.slot: e,
+    };
+    for (final s in orderedOldSlots) {
+      if (!bySlot.containsKey(s)) {
+        throw ArgumentError('reorderSlots: unknown slot $s');
+      }
+    }
+
+    var unchanged = true;
+    for (var i = 0; i < orderedOldSlots.length; i++) {
+      if (orderedOldSlots[i] != i + 1) {
+        unchanged = false;
+        break;
+      }
+    }
+    if (unchanged) return const <int, int>{};
+
+    // Belleğe al → geçici slotlara yaz → asılları temizle → 1..N'e taşı.
+    // Clear-all-first yok: ortada crash olsa eski listeler veya temp kopyalar kalır.
+    final staged = <({
+      PlaylistSource source,
+      bool disabled,
+      String? name,
+      String? localM3uBody,
+    })>[];
+    for (final oldSlot in orderedOldSlots) {
+      final info = bySlot[oldSlot]!;
+      String? localBody;
+      final src = info.source;
+      if (src is M3uSource && isAnyM3uLocalSentinel(src.url)) {
+        final f = await _localM3uFileAt(oldSlot);
+        if (await f.exists()) {
+          localBody = await f.readAsString();
+        }
+      }
+      staged.add((
+        source: src,
+        disabled: info.disabled,
+        name: info.name,
+        localM3uBody: localBody,
+      ));
+    }
+
+    final maxExisting =
+        infos.map((e) => e.slot).fold<int>(0, (a, b) => a > b ? a : b);
+    final tempBase = maxExisting + 100;
+
+    for (var i = 0; i < staged.length; i++) {
+      final tempSlot = tempBase + i;
+      final item = staged[i];
+      if (item.localM3uBody != null) {
+        final f = await _localM3uFileAt(tempSlot);
+        await f.parent.create(recursive: true);
+        await f.writeAsString(item.localM3uBody!, flush: true);
+        await persistSourceAt(
+          tempSlot,
+          M3uSource(url: localM3uSentinelForSlot(tempSlot)),
+        );
+      } else {
+        await persistSourceAt(tempSlot, item.source);
+      }
+      await writeSlotName(tempSlot, item.name);
+      await setSlotDisabled(tempSlot, item.disabled);
+    }
+
+    for (final info in infos) {
+      await clearSourceAt(info.slot);
+    }
+
+    final remap = <int, int>{};
+    for (var i = 0; i < staged.length; i++) {
+      final to = i + 1;
+      final from = orderedOldSlots[i];
+      if (from != to) remap[from] = to;
+      final tempSlot = tempBase + i;
+      final item = staged[i];
+      if (item.localM3uBody != null) {
+        final f = await _localM3uFileAt(to);
+        await f.parent.create(recursive: true);
+        await f.writeAsString(item.localM3uBody!, flush: true);
+        await persistSourceAt(to, M3uSource(url: localM3uSentinelForSlot(to)));
+      } else {
+        await persistSourceAt(to, item.source);
+      }
+      await writeSlotName(to, item.name);
+      await setSlotDisabled(to, item.disabled);
+      await clearSourceAt(tempSlot);
+    }
+
+    await PlaylistSnapshotStore.delete();
     return remap;
   }
 

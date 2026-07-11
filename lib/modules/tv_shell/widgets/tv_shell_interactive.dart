@@ -86,7 +86,8 @@ class TvShellInteractive extends StatelessWidget {
     this.highlightColor,
     this.minHeight,
     this.showFocusRing = false,
-    this.tiviMateFill = true,
+    this.tvFocusFill = true,
+    this.treatBackAsRemoteLeft = false,
   });
 
   final VoidCallback? onPressed;
@@ -116,7 +117,10 @@ class TvShellInteractive extends StatelessWidget {
   final bool showFocusRing;
 
   /// `false` → poster/medya: parlama + ölçek, dolgu yok.
-  final bool tiviMateFill;
+  final bool tvFocusFill;
+
+  /// true ise geri tuşu [onRemoteLeft] ile aynı davranır (kanal → kategori).
+  final bool treatBackAsRemoteLeft;
 
   @override
   Widget build(BuildContext context) {
@@ -168,8 +172,8 @@ class TvShellInteractive extends StatelessWidget {
       onActivate: onPressed,
       borderRadius: borderRadius,
       scaleOnFocus: effectiveScale,
-      tiviMateStyle: true,
-      tiviMateFill: tiviMateFill,
+      tvFocusStyle: true,
+      tvFocusFill: tvFocusFill,
       ensureVisibleOnFocus: ensureVisibleOnFocus,
       showFocusRing: showFocusRing,
       arrowUp: onRemoteUp == null ? dpadUp : null,
@@ -185,6 +189,13 @@ class TvShellInteractive extends StatelessWidget {
           return KeyEventResult.ignored;
         }
         final k = event.logicalKey;
+        if (treatBackAsRemoteLeft &&
+            onRemoteLeft != null &&
+            event is! KeyRepeatEvent &&
+            tvKeyIsBack(k)) {
+          onRemoteLeft!();
+          return KeyEventResult.handled;
+        }
         if (k == LogicalKeyboardKey.arrowRight && onRemoteRight != null) {
           onRemoteRight!();
           return KeyEventResult.handled;
@@ -222,7 +233,7 @@ class TvShellPosterStripFocusCard extends StatelessWidget {
     this.blockDpadRight = false,
     this.autofocus = false,
     this.scaleOnFocus,
-    this.tiviMateFill = false,
+    this.tvFocusFill = false,
     @Deprecated('Çerçeve kaldırıldı; yok sayılır')
     this.focusGlow = false,
   });
@@ -237,7 +248,7 @@ class TvShellPosterStripFocusCard extends StatelessWidget {
   final bool blockDpadRight;
   final bool autofocus;
   final double? scaleOnFocus;
-  final bool tiviMateFill;
+  final bool tvFocusFill;
   final bool focusGlow;
 
   @override
@@ -254,7 +265,7 @@ class TvShellPosterStripFocusCard extends StatelessWidget {
       scaleOnFocus: scale,
       borderRadius: borderRadius,
       showFocusRing: false,
-      tiviMateFill: tiviMateFill,
+      tvFocusFill: tvFocusFill,
       ensureVisibleOnFocus: false,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(3, 4, 3, 8),

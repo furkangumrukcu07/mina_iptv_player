@@ -76,10 +76,15 @@ class TvShellController extends GetxController {
   final vodSearchToolbarFocusNode = FocusNode(debugLabel: 'tvShellVodSearch');
   final playlistsPanelFocusNode = FocusNode(debugLabel: 'tvShellPlaylists');
   final continueWatchingPanelFocusNode = FocusNode(debugLabel: 'tvShellContinueWatching');
+
+  int _liveCategoriesMemoRev = -1;
+  List<({int? id, String name, int count, IconData? icon})>? _liveCategoriesMemo;
   void Function()? _playlistsRowFocusHandler;
   void Function()? _continueWatchingFocusHandler;
   void Function()? _settingsFirstTileFocusHandler;
   void Function()? _settingsLeaveHandler;
+  void Function(int index)? _settingsReturnFocusHandler;
+  int? _settingsPendingReturnFocusIndex;
   void Function()? _vodDetailPlayFocusHandler;
   void Function()? _vodPosterStripFocusHandler;
   void Function(int index)? _vodBrowsePosterFocusHandler;
@@ -130,6 +135,7 @@ class TvShellController extends GetxController {
   final seriesXtreamMeta = Rxn<XtreamSeriesBrowseDetail>();
   Timer? _vodOmdbDebounce;
   int _vodLoadGen = 0;
+  int _lastBackCoalesceMs = 0;
   int _lastBackHandledMs = 0;
   int _liveBrowseChannelFocusSeq = 0;
 
@@ -190,8 +196,7 @@ class TvShellController extends GetxController {
         unawaited(ensureCategoryCountsFresh());
       }
     });
-    if (_app.layoutMode.value == AppLayoutMode.tv &&
-        _app.tvHomeLayoutMode.value == TvHomeLayoutMode.shell) {
+    if (_app.usesTvShellHome) {
       _scheduleTvLiveBoot();
     } else {
       railExpanded.value = true;
@@ -205,8 +210,8 @@ class TvShellController extends GetxController {
   }
 
   void _onTvHomeLayoutModeChanged(TvHomeLayoutMode mode) {
-    if (_app.layoutMode.value != AppLayoutMode.tv) return;
-    if (mode == TvHomeLayoutMode.shell) {
+    if (!_app.usesTvShellHome && mode != TvHomeLayoutMode.shell) return;
+    if (mode == TvHomeLayoutMode.shell || _app.androidTvShellLayoutLocked.value) {
       _activateTvShellHome();
     } else {
       _deactivateTvShellHome();
@@ -241,6 +246,7 @@ class TvShellController extends GetxController {
 
     void tryBoot() {
       if (_cache.result.value == null) return;
+      if (channels.suppressTvShellPlaylistBoot) return;
       unawaited(channels.bootTvShellLivePreview());
     }
 
@@ -439,14 +445,23 @@ class TvShellController extends GetxController {
     if (active.activeSlot.value == slot && _cache.result.value != null) {
       return;
     }
-    final ok = await active.selectSlot(slot);
-    if (!ok) return;
-    _clearVodState();
-    phase.value = TvShellPhase.categories;
-    channels.clearStreamPreview();
-    channels.tvShellLiveActive.value = false;
-    channels.tvShellLiveBrowseActive.value = false;
-    vodItemsRevision.value++;
+    channels.suppressTvShellPlaylistBoot = true;
+    try {
+      final ok = await active.selectSlot(slot);
+      if (!ok) return;
+      _categoryCountsScopeKey = null;
+      _clearVodState();
+      phase.value = TvShellPhase.categories;
+      channels.clearStreamPreview();
+      channels.tvShellLiveActive.value = false;
+      channels.tvShellLiveBrowseActive.value = false;
+      await channels.reloadForActivePlaylistSwitch();
+      unawaited(ensureCategoryCountsFresh());
+      vodItemsRevision.value++;
+      categoryCountsRevision.value++;
+    } finally {
+      channels.suppressTvShellPlaylistBoot = false;
+    }
   }
 
   M3uResult? get data => _cache.result.value;
@@ -649,6 +664,33 @@ class TvShellController extends GetxController {
 
   void registerSettingsLeaveHandler(void Function()? handler) {
     _settingsLeaveHandler = handler;
+  }
+
+  void registerSettingsReturnFocusHandler(void Function(int index)? handler) {
+    _settingsReturnFocusHandler = handler;
+  }
+
+  /// Ayarlar alt sayfasına girmeden önce: geri dönüşte bu karoya odaklan.
+  void rememberSettingsReturnFocus(int shellDpadIndex) {
+    _settingsPendingReturnFocusIndex = shellDpadIndex;
+  }
+
+  void restoreSettingsReturnFocus() {
+    final idx = _settingsPendingReturnFocusIndex;
+    _settingsPendingReturnFocusIndex = null;
+    if (idx == null) return;
+    _retrySettingsTileFocus(idx, 0);
+  }
+
+  void _retrySettingsTileFocus(int index, int attempt) {
+    if (attempt > 32) return;
+    if (_settingsReturnFocusHandler != null) {
+      _settingsReturnFocusHandler!(index);
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _retrySettingsTileFocus(index, attempt + 1);
+    });
   }
 
   void focusSettingsFirstTile([BuildContext? context]) {
@@ -1277,13 +1319,14 @@ class TvShellController extends GetxController {
     channels.tvShellLiveActive.value = true;
     phase.value = TvShellPhase.liveContent;
     final remote = _usesRemoteNav(context);
+    final resume = channels.selectedCategoryId.value == categoryId &&
+        channels.selectedChannel.value != null;
     channels.selectCategory(
       categoryId,
       moveFocusToChannels: remote,
+      resumeChannelSelection: resume,
     );
-    if (remote) {
-      focusLiveChannelRow(0, context: context);
-    } else {
+    if (!remote) {
       _requestLiveFocusIfRemote(context);
     }
   }
@@ -1340,8 +1383,39 @@ class TvShellController extends GetxController {
     focusLiveCategoryFromChannels(channels.selectedCategoryId.value);
   }
 
+  /// TV ana ekranında geri: Android TV'de doğrudan çık, diğerlerinde onay diyaloğu.
+  void _requestTvShellExit() {
+    if (_app.androidTvShellLayoutLocked.value) {
+      ExitConfirmDialog.exitAppImmediately();
+    } else {
+      ExitConfirmDialog.showIfNeeded();
+    }
+  }
+
   void onBack() {
     final now = DateTime.now().millisecondsSinceEpoch;
+    // Aynı fiziksel Geri: PopScope + Shortcuts çift tetiklemesini birleştir.
+    if (now - _lastBackCoalesceMs < 100) return;
+    _lastBackCoalesceMs = now;
+
+    // Açık popup / alt sayfa: önce onu kapat; TV kabuğu gezinmesine düşme.
+    if (Get.isDialogOpen == true) {
+      Get.back<void>();
+      return;
+    }
+    final nav = Get.key.currentState;
+    if (nav != null && nav.canPop()) {
+      nav.pop();
+      return;
+    }
+
+    // Ana ekran / rail: doğrudan çıkış (onay veya Android TV'de anında kapat).
+    if (phase.value == TvShellPhase.liveContent ||
+        phase.value == TvShellPhase.rail) {
+      _requestTvShellExit();
+      return;
+    }
+
     if (now - _lastBackHandledMs < 450) return;
     _lastBackHandledMs = now;
 
@@ -1364,7 +1438,7 @@ class TvShellController extends GetxController {
         }
         return;
       case TvShellPhase.liveContent:
-        onLeftFromLiveContent();
+        // Üstte debounce'suz ele alınır.
         return;
       case TvShellPhase.categories:
         if (selectedSection.value == TvShellSection.live &&
@@ -1402,13 +1476,11 @@ class TvShellController extends GetxController {
           final node = railFocusNodes[selectedSection.value];
           if (node != null) scheduleTvFocusRestore(node);
         } else {
-          phase.value = TvShellPhase.rail;
-          final node = railFocusNodes[selectedSection.value];
-          if (node != null) scheduleTvFocusRestore(node);
+          _requestTvShellExit();
         }
         return;
       case TvShellPhase.rail:
-        Get.dialog<void>(const ExitConfirmDialog());
+        // [onBack] başında debounce'suz ele alınır.
         return;
     }
   }
@@ -1549,6 +1621,15 @@ class TvShellController extends GetxController {
     return switch (section) {
       TvShellSection.live => () {
           final ch = channels;
+          final memoRev = Object.hash(
+            ch.playlistRevision.value,
+            _cache.layoutRevision.value,
+            _app.xtreamHideRevision.value,
+            ch.selectedCategoryId.value,
+          );
+          if (_liveCategoriesMemoRev == memoRev && _liveCategoriesMemo != null) {
+            return _liveCategoriesMemo!;
+          }
           final counts = ch.categoryCountSnapshot();
           final rows = <({int? id, String name, int count, IconData? icon})>[
             (
@@ -1579,6 +1660,8 @@ class TvShellController extends GetxController {
               icon: null,
             ));
           }
+          _liveCategoriesMemoRev = memoRev;
+          _liveCategoriesMemo = rows;
           return rows;
         }(),
       TvShellSection.movies => _vodCategories(d, films: true),

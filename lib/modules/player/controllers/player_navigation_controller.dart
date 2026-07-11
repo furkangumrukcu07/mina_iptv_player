@@ -1,6 +1,6 @@
 part of '../player_controller.dart';
 
-extension PlayerNavigationExtension on PlayerController {
+extension PlayerNavigationController on PlayerController {
 void _cancelZapRelativeDebounce() {
     _zapRelativeDebounceTimer?.cancel();
     _zapRelativeDebounceTimer = null;
@@ -232,6 +232,7 @@ Future<void> _zapToBrowseTapeSeries(SeriesItem nextSer) async {
 Future<void> zapTo(Channel newChannel) async {
     if (_isSameChannelRow(newChannel, channel.value)) return;
 
+    clearShowcasePipRestoreEngine();
     cancelVodAutoplayCountdown();
     _stopVodEndAutoplayMonitor();
     _resetVodAutoplayLatchState();
@@ -249,13 +250,18 @@ Future<void> zapTo(Channel newChannel) async {
     _cancelLiveStallWatchdog();
     _cancelLiveTvStartupWatchdog();
     _cancelLiveAutoNextWatchdog();
+    _revertLiveAutoBuffer('zap');
     _liveTvStallRecoveryAttempts = 0;
     _betterPlayerLightRetryWave = 0;
     _resetOrphanBetterSurfaceRecoveryForZap();
+    _liveUhdBufferActive = false;
+    _liveUhdBufferPromotionInFlight = false;
+    _cancelLiveChannelPreload();
 
     final newLive = IptvPlaybackDefaults.isLikelyLiveStream(
       _normalizePlaybackStreamUrl(newChannel.streamUrl),
     );
+    _preferFastLiveStartBuffer = newLive;
     // Canlı zap'ta orta logo + yanıp sönen Mina ikonu splash'ını gizle; bunun
     // yerine yayın başlamadan önce gerçek OSD'nin aynısı olan "sahte OSD" paneli
     // (kanal satırı/logosu) görünür kalır. Bu davranış TV modunda VE mobil/tablet
@@ -337,42 +343,27 @@ Future<void> zapTo(Channel newChannel) async {
         return;
       }
 
+      // Başarı önbelleğini motor seçiminden ÖNCE uygula (mediakit/software/ts).
+      final cachedFormat =
+          await _settings.getStreamSuccessFormat(newChannel.id);
+
       // TV’de de aynı Better örneği + setupDataSource: OSD ağacı kopmaz, hızlı zap’ta
       // yalnız kanal metni/logosu güncellenir (ayrı TvLiveBusyOsd şeridine düşülmez).
-      final reuseBetter = _shouldReuseBetterOnChannelChange(newChannel);
-      if (!_isPlaybackGenerationCurrent(bootGen)) {
-        return;
-      }
-
-      var disposedBetter = false;
-      try {
-        if (!reuseBetter) {
-          final old = better;
-          _setBetterPlayer(null);
-          if (old != null) {
-            disposedBetter = true;
-            old.videoPlayerController?.removeListener(_onVideoPlayerChanged);
-            await old.pause();
-            old.dispose(forceDispose: true);
-          }
-        }
-      } catch (_) {}
-
-      if (disposedBetter) {
-        _syncPlaybackWakelock(force: true);
-        await Future.delayed(const Duration(milliseconds: 100));
-      }
-
-      if (!_isPlaybackGenerationCurrent(bootGen)) {
-        return;
-      }
-
       betterOsdOverride.value = false;
       mediaKitFallbackSession.value = false;
       decoderFallbackStep.value = 0;
       _forceSoftwareVideoDecoder = false;
       _lastBootUsedSoftwareVideoDecoder = false;
       _mediaKitFallbackForceSoftwareDecode = false;
+      _mediaKitBlackScreenRecoveryUsed = false;
+      _preferExoSoftwareForFastZap = false;
+    _liveUhdBufferActive = false;
+    _liveUhdBufferPromotionInFlight = false;
+    _livePreloadTimer?.cancel();
+    _livePreloadTimer = null;
+    _livePreloadScheduledUrl = null;
+    _livePlaybackEstablished = false;
+    _cachedTsFormatForBoot = false;
       _mediaKitLiveBufferEscalationStep = 0;
       _exoSoftwareDecoderRetryPending = false;
       _xtreamTriedLiveUrlFormat = false;
@@ -381,12 +372,46 @@ Future<void> zapTo(Channel newChannel) async {
       _xtreamTriedGetPhpToVodPathFallback = false;
       _xtreamTriedVodMkvToTsSwap = false;
       _vodAutoTriedBetterAfterMpvFail = false;
+      _mediaKitLiveTriedHlsAfterTs = false;
+      _cancelMediaKitLiveTsHlsWatchdog();
       _autoEngineSwitchUsed = false;
       _decoderTriedTsToM3u8Swap = false;
+      _liveTsSeekFailureHandled = false;
+      _liveHttpForbiddenRetryCount = 0;
       _lastPlaybackUrl = null;
       _playUrlOverride = null;
       _lastOsdQualitySignature = -1;
       osdQualityStamp.value++;
+      _applyStreamSuccessCacheForBoot(cachedFormat, channelId: newChannel.id);
+
+      if (newLive) {
+        await AndroidPlaybackSocHints.ensureLoaded();
+      }
+      // Canlı Better: her zaman aynı controller + setupDataSource (tek texture).
+      // Hızlı zap’ta dispose/yazılım decoder zorlaması mapSize şişiriyordu.
+      final reuseBetter = !effectiveUseMediaKit &&
+          _shouldReuseBetterOnChannelChange(newChannel);
+      if (!_isPlaybackGenerationCurrent(bootGen)) {
+        return;
+      }
+
+      var disposedBetter = false;
+      try {
+        if (!reuseBetter && better != null) {
+          disposedBetter = await _hardDisposeBetterPlayerBeforeCreate(
+            reason: 'zap',
+          );
+        }
+      } catch (_) {}
+
+      if (disposedBetter) {
+        _syncPlaybackWakelock(force: true);
+      }
+
+      if (!_isPlaybackGenerationCurrent(bootGen)) {
+        return;
+      }
+
       await _boot(
         reuseSameBetterPlayer: reuseBetter,
         playbackGeneration: bootGen,
@@ -489,38 +514,54 @@ Future<void> _handleBackAsync() async {
       Get.find<ChannelsController>().restoreChannelListFocusAfterPlayerPop();
     }
 
-    await _prepareLeavePlayerRoute();
+    final showcasePipHandoff = await _prepareLeavePlayerRoute();
 
-    final nav = Get.key.currentState;
-    if (nav != null && nav.canPop()) {
-      nav.pop();
+    if (showcasePipHandoff) {
+      // fadeIn geçişi yarım kalırsa ana ekranda gri perde + dokunma kaybı olur.
+      Get.until((route) {
+        final name = route.settings.name;
+        return route.isFirst ||
+            name == AppRoutes.home ||
+            name == AppRoutes.splash;
+      });
     } else {
-      Get.back<void>();
+      final nav = Get.key.currentState;
+      if (nav != null && nav.canPop()) {
+        nav.pop();
+      } else {
+        Get.back<void>();
+      }
+    }
+
+    if (showcasePipHandoff && Get.isRegistered<ShowcaseInAppPipService>()) {
+      final pip = Get.find<ShowcaseInAppPipService>();
+      unawaited(pip.recoverHomeInteractionAfterPipHandoff());
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        unawaited(pip.recoverHomeInteractionAfterPipHandoff());
+        unawaited(pip.refreshSurfaceAfterPlayerRoutePop());
+      });
     }
   }
 
 /// Yatay tam ekrandan çıkış: Better dahili tam ekran route'u, yön kilidi ve
   /// immersive modu sıfırla; ardından [Navigator.pop] güvenle çalışsın.
-  Future<void> _prepareLeavePlayerRoute() async {
-    // PiP / vitrin mini oynatıcı: yön kilidi ve tam ekran sökülmeden ÖNCE
-    // dene; aksi halde Better/mpv pause olup handoff başarısız kalır.
-    if (_eligibleForMiniPlayerPip()) {
-      try {
-        final bp = better;
-        if (bp != null && bp.isFullScreen) {
-          bp.exitFullScreen();
-        }
-      } catch (_) {}
-      return;
-    }
+  /// Handoff yapıldıysa `true` döner (motorlar serviste kalır).
+  Future<bool> _prepareLeavePlayerRoute() async {
+    // Tam ekran route'u handoff'tan ÖNCE kapat; aksi halde root navigator'da
+    // gri/siyah perde kalır ve ana ekran dokunmaya kapalı olur.
+    try {
+      final bp = better;
+      if (bp != null && bp.isFullScreen) {
+        bp.exitFullScreen();
+        await WidgetsBinding.instance.endOfFrame;
+        await WidgetsBinding.instance.endOfFrame;
+      }
+    } catch (_) {}
+
+    // Vitrin uygulama içi PiP: sistem mini-PiP'ten önce; aksi halde handoff
+    // atlanıp ExoPlayer route çıkışında dispose ediliyordu.
     if (await _tryHandoffToShowcaseInAppPip()) {
-      try {
-        final bp = better;
-        if (bp != null && bp.isFullScreen) {
-          bp.exitFullScreen();
-        }
-      } catch (_) {}
-      return;
+      return true;
     }
 
     try {
@@ -539,5 +580,6 @@ Future<void> _handleBackAsync() async {
     }
 
     await _haltPlaybackForRouteExit();
+    return false;
   }
 }

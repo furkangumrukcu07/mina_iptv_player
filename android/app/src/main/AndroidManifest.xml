@@ -36,6 +36,16 @@
     <!-- IPTV streams often use http://; without this, ExoPlayer fails on Android 9+. -->
     <!-- Telefon: @mipmap/ic_launcher (adaptif; roundIcon yok — TV / uyarlanabilir simge kılavuzu).
          Banner: @mipmap/tv_banner (yoğunluk merdiveni) + drawable-* tv_banner Play xhdpi kontrolü için. -->
+
+    <!-- AppOps «attributionTag not declared» spam: Media3/Exo boş veya media tag kullanır.
+         Doğru API <attribution> (manifest çocuğu); application meta-data değil. -->
+    <attribution
+        android:tag="@string/attribution_tag_empty"
+        android:label="@string/attribution_label_media" />
+    <attribution
+        android:tag="@string/attribution_tag_media"
+        android:label="@string/attribution_label_media" />
+
     <application
         android:label="Mina IPTV Player"
         android:name="${applicationName}"

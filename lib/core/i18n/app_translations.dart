@@ -62,11 +62,20 @@ const Map<String, String> _tr = {
   'paywall.button.restoring': 'Sorgulanıyor...',
   'paywall.grandfather.prompt': '28 Haziran 2026 öncesi üye misiniz?',
   'paywall.grandfather.button': 'Google ile Giriş Yapıp Muafiyeti Aktif Et',
+  'paywall.grandfather.syncing': 'Lisans doğrulanıyor…',
   'paywall.user.logged_in': 'Kullanıcı olarak giriş yapıldı: @email',
   'paywall.error.title': 'Ödeme Başarısız',
   'paywall.error.body': 'Google Play Market ile bağlantı kurulamadı veya ödeme iptal edildi.',
   'paywall.restore.title': 'Satın Alım Bulunamadı',
   'paywall.restore.body': 'Google Play hesabınızda aktif bir satın alım bulunamadı.',
+  'paywall.deviceLimit.title': 'Cihaz Limiti Aşıldı',
+  'paywall.deviceLimit.body': 'Bir lisans en fazla @max cihazda kullanılabilir. Devam etmek için kayıtlı cihazlardan birini kaldırın.',
+  'paywall.deviceLimit.count': 'Kayıtlı cihaz: @count / @max',
+  'paywall.deviceLimit.thisDevice': 'Bu cihaz',
+  'paywall.deviceLimit.remove': 'Kaldır',
+  'paywall.deviceLimit.retry': 'Tekrar Dene',
+  'paywall.deviceLimit.removed': 'Cihaz kaldırıldı. Kayıt yenileniyor…',
+  'paywall.deviceLimit.removeFailed': 'Cihaz kaldırılamadı. Lütfen tekrar deneyin.',
   'settings.tile.subscription': 'Abonelik Durumu',
   'settings.tile.subscription.sub': 'Lisans ve deneme süresi detayları',
   'settings.subscription.grandfathered': 'Ömür Boyu Ücretsiz (Eski Üye)',
@@ -76,12 +85,14 @@ const Map<String, String> _tr = {
   'settings.subscription.dialog.title': 'Lisans Bilgileri',
   'settings.subscription.dialog.status': 'Lisans Durumu: ',
   'settings.subscription.dialog.installDate': 'İlk Kurulum Tarihi: ',
-  'settings.subscription.dialog.purchaseDate': 'Lisanslanma Tarihi: ',
+  'settings.subscription.dialog.purchaseDate': 'Lisans Alım Tarihi: ',
   'settings.subscription.dialog.trialEnd': 'Deneme Bitiş Tarihi: ',
   'settings.subscription.dialog.type': 'Paket Türü: ',
   'settings.subscription.dialog.grandfathered': 'Muafiyet Durumu: ',
   'settings.subscription.dialog.grandfathered.yes': 'Evet (Eski Üye Muafiyeti)',
   'settings.subscription.dialog.grandfathered.no': 'Hayır',
+  'settings.subscription.dialog.devices': 'Kayıtlı Cihazlar: ',
+  'settings.subscription.deviceLimit': 'Cihaz limiti doldu (@count/@max)',
   'dialog.exit.title': 'Uygulamadan Çıkılsın Mı ?',
   'dialog.exit.body': 'Uygulamadan çıkılacak?',
   'dialog.exit.seconds': 'saniye',
@@ -264,9 +275,9 @@ const Map<String, String> _tr = {
   'settings.tile.adaptiveHaptics': 'Adaptif titreşim',
   'settings.tile.adaptiveHaptics.subtitle':
       'Mobil modda liste kaydırma ve seçimlerde hafif titreşim',
-  'settings.lowEndMode.title': 'Düşük Donanımlı Cihaz Modu',
+  'settings.lowEndMode.title': 'Düşük donanım',
   'settings.lowEndMode.subOn':
-      'Açık — efektler azaltıldı, performans öncelikli',
+      'Açık — sade grafik, blur/gölge kapalı, bellek öncelikli',
   'settings.lowEndMode.subOff':
       'Kapalı — tam görsel efektler (normal performans)',
   'settings.tvLite.title': 'TV Lite (sade grafik)',
@@ -292,6 +303,11 @@ const Map<String, String> _tr = {
   'setup.launchOnBootSub': 'Cihaz açılınca uygulamayı aç',
   'setup.pipTitle': 'Küçük ekran (PiP)',
   'setup.pipSub': 'Ana ekrandan çıkınca mini oynatıcı',
+  'setup.inAppPipTitle': 'Uygulama İçi PiP',
+  'setup.inAppPipSub':
+      'Yayından ana ekrana dönünce yayın küçük oynatıcıda devam eder',
+  'setup.inAppPipPreviewCaption':
+      'Geri tuşu ile ana ekrana dönünce yayın sağ üstte veya altta (düzene göre) oynar; dokununca tam ekrana açılır.',
   'setup.epgCacheTitle': 'EPG güncelleme',
   'setup.epgCacheSub': 'Program rehberi kaç günde bir yenilensin',
   'setup.epgCacheDays': '@n gün',
@@ -374,13 +390,13 @@ const Map<String, String> _tr = {
   'setup.tvLayoutModeHint':
       'TV ana ekran düzenini seç. TV modu sol menülü yeni kabuğu açar; kart düzeni klasik kartlı ana ekrandır.',
   'setup.performanceHint':
-      'Cihazınızın gücüne göre bir mod seçin. 2 GB RAM ve altı cihazlarda Düşük Donanımlı Cihaz Modu daha akıcı çalışır.',
+      'Cihazınızın gücüne göre bir mod seçin. 2 GB RAM ve altı cihazlarda Düşük donanım daha akıcı çalışır.',
   'setup.perfNormalTitle': 'Normal Performans Modu',
   'setup.perfNormalSub':
-      'Tüm görsel efektler açık (blur, gölge, önizleme). Güçlü cihazlar için önerilir.',
-  'setup.perfLowEndTitle': 'Düşük Donanımlı Cihaz Modu',
+      'Tüm görsel efektler açık (blur, gölge). Güçlü cihazlar için önerilir.',
+  'setup.perfLowEndTitle': 'Düşük donanım',
   'setup.perfLowEndSub':
-      'Blur ve gölgeler kapatılır, görsel kalitesi ve önbellek düşürülür, önizleme kapatılır. 2 GB RAM ve altı için.',
+      'Sade grafik: blur/gölge kapalı, görsel kalitesi ve önbellek düşürülür. 2 GB RAM ve altı için önerilir.',
   'setup.next': 'İlerle',
   'setup.back': 'Geri',
   'setup.finish': 'Kurulumu bitir',
@@ -463,6 +479,22 @@ const Map<String, String> _tr = {
   'cloud.restore.confirmBody':
       'Mevcut yerel ayarlar ve liste kimlik bilgileri buluttaki yedekle değiştirilir. Devam edilsin mi?',
   'cloud.restore.empty': 'Bulutta kayıtlı yedek bulunamadı.',
+  'cloud.restore.progress.title': 'Bulut yedeği yükleniyor',
+  'cloud.restore.progress.titleDone': 'Yedek yüklendi',
+  'cloud.restore.progress.subtitle':
+      'Google hesabınızdaki veriler cihazınıza aktarılıyor',
+  'cloud.restore.progress.autoClose': '@n saniye içinde kapanacak',
+  'cloud.restore.progress.row.download': 'Buluttan indiriliyor',
+  'cloud.restore.progress.row.playlists': '@n oynatma listesi',
+  'cloud.restore.progress.row.settings': '@n ayar',
+  'cloud.restore.progress.row.localM3u': '@n yerel M3U dosyası',
+  'cloud.restore.progress.row.profiles': '@n profil',
+  'cloud.restore.progress.row.apply': 'Cihaza uygulanıyor',
+  'cloud.restore.partialPlaylistsTitle': 'Liste yükleme uyarısı',
+  'cloud.restore.partialPlaylists':
+      '@fail liste yüklenemedi; @ok/@total liste başarıyla kuruldu.',
+  'cloud.restore.allPlaylistsFailed':
+      'Hiçbir oynatma listesi yüklenemedi. Ayarlarınız kuruldu; listeleri Ayarlar bölümünden yeniden ekleyebilirsiniz.',
   'cloud.signIn.title': 'Google ile oturum aç',
   'cloud.signIn.body':
       'Listelerinizi ve ayarlarınızı buluta yedeklemek ve diğer cihazlarda geri yüklemek için Google hesabınızla oturum açın.',
@@ -560,6 +592,8 @@ const Map<String, String> _tr = {
   'setup.playerMkvTitle': 'MediaKit (mpv)',
   'setup.playerMkvSub':
       'Daha ağır akışlarda / özel altyapıda alternatif; ayarlardan değiştirilebilir.',
+  'setup.playerVlcSub':
+      'libVLC tabanlı üçüncü motor; bazı akışlarda daha uyumlu olabilir.',
   'integrity.dialog.title': 'Resmi sürüm önerisi',
   'integrity.dialog.body':
       'Bu kopya Google Play lisansıyla eşleşmiyor. En güvenli deneyim için uygulamayı Google Play’den yüklemenizi öneririz.',
@@ -882,6 +916,20 @@ const Map<String, String> _tr = {
   'playbackSettings.title': 'Oynatma Ayarları',
   'playbackSettings.hint':
       'Oynatıcı motoru ve düşük seviye video ayarları. Yayın takılırsa motoru değiştirip veya kod çözücüyü yazılıma alıp deneyebilirsin.',
+  'playbackSettings.inAppPip.title': 'Uygulama İçi PiP',
+  'playbackSettings.inAppPip.subOn':
+      'Ana ekrana dönünce yayın küçük oynatıcıda devam eder',
+  'playbackSettings.inAppPip.subOff':
+      'Ana ekrana dönünce yayın durur',
+  'playbackSettings.inAppPip.handheldOnly':
+      'Yalnızca mobil ve tablette kullanılabilir',
+  'playbackSettings.inAppPip.blockedLiveMediaKit':
+      'Canlı motor MediaKit iken uygulama içi PiP kapalıdır',
+  'inAppPip.suggest.title': 'Uygulama İçi PiP',
+  'inAppPip.suggest.body':
+      'Yayından ana ekrana döndüğünüzde yayın küçük oynatıcıda devam eder. Vitrin ve kart düzeninde çalışır. Denemek ister misiniz?',
+  'inAppPip.suggest.enable': 'Aç',
+  'inAppPip.suggest.later': 'Sonra',
   'settings.tile.silentSync': 'Arka Planda Sessiz Senkronizasyon',
   'settings.tile.silentSync.sub': 'Uygulama kapalıyken listeyi sessizce günceller',
   'settings.tile.silentSync.enabled': 'Açık (Günde bir kez güncellenir)',
@@ -999,6 +1047,9 @@ const Map<String, String> _tr = {
   'homeSettings.transitionEffect.fadeScale.title': 'Yumuşak',
   'homeSettings.transitionEffect.fadeScale.sub':
       'Yumuşak fade + scale geçişi.',
+  'homeSettings.transitionEffect.jelly.title': 'Sallanan Pencereler',
+  'homeSettings.transitionEffect.jelly.sub':
+      'Linux Compiz tarzı sallanan, elastik pencere geçişi.',
   'homeSettings.frameStyle.title': 'Çerçeve Stili',
   'homeSettings.frameStyle.sub':
       'Ana ekrandaki kategori kartları, izlemeye devam et, Mina AI ve yüksek puanlı filmler şeritlerine ortak çerçeve görünümü uygula.',
@@ -1462,9 +1513,19 @@ const Map<String, String> _tr = {
       'Kapalı — film, dizi ve canlı Better/Exo; MediaKit yalnızca OSD veya hata yedeği',
   'settings.tile.playerEngine': 'Oynatıcı motoru tercihleri',
   'settings.tile.playerEngine.sub': 'Canlı: @live · Film/Dizi: @vod',
+  'settings.tile.smartPlayerSelection': 'Akıllı Oynatıcı Seçimi',
+  'settings.tile.smartPlayerSelection.subOn':
+      'Açık — MediaKit ile açılan kanal sonraki seferde hatırlanır',
+  'settings.tile.smartPlayerSelection.subOff':
+      'Kapalı — her seferinde seçilen motorla başlar (Better yedeği sürer)',
+  'settings.dialog.smartPlayerSelection.title': 'Akıllı Oynatıcı Seçimi',
+  'settings.dialog.smartPlayerSelection.body':
+      'Better seçiliyken yayın her zaman Better → HLS/TS ↔ TS/HLS → gerekirse MediaKit sırasıyla denenir. Bu ayar açılırsa MediaKit ile başarıyla açılan kanal hafızaya alınır ve sonraki açılışta doğrudan MediaKit ile başlar. Kapalıyken her seferinde seçtiğiniz motorla başlar; kanal motoru hatırlanmaz.',
+  'settings.dialog.smartPlayerSelection.switchOn': 'Kanal hafızası açık',
+  'settings.dialog.smartPlayerSelection.switchOff': 'Kanal hafızası kapalı',
   'settings.playerEngine.title': 'Oynatıcı motoru tercihleri',
   'settings.playerEngine.hint':
-      'Her içerik tipi için ana motoru seç. Bir yayın açılmazsa uygulama yalnız o yayın için otomatik diğer motora geçer.',
+      'Her içerik tipi için ana motoru seçin (Better veya MediaKit). Better seçiliyken açılmayan yayınlarda HLS↔TS ve MediaKit yedeği otomatik denenir. «Akıllı Oynatıcı Seçimi» yalnızca başarılı MediaKit kanalını hatırlar.',
   'settings.playerEngine.liveTitle': 'Canlı yayın motoru',
   'settings.playerEngine.vodTitle': 'Film / dizi oynatma',
   'settings.tile.tvOsdAutoHide': 'OSD panel gizleme süresi',
@@ -1538,12 +1599,12 @@ const Map<String, String> _tr = {
       'Yazılımsal video kod çözücü ne zaman kullanılmalı?',
   'faq.entry.softwareDecoder.a':
       'Donanım kod çözücü bazı cihazlarda belirli codec\'lerde yeşil/mor ekran, takılma veya hata verebilir. Görüntüde bozulma yaşıyorsanız yazılımsal kod çözücü daha uyumludur, ancak işlemciyi daha çok yorar ve düşük cihazlarda kasabilir. Sorun yoksa donanım (varsayılan) modda kalın.',
-  'faq.entry.lowEndMode.q': 'Düşük Donanımlı Cihaz Modu ne yapar?',
+  'faq.entry.lowEndMode.q': 'Düşük donanım modu ne yapar?',
   'faq.entry.lowEndMode.a':
-      'Bu mod blur, gölge ve önizleme gibi ağır görsel efektleri kapatıp görsel önbellek sınırlarını düşürür; böylece zayıf cihazlarda arayüz daha akıcı çalışır ve bellek baskısı azalır. Uygulama çok takılıyorsa açmanızı önerir.',
+      'Blur, gölge ve ağır animasyonları kapatıp görsel önbelleği düşürür; arayüz zayıf cihazlarda daha akıcı çalışır. Yayın önizlemesi bu moddan etkilenmez — onu Ayarlar’dan ayrı açıp kapatabilirsiniz.',
   'faq.entry.tvLite.q': 'TV Lite (sade TV arayüzü) nedir?',
   'faq.entry.tvLite.a':
-      'TV Lite, TV box\'lar için sadeleştirilmiş, daha hafif bir ana ekran düzenidir. Zayıf donanımlı TV cihazlarında otomatik açılır ve gezinmeyi hızlandırır. Ayarlardan kapatabilirsiniz.',
+      'TV Lite artık «Düşük donanım» seçeneğinin parçasıdır. Ayarlar › Diğer araçlar veya kurulumda Düşük donanım’ı açınca sade grafik (blur/gölge kapalı) uygulanır.',
   'faq.entry.userAgent.q': 'User Agent ayarını ne zaman değiştirmeliyim?',
   'faq.entry.userAgent.a':
       'Bazı IPTV panelleri yalnızca belirli bir User-Agent başlığıyla yayın verir. Yayınlar açılmıyorsa veya panel sağlayıcınız özel bir User-Agent istiyorsa bu ayarı değiştirin. Emin değilseniz varsayılanı kullanın.',
@@ -1694,7 +1755,7 @@ const Map<String, String> _tr = {
   'faq.entry.onlineCount.q':
       'Sohbette kaç kişinin çevrimiçi olduğunu görebilir miyim?',
   'faq.entry.onlineCount.a':
-      'Evet, sohbet bölümünde anlık çevrimiçi kullanıcı sayısı küçük bir rozette gösterilir (örn. «55 Çevrimiçi»). Kişisel kimlikler paylaşılmaz; yalnızca toplam sayı görünür.',
+      'Evet, sohbet bölümünde anlık çevrimiçi kullanıcı sayısı küçük bir rozette gösterilir (örn. «55 Çevrimiçi»). Bu sayı yalnızca sohbette olanları değil, uygulamayı o anda kullanan kullanıcıları yansıtır. Kişisel kimlikler paylaşılmaz; yalnızca toplam sayı görünür.',
   'faq.entry.os27Theme.q': 'OS27 ve liquid glass temaları nedir?',
   'faq.entry.os27Theme.a':
       'OS27, iOS 27 esintili cam-damla (liquid glass) tasarımına sahip; mavi tonlu, parlak kenarlı şeffaf bir temadır ve yatay/dikey için ayrı duvar kâğıtları kullanır. TV\'ler için ise blur içermeyen, saf siyah AMOLED ve kırmızı vurgulu «TV Lite» teması önerilir. Temaları Ayarlar\'dan değiştirebilirsiniz.',
@@ -1893,6 +1954,20 @@ const Map<String, String> _tr = {
       '@prefs ayar, @sec gizli alan ve @m3u yerel playlist geri yüklendi.',
   'settings.dialog.bufferSlider': '@n saniye',
   'settings.dialog.changelogTitle': 'Sürüm notları',
+  'settings.dialog.adminButton': 'Yönetici',
+  'settings.dialog.adminTitle': 'Yönetici',
+  'settings.admin.role': 'Uygulama yöneticisi',
+  'settings.admin.name': 'Furkan Gumrukcu',
+  'settings.admin.whatsappLabel': 'WhatsApp',
+  'settings.admin.whatsappNumber': '+90 544 645 06 07',
+  'settings.admin.emailLabel': 'E-posta',
+  'settings.admin.emailAddress': 'furkangumrukcu@outlook.com',
+  'settings.admin.countryLabel': 'Ülke',
+  'settings.admin.countryValue': 'Türkiye',
+  'settings.admin.bio':
+      'Bu uygulama tarafıma aittir. Yaşadığınız herhangi bir sorunla ilgili olarak bana iletebilirsiniz.',
+  'settings.admin.whatsappFail': 'WhatsApp açılamadı.',
+  'settings.admin.emailFail': 'E-posta uygulaması açılamadı.',
   'settings.update.check': 'Güncelleme denetle',
   'settings.update.checking': 'Denetleniyor…',
   'settings.update.openStore': 'Mağazada aç',
@@ -1904,7 +1979,13 @@ const Map<String, String> _tr = {
   'settings.update.failTitle': 'Denetlenemedi',
   'settings.update.failBody':
       'Güncelleme bilgisi alınamadı. İnternet bağlantınızı kontrol edip tekrar deneyin.',
-  'settings.dialog.changelogBody': 'v2.12.68\n'
+  'settings.dialog.changelogBody': 'v2.17.33\n'
+      '• Better (Exo / birincil motor): MediaSource ön-yükleme (zap hızı), canlı HTTP zaman aşımı, kare/buffering stall dedektörü, muhafazakâr yeniden bağlanma, targetBufferBytes tampon tavanları, canlı 1.0x hız kilidi, ses uyumluluk hafızası\n'
+      '• Canlı HLS: bazı kanallarda otomatik HLS→MPEG-TS düşüşü (açılmama / gecikme eşiği, takılma kurtarması)\n'
+      '• MediaKit (yedek motor): canlı mpv iyileştirmeleri — lavf reconnect, display-resample, untimed, cache-pause, 10 sn stall watchdog, HLS hls-bitrate profili\n'
+      '• MediaKit VOD: canlı mpv bayraklarının sıfırlanması; hls-bitrate yalnızca HLS URL\'lerinde — film/dizi açılmama düzeltmesi\n'
+      '• Oynatıcı motorları: VLC seçeneği geçici olarak kilitlendi (Better + MediaKit)\n\n'
+      'v2.12.68\n'
       '• Yeni tema: «IOS 27» — iOS damla cam (Liquid Glass) tasarımı: saydam paneller, iOS mavisi vurgu, büyük yuvarlatılmış köşeler ve akışkan cam duvar kâğıdı (dikey + yatay). Kurulum sihirbazı ve Ayarlar → Tema\'dan seçilebilir\n'
       '• Yeni ana ekran düzeni: «Vitrin» — yalnızca telefon/tablet. Dikey kayan poster şeritleri (İzlemeye Devam Et, Canlı TV, IMDB Yüksek Puanlı Filmler, Son Eklenen 50 Film, Karışık Filmler/Diziler, M3U kategorileri) + en altta damla cam menü çubuğu (Canlı TV · Film & Dizi · EPG Mix · Mina Wrapped · Ayarlar). Her şeritte «Tümünü Gör» ve üstte arama\n\n'
       'v2.12.67\n'
@@ -2082,6 +2163,32 @@ const Map<String, String> _tr = {
       'Sunucu cevabı: @m\n\nLütfen kullanıcı adı, şifre ve sunucu adresinizi kontrol edip tekrar deneyin.',
   'xtream.error.credentialsEmpty':
       'Sunucu adresi, kullanıcı adı ve şifre alanlarının tamamı dolu olmalıdır.',
+  'stalker.error.title': 'Stalker Portal Giriş Hatası',
+  'stalker.error.credentialsEmpty':
+      'Portal adresi ve MAC adresi alanlarının ikisi de dolu olmalıdır.',
+  'stalker.error.invalidHandshake':
+      'Portala bağlanılamadı. Adresi (ör. http://sunucu/c/) ve MAC adresini kontrol edin.',
+  'stalker.error.invalidCredentials':
+      'MAC adresi bu portalda yetkili değil veya oturum açılamadı.',
+  'stalker.error.emptyCatalog':
+      'Oturum açıldı ancak kanal/film listesi boş geldi. MAC yetkisini veya portal adresini kontrol edin.',
+  'stalker.field.portalUrl': 'Stalker Portal URL',
+  'stalker.field.mac': 'MAC Adresi',
+  'stalker.chip.label': 'Stalker',
+  'stalker.compat.title': 'Stalker uyumluluk',
+  'stalker.compat.hint':
+      'Bazı portallar MAG254 veya farklı donanım sürümü ister. Giriş başarısızsa başka ön ayar deneyin.',
+  'stalker.compat.sslHint':
+      'Geçersiz SSL için Ayarlar → «SSL/TLS doğrulamasını yoksay» seçeneğini kullanın.',
+  'stalker.field.magPreset': 'MAG ön ayarı',
+  'stalker.field.linkType': 'Bağlantı tipi',
+  'stalker.field.hwVersion': 'hw_version (isteğe bağlı)',
+  'stalker.preset.genericSafe': 'MAG250 (önerilen)',
+  'stalker.preset.mag250Legacy': 'MAG250 eski',
+  'stalker.preset.mag254Strict': 'MAG254',
+  'stalker.preset.ministraModern': 'MAG322 / Ministra',
+  'stalker.link.wifi': 'WiFi',
+  'stalker.link.ethernet': 'Ethernet',
   'settings.xtreamFooter.line': 'Xtream: @user · @host',
   'settings.snackbar.settings': 'Ayarlar',
   'settings.snackbar.cleared': 'Tüm veriler temizlendi.',
@@ -2204,6 +2311,9 @@ const Map<String, String> _tr = {
   'playlistsManager.subtitle':
       'En fazla @max liste — canlı, film ve dizi birleşir',
   'playlistsManager.subtitle.unlimited': 'İstediğin kadar liste ekle',
+  'playlistsManager.reorder.hint':
+      'Sıralamak için tutamacı basılı tutup kaydırın',
+  'playlistsManager.toast.reordered': 'Liste sırası güncellendi.',
   'playlistsManager.addNew.title': 'Yeni liste ekle',
   'playlistsManager.addNew.body':
       'M3U URL, M3U dosyası veya Xtream — @n. slot olarak eklenir',
@@ -2382,6 +2492,7 @@ const Map<String, String> _tr = {
       'Dizi akışlarında önerilen motor MediaKit’tir. ExoPlayer’a geçmek istediğinize emin misiniz?',
   'player.engine.better': 'Better Player',
   'player.engine.mediaKit': 'MediaKit',
+  'player.engine.vlc': 'VLC',
   'player.engineFallback.toMediaKit': 'Yayın MediaKit ile tekrar deneniyor…',
   'player.engineFallback.toBetter': 'Yayın Better Player ile tekrar deneniyor…',
   'player.quality.title': 'Yayın kalitesi',
@@ -2408,6 +2519,7 @@ const Map<String, String> _tr = {
   'player.pinchZoom.down': 'Aşağı @n%',
   'player.pinchZoom.reset': 'Sıfırla (1:1)',
   'player.error.contentNotFound': 'İçerik sunucuda bulunamadı',
+  'player.error.streamForbidden': 'Yayına erişim reddedildi (403)',
   'player.error.playbackGeneric': 'Yayın şu anda açılamıyor',
   'player.error.invalidStreamUrl': 'Geçersiz yayın adresi',
   'player.pip.unavailable':
@@ -2487,11 +2599,20 @@ const Map<String, String> _en = {
   'paywall.button.restoring': 'Querying...',
   'paywall.grandfather.prompt': 'Member before June 28, 2026?',
   'paywall.grandfather.button': 'Log in with Google to Activate Exemption',
+  'paywall.grandfather.syncing': 'Verifying license…',
   'paywall.user.logged_in': 'Logged in as: @email',
   'paywall.error.title': 'Payment Failed',
   'paywall.error.body': 'Could not connect to Google Play Market or payment was cancelled.',
   'paywall.restore.title': 'No Purchase Found',
   'paywall.restore.body': 'No active purchase was found in your Google Play account.',
+  'paywall.deviceLimit.title': 'Device Limit Reached',
+  'paywall.deviceLimit.body': 'A license can be used on up to @max devices. Remove a registered device to continue.',
+  'paywall.deviceLimit.count': 'Registered devices: @count / @max',
+  'paywall.deviceLimit.thisDevice': 'This device',
+  'paywall.deviceLimit.remove': 'Remove',
+  'paywall.deviceLimit.retry': 'Try Again',
+  'paywall.deviceLimit.removed': 'Device removed. Refreshing registration…',
+  'paywall.deviceLimit.removeFailed': 'Could not remove device. Please try again.',
   'settings.tile.subscription': 'Subscription Status',
   'settings.tile.subscription.sub': 'License and trial period details',
   'settings.subscription.grandfathered': 'Lifetime Free Exemption (Legacy)',
@@ -2501,12 +2622,14 @@ const Map<String, String> _en = {
   'settings.subscription.dialog.title': 'License Details',
   'settings.subscription.dialog.status': 'License Status: ',
   'settings.subscription.dialog.installDate': 'First Install Date: ',
-  'settings.subscription.dialog.purchaseDate': 'License Date: ',
+  'settings.subscription.dialog.purchaseDate': 'License Purchase Date: ',
   'settings.subscription.dialog.trialEnd': 'Trial End Date: ',
   'settings.subscription.dialog.type': 'Package Type: ',
   'settings.subscription.dialog.grandfathered': 'Exemption Status: ',
   'settings.subscription.dialog.grandfathered.yes': 'Yes (Legacy Exemption)',
   'settings.subscription.dialog.grandfathered.no': 'No',
+  'settings.subscription.dialog.devices': 'Registered Devices: ',
+  'settings.subscription.deviceLimit': 'Device limit reached (@count/@max)',
   'dialog.exit.title': 'Exit Application?',
   'dialog.exit.body': 'Are you sure you want to exit?',
   'dialog.exit.seconds': 'seconds',
@@ -2689,8 +2812,9 @@ const Map<String, String> _en = {
   'settings.tile.adaptiveHaptics': 'Adaptive haptics',
   'settings.tile.adaptiveHaptics.subtitle':
       'Light vibration when scrolling lists and tapping items in mobile mode',
-  'settings.lowEndMode.title': 'Low-End Device Mode',
-  'settings.lowEndMode.subOn': 'On — effects reduced, performance first',
+  'settings.lowEndMode.title': 'Low-end mode',
+  'settings.lowEndMode.subOn':
+      'On — flat graphics, blur/shadows off, memory first',
   'settings.lowEndMode.subOff':
       'Off — full visual effects (normal performance)',
   'settings.tvLite.title': 'TV Lite (flat graphics)',
@@ -2716,6 +2840,11 @@ const Map<String, String> _en = {
   'setup.launchOnBootSub': 'Open app when device starts',
   'setup.pipTitle': 'Mini player (PiP)',
   'setup.pipSub': 'Floating player when leaving home',
+  'setup.inAppPipTitle': 'In-App PiP',
+  'setup.inAppPipSub':
+      'When you leave the player, the stream keeps playing in a small preview on home',
+  'setup.inAppPipPreviewCaption':
+      'Press back to return home — the stream plays in the corner (layout-dependent); tap to open full screen.',
   'setup.epgCacheTitle': 'EPG refresh',
   'setup.epgCacheSub': 'How often to refresh the TV guide',
   'setup.epgCacheDays': '@n d',
@@ -2797,13 +2926,13 @@ const Map<String, String> _en = {
   'setup.tvLayoutModeHint':
       'Choose the TV home layout. TV mode opens the new rail shell; card layout is the classic card home screen.',
   'setup.performanceHint':
-      'Choose a mode based on your device power. On devices with 2 GB RAM or less, Low-End Device Mode runs more smoothly.',
+      'Choose a mode based on your device power. On devices with 2 GB RAM or less, Low-end mode runs more smoothly.',
   'setup.perfNormalTitle': 'Normal Performance Mode',
   'setup.perfNormalSub':
-      'All visual effects on (blur, shadows, preview). Recommended for powerful devices.',
-  'setup.perfLowEndTitle': 'Low-End Device Mode',
+      'All visual effects on (blur, shadows). Recommended for powerful devices.',
+  'setup.perfLowEndTitle': 'Low-end mode',
   'setup.perfLowEndSub':
-      'Blur and shadows off, image quality and cache reduced, preview disabled. For 2 GB RAM or less.',
+      'Flat graphics: blur/shadows off, image quality and cache reduced. Recommended for 2 GB RAM or less.',
   'setup.next': 'Continue',
   'setup.back': 'Back',
   'setup.finish': 'Finish setup',
@@ -2885,6 +3014,22 @@ const Map<String, String> _en = {
   'cloud.restore.confirmBody':
       'Local settings and playlist credentials will be replaced with the cloud backup. Continue?',
   'cloud.restore.empty': 'No cloud backup found.',
+  'cloud.restore.progress.title': 'Loading cloud backup',
+  'cloud.restore.progress.titleDone': 'Backup restored',
+  'cloud.restore.progress.subtitle':
+      'Data from your Google account is being applied to this device',
+  'cloud.restore.progress.autoClose': 'Closing in @n seconds',
+  'cloud.restore.progress.row.download': 'Downloading from cloud',
+  'cloud.restore.progress.row.playlists': '@n playlists',
+  'cloud.restore.progress.row.settings': '@n settings',
+  'cloud.restore.progress.row.localM3u': '@n local M3U files',
+  'cloud.restore.progress.row.profiles': '@n profiles',
+  'cloud.restore.progress.row.apply': 'Applying to device',
+  'cloud.restore.partialPlaylistsTitle': 'Playlist restore warning',
+  'cloud.restore.partialPlaylists':
+      '@fail playlist(s) could not be loaded; @ok of @total installed successfully.',
+  'cloud.restore.allPlaylistsFailed':
+      'No playlists could be loaded. Your settings were restored; you can re-add playlists in Settings.',
   'cloud.signIn.title': 'Sign in with Google',
   'cloud.signIn.body':
       'Sign in with your Google account to back up your playlists and settings to the cloud and restore them on other devices.',
@@ -2980,6 +3125,8 @@ const Map<String, String> _en = {
   'setup.playerMkvTitle': 'MediaKit (mpv)',
   'setup.playerMkvSub':
       'Alternative for difficult streams; you can change this later in settings.',
+  'setup.playerVlcSub':
+      'Third engine based on libVLC; may work better on some streams.',
   'integrity.dialog.title': 'Use the official version',
   'integrity.dialog.body':
       'This install doesn’t match a Google Play license. For the safest experience, we recommend installing the app from Google Play.',
@@ -3284,6 +3431,20 @@ const Map<String, String> _en = {
   'playbackSettings.title': 'Playback Settings',
   'playbackSettings.hint':
       'Player engine and low-level video options. If a stream stutters, try switching the engine or forcing the software decoder.',
+  'playbackSettings.inAppPip.title': 'In-App PiP',
+  'playbackSettings.inAppPip.subOn':
+      'Playback continues in a small player when returning to home',
+  'playbackSettings.inAppPip.subOff':
+      'Playback stops when returning to home',
+  'playbackSettings.inAppPip.handheldOnly':
+      'Available on phones and tablets only',
+  'playbackSettings.inAppPip.blockedLiveMediaKit':
+      'In-app PiP is disabled while the live engine is MediaKit',
+  'inAppPip.suggest.title': 'In-App PiP',
+  'inAppPip.suggest.body':
+      'When you return from the player, playback continues in a small preview on home (Showcase and Card layouts). Try it?',
+  'inAppPip.suggest.enable': 'Turn on',
+  'inAppPip.suggest.later': 'Later',
   'settings.tile.silentSync': 'Silent Background Sync',
   'settings.tile.silentSync.sub': 'Silently updates the playlist when app is closed',
   'settings.tile.silentSync.enabled': 'Enabled (Updates once a day)',
@@ -3396,6 +3557,9 @@ const Map<String, String> _en = {
   'homeSettings.transitionEffect.fadeScale.title': 'Soft',
   'homeSettings.transitionEffect.fadeScale.sub':
       'Soft fade + scale transition.',
+  'homeSettings.transitionEffect.jelly.title': 'Jelly Windows',
+  'homeSettings.transitionEffect.jelly.sub':
+      'Linux Compiz-style wobbling, elastic page transition.',
   'homeSettings.frameStyle.title': 'Frame Style',
   'homeSettings.frameStyle.sub':
       'Apply a unified frame look to category cards, Continue Watching, Mina AI and Top Rated Films strips on the home screen.',
@@ -3859,9 +4023,19 @@ const Map<String, String> _en = {
       'Off — movies, series, and live use Better/Exo; MediaKit only as backup',
   'settings.tile.playerEngine': 'Player engine preferences',
   'settings.tile.playerEngine.sub': 'Live: @live · Movies/Series: @vod',
+  'settings.tile.smartPlayerSelection': 'Smart player selection',
+  'settings.tile.smartPlayerSelection.subOn':
+      'On — channels that open with MediaKit are remembered next time',
+  'settings.tile.smartPlayerSelection.subOff':
+      'Off — always start with your selected engine (Better fallback still runs)',
+  'settings.dialog.smartPlayerSelection.title': 'Smart player selection',
+  'settings.dialog.smartPlayerSelection.body':
+      'When Better is selected, streams are always tried as Better → HLS/TS ↔ TS/HLS → MediaKit if needed. Turning this setting on remembers channels that succeeded with MediaKit and opens them directly with MediaKit next time. When off, playback always starts with your selected engine and the channel engine is not remembered.',
+  'settings.dialog.smartPlayerSelection.switchOn': 'Channel memory on',
+  'settings.dialog.smartPlayerSelection.switchOff': 'Channel memory off',
   'settings.playerEngine.title': 'Player engine preferences',
   'settings.playerEngine.hint':
-      'Choose the primary engine for each content type. If a stream fails to open, the app automatically switches to the other engine for that stream only.',
+      'Choose the primary engine for each content type (Better or MediaKit). With Better selected, failed streams still try HLS↔TS and then MediaKit. Smart player selection only remembers successful MediaKit channels.',
   'settings.playerEngine.liveTitle': 'Live stream engine',
   'settings.playerEngine.vodTitle': 'Movies / series playback',
   'settings.tile.tvOsdAutoHide': 'OSD hide delay',
@@ -3937,12 +4111,12 @@ const Map<String, String> _en = {
       'When should I use the software video decoder?',
   'faq.entry.softwareDecoder.a':
       'The hardware decoder can produce a green/purple screen, stuttering, or errors with certain codecs on some devices. If you see visual artifacts, the software decoder is more compatible, but it taxes the CPU more and may stutter on low-end devices. If there is no issue, keep the hardware (default) mode.',
-  'faq.entry.lowEndMode.q': 'What does Low-End Device Mode do?',
+  'faq.entry.lowEndMode.q': 'What does low-end mode do?',
   'faq.entry.lowEndMode.a':
-      'This mode disables heavy visual effects such as blur, shadows, and previews and lowers image cache limits, so the interface runs more smoothly and memory pressure drops on weak devices. The app suggests enabling it if it stutters a lot.',
+      'It turns off blur, shadows and heavy animations and lowers image cache limits so the UI runs more smoothly on weak devices. Stream preview is not affected — you can toggle that separately in Settings.',
   'faq.entry.tvLite.q': 'What is TV Lite (simplified TV interface)?',
   'faq.entry.tvLite.a':
-      'TV Lite is a simplified, lighter home screen layout for TV boxes. It turns on automatically on weak TV devices and speeds up navigation. You can turn it off in Settings.',
+      'TV Lite is now part of Low-end mode. Turning on Low-end under Settings › Other tools or during setup applies flat graphics (blur/shadows off).',
   'faq.entry.userAgent.q': 'When should I change the User Agent setting?',
   'faq.entry.userAgent.a':
       'Some IPTV panels only serve streams with a specific User-Agent header. Change this setting if streams will not open or your panel provider requires a custom User-Agent. If unsure, use the default.',
@@ -4086,7 +4260,7 @@ const Map<String, String> _en = {
       'Mina Wrapper is a personal section that summarizes your watch history with AI; it presents your most-watched genres, a timeline and a personalized viewer persona with elegant visuals. You can reach it from the bottom navigation bar in Showcase layout, or from the home screen in other layouts.',
   'faq.entry.onlineCount.q': 'Can I see how many people are online in chat?',
   'faq.entry.onlineCount.a':
-      'Yes, the chat section shows the live number of online users in a small badge (e.g. «55 Online»). No personal identities are shared; only the total count is visible.',
+      'Yes, the chat section shows the live number of online users in a small badge (e.g. «55 Online»). This count reflects people currently using the app, not only those in chat. No personal identities are shared; only the total count is visible.',
   'faq.entry.os27Theme.q': 'What are the OS27 and liquid glass themes?',
   'faq.entry.os27Theme.a':
       'OS27 is a translucent theme with an iOS 27-inspired liquid glass design, blue tones and bright edges, using separate wallpapers for landscape and portrait. For TVs, the blur-free, pure black AMOLED «TV Lite» theme with a red accent is recommended. You can switch themes from Settings.',
@@ -4283,6 +4457,20 @@ const Map<String, String> _en = {
       'Restored @prefs settings, @sec secure entries and @m3u local playlists.',
   'settings.dialog.bufferSlider': '@n seconds',
   'settings.dialog.changelogTitle': 'Release notes',
+  'settings.dialog.adminButton': 'Administrator',
+  'settings.dialog.adminTitle': 'Administrator',
+  'settings.admin.role': 'App administrator',
+  'settings.admin.name': 'Furkan Gumrukcu',
+  'settings.admin.whatsappLabel': 'WhatsApp',
+  'settings.admin.whatsappNumber': '+90 544 645 06 07',
+  'settings.admin.emailLabel': 'Email',
+  'settings.admin.emailAddress': 'furkangumrukcu@outlook.com',
+  'settings.admin.countryLabel': 'Country',
+  'settings.admin.countryValue': 'Turkey',
+  'settings.admin.bio':
+      'This app belongs to me. You can contact me about any issues you experience.',
+  'settings.admin.whatsappFail': 'Could not open WhatsApp.',
+  'settings.admin.emailFail': 'Could not open the email app.',
   'settings.update.check': 'Check for updates',
   'settings.update.checking': 'Checking…',
   'settings.update.openStore': 'Open in store',
@@ -4294,7 +4482,13 @@ const Map<String, String> _en = {
   'settings.update.failTitle': 'Check failed',
   'settings.update.failBody':
       'Could not retrieve update information. Check your internet connection and try again.',
-  'settings.dialog.changelogBody': 'v2.12.68\n'
+  'settings.dialog.changelogBody': 'v2.17.33\n'
+      '• Better (Exo / primary engine): MediaSource preload (faster zapping), live HTTP timeouts, frame/buffering stall detector, conservative reconnect, targetBufferBytes buffer caps, live 1.0x speed lock, audio compatibility memory\n'
+      '• Live HLS: automatic HLS→MPEG-TS fallback on some channels (startup timeout, stall recovery)\n'
+      '• MediaKit (backup engine): live mpv improvements — lavf reconnect, display-resample, untimed, cache-pause, 10s stall watchdog, HLS hls-bitrate profile\n'
+      '• MediaKit VOD: live mpv flags reset on open; hls-bitrate only on HLS URLs — fixes movies/series not starting\n'
+      '• Playback engines: VLC option temporarily locked (Better + MediaKit only)\n\n'
+      'v2.12.68\n'
       '• New theme: "IOS 27" — iOS Liquid Glass design: translucent panels, iOS-blue accent, large rounded corners and a fluid glass wallpaper (portrait + landscape). Selectable from the setup wizard and Settings → Theme\n'
       '• New home layout: "Showcase" — phone/tablet only. Vertically scrolling poster rows (Continue Watching, Live TV, IMDB Top Rated Movies, Last 50 Added Movies, Mixed Movies/Series, M3U categories) + a bottom liquid-glass dock (Live TV · Movies & Series · EPG Mix · Mina Wrapped · Settings). Every row has «See All» and a search button up top\n\n'
       'v2.12.67\n'
@@ -4473,6 +4667,32 @@ const Map<String, String> _en = {
       'Server replied: @m\n\nPlease double-check your username, password and server address, then try again.',
   'xtream.error.credentialsEmpty':
       'Server address, username and password are all required.',
+  'stalker.error.title': 'Stalker Portal login error',
+  'stalker.error.credentialsEmpty':
+      'Both portal URL and MAC address are required.',
+  'stalker.error.invalidHandshake':
+      'Could not connect to the portal. Check the URL (e.g. http://host/c/) and MAC address.',
+  'stalker.error.invalidCredentials':
+      'This MAC address is not authorized on the portal, or login failed.',
+  'stalker.error.emptyCatalog':
+      'Logged in but the channel/VOD list was empty. Check MAC authorization or portal URL.',
+  'stalker.field.portalUrl': 'Stalker Portal URL',
+  'stalker.field.mac': 'MAC Address',
+  'stalker.chip.label': 'Stalker',
+  'stalker.compat.title': 'Stalker compatibility',
+  'stalker.compat.hint':
+      'Some portals require MAG254 or a different hardware version. Try another preset if login fails.',
+  'stalker.compat.sslHint':
+      'For invalid SSL certificates, use Settings → “Ignore SSL/TLS verification”.',
+  'stalker.field.magPreset': 'MAG preset',
+  'stalker.field.linkType': 'Link type',
+  'stalker.field.hwVersion': 'hw_version (optional)',
+  'stalker.preset.genericSafe': 'MAG250 (recommended)',
+  'stalker.preset.mag250Legacy': 'MAG250 legacy',
+  'stalker.preset.mag254Strict': 'MAG254',
+  'stalker.preset.ministraModern': 'MAG322 / Ministra',
+  'stalker.link.wifi': 'WiFi',
+  'stalker.link.ethernet': 'Ethernet',
   'settings.xtreamFooter.line': 'Xtream: @user · @host',
   'settings.snackbar.settings': 'Settings',
   'settings.snackbar.cleared': 'All data cleared.',
@@ -4590,6 +4810,8 @@ const Map<String, String> _en = {
   'playlistsManager.subtitle':
       'Up to @max playlists — live, movies and series merged',
   'playlistsManager.subtitle.unlimited': 'Add as many playlists as you want',
+  'playlistsManager.reorder.hint': 'Press and drag the handle to reorder',
+  'playlistsManager.toast.reordered': 'Playlist order updated.',
   'playlistsManager.addNew.title': 'Add new playlist',
   'playlistsManager.addNew.body':
       'M3U URL, M3U file or Xtream — saved as slot #@n',
@@ -4765,6 +4987,7 @@ const Map<String, String> _en = {
       'MediaKit is recommended for series streams. Are you sure you want to use ExoPlayer?',
   'player.engine.better': 'Better Player',
   'player.engine.mediaKit': 'MediaKit',
+  'player.engine.vlc': 'VLC',
   'player.engineFallback.toMediaKit': 'Retrying the stream with MediaKit…',
   'player.engineFallback.toBetter': 'Retrying the stream with Better Player…',
   'player.quality.title': 'Stream quality',
@@ -4790,6 +5013,7 @@ const Map<String, String> _en = {
   'player.pinchZoom.down': 'Down @n%',
   'player.pinchZoom.reset': 'Reset (1:1)',
   'player.error.contentNotFound': 'Content was not found on the server',
+  'player.error.streamForbidden': 'Stream access denied (403)',
   'player.error.playbackGeneric': 'Playback is unavailable right now',
   'player.error.invalidStreamUrl': 'Invalid stream address',
   'player.pip.unavailable':

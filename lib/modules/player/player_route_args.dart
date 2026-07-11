@@ -32,6 +32,8 @@ class PlayerScreenArgs {
     this.audioCodecHint,
     /// Vitrin ana ekranından doğrudan açıldı; geri dönüşte dock mini oynatıcı.
     this.showcaseInAppPipHandoff = false,
+    /// Uygulama içi PiP balonundan tam ekrana dönüş — mevcut oturumu sürdür.
+    this.reopenFromInAppPip = false,
   });
 
   final Channel channel;
@@ -43,4 +45,5 @@ class PlayerScreenArgs {
   final List<PlayerBrowseCategoryTape<SeriesItem>>? seriesBrowseCategoryTapes;
   final String? audioCodecHint;
   final bool showcaseInAppPipHandoff;
+  final bool reopenFromInAppPip;
 }

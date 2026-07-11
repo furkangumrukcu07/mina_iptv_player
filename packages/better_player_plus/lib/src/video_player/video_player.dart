@@ -16,6 +16,29 @@ final VideoPlayerPlatform _videoPlayerPlatform = VideoPlayerPlatform.instance
   // performed.
   ..init();
 
+/// Vitrin uygulama içi PiP: route kapanırken [VideoPlayer] widget'ı kalksa bile
+/// ExoPlayer native örneğinin dock'a devredilmesi için platform dispose'u atlar.
+class _VideoPlayerHandoffRetain {
+  _VideoPlayerHandoffRetain._();
+
+  static final Set<int> _textureIds = <int>{};
+
+  static void retain(int? textureId) {
+    if (textureId != null) {
+      _textureIds.add(textureId);
+    }
+  }
+
+  static void release(int? textureId) {
+    if (textureId != null) {
+      _textureIds.remove(textureId);
+    }
+  }
+
+  static bool isRetained(int? textureId) =>
+      textureId != null && _textureIds.contains(textureId);
+}
+
 /// The duration, current position, buffering state, error state and settings
 /// of a [VideoPlayerController].
 class VideoPlayerValue {
@@ -206,6 +229,38 @@ class VideoPlayerController extends ValueNotifier<VideoPlayerValue> {
   @visibleForTesting
   int? get textureId => _textureId;
 
+  /// Vitrin uygulama içi PiP handoff: widget kalksa bile native ExoPlayer'ı korur.
+  Future<void> retainPlatformSurfaceForHandoff() async {
+    await _creatingCompleter.future;
+    _VideoPlayerHandoffRetain.retain(_textureId);
+    await _videoPlayerPlatform.markSurfaceHandoffRetain(
+      _textureId,
+      retain: true,
+    );
+  }
+
+  /// Handoff iptali veya tam dispose öncesi retain bayrağını temizler.
+  Future<void> clearPlatformSurfaceHandoffMark() async {
+    await _creatingCompleter.future;
+    _VideoPlayerHandoffRetain.release(_textureId);
+    await _videoPlayerPlatform.markSurfaceHandoffRetain(
+      _textureId,
+      retain: false,
+    );
+  }
+
+  /// Route geçişinden sonra video yüzeyini dock PiP'e yeniden bağlar.
+  Future<void> reattachPlatformSurface() async {
+    await _creatingCompleter.future;
+    if (_isDisposed || _textureId == null) return;
+    await _videoPlayerPlatform.reattachVideoSurface(_textureId);
+    _VideoPlayerHandoffRetain.release(_textureId);
+    await _videoPlayerPlatform.markSurfaceHandoffRetain(
+      _textureId,
+      retain: false,
+    );
+  }
+
   /// Attempts to open the given [dataSource] and load metadata about the video.
   Future<void> _create() async {
     _textureId = await _videoPlayerPlatform.create(
@@ -263,6 +318,10 @@ class VideoPlayerController extends ValueNotifier<VideoPlayerValue> {
         case VideoEventType.pipStop:
           value = value.copyWith(isPip: false);
         case VideoEventType.exoEmbeddedCues:
+          break;
+        case VideoEventType.playbackEstablished:
+        case VideoEventType.videoStall:
+        case VideoEventType.bufferingStall:
           break;
         case VideoEventType.unknown:
           break;
@@ -416,20 +475,27 @@ class VideoPlayerController extends ValueNotifier<VideoPlayerValue> {
   }
 
   @override
-  Future<void> dispose() async {
+  Future<void> dispose({bool forceDispose = false}) async {
     await _creatingCompleter.future;
-    if (!_isDisposed) {
-      final int? tid = _textureId;
-      _isDisposed = true;
-      value = VideoPlayerValue.uninitialized();
-      _timer?.cancel();
-      await _eventSubscription?.cancel();
-      BetterPlayerSurfaceLog.texturePlatformDisposeCall(tid);
-      await _videoPlayerPlatform.dispose(_textureId);
-      BetterPlayerSurfaceLog.texturePlatformDisposeDone(tid);
-      await videoEventStreamController.close();
+    if (_isDisposed) {
+      super.dispose();
+      return;
+    }
+    final int? tid = _textureId;
+    if (!forceDispose && _VideoPlayerHandoffRetain.isRetained(tid)) {
+      // Retain bayrağını burada kaldırma; balon [VideoPlayer] mount olana kadar
+      // ikinci bir dispose native ExoPlayer'ı öldürebilir.
+      super.dispose();
+      return;
     }
     _isDisposed = true;
+    value = VideoPlayerValue.uninitialized();
+    _timer?.cancel();
+    await _eventSubscription?.cancel();
+    BetterPlayerSurfaceLog.texturePlatformDisposeCall(tid);
+    await _videoPlayerPlatform.dispose(_textureId);
+    BetterPlayerSurfaceLog.texturePlatformDisposeDone(tid);
+    await videoEventStreamController.close();
     super.dispose();
   }
 
@@ -686,6 +752,13 @@ class VideoPlayerController extends ValueNotifier<VideoPlayerValue> {
 
   static Future<void> stopPreCache(String url, String? cacheKey) async =>
       _videoPlayerPlatform.stopPreCache(url, cacheKey);
+
+  Future<bool> softRecoverPlayback() async {
+    if (!_created || _isDisposed || _textureId == null) {
+      return false;
+    }
+    return _videoPlayerPlatform.softRecoverPlayback(_textureId);
+  }
 }
 
 /// Widget that displays the video controlled by [controller].

@@ -1,7 +1,11 @@
+import 'dart:async';
 import 'dart:convert';
 
+import 'package:flutter/widgets.dart';
 import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import 'debounced_prefs_writer.dart';
 
 /// İzlemeye Devam Et öğesi türü.
 enum ContinueWatchingKind { vod, series }
@@ -69,7 +73,7 @@ class ContinueWatchingEntry {
 /// izlenen konum/süre ve son güncelleme zamanı. Bu indeks hem ana ekran
 /// şeridini hem de film/dizi posterleri altındaki izlenme yüzdesi barını
 /// besler. İndeks bellekte de tutulur ([_index]) → poster barı senkron okur.
-class WatchProgressService extends GetxService {
+class WatchProgressService extends GetxService with WidgetsBindingObserver {
   static const _kPos = 'mina_watch_pos_';
   static const _kDur = 'mina_watch_dur_';
   static const _kIndex = 'mina_continue_watching_v2';
@@ -96,10 +100,33 @@ class WatchProgressService extends GetxService {
   /// İndeks her değiştiğinde 1 artar; `Obx` widget'ları dinler.
   final RxInt revision = 0.obs;
 
+  late final DebouncedPrefsWriter _prefsWriter = DebouncedPrefsWriter(
+    getPrefs: SharedPreferences.getInstance,
+    delay: const Duration(seconds: 2),
+  );
+
   @override
   void onInit() {
     super.onInit();
+    WidgetsBinding.instance.addObserver(this);
     ensureLoaded();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.paused ||
+        state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.hidden ||
+        state == AppLifecycleState.detached) {
+      unawaited(_prefsWriter.flush());
+    }
+  }
+
+  @override
+  void onClose() {
+    WidgetsBinding.instance.removeObserver(this);
+    unawaited(_prefsWriter.dispose());
+    super.onClose();
   }
 
   Future<int?> loadPositionMs(int streamId) async {
@@ -120,13 +147,10 @@ class WatchProgressService extends GetxService {
     String? title,
     String? coverUrl,
   }) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setInt('$_kPos$streamId', positionMs);
-      if (durationMs > 0) {
-        await prefs.setInt('$_kDur$streamId', durationMs);
-      }
-    } catch (_) {}
+    _prefsWriter.scheduleInt('$_kPos$streamId', positionMs);
+    if (durationMs > 0) {
+      _prefsWriter.scheduleInt('$_kDur$streamId', durationMs);
+    }
     if (title != null) {
       await _upsertIndex(
         index: _vodIndex,
@@ -159,24 +183,23 @@ class WatchProgressService extends GetxService {
     );
   }
 
-  Future<void> clear(int streamId) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.remove('$_kPos$streamId');
-      await prefs.remove('$_kDur$streamId');
-    } catch (_) {}
+  Future<void> clear(int streamId, {bool flushDisk = true}) async {
+    _prefsWriter.scheduleRemove('$_kPos$streamId');
+    _prefsWriter.scheduleRemove('$_kDur$streamId');
     await ensureLoaded();
     if (_vodIndex.remove(streamId) != null) {
-      await _persistIndex();
+      _schedulePersistIndex();
       revision.value++;
     }
+    if (flushDisk) await _prefsWriter.flush();
   }
 
-  Future<void> clearSeries(int seriesId) async {
+  Future<void> clearSeries(int seriesId, {bool flushDisk = true}) async {
     await ensureLoaded();
     if (_seriesIndex.remove(seriesId) != null) {
-      await _persistIndex();
+      _schedulePersistIndex();
       revision.value++;
+      if (flushDisk) await _prefsWriter.flush();
     }
   }
 
@@ -185,8 +208,9 @@ class WatchProgressService extends GetxService {
     await ensureLoaded();
     _vodIndex.clear();
     _seriesIndex.clear();
-    await _persistIndex();
+    _schedulePersistIndex();
     revision.value++;
+    await _prefsWriter.flush();
   }
 
   /// Belirli bir öğeyi listeden çıkarır (kullanıcı «kaldır» derse).
@@ -196,10 +220,14 @@ class WatchProgressService extends GetxService {
         ? _vodIndex.remove(id)
         : _seriesIndex.remove(id);
     if (removed != null) {
-      await _persistIndex();
+      _schedulePersistIndex();
       revision.value++;
+      await _prefsWriter.flush();
     }
   }
+
+  /// Bekleyen konum / indeks yazımlarını hemen diske basar.
+  Future<void> flushPendingDisk() => _prefsWriter.flush();
 
   /// Filmin izlenme oranı (0–1) — bellekten senkron okur. Yoksa `null`.
   double? vodFractionSync(int id) => _fractionSync(_vodIndex[id]);
@@ -294,7 +322,7 @@ class WatchProgressService extends GetxService {
     // Neredeyse bitmişse listeden çıkar.
     if (fraction > _kMaxFraction) {
       if (index.remove(id) != null) {
-        await _persistIndex();
+        _schedulePersistIndex();
         revision.value++;
       }
       return;
@@ -308,28 +336,25 @@ class WatchProgressService extends GetxService {
       durationMs: durationMs,
       updatedMs: DateTime.now().millisecondsSinceEpoch,
     );
-    await _persistIndex();
+    _schedulePersistIndex();
     revision.value++;
   }
 
-  Future<void> _persistIndex() async {
-    try {
-      // En yeni N öğeyi koru (her iki türü zaman damgasına göre kırp).
-      final combined = <ContinueWatchingEntry>[
-        ..._vodIndex.values,
-        ..._seriesIndex.values,
-      ]..sort((a, b) => b.updatedMs.compareTo(a.updatedMs));
-      if (combined.length > _kMaxItems) {
-        final keep = combined.take(_kMaxItems).toSet();
-        _vodIndex.removeWhere((_, e) => !keep.contains(e));
-        _seriesIndex.removeWhere((_, e) => !keep.contains(e));
-      }
-      final list = <Map<String, dynamic>>[
-        ..._vodIndex.values.map((e) => e.toJson()),
-        ..._seriesIndex.values.map((e) => e.toJson()),
-      ];
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setString(_kIndex, jsonEncode(list));
-    } catch (_) {}
+  void _schedulePersistIndex() {
+    // En yeni N öğeyi koru (her iki türü zaman damgasına göre kırp).
+    final combined = <ContinueWatchingEntry>[
+      ..._vodIndex.values,
+      ..._seriesIndex.values,
+    ]..sort((a, b) => b.updatedMs.compareTo(a.updatedMs));
+    if (combined.length > _kMaxItems) {
+      final keep = combined.take(_kMaxItems).toSet();
+      _vodIndex.removeWhere((_, e) => !keep.contains(e));
+      _seriesIndex.removeWhere((_, e) => !keep.contains(e));
+    }
+    final list = <Map<String, dynamic>>[
+      ..._vodIndex.values.map((e) => e.toJson()),
+      ..._seriesIndex.values.map((e) => e.toJson()),
+    ];
+    _prefsWriter.scheduleString(_kIndex, jsonEncode(list));
   }
 }

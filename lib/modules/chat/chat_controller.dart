@@ -15,9 +15,8 @@ class ChatController extends GetxController {
   /// Google ile oturum açma sürerken butonları kilitlemek için.
   final isSigningIn = false.obs;
 
-  /// Sohbet bölümüne girilince çevrimiçi varlık (presence) heartbeat'i başlar;
-  /// bölümden çıkılınca durur. Bu controller tüm chat alt-rotaları boyunca
-  /// canlı kaldığından, presence bölümün tamamını kapsar.
+  /// Presence uygulama genelinde [ChatService] tarafından yönetilir.
+  /// Sohbete girince yalnızca sayımı tazeleriz.
   @override
   void onInit() {
     super.onInit();

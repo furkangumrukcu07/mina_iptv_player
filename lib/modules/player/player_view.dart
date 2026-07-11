@@ -10,6 +10,7 @@ import 'package:get/get.dart';
 import 'package:media_kit/media_kit.dart';
 import '../../core/player/playback_orientation_manager.dart';
 import '../../core/services/app_settings_service.dart';
+import '../../core/services/showcase_in_app_pip_service.dart';
 import '../../core/services/epg_service.dart';
 import '../../core/services/favorites_service.dart';
 import '../../core/home/film_dizi_catalog.dart';
@@ -127,7 +128,7 @@ Widget _playerVideoSurfaceStack({
   required PlayerController controller,
   required bool enablePinchZoom,
   required Widget player,
-  required bool useMediaKitPlayer,
+  required bool useEmbeddedEngineOsd,
   required Widget? mkOsd,
   required void Function(DragStartDetails) onBrightnessDragStart,
   required void Function(DragStartDetails) onVolumeDragStart,
@@ -148,9 +149,10 @@ Widget _playerVideoSurfaceStack({
       const Positioned.fill(
         child: ColoredBox(color: Colors.black),
       ),
-      video,
-      if (useMediaKitPlayer) _PlaybackVideoDimmer(controller: controller),
-      if (useMediaKitPlayer && mkOsd != null) mkOsd,
+      // MediaKit Texture'ın Stack'te genişlemesi için (PiP bubble ile aynı mantık).
+      Positioned.fill(child: video),
+      if (useEmbeddedEngineOsd) _PlaybackVideoDimmer(controller: controller),
+      if (useEmbeddedEngineOsd && mkOsd != null) mkOsd,
       if (onLongPress != null)
         Positioned.fill(
           child: GestureDetector(
@@ -797,14 +799,19 @@ class _PlayerViewState extends State<PlayerView> with WidgetsBindingObserver {
                             final bp = controller.better;
                             final settings = Get.find<AppSettingsService>();
                             controller.betterOsdOverride.value;
-                            final useMediaKitPlayer =
-                                controller.effectiveUseMediaKit;
+                            final activeEngine = controller.activeVideoEngine;
+                            final useMediaKitPlayer = activeEngine.isMediaKit;
+                            final useEmbeddedEngineOsd = useMediaKitPlayer;
                             controller
                                 .orphanBetterSurfaceRecoveryAttempts.value;
 
                             final remoteNav = remoteNavForScreenLayout(
                                 context, settings.layoutMode.value);
+                            // MediaKit Texture + InteractiveViewer (pinch) Android'de
+                            // ana yüzeyde siyah ekran üretebiliyor; PiP'de Video doğrudan
+                            // mount edildiği için görüntü orada görünür.
                             final enablePinchZoom =
+                                !useMediaKitPlayer &&
                                 playbackPinchZoomEnabledForLayout(
                               settings.layoutMode.value,
                             );
@@ -857,10 +864,22 @@ class _PlayerViewState extends State<PlayerView> with WidgetsBindingObserver {
                               );
                             }
 
-                            final hasSurface = useMediaKitPlayer || bp != null;
+                            final hasSurface =
+                                useEmbeddedEngineOsd || bp != null;
+
+                            final pendingShowcasePipRestore =
+                                controller.isReopeningFromInAppPip ||
+                                    (Get.isRegistered<ShowcaseInAppPipService>() &&
+                                        Get.find<ShowcaseInAppPipService>()
+                                            .hasPendingRestoreForReopen);
 
                             if (!hasSurface) {
                               if (busy) {
+                                if (pendingShowcasePipRestore) {
+                                  return const ColoredBox(
+                                    color: Color(0xFF0D0D0F),
+                                  );
+                                }
                                 if (liveCh) {
                                   final suppress =
                                       controller.suppressLiveZapLoadingUi.value;
@@ -919,7 +938,7 @@ class _PlayerViewState extends State<PlayerView> with WidgetsBindingObserver {
                                                   'splash_${splashChannel.id}'),
                                               channel: splashChannel,
                                             ),
-                                          if (useMediaKitPlayer)
+                                          if (useEmbeddedEngineOsd)
                                             Obx(() {
                                               final cid =
                                                   controller.channel.value.id;
@@ -946,7 +965,7 @@ class _PlayerViewState extends State<PlayerView> with WidgetsBindingObserver {
                                   ),
                                 );
                               }
-                              if (!useMediaKitPlayer &&
+                              if (!useEmbeddedEngineOsd &&
                                   controller.orphanBetterSurfaceRecoveryAttempts
                                           .value >=
                                       controller
@@ -967,6 +986,9 @@ class _PlayerViewState extends State<PlayerView> with WidgetsBindingObserver {
                               }
                               WidgetsBinding.instance.addPostFrameCallback((_) {
                                 if (!mounted) return;
+                                if (controller.isReopeningFromInAppPipPending) {
+                                  return;
+                                }
                                 unawaited(
                                     controller.ensureOrphanBetterBootRetry());
                               });
@@ -1005,49 +1027,17 @@ class _PlayerViewState extends State<PlayerView> with WidgetsBindingObserver {
                               );
                             }
 
-                            if (useMediaKitPlayer) {
+                            if (useEmbeddedEngineOsd) {
                               controller.mediaKitAttachEpoch.value;
                             }
-
-                            final player = UniversalVideoPlayer(
-                              key: _videoSurfaceKey,
-                              url: controller.surfaceStreamUrl,
-                              useMediaKit: useMediaKitPlayer,
-                              betterPlayerController: bp,
-                              fit: fit,
-                              onMediaKitPlayerChanged:
-                                  controller.attachMediaKitPlayer,
-                            );
-
-                            final mkOsd = useMediaKitPlayer && !isPortrait
-                                ? Obx(() {
-                                    final epoch =
-                                        controller.mediaKitAttachEpoch.value;
-                                    final cid = controller.channel.value.id;
-                                    return TvMediaKitPlayerControls(
-                                      key: ValueKey('mk_osd_${cid}_$epoch'),
-                                      onPlayerVisibilityChanged: (v) {
-                                        controller
-                                            .syncTvOsdVisibilityFromControls(v);
-                                      },
-                                    );
-                                  })
-                                : null;
 
                             Widget addBusyShell(Widget core) {
                               if (!busy) return core;
                               final suppress =
                                   controller.suppressLiveZapLoadingUi.value;
-                              // Canlı→canlı zaplama: mevcut player kalsın, splash gösterme.
                               if (suppress) {
                                 return core;
                               }
-                              // Diğer tüm yükleme durumlarında (canlı/VOD,
-                              // dikey/yatay) tutarlı şekilde kanal logosu + yanıp
-                              // sönen şemsiye splash'ı göster — çıplak spinner yok.
-                              // Yüzey hazır olsa bile ilk kareye kadar splash
-                              // üstte kalır; ilk kare gelince [isBusy] düşer ve
-                              // splash kaybolur.
                               return Stack(
                                 fit: StackFit.expand,
                                 children: [
@@ -1062,6 +1052,31 @@ class _PlayerViewState extends State<PlayerView> with WidgetsBindingObserver {
                                 ],
                               );
                             }
+
+                            final player = UniversalVideoPlayer(
+                              key: _videoSurfaceKey,
+                              url: controller.surfaceStreamUrl,
+                              engine: activeEngine,
+                              betterPlayerController: bp,
+                              fit: fit,
+                              onMediaKitPlayerChanged:
+                                  controller.attachMediaKitPlayer,
+                            );
+
+                            final mkOsd = useEmbeddedEngineOsd && !isPortrait
+                                ? Obx(() {
+                                    final epoch =
+                                        controller.mediaKitAttachEpoch.value;
+                                    final cid = controller.channel.value.id;
+                                    return TvMediaKitPlayerControls(
+                                      key: ValueKey('mk_osd_${cid}_$epoch'),
+                                      onPlayerVisibilityChanged: (v) {
+                                        controller
+                                            .syncTvOsdVisibilityFromControls(v);
+                                      },
+                                    );
+                                  })
+                                : null;
 
                             if (remoteNav) {
                               // TV / tablet kumanda veya mobil yatay: ok ile OSD, oklar ile kanal (canlı).
@@ -1083,8 +1098,34 @@ class _PlayerViewState extends State<PlayerView> with WidgetsBindingObserver {
                                       return KeyEventResult.ignored;
                                     }
                                     final k = event.logicalKey;
-                                    // Odak üst katmana kaçtıysa: tek ok basışı yalnız OSD aç (zap yok).
+                                    // Yedek odak: canlıda ↑/↓ tek basış zap + OSD; sol şerit için yukarı bırak.
                                     if (!controller.tvOsdVisible.value) {
+                                      final liveTimeshift =
+                                          live &&
+                                              controller
+                                                  .liveTimeshiftSeekAvailable;
+                                      if (live && !liveTimeshift) {
+                                        if (k ==
+                                                LogicalKeyboardKey.arrowUp ||
+                                            k ==
+                                                LogicalKeyboardKey
+                                                    .arrowDown) {
+                                          final delta = k ==
+                                                  LogicalKeyboardKey.arrowUp
+                                              ? -1
+                                              : 1;
+                                          controller.tvOsdVisible.value =
+                                              true;
+                                          controller.scheduleTvOsdAutoHide();
+                                          controller
+                                              .zapRelativeDebounced(delta);
+                                          return KeyEventResult.handled;
+                                        }
+                                        if (k ==
+                                            LogicalKeyboardKey.arrowLeft) {
+                                          return KeyEventResult.ignored;
+                                        }
+                                      }
                                       if (k == LogicalKeyboardKey.arrowUp ||
                                           k == LogicalKeyboardKey.arrowDown ||
                                           k == LogicalKeyboardKey.arrowLeft ||
@@ -1109,7 +1150,7 @@ class _PlayerViewState extends State<PlayerView> with WidgetsBindingObserver {
                                       controller: controller,
                                       enablePinchZoom: enablePinchZoom,
                                       player: player,
-                                      useMediaKitPlayer: useMediaKitPlayer,
+                                      useEmbeddedEngineOsd: useEmbeddedEngineOsd,
                                       mkOsd: mkOsd,
                                       onBrightnessDragStart:
                                           _handleBrightnessDragStart,
@@ -1126,14 +1167,14 @@ class _PlayerViewState extends State<PlayerView> with WidgetsBindingObserver {
                                 ),
                               );
                             }
-                            if (useMediaKitPlayer && mkOsd != null) {
+                            if (useEmbeddedEngineOsd && mkOsd != null) {
                               return addBusyShell(
                                 _playerVideoSurfaceStack(
                                   context: context,
                                   controller: controller,
                                   enablePinchZoom: enablePinchZoom,
                                   player: player,
-                                  useMediaKitPlayer: useMediaKitPlayer,
+                                  useEmbeddedEngineOsd: useEmbeddedEngineOsd,
                                   mkOsd: mkOsd,
                                   onBrightnessDragStart:
                                       _handleBrightnessDragStart,
@@ -1154,7 +1195,7 @@ class _PlayerViewState extends State<PlayerView> with WidgetsBindingObserver {
                                 controller: controller,
                                 enablePinchZoom: enablePinchZoom,
                                 player: player,
-                                useMediaKitPlayer: useMediaKitPlayer,
+                                useEmbeddedEngineOsd: useEmbeddedEngineOsd,
                                 mkOsd: null,
                                 onBrightnessDragStart:
                                     _handleBrightnessDragStart,
@@ -1945,8 +1986,9 @@ class _PortraitOsdPanelState extends State<_PortraitOsdPanel> {
           settings.liveUseMediaKit.value;
           widget.controller.mediaKitFallbackSession.value;
           widget.controller.betterOsdOverride.value;
-          final useMediaKitPlayer = widget.controller.effectiveUseMediaKit;
-          if (useMediaKitPlayer) {
+          final activeEngine = widget.controller.activeVideoEngine;
+          final useEmbeddedEngineOsd = activeEngine.isMediaKit;
+          if (useEmbeddedEngineOsd) {
             widget.controller.mediaKitAttachEpoch.value;
           }
 
@@ -2021,6 +2063,24 @@ class _PortraitOsdPanelState extends State<_PortraitOsdPanel> {
                                 );
                                 return <Widget>[
                                   const SizedBox(width: 8),
+                                  ...() {
+                                    final transport = widget
+                                        .controller.osdStreamTransportFormatLabel;
+                                    if (transport == null || transport.isEmpty) {
+                                      return <Widget>[];
+                                    }
+                                    return <Widget>[
+                                      osdTransportBadge(
+                                        transportFormat: transport,
+                                        fontSize: 11,
+                                        radius: 8,
+                                        hPad: 8,
+                                        vPad: 4,
+                                        portrait: true,
+                                      ),
+                                      const SizedBox(width: 6),
+                                    ];
+                                  }(),
                                   osdEngineBadge(
                                     engine: widget.controller.activeVideoEngine,
                                     fontSize: 11,
@@ -2214,7 +2274,7 @@ class _PortraitOsdPanelState extends State<_PortraitOsdPanel> {
                               );
                             },
                           )
-                        else if (!useMediaKitPlayer)
+                        else if (!useEmbeddedEngineOsd)
                           _osdControlRow(
                             tv: useTvOsdStyle,
                             children: [
@@ -2350,7 +2410,7 @@ class _PortraitOsdPanelState extends State<_PortraitOsdPanel> {
                               }),
                             ],
                           )
-                        else if (useMediaKitPlayer)
+                        else if (useEmbeddedEngineOsd)
                           _MediaKitPortraitStreamBuilder(
                             controller: widget.controller,
                             builder: (v) {
@@ -6340,7 +6400,7 @@ class _MediaKitPortraitStreamBuilder extends StatefulWidget {
 
 class _MediaKitPortraitStreamBuilderState
     extends State<_MediaKitPortraitStreamBuilder> {
-  Player? _target;
+  Player? _mkTarget;
   final List<StreamSubscription<dynamic>> _subs = [];
   // Son rebuild edilen snapshot; position stream saniyede ~5 kez tetiklendiği
   // için, yalnızca oynat/duraklat, süre veya ≥500ms konum değişiminde yeniden
@@ -6368,9 +6428,9 @@ class _MediaKitPortraitStreamBuilderState
 
   void _attach() {
     final p = widget.controller.mediaKitPlayer;
-    if (identical(_target, p)) return;
+    if (identical(_mkTarget, p)) return;
     _cancelSubs();
-    _target = p;
+    _mkTarget = p;
     _lastBuilt = null;
     if (p == null) {
       if (mounted) setState(() {});

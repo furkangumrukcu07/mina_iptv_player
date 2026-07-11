@@ -17,18 +17,18 @@ import '../../core/services/epg_service.dart';
 import '../../core/services/mina_stream_cutter_service.dart';
 import '../../core/services/search_history_service.dart';
 import '../../core/services/auth_service.dart';
+import '../../core/services/cloud_restore_coordinator.dart';
 import '../../core/services/licensing_service.dart';
-import '../../ui/glass_overlays.dart';
 import '../../core/services/backup_service.dart';
 import '../../core/services/chat_service.dart';
 import '../../core/services/equalizer_service.dart';
 import '../../core/services/crash_reporting.dart';
 import '../../core/services/support_diagnostics.dart';
-import '../../core/player/adaptive_stream_quality_ceiling.dart';
 import '../../core/player/playback_user_agent.dart';
 import '../../core/epg/catch_up_url_template.dart';
 import '../../core/epg/global_epg_service.dart';
 import '../../data/local/epg_snapshot_keys.dart';
+import '../../data/remote/m3u_xtream_sniffer.dart';
 import '../../data/remote/xtream_api.dart';
 import '../../core/services/favorites_service.dart';
 import '../../core/services/iptv_logo_cache_service.dart';
@@ -43,6 +43,8 @@ import '../../core/theme/glass_appearance.dart';
 import '../../domain/entities/playlist_source.dart';
 import '../../domain/repositories/playlist_repository.dart';
 import '../channels/channels_controller.dart';
+import '../tv_shell/tv_shell_controller.dart';
+import 'admin_about_dialog.dart';
 import '../../ui/glass_overlays.dart';
 import 'equalizer_dialog.dart' as eq_dialog;
 import 'subtitle_font_picker_dialog.dart';
@@ -154,18 +156,42 @@ class SettingsController extends GetxController {
   }
 
   Future<void> _checkSource() async {
-    final s = await _repo.readSource();
-    isXtream.value = s is XtreamSource;
-    hasAnySource.value = s != null;
-    if (s is XtreamSource) {
-      final host = _shortHost(s.baseUrl);
+    final xtream = await _resolveXtreamSource();
+    isXtream.value = xtream != null;
+    final any = await _repo.readAllSources();
+    hasAnySource.value = any.isNotEmpty;
+    if (xtream != null) {
+      final host = _shortHost(xtream.baseUrl);
       xtreamFooterLine.value = 'settings.xtreamFooter.line'.trParams({
-        'user': s.username,
+        'user': xtream.username,
         'host': host,
       });
     } else {
       xtreamFooterLine.value = '';
     }
+  }
+
+  /// Aktif slot → tüm slotlar → M3U-Xtream sniff sırasıyla Xtream kaynağı bulur.
+  Future<XtreamSource?> _resolveXtreamSource() async {
+    XtreamSource? fromSource(PlaylistSource? s) {
+      if (s is XtreamSource) return s;
+      if (s is M3uSource) return M3uXtreamSniffer.toXtreamSource(s.url);
+      return null;
+    }
+
+    if (Get.isRegistered<ActivePlaylistService>()) {
+      final slot = Get.find<ActivePlaylistService>().activeSlot.value;
+      final active = fromSource(await _repo.readSourceAt(slot));
+      if (active != null) return active;
+    }
+
+    final all = await _repo.readAllSources();
+    for (final entry in all) {
+      final hit = fromSource(entry.source);
+      if (hit != null) return hit;
+    }
+
+    return fromSource(await _repo.readSource());
   }
 
   String _shortHost(String raw) {
@@ -180,6 +206,7 @@ class SettingsController extends GetxController {
   void onReady() {
     super.onReady();
     now.value = DateTime.now();
+    unawaited(_checkSource());
   }
 
   @override
@@ -373,7 +400,7 @@ class SettingsController extends GetxController {
   /// Ana Ekran Ayarları — kart sırası + karışık canlı TV + sıradaki maçlar
   /// + yüksek puanlı filmler tek alt-sayfada.
   void openHomeSettings() {
-    Get.toNamed(AppRoutes.homeSettings);
+    pushSettingsSubpage(AppRoutes.homeSettings, shellDpadIndex: _shellHomeSettings);
   }
 
   /// Yedekleme / Geri Yükleme alt-sayfası — `mina_backup.dat` paylaşımı ve
@@ -385,7 +412,7 @@ class SettingsController extends GetxController {
   /// Daha seyrek kullanılan yardımcı araçlar (uyku zamanlayıcısı, EPG, tema,
   /// yedekleme/geri yükleme, hız testi, adaptif titreşim, uygulama fontu).
   void openOtherTools() {
-    Get.toNamed(AppRoutes.otherTools);
+    pushSettingsSubpage(AppRoutes.otherTools, shellDpadIndex: _shellOtherTools);
   }
 
   /// «Bize Ulaşın» alt-sayfası — Telegram kanalı + sorun bildir (mail).
@@ -403,7 +430,7 @@ class SettingsController extends GetxController {
   /// birebir admin konuşması açılır.
   void openAdminMessage() {
     if (!Get.isRegistered<ChatService>()) {
-      Get.lazyPut<ChatService>(() => ChatService(), fenix: true);
+      Get.put<ChatService>(ChatService(), permanent: true);
     }
     final chat = Get.find<ChatService>();
     if (!chat.isReady) {
@@ -450,12 +477,12 @@ class SettingsController extends GetxController {
 
   /// Google bulut senkronu durumu ve hızlı işlemler.
   void openCloudSync() {
-    Get.toNamed(AppRoutes.cloudSync);
+    pushSettingsSubpage(AppRoutes.cloudSync, shellDpadIndex: _shellCloud);
   }
 
   /// Netflix tarzı çoklu profil yönetimi.
   void openProfiles() {
-    Get.toNamed(AppRoutes.profiles);
+    pushSettingsSubpage(AppRoutes.profiles, shellDpadIndex: _shellProfiles);
   }
 
   /// Veri Kullanım Detayı sayfası — uygulamanın bu cihazda
@@ -465,34 +492,70 @@ class SettingsController extends GetxController {
   }
 
   void openDownloads() {
-    Get.toNamed(AppRoutes.downloads);
+    pushSettingsSubpage(AppRoutes.downloads, shellDpadIndex: _shellDownloads);
   }
 
   /// Kanal Kategori Düzeni alt-sayfası — kategori gizleme + canlı kanal
   /// listesi düzenleyici tek noktada.
   void openChannelCategoryLayout() {
-    Get.toNamed(AppRoutes.channelCategoryLayout);
+    pushSettingsSubpage(
+      AppRoutes.channelCategoryLayout,
+      shellDpadIndex: _shellChannelLayout,
+    );
+  }
+
+  /// TV ayar paneli D-pad indeksleri — [SettingsView._ShellDpad] ile uyumlu.
+  static const _shellPlaylist = 0;
+  static const _shellChannelLayout = 1;
+  static const _shellHomeSettings = 2;
+  static const _shellPlayback = 3;
+  static const _shellKeyMapping = 4;
+  static const _shellOtherTools = 7;
+  static const _shellProfiles = 9;
+  static const _shellCloud = 10;
+  static const _shellDownloads = 11;
+
+  /// Ayarlar alt sayfası: dönüşte aynı karoya odaklan (TV kabuğu).
+  Future<T?>? pushSettingsSubpage<T>(
+    String route, {
+    int? shellDpadIndex,
+    dynamic arguments,
+  }) {
+    final shell = Get.isRegistered<TvShellController>()
+        ? Get.find<TvShellController>()
+        : null;
+    if (shellDpadIndex != null) {
+      shell?.rememberSettingsReturnFocus(shellDpadIndex);
+    }
+    final future = Get.toNamed<T>(route, arguments: arguments);
+    future?.whenComplete(() {
+      shell?.restoreSettingsReturnFocus();
+    });
+    return future;
   }
 
   /// Oynatma Ayarları alt-sayfası — oynatıcı motoru, donanım kod çözücü,
   /// yazılım fallback ve canlı buffer süresi.
   void openPlaybackSettings() {
-    Get.toNamed(AppRoutes.playbackSettings);
+    pushSettingsSubpage(AppRoutes.playbackSettings, shellDpadIndex: _shellPlayback);
   }
 
   void openTvKeyMapping() {
-    Get.toNamed(AppRoutes.tvKeyMapping);
+    pushSettingsSubpage(AppRoutes.tvKeyMapping, shellDpadIndex: _shellKeyMapping);
   }
 
   void openSubtitleOptions() {
-    Get.toNamed(AppRoutes.subtitleOptions);
+    pushSettingsSubpage(AppRoutes.subtitleOptions);
   }
 
   Future<void> showXtreamInfo() async {
     if (isFetchingInfo.value) return;
 
-    final source = await _repo.readSource();
-    if (source is! XtreamSource) {
+    final ctx = Get.context;
+    if (ctx == null) return;
+
+    final source = await _resolveXtreamSource();
+    if (source == null) {
       GlassSnackbar.show(
         'settings.snackbar.info'.tr,
         'settings.snackbar.xtreamOnly'.tr,
@@ -501,16 +564,35 @@ class SettingsController extends GetxController {
     }
 
     isFetchingInfo.value = true;
+    var loadingOpen = false;
     try {
-      // Yeni: user_info + server_info birlikte (bağlantı portları, saat dilimi,
-      // sunucu saati, izinli formatlar vs.).
+      if (ctx.mounted) {
+        loadingOpen = true;
+        unawaited(
+          showDialog<void>(
+            context: ctx,
+            barrierDismissible: false,
+            useRootNavigator: true,
+            builder: (_) => const PopScope(
+              canPop: false,
+              child: Center(child: CircularProgressIndicator()),
+            ),
+          ),
+        );
+      }
+
       final snap = await _repo.getXtreamAccountSnapshot(
         baseUrl: source.baseUrl,
         username: source.username,
         password: source.password,
       );
 
-      if (snap == null || (snap.user == null && snap.server == null)) {
+      if (loadingOpen && ctx.mounted) {
+        Navigator.of(ctx, rootNavigator: true).pop();
+        loadingOpen = false;
+      }
+
+      if (snap == null) {
         GlassSnackbar.show(
           'settings.snackbar.error'.tr,
           'settings.snackbar.xtreamFail'.tr,
@@ -518,12 +600,12 @@ class SettingsController extends GetxController {
         return;
       }
 
-      await Get.dialog(
-        GlassAlertDialog(
+      if (!ctx.mounted) return;
+      await showDialog<void>(
+        context: ctx,
+        useRootNavigator: true,
+        builder: (dialogCtx) => GlassAlertDialog(
           title: Text('settings.dialog.xtreamTitle'.tr),
-          // Kaydırma yalnızca GlassAlertDialog içindeki ListView'da;
-          // ek SingleChildScrollView iç içe scroll çakışması yapıp
-          // aşağı çekince yukarı sıçratıyordu.
           content: XtreamAccountInfoBody(
             source: source,
             user: snap.user,
@@ -532,12 +614,15 @@ class SettingsController extends GetxController {
           actions: [
             GlassDialogActionButton(
               label: 'common.close'.tr,
-              onPressed: () => Navigator.pop(Get.context!),
+              onPressed: () => Navigator.pop(dialogCtx),
             ),
           ],
         ),
       );
     } catch (e) {
+      if (loadingOpen && ctx.mounted) {
+        Navigator.of(ctx, rootNavigator: true).pop();
+      }
       GlassSnackbar.show(
         'settings.snackbar.error'.tr,
         'settings.snackbar.xtreamError'.trParams({'e': '$e'}),
@@ -557,7 +642,10 @@ class SettingsController extends GetxController {
     // ezdiği için (mevcut listeyi değiştiriyordu) buradan açılmıyor.
     // Yönetici, yeni listeyi bir sonraki boş slota ekler ve mevcut
     // listeleri korur; düzenleme/yenileme/silme de slot bazında yapılır.
-    await Get.toNamed(AppRoutes.playlistsManager);
+    await pushSettingsSubpage(
+      AppRoutes.playlistsManager,
+      shellDpadIndex: _shellPlaylist,
+    );
     await _checkSource();
   }
 
@@ -1125,6 +1213,7 @@ class SettingsController extends GetxController {
   }
 
   Future<void> showLayoutModeDialog() async {
+    if (_app.androidTvShellLayoutLocked.value) return;
     final ctx = Get.context;
     if (ctx == null) return;
 
@@ -1419,63 +1508,6 @@ class SettingsController extends GetxController {
     );
 
     ctrl.dispose();
-  }
-
-  Future<void> showAdaptiveQualityCeilingDialog() async {
-    final ctx = Get.context;
-    if (ctx == null) return;
-
-    var pending = _app.adaptiveStreamQualityCeiling.value;
-
-    await showDialog<void>(
-      context: ctx,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setDialogState) => GlassAlertDialog(
-          scrollable: true,
-          title: Text('settings.dialog.adaptiveQualityTitle'.tr),
-          content: GlassDialogListPanel(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                for (final opt in AdaptiveStreamQualityCeiling.values)
-                  GlassListTile(
-                    title: Text(_adaptiveQualityOptionLabel(opt)),
-                    trailing: pending == opt
-                        ? const Icon(
-                            Icons.check_rounded,
-                            color: Colors.white,
-                          )
-                        : null,
-                    selected: pending == opt,
-                    onTap: () => setDialogState(() => pending = opt),
-                  ),
-              ],
-            ),
-          ),
-          actions: glassDialogPickerActions(
-            dialogContext,
-            onCancel: () => Navigator.pop(dialogContext),
-            onApply: () async {
-              await _app.setAdaptiveStreamQualityCeiling(pending);
-              if (dialogContext.mounted) Navigator.pop(dialogContext);
-            },
-          ),
-        ),
-      ),
-    );
-  }
-
-  String _adaptiveQualityOptionLabel(AdaptiveStreamQualityCeiling v) {
-    switch (v) {
-      case AdaptiveStreamQualityCeiling.auto:
-        return 'settings.adaptiveQuality.optionAuto'.tr;
-      case AdaptiveStreamQualityCeiling.p720:
-        return 'settings.adaptiveQuality.option720'.tr;
-      case AdaptiveStreamQualityCeiling.p1080:
-        return 'settings.adaptiveQuality.option1080'.tr;
-      case AdaptiveStreamQualityCeiling.p4k:
-        return 'settings.adaptiveQuality.option4k'.tr;
-    }
   }
 
   /// Ayarlar > Oynatıcı > "Yayın Formatı" tile'ı için kısa açıklama.
@@ -2076,7 +2108,27 @@ class SettingsController extends GetxController {
     if (auth.isSignedIn) return true;
     isCloudBusy.value = true;
     try {
-      return await _ensureSignedInForCloudCore();
+      if (!await _ensureSignedInForCloudCore()) return false;
+
+      CloudBackupInfo? info;
+      try {
+        info = await auth
+            .fetchCloudBackupInfo()
+            .timeout(const Duration(seconds: 15), onTimeout: () => null);
+      } catch (_) {
+        info = null;
+      }
+      final hasBackup = info != null &&
+          (info.playlistCount > 0 ||
+              info.settingsCount > 0 ||
+              info.localM3uCount > 0);
+      if (!hasBackup) return true;
+
+      final restore = await CloudRestoreCoordinator.restoreWithProgressDialog(
+        auth: auth,
+        navigateToSplashOnSuccess: true,
+      );
+      return restore.outcome != CloudRestoreOutcome.failed;
     } finally {
       isCloudBusy.value = false;
     }
@@ -2194,10 +2246,13 @@ class SettingsController extends GetxController {
     isCloudBusy.value = true;
     try {
       if (!await _ensureSignedInForCloudCore()) return;
-      final cloud = await _auth!
-          .loadUserSettingsFromCloud()
-          .timeout(const Duration(seconds: 30), onTimeout: () => null);
-      if (cloud == null || cloud.isEmpty) {
+
+      final restore = await CloudRestoreCoordinator.restoreWithProgressDialog(
+        auth: _auth!,
+        navigateToSplashOnSuccess: false,
+      );
+
+      if (restore.outcome == CloudRestoreOutcome.empty) {
         GlassSnackbar.show(
           'cloud.title'.tr,
           'cloud.restore.empty'.tr,
@@ -2205,8 +2260,8 @@ class SettingsController extends GetxController {
         );
         return;
       }
-      final applied = await _auth!.applyCloudSettingsLocally(cloud);
-      if (!applied) {
+      if (restore.outcome == CloudRestoreOutcome.failed) {
+        _logCloudRestore(success: false);
         GlassSnackbar.show(
           'cloud.title'.tr,
           'cloud.restoreFailed'.tr,
@@ -2214,30 +2269,8 @@ class SettingsController extends GetxController {
         );
         return;
       }
+
       _logCloudRestore(success: true);
-      if (Get.context != null) {
-        await Future<void>.delayed(const Duration(milliseconds: 250));
-        await showDialog<void>(
-          context: Get.context!,
-          builder: (dCtx) => GlassAlertDialog(
-            tvOsdStyle: remoteNav,
-            title: Text('settings.backup.restore.doneTitle'.tr),
-            content: Text('settings.backup.restore.doneBody'.tr),
-            actions: [
-              GlassDialogActionButton(
-                label: 'common.ok'.tr,
-                primary: true,
-                onDarkSurface: remoteNav,
-                onPressed: () => Navigator.of(dCtx).pop(),
-              ),
-            ],
-          ),
-        );
-      }
-      // Geri yükleme tüm `mina_*` ayarlarını, listeleri, favori ve izleme
-      // geçmişini değiştirir. Kısmi bellek yenileme yerine splash'ten temiz
-      // yeniden başlatarak tüm servislerin taze veriyle yüklenmesini garanti
-      // ederiz (sihirbaz geri yükleme akışıyla aynı davranış).
       isCloudBusy.value = false;
       Get.offAllNamed(AppRoutes.splash);
       return;
@@ -3093,6 +3126,13 @@ class SettingsController extends GetxController {
             ),
           ),
           GlassDialogActionButton(
+            label: 'settings.dialog.adminButton'.tr,
+            onPressed: () {
+              Navigator.pop(c);
+              AdminAboutDialog.show(ctx);
+            },
+          ),
+          GlassDialogActionButton(
             label: 'common.close'.tr,
             primary: true,
             onPressed: () => Navigator.pop(c),
@@ -3554,8 +3594,10 @@ class SettingsController extends GetxController {
   void showSubscriptionStatusDialog() {
     final ctx = Get.context;
     if (ctx == null) return;
-    
+
     final licensing = LicensingService.to;
+    unawaited(licensing.refreshLicenseAcquisitionDate());
+    unawaited(licensing.refreshRegisteredDevices());
 
     showDialog<void>(
       context: ctx,
@@ -3605,19 +3647,59 @@ class SettingsController extends GetxController {
                         licensing.isGrandfathered.value ? Colors.greenAccent : Colors.white70,
                       )),
                       Obx(() {
-                        if (licensing.isPremium.value && licensing.purchaseDate.value != null) {
-                          final date = licensing.purchaseDate.value!.toLocal();
-                          final formattedDate = '${date.day}.${date.month}.${date.year} ${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
-                          return Padding(
-                            padding: const EdgeInsets.only(top: 12),
-                            child: _buildDialogInfoRow(
-                              'settings.subscription.dialog.purchaseDate'.tr,
-                              formattedDate,
-                              Colors.white70,
-                            ),
-                          );
+                        if (!licensing.isPremium.value && !licensing.deviceLimitExceeded.value) {
+                          return const SizedBox.shrink();
                         }
-                        return const SizedBox.shrink();
+                        final count = licensing.deviceCount.value;
+                        final max = licensing.maxDevices.value;
+                        return Padding(
+                          padding: const EdgeInsets.only(top: 12),
+                          child: _buildDialogInfoRow(
+                            'settings.subscription.dialog.devices'.tr,
+                            '$count / $max',
+                            licensing.deviceLimitExceeded.value
+                                ? Colors.orangeAccent
+                                : Colors.white70,
+                          ),
+                        );
+                      }),
+                      Obx(() {
+                        if (!licensing.deviceLimitExceeded.value) {
+                          return const SizedBox.shrink();
+                        }
+                        return Padding(
+                          padding: const EdgeInsets.only(top: 8),
+                          child: Text(
+                            'settings.subscription.deviceLimit'.trParams({
+                              'count': '${licensing.deviceCount.value}',
+                              'max': '${licensing.maxDevices.value}',
+                            }),
+                            style: const TextStyle(
+                              color: Colors.orangeAccent,
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        );
+                      }),
+                      Obx(() {
+                        if (!licensing.isPremium.value) {
+                          return const SizedBox.shrink();
+                        }
+                        final formattedDate = licensing.formatLicenseAcquisitionDate(
+                          _app.languageCode.value,
+                        );
+                        if (formattedDate == null) {
+                          return const SizedBox.shrink();
+                        }
+                        return Padding(
+                          padding: const EdgeInsets.only(top: 12),
+                          child: _buildDialogInfoRow(
+                            'settings.subscription.dialog.purchaseDate'.tr,
+                            formattedDate,
+                            Colors.white70,
+                          ),
+                        );
                       }),
                       Obx(() {
                         if (!licensing.isPremium.value && licensing.trialExpirationDate.value != null) {

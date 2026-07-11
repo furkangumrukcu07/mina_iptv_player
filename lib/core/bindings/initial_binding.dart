@@ -19,11 +19,13 @@ import '../haptics/adaptive_haptics_service.dart';
 import '../services/app_bootstrap_service.dart';
 import '../services/app_settings_service.dart';
 import '../services/auth_service.dart';
+import '../services/chat_service.dart';
 import '../services/mina_analytics_service.dart';
 import '../services/mina_push_service.dart';
 import '../services/mina_stream_cutter_service.dart';
 import '../services/playlist_cache_service.dart';
 import '../services/playlist_data_source.dart';
+import '../services/playlist_sqlite_backfill_service.dart';
 import '../services/profiles_service.dart';
 import '../services/epg_service.dart';
 import '../services/epg_deferred_load_service.dart';
@@ -49,6 +51,10 @@ class InitialBinding extends Bindings {
     Get.put<IptvLogoCacheService>(IptvLogoCacheService(), permanent: true);
     Get.put<PlaylistCacheService>(PlaylistCacheService(), permanent: true);
     Get.put<PlaylistDataSource>(PlaylistDataSource(), permanent: true);
+    Get.put<PlaylistSqliteBackfillService>(
+      PlaylistSqliteBackfillService(),
+      permanent: true,
+    );
     Get.put<ActivePlaylistService>(ActivePlaylistService(), permanent: true);
     Get.put<AppBootstrapService>(AppBootstrapService(), permanent: true);
     Get.put<EpgService>(EpgService(), permanent: true);
@@ -70,6 +76,8 @@ class InitialBinding extends Bindings {
     Get.put<IptvPrecacheService>(IptvPrecacheService(), permanent: true);
     Get.put<BackupService>(BackupService(), permanent: true);
     Get.put<AuthService>(AuthService(), permanent: true);
+    // Uygulama geneli çevrimiçi presence (sohbet rozeti) — Auth'tan sonra.
+    Get.put<ChatService>(ChatService(), permanent: true);
     // Sunucu-tarafı bayraklar (varsayilan_video_motoru / inceleme_modu_aktif /
     // zorunlu_surum_kontrolu). Splash fetch'i bekler.
     Get.put<RemoteConfigService>(RemoteConfigService(), permanent: true);

@@ -1,3 +1,5 @@
+import 'dart:async' show unawaited;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
@@ -9,6 +11,7 @@ import '../../core/services/toast_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/glass_appearance.dart';
 import '../../domain/entities/playlist_source.dart';
+import '../../domain/entities/stalker_compat.dart';
 import '../../ui/glass_overlays.dart';
 import '../../ui/tv_dpad_focus.dart';
 import '../../ui/tv_settings_subpage.dart';
@@ -360,7 +363,7 @@ class _PlaylistsSlotListState extends State<_PlaylistsSlotList> {
   Widget build(BuildContext context) {
     final c = Get.find<PlaylistsManagerController>();
     return Obx(() {
-      final list = c.slots.toList();
+      final list = List<PlaylistSlotState>.from(c.slots);
       if (list.isEmpty) {
         return const Center(
           child: SizedBox(
@@ -371,45 +374,152 @@ class _PlaylistsSlotListState extends State<_PlaylistsSlotList> {
         );
       }
 
-      return ListView.separated(
-        padding: EdgeInsets.fromLTRB(
-          widget.embeddedInTvShell ? 20 : 16,
-          8,
-          widget.embeddedInTvShell ? 20 : 16,
-          28,
-        ),
-        itemCount: list.length,
-        separatorBuilder: (_, __) => const SizedBox(height: 10),
-        itemBuilder: (context, i) {
-          final state = list[i];
-          final tvScope = _tvScopeForRow(
+      final filled = list.where((s) => !s.isEmpty).toList();
+      final placeholders = list.where((s) => s.isEmpty).toList();
+      final touchReorder = filled.length >= 2 && !_usesTvRowNav(context);
+      final pad = EdgeInsets.fromLTRB(
+        widget.embeddedInTvShell ? 20 : 16,
+        8,
+        widget.embeddedInTvShell ? 20 : 16,
+        28,
+      );
+
+      if (!touchReorder) {
+        return ListView.separated(
+          padding: pad,
+          itemCount: list.length,
+          separatorBuilder: (_, __) => const SizedBox(height: 10),
+          itemBuilder: (context, i) => _buildRow(
             context: context,
-            rowIndex: i,
-            itemCount: list.length,
-            allStates: list,
-            state: state,
-          );
-          final isAddSlot = state.isEmpty && i == list.length - 1;
-          if (isAddSlot) {
-            final card = _AddSlotCard(
-              slot: state.slot,
-              onActivate: () => _openAddEditor(context, slot: state.slot),
-            );
-            if (tvScope == null) return card;
-            return tvScope.wrap(
-              target: _PlaylistRowTarget.body,
-              onActivate: () => _openAddEditor(context, slot: state.slot),
-              child: card,
-            );
-          }
-          return _SlotCard(
-            state: state,
-            tvScope: tvScope,
-            onOpenEditor: () => _openSlotEditor(context, state: state),
-          );
-        },
+            list: list,
+            index: i,
+            showDragHandle: false,
+            dragIndex: null,
+          ),
+        );
+      }
+
+      // Dolu listeler sürüklenir; "Yeni ekle" / boş birincil altta sabit.
+      return CustomScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        slivers: [
+          SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(pad.left, pad.top, pad.right, 6),
+              child: Text(
+                'playlistsManager.reorder.hint'.tr,
+                style: TextStyle(
+                  color: Colors.white.withValues(alpha: 0.55),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+          ),
+          SliverPadding(
+            padding: EdgeInsets.fromLTRB(pad.left, 0, pad.right, 0),
+            sliver: SliverReorderableList(
+              itemCount: filled.length,
+              onReorder: (oldIndex, newIndex) {
+                unawaited(c.reorderFilledSlots(oldIndex, newIndex));
+              },
+              itemBuilder: (context, i) {
+                final state = filled[i];
+                final fullList = [...filled, ...placeholders];
+                return Padding(
+                  key: ValueKey<String>(
+                    'playlist-reorder-${state.slot}-${state.kind.name}',
+                  ),
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: _buildRow(
+                    context: context,
+                    list: fullList,
+                    index: i,
+                    showDragHandle: true,
+                    dragIndex: i,
+                  ),
+                );
+              },
+            ),
+          ),
+          if (placeholders.isNotEmpty)
+            SliverPadding(
+              padding: EdgeInsets.fromLTRB(pad.left, 0, pad.right, pad.bottom),
+              sliver: SliverList(
+                delegate: SliverChildBuilderDelegate(
+                  (context, i) {
+                    final fullList = [...filled, ...placeholders];
+                    final index = filled.length + i;
+                    return Padding(
+                      padding: EdgeInsets.only(
+                        bottom: i == placeholders.length - 1 ? 0 : 10,
+                        top: i == 0 ? 0 : 0,
+                      ),
+                      child: _buildRow(
+                        context: context,
+                        list: fullList,
+                        index: index,
+                        showDragHandle: false,
+                        dragIndex: null,
+                      ),
+                    );
+                  },
+                  childCount: placeholders.length,
+                ),
+              ),
+            )
+          else
+            SliverToBoxAdapter(child: SizedBox(height: pad.bottom)),
+        ],
       );
     });
+  }
+
+  Widget _buildRow({
+    required BuildContext context,
+    required List<PlaylistSlotState> list,
+    required int index,
+    required bool showDragHandle,
+    required int? dragIndex,
+  }) {
+    final state = list[index];
+    final rowKey = ValueKey<String>(
+      'playlist-slot-${state.slot}-${state.isEmpty ? 'empty' : state.kind.name}',
+    );
+    final tvScope = _tvScopeForRow(
+      context: context,
+      rowIndex: index,
+      itemCount: list.length,
+      allStates: list,
+      state: state,
+    );
+    final isAddSlot = state.isEmpty && index == list.length - 1;
+    if (isAddSlot) {
+      final card = _AddSlotCard(
+        slot: state.slot,
+        onActivate: () => _openAddEditor(context, slot: state.slot),
+      );
+      if (tvScope == null) {
+        return KeyedSubtree(key: rowKey, child: card);
+      }
+      return KeyedSubtree(
+        key: rowKey,
+        child: tvScope.wrap(
+          target: _PlaylistRowTarget.body,
+          onActivate: () => _openAddEditor(context, slot: state.slot),
+          child: card,
+        ),
+      );
+    }
+    return KeyedSubtree(
+      key: rowKey,
+      child: _SlotCard(
+        state: state,
+        tvScope: tvScope,
+        onOpenEditor: () => _openSlotEditor(context, state: state),
+        dragIndex: showDragHandle ? dragIndex : null,
+      ),
+    );
   }
 
   Future<void> _openAddEditor(BuildContext context, {required int slot}) async {
@@ -439,11 +549,15 @@ class _SlotCard extends StatelessWidget {
     required this.state,
     this.tvScope,
     this.onOpenEditor,
+    this.dragIndex,
   });
 
   final PlaylistSlotState state;
   final _PlaylistTvFocusScope? tvScope;
   final VoidCallback? onOpenEditor;
+
+  /// Dokunmatik sürükle-bırak tutamacı; null ise gösterilmez.
+  final int? dragIndex;
 
   @override
   Widget build(BuildContext context) {
@@ -470,11 +584,28 @@ class _SlotCard extends StatelessWidget {
     );
 
     final info = _info(isPrimary);
+    final dragHandle = dragIndex == null
+        ? null
+        : ReorderableDragStartListener(
+            index: dragIndex!,
+            child: Padding(
+              padding: const EdgeInsets.only(left: 4, right: 2),
+              child: Icon(
+                Icons.drag_handle_rounded,
+                color: Colors.white.withValues(alpha: 0.55),
+                size: 26,
+              ),
+            ),
+          );
 
     Widget bodyRow({required bool actionsBelow}) {
       final body = Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (dragHandle != null) ...[
+            dragHandle,
+            const SizedBox(width: 4),
+          ],
           avatar,
           const SizedBox(width: 12),
           Expanded(child: info),
@@ -803,6 +934,7 @@ class _KindBadge extends StatelessWidget {
     if (kind == PlaylistSourceKind.empty) return const SizedBox.shrink();
     final label = switch (kind) {
       PlaylistSourceKind.xtream => 'Xtream',
+      PlaylistSourceKind.stalker => 'stalker.chip.label'.tr,
       PlaylistSourceKind.m3uUrl => 'M3U',
       PlaylistSourceKind.m3uLocal => 'M3U · File',
       PlaylistSourceKind.empty => '',
@@ -1281,7 +1413,7 @@ EdgeInsets _editorFieldScrollPadding(bool tvDeferred) {
 /// Liste ekle / düzenle — **tam ekran** cam tasarımlı sayfa (alttan fırlayan
 /// sheet değil). TV/kumanda için D-pad odak akışı: tür seçici → alanlar →
 /// Kaydet. Mobil/tablet için dokunmatik.
-enum _SourceKind { url, file, xtream }
+enum _SourceKind { url, file, xtream, stalker }
 
 class _SlotEditorPage extends StatefulWidget {
   const _SlotEditorPage({required this.initial});
@@ -1297,6 +1429,9 @@ class _SlotEditorPageState extends State<_SlotEditorPage> {
   final xtreamBase = TextEditingController();
   final xtreamUser = TextEditingController();
   final xtreamPass = TextEditingController();
+  final stalkerBase = TextEditingController();
+  final stalkerMac = TextEditingController();
+  final stalkerHw = TextEditingController();
   final _name = TextEditingController();
 
   final _nameFocus = FocusNode(debugLabel: 'editorName');
@@ -1305,9 +1440,12 @@ class _SlotEditorPageState extends State<_SlotEditorPage> {
   final _xtreamBaseFocus = FocusNode(debugLabel: 'editorXtreamBase');
   final _xtreamUserFocus = FocusNode(debugLabel: 'editorXtreamUser');
   final _xtreamPassFocus = FocusNode(debugLabel: 'editorXtreamPass');
+  final _stalkerBaseFocus = FocusNode(debugLabel: 'editorStalkerBase');
+  final _stalkerMacFocus = FocusNode(debugLabel: 'editorStalkerMac');
+  final _stalkerHwFocus = FocusNode(debugLabel: 'editorStalkerHw');
   final _saveFocus = FocusNode(debugLabel: 'editorSave');
 
-  /// Tür seçici çipleri için D-pad odak düğümleri (url / file / xtream).
+  /// Tür seçici çipleri için D-pad odak düğümleri (url / file / xtream / stalker).
   final Map<_SourceKind, FocusNode> _kindFocusNodes = {
     for (final k in _SourceKind.values)
       k: FocusNode(debugLabel: 'editorKind_${k.name}'),
@@ -1316,6 +1454,8 @@ class _SlotEditorPageState extends State<_SlotEditorPage> {
   _SourceKind _kind = _SourceKind.url;
   String? _pickedFileName;
   bool _saving = false;
+  StalkerMagPreset _stalkerPreset = StalkerMagPreset.genericSafe;
+  StalkerLinkType _stalkerLink = StalkerLinkType.wifi;
 
   @override
   void initState() {
@@ -1335,13 +1475,22 @@ class _SlotEditorPageState extends State<_SlotEditorPage> {
       xtreamUser.text = src.username;
       xtreamPass.text = src.password;
       _kind = _SourceKind.xtream;
+    } else if (src is StalkerSource) {
+      stalkerBase.text = src.baseUrl;
+      stalkerMac.text = src.macAddress;
+      stalkerHw.text = src.hwVersionOverride;
+      _stalkerPreset = src.magPreset;
+      _stalkerLink = src.linkType;
+      _kind = _SourceKind.stalker;
     }
 
-    // Yatay modda Xtream alanları odaklanınca klavye altında kalmasın diye
+    // Yatay modda Xtream/Stalker alanları odaklanınca klavye altında kalmasın diye
     // hafif kaydır (kurulum sihirbazı ile aynı davranış).
     _xtreamBaseFocus.addListener(_onXtreamBaseFocus);
     _xtreamUserFocus.addListener(_onXtreamUserFocus);
     _xtreamPassFocus.addListener(_onXtreamPassFocus);
+    _stalkerBaseFocus.addListener(_onStalkerBaseFocus);
+    _stalkerMacFocus.addListener(_onStalkerMacFocus);
   }
 
   void _onXtreamBaseFocus() =>
@@ -1353,17 +1502,25 @@ class _SlotEditorPageState extends State<_SlotEditorPage> {
   void _onXtreamPassFocus() =>
       _ensureXtreamFieldVisible(_xtreamPassFocus, alignment: 0.38);
 
-  /// Xtream metin alanı odaklandığında (yalnızca mobil/tablet yatay) aktif
+  void _onStalkerBaseFocus() =>
+      _ensureXtreamFieldVisible(_stalkerBaseFocus, alignment: 0.05, forceStalker: true);
+
+  void _onStalkerMacFocus() =>
+      _ensureXtreamFieldVisible(_stalkerMacFocus, alignment: 0.22, forceStalker: true);
+
+  /// Xtream/Stalker metin alanı odaklandığında (yalnızca mobil/tablet yatay) aktif
   /// satırı klavyenin üstüne hafifçe kaydırır.
   void _ensureXtreamFieldVisible(
     FocusNode node, {
     required double alignment,
+    bool forceStalker = false,
   }) {
     if (!node.hasFocus) return;
     if (_tvDeferredKeyboard) return;
     if (!mounted) return;
     if (MediaQuery.orientationOf(context) != Orientation.landscape) return;
-    if (_kind != _SourceKind.xtream) return;
+    if (!forceStalker && _kind != _SourceKind.xtream) return;
+    if (forceStalker && _kind != _SourceKind.stalker) return;
 
     void run() {
       if (!mounted || !node.hasFocus) return;
@@ -1388,10 +1545,15 @@ class _SlotEditorPageState extends State<_SlotEditorPage> {
     _xtreamBaseFocus.removeListener(_onXtreamBaseFocus);
     _xtreamUserFocus.removeListener(_onXtreamUserFocus);
     _xtreamPassFocus.removeListener(_onXtreamPassFocus);
+    _stalkerBaseFocus.removeListener(_onStalkerBaseFocus);
+    _stalkerMacFocus.removeListener(_onStalkerMacFocus);
     m3uUrl.dispose();
     xtreamBase.dispose();
     xtreamUser.dispose();
     xtreamPass.dispose();
+    stalkerBase.dispose();
+    stalkerMac.dispose();
+    stalkerHw.dispose();
     _name.dispose();
     _nameFocus.dispose();
     _m3uUrlFocus.dispose();
@@ -1399,6 +1561,9 @@ class _SlotEditorPageState extends State<_SlotEditorPage> {
     _xtreamBaseFocus.dispose();
     _xtreamUserFocus.dispose();
     _xtreamPassFocus.dispose();
+    _stalkerBaseFocus.dispose();
+    _stalkerMacFocus.dispose();
+    _stalkerHwFocus.dispose();
     _saveFocus.dispose();
     for (final n in _kindFocusNodes.values) {
       n.dispose();
@@ -1427,6 +1592,8 @@ class _SlotEditorPageState extends State<_SlotEditorPage> {
         return _filePickFocus;
       case _SourceKind.xtream:
         return _xtreamBaseFocus;
+      case _SourceKind.stalker:
+        return _stalkerBaseFocus;
     }
   }
 
@@ -1439,6 +1606,8 @@ class _SlotEditorPageState extends State<_SlotEditorPage> {
         return _filePickFocus;
       case _SourceKind.xtream:
         return _xtreamPassFocus;
+      case _SourceKind.stalker:
+        return _stalkerMacFocus;
     }
   }
 
@@ -1713,6 +1882,111 @@ class _SlotEditorPageState extends State<_SlotEditorPage> {
             ),
           ],
         );
+      case _SourceKind.stalker:
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _glassField(
+              controller: stalkerBase,
+              focusNode: _stalkerBaseFocus,
+              label: 'stalker.field.portalUrl'.tr,
+              hint: 'http://domain:port',
+              icon: Icons.dns_rounded,
+              keyboard: TextInputType.url,
+              action: TextInputAction.next,
+              cs: cs,
+              deferredKeyboard: tvKeyboard,
+              showPaste: true,
+              onSubmitted: () => _stalkerMacFocus.requestFocus(),
+              onArrowUp: () => _currentKindFocus()?.requestFocus(),
+              onArrowDown: () => _stalkerMacFocus.requestFocus(),
+            ),
+            const SizedBox(height: 12),
+            _glassField(
+              controller: stalkerMac,
+              focusNode: _stalkerMacFocus,
+              label: 'stalker.field.mac'.tr,
+              hint: '00:1A:79:XX:XX:XX',
+              icon: Icons.person_outline_rounded,
+              action: TextInputAction.next,
+              cs: cs,
+              deferredKeyboard: tvKeyboard,
+              showPaste: true,
+              onSubmitted: () => _stalkerHwFocus.requestFocus(),
+              onArrowUp: () => _stalkerBaseFocus.requestFocus(),
+              onArrowDown: () => _stalkerHwFocus.requestFocus(),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'stalker.compat.title'.tr,
+              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    color: cs.onSurface.withValues(alpha: 0.85),
+                    fontWeight: FontWeight.w600,
+                  ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'stalker.field.magPreset'.tr,
+              style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                    color: cs.onSurface.withValues(alpha: 0.7),
+                  ),
+            ),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final p in StalkerMagPreset.values)
+                  ChoiceChip(
+                    label: Text(p.labelKey.tr),
+                    selected: _stalkerPreset == p,
+                    onSelected: (_) => setState(() => _stalkerPreset = p),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'stalker.field.linkType'.tr,
+              style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                    color: cs.onSurface.withValues(alpha: 0.7),
+                  ),
+            ),
+            const SizedBox(height: 6),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                for (final l in StalkerLinkType.values)
+                  ChoiceChip(
+                    label: Text(l.labelKey.tr),
+                    selected: _stalkerLink == l,
+                    onSelected: (_) => setState(() => _stalkerLink = l),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            _glassField(
+              controller: stalkerHw,
+              focusNode: _stalkerHwFocus,
+              label: 'stalker.field.hwVersion'.tr,
+              hint: '1.7-BD-00',
+              icon: Icons.memory_rounded,
+              action: TextInputAction.done,
+              cs: cs,
+              deferredKeyboard: tvKeyboard,
+              onSubmitted: () => _saveFocus.requestFocus(),
+              onArrowUp: () => _stalkerMacFocus.requestFocus(),
+              onArrowDown: () => _saveFocus.requestFocus(),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'stalker.compat.sslHint'.tr,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: cs.onSurface.withValues(alpha: 0.5),
+                  ),
+            ),
+          ],
+        );
     }
   }
 
@@ -1926,6 +2200,15 @@ class _SlotEditorPageState extends State<_SlotEditorPage> {
             username: xtreamUser.text,
             password: xtreamPass.text,
           );
+        case _SourceKind.stalker:
+          ok = await c.saveStalker(
+            slot: widget.initial.slot,
+            baseUrl: stalkerBase.text,
+            macAddress: stalkerMac.text,
+            magPreset: _stalkerPreset,
+            linkType: _stalkerLink,
+            hwVersionOverride: stalkerHw.text.trim(),
+          );
       }
       if (!mounted) return;
       if (ok) {
@@ -1985,6 +2268,11 @@ class _SourceTypeSelector extends StatelessWidget {
         _SourceKind.xtream,
         'playlistsManager.tab.xtream'.tr,
         Icons.dns_outlined
+      ),
+      (
+        _SourceKind.stalker,
+        'stalker.chip.label'.tr,
+        Icons.portrait_rounded
       ),
     ];
     return Row(

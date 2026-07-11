@@ -32,6 +32,7 @@ import android.util.Log
 import androidx.annotation.OptIn
 import androidx.lifecycle.Observer
 import androidx.media3.extractor.DefaultExtractorsFactory
+import java.util.Locale
 import io.flutter.plugin.common.EventChannel.EventSink
 import androidx.work.Data
 import androidx.media3.common.AudioAttributes
@@ -56,6 +57,7 @@ import androidx.media3.datasource.DataSource
 import androidx.media3.datasource.DefaultDataSource
 import androidx.media3.datasource.DefaultHttpDataSource
 import androidx.media3.exoplayer.DefaultLoadControl
+import androidx.media3.exoplayer.DefaultLivePlaybackSpeedControl
 import androidx.media3.exoplayer.DefaultRenderersFactory
 import androidx.media3.exoplayer.ExoPlayer
 import androidx.media3.exoplayer.LoadControl
@@ -72,6 +74,7 @@ import androidx.media3.exoplayer.drm.FrameworkMediaDrm
 import androidx.media3.exoplayer.drm.HttpMediaDrmCallback
 import androidx.media3.exoplayer.drm.LocalMediaDrmCallback
 import androidx.media3.exoplayer.drm.UnsupportedDrmException
+import androidx.media3.exoplayer.hls.DefaultHlsExtractorFactory
 import androidx.media3.exoplayer.hls.HlsMediaSource
 import androidx.media3.exoplayer.smoothstreaming.DefaultSsChunkSource
 import androidx.media3.exoplayer.smoothstreaming.SsMediaSource
@@ -111,6 +114,12 @@ internal class BetterPlayer(
         (context.resources.configuration.uiMode and Configuration.UI_MODE_TYPE_MASK) ==
             Configuration.UI_MODE_TYPE_TELEVISION
 
+    private val codecCompatStore = MinaPlaybackCodecCompatStore(context)
+    private val audioCompatStore = MinaAudioCompatStore(context)
+    private var stallMonitor: MinaIptvVideoStallMonitor? = null
+    private var currentDataSourceUrl: String? = null
+    private var currentSourceIsLive = false
+
     /** Xiaomi / Redmi / POCO: MIUI’de tünel senkronu ve zamanlama ile kare kare takılma raporları. */
     private val isXiaomiFamilyDevice: Boolean = run {
         val m = Build.MANUFACTURER.lowercase(Locale.US)
@@ -131,6 +140,9 @@ internal class BetterPlayer(
     private val trackSelector: DefaultTrackSelector = DefaultTrackSelector(context)
     private val loadControl: LoadControl
     private var isInitialized = false
+    /** [dispose] sonrası softRecover / play çağrılarını yok say. */
+    @Volatile
+    private var disposed = false
 
     /** [emitVideoFormatUpdateIfChanged] için; yeni kaynak / parça değişince sıfırlanır. */
     private var lastEmittedVideoFormatSig: Int = 0
@@ -163,35 +175,20 @@ internal class BetterPlayer(
         loadBuilder.setPrioritizeTimeOverSizeThresholds(
             this.customDefaultLoadControl.prioritizeTimeOverSizeThresholds,
         )
+        if (this.customDefaultLoadControl.targetBufferBytes > 0) {
+            loadBuilder.setTargetBufferBytes(this.customDefaultLoadControl.targetBufferBytes)
+        }
         loadControl = loadBuilder.build()
-        val mediaCodecSelector =
-            if (preferSoftwareVideoDecoder) {
-                MediaCodecSelector.PREFER_SOFTWARE
-            } else {
-                // Donanım (MediaCodec) öncelikli; DEFAULT cihaz codec sıralamasını uygular.
-                MediaCodecSelector.DEFAULT
-            }
-        // Resmi media3 `decoder_ffmpeg` modülü (AAR) classpath’teyse FfmpegAudioRenderer devreye girer.
-        // Google Maven’da yayınlanmaz; Jellyfin Maven’ı kullanmadan androidx/media deposundan derlenmiş AAR
-        // better_player_plus/android/third_party/decoder_ffmpeg/ altına konabilir (README.txt).
-        //
-        // TV kutusu: FFmpeg JNI sık sorun çıkarır → OFF.
-        // Telefon / tablet: [EXTENSION_RENDERER_MODE_PREFER] — ses için yazılım (FFmpeg) çözücüyü
-        // donanım (MediaCodec) önüne alır; Xiaomi MIUI/HyperOS AC3/EAC3/DTS sessizliklerinde hedeflenen davranış.
-        val extensionRendererMode: Int =
-            if (isAndroidTv) {
-                DefaultRenderersFactory.EXTENSION_RENDERER_MODE_OFF
-            } else {
-                DefaultRenderersFactory.EXTENSION_RENDERER_MODE_PREFER
-            }
+        val extensionRendererMode =
+            MinaFfmpegExtensionSupport.extensionRendererMode(isAndroidTv)
         // TV kutusu: KEY_LOW_LATENCY + senkron MediaCodec kuyruğu bazı 1080p donanım
         // kod çözücülerinde kare atlama / takılma raporu veriyor; telefon/tablette tutulur.
+        // Xiaomi/HyperOS: KEY_LOW_LATENCY + donanım kod çözücü canlı HLS'te yeşil/magenta artefakt.
         val enableLowLatencyPath =
             !isAndroidTv &&
                 !preferSoftwareVideoDecoder &&
+                !isXiaomiFamilyDevice &&
                 MinaLowLatencyMediaCodecAdapterFactory.shouldEnableLowLatencyHeuristics()
-        // Android TV + donanım kod çözücü: Mina Güvenli Doku Profili (geç kare düşürme,
-        // decoder fallback, tunneling yok). Telefon/tablet: mevcut düşük gecikme yolu.
         val useTextureSafeTvProfile =
             MinaTvTextureSafeRenderersFactory.shouldEnable(
                 isAndroidTv,
@@ -202,27 +199,20 @@ internal class BetterPlayer(
                 MinaTvTextureSafeRenderersFactory.build(
                     context,
                     preferSoftwareVideoDecoder,
+                    isXiaomiFamilyDevice,
                     extensionRendererMode,
                     enableLowLatencyPath = false,
                 )
             } else {
-                object : DefaultRenderersFactory(context) {
-                    override fun getCodecAdapterFactory(): MediaCodecAdapter.Factory {
-                        return if (enableLowLatencyPath) {
-                            MinaLowLatencyMediaCodecAdapterFactory(context, true)
-                        } else {
-                            super.getCodecAdapterFactory()
-                        }
-                    }
-                }.setExtensionRendererMode(extensionRendererMode)
-                    .setMediaCodecSelector(mediaCodecSelector)
-                    .setEnableDecoderFallback(true)
-                    .setEnableAudioTrackPlaybackParams(true)
-                    .apply {
-                        if (enableLowLatencyPath) {
-                            forceDisableMediaCodecAsynchronousQueueing()
-                        }
-                    }
+                MinaIptvRenderersFactory.build(
+                    context = context,
+                    preferSoftwareVideoDecoder = preferSoftwareVideoDecoder,
+                    isXiaomiFamilyDevice = isXiaomiFamilyDevice,
+                    extensionRendererMode = extensionRendererMode,
+                    enableLowLatencyPath = enableLowLatencyPath,
+                    disallowCodecReuse = true,
+                    textureSafeTvProfile = false,
+                )
             }
         // Prefer device-friendly codecs first so phones (e.g. Xiaomi) pick AAC/MP3 when
         // muxed MP4/MKV exposes AC3/EAC3 alongside AAC; TV boxes often work either way.
@@ -267,13 +257,22 @@ internal class BetterPlayer(
         val scalingMode =
             if (isAndroidTv || androidScaleVideoToFit) {
                 C.VIDEO_SCALING_MODE_SCALE_TO_FIT
+            } else if (isXiaomiFamilyDevice && preferSoftwareVideoDecoder) {
+                // Yazılım kod çözücü + kırpma: bazı Xiaomi telefonlarda renk kayması.
+                C.VIDEO_SCALING_MODE_SCALE_TO_FIT
             } else {
                 C.VIDEO_SCALING_MODE_SCALE_TO_FIT_WITH_CROPPING
             }
+        val liveSpeedControl =
+            DefaultLivePlaybackSpeedControl.Builder()
+                .setFallbackMinPlaybackSpeed(1.0f)
+                .setFallbackMaxPlaybackSpeed(1.0f)
+                .build()
         exoPlayer = ExoPlayer.Builder(context)
             .setRenderersFactory(renderersFactory)
             .setTrackSelector(trackSelector)
             .setLoadControl(loadControl)
+            .setLivePlaybackSpeedControl(liveSpeedControl)
             .setVideoScalingMode(scalingMode)
             .build()
         maybeLogFfmpegMinaHint()
@@ -319,6 +318,14 @@ internal class BetterPlayer(
     }
 
     override fun onSurfaceCleanup() {
+        if (handoffSurfaceRetain) {
+            Log.d(
+                SURFACE_LOG_TAG,
+                "onSurfaceCleanup deferred (handoff) textureId=${surfaceProducer.id()}",
+            )
+            needsSurface = true
+            return
+        }
         Log.d(
             SURFACE_LOG_TAG,
             "onSurfaceCleanup textureId=${surfaceProducer.id()} ExoPlayer surface detached (buffer may still hold refs until release)",
@@ -326,6 +333,31 @@ internal class BetterPlayer(
         exoPlayer?.setVideoSurface(null)
         needsSurface = true
     }
+
+    private var handoffSurfaceRetain = false
+
+    fun setHandoffSurfaceRetain(retain: Boolean) {
+        handoffSurfaceRetain = retain
+        Log.d(
+            SURFACE_LOG_TAG,
+            "setHandoffSurfaceRetain=$retain textureId=${surfaceProducer.id()}",
+        )
+    }
+
+    fun reattachVideoSurfaceIfNeeded() {
+        handoffSurfaceRetain = false
+        val surf = surfaceProducer.surface
+        if (surf != null && exoPlayer != null) {
+            Log.d(
+                SURFACE_LOG_TAG,
+                "reattachVideoSurface textureId=${surfaceProducer.id()}",
+            )
+            exoPlayer?.setVideoSurface(surf)
+            needsSurface = false
+        }
+    }
+
+    fun isHandoffSurfaceRetained(): Boolean = handoffSurfaceRetain
 
     @OptIn(UnstableApi::class)
     fun setDataSource(
@@ -348,6 +380,11 @@ internal class BetterPlayer(
         audioAutoSelectPassesLeft = 5
         isInitialized = false
         lastEmittedVideoFormatSig = 0
+        currentDataSourceUrl = dataSource
+        currentSourceIsLive = isLikelyLiveIptvUrl(dataSource?.toUri(), formatHint)
+        stallMonitor?.release()
+        stallMonitor = null
+        applyAudioCompatTrackPreferences(dataSource)
         Log.d(
             SURFACE_LOG_TAG,
             "setDataSource textureId=${surfaceProducer.id()}: stop+clearMediaItems+new MediaSource (SurfaceProducer unchanged)",
@@ -391,7 +428,13 @@ internal class BetterPlayer(
             drmSessionManager = null
         }
         if (isHTTP(uri)) {
-            dataSourceFactory = getDataSourceFactory(userAgent, headers)
+            val httpProfile =
+                if (currentSourceIsLive) {
+                    MinaIptvHttpProfile.LIVE
+                } else {
+                    MinaIptvHttpProfile.VOD
+                }
+            dataSourceFactory = getDataSourceFactory(userAgent, headers, httpProfile)
             if (useCache && maxCacheSize > 0 && maxCacheFileSize > 0) {
                 dataSourceFactory = CacheDataSourceFactory(
                     context,
@@ -403,7 +446,19 @@ internal class BetterPlayer(
         } else {
             dataSourceFactory = DefaultDataSource.Factory(context)
         }
-        val mediaSource = buildMediaSource(uri, dataSourceFactory, formatHint, cacheKey, context)
+        val preloaded = MinaIptvPreloadCoordinator.tryConsume(dataSource)
+        val mediaSource =
+            preloaded ?: MinaIptvMediaSourceFactory.build(
+                uri = uri,
+                mediaDataSourceFactory = dataSourceFactory,
+                formatHint = formatHint,
+                cacheKey = cacheKey,
+                context = context,
+                drmSessionManager = drmSessionManager,
+            )
+        if (preloaded != null) {
+            Log.d(TAG, "setDataSource: reused preloaded MediaSource for $dataSource")
+        }
         // Tek Exo örneği üzerinde kanal değişimi: tampon/playlist temizliği + yeni kaynak (bellek şişmesini azaltır).
         exoPlayer?.stop()
         exoPlayer?.clearMediaItems()
@@ -417,7 +472,73 @@ internal class BetterPlayer(
             exoPlayer?.setMediaSource(mediaSource)
         }
         exoPlayer?.prepare()
+        if (currentSourceIsLive) {
+            val player = exoPlayer
+            if (player != null) {
+                stallMonitor =
+                    MinaIptvVideoStallMonitor(player, eventSink) { currentSourceIsLive }
+                player.addListener(stallMonitor!!)
+                stallMonitor?.onPrepare()
+            }
+        }
         result.success(null)
+    }
+
+    private fun applyAudioCompatTrackPreferences(dataSource: String?) {
+        if (!audioCompatStore.shouldPreferFfmpegAudio(dataSource)) return
+        trackSelector.setParameters(
+            trackSelector.buildUponParameters()
+                .setPreferredAudioMimeTypes(
+                    MimeTypes.AUDIO_MPEG,
+                    MimeTypes.AUDIO_AAC,
+                    MimeTypes.AUDIO_OPUS,
+                    MimeTypes.AUDIO_VORBIS,
+                    MimeTypes.AUDIO_FLAC,
+                    MimeTypes.AUDIO_AC4,
+                    MimeTypes.AUDIO_AC3,
+                    MimeTypes.AUDIO_E_AC3,
+                    MimeTypes.AUDIO_E_AC3_JOC,
+                    MimeTypes.AUDIO_DTS,
+                    MimeTypes.AUDIO_DTS_HD,
+                    MimeTypes.AUDIO_DTS_EXPRESS,
+                )
+                .build(),
+        )
+    }
+
+    /** Oynatma başladıktan sonra tam URL yeniden açmadan önce hafif kurtarma. */
+    fun softRecoverPlayback(result: MethodChannel.Result) {
+        if (disposed) {
+            result.success(false)
+            return
+        }
+        val player = exoPlayer
+        if (player == null || player.mediaItemCount == 0) {
+            result.success(false)
+            return
+        }
+        try {
+            if (player.playbackState == Player.STATE_IDLE) {
+                player.prepare()
+            }
+            // Canlıda ASLA seek yok:
+            // - Progressive MPEG-TS: seekTo(pos) → TsExtractor.seek IllegalStateException
+            // - HLS (TS segment): seekToDefaultPosition da aynı seek yoluna düşüp Source error
+            //   üretebiliyor (logcat: softRecover sonrası TsExtractor.seek).
+            // Kısa ağ blip'inde yalnız play yeterli; Exo kendi rebuffer'ını yapar.
+            if (!(currentSourceIsLive || player.isCurrentMediaItemLive)) {
+                val pos = player.currentPosition.coerceAtLeast(0L)
+                player.seekTo(pos)
+            }
+            if (disposed) {
+                result.success(false)
+                return
+            }
+            player.playWhenReady = true
+            result.success(true)
+        } catch (_: Exception) {
+            result.success(false)
+        }
     }
 
     fun setupPlayerNotification(
@@ -584,79 +705,11 @@ internal class BetterPlayer(
         bitmap = null
     }
 
-    private fun buildMediaSource(
-        uri: Uri?,
-        mediaDataSourceFactory: DataSource.Factory,
-        formatHint: String?,
-        cacheKey: String?,
-        context: Context
-    ): MediaSource {
-        val type: Int
-        if (formatHint == null) {
-            var lastPathSegment = uri?.lastPathSegment
-            if (lastPathSegment == null) {
-                lastPathSegment = ""
-            }
-            type = Util.inferContentTypeForExtension(lastPathSegment.split(".")[1])
-        } else {
-            type = when (formatHint) {
-                FORMAT_SS -> C.CONTENT_TYPE_SS
-                FORMAT_DASH -> C.CONTENT_TYPE_DASH
-                FORMAT_HLS -> C.CONTENT_TYPE_HLS
-                FORMAT_OTHER -> C.CONTENT_TYPE_OTHER
-                else -> -1
-            }
-        }
-        val mediaItemBuilder = MediaItem.Builder()
-        mediaItemBuilder.setUri(uri)
-        if (!cacheKey.isNullOrEmpty()) {
-            mediaItemBuilder.setCustomCacheKey(cacheKey)
-        }
-        val mediaItem = mediaItemBuilder.build()
-        val drmSessionManagerProvider: DrmSessionManagerProvider? = drmSessionManager?.let { drmSessionManager ->
-            DrmSessionManagerProvider { drmSessionManager }
-        }
+    private fun isLikelyLiveIptvUrl(uri: Uri?, formatHint: String?): Boolean =
+        MinaIptvMediaSourceFactory.isLikelyLiveIptvUrl(uri, formatHint)
 
-        return when (type) {
-            C.CONTENT_TYPE_SS -> SsMediaSource.Factory(
-                DefaultSsChunkSource.Factory(mediaDataSourceFactory),
-                DefaultDataSource.Factory(context, mediaDataSourceFactory)
-            ).apply {
-                if (drmSessionManagerProvider != null) {
-                    setDrmSessionManagerProvider(drmSessionManagerProvider)
-                }
-            }.createMediaSource(mediaItem)
-
-            C.CONTENT_TYPE_DASH -> DashMediaSource.Factory(
-                DefaultDashChunkSource.Factory(mediaDataSourceFactory),
-                DefaultDataSource.Factory(context, mediaDataSourceFactory)
-            ).apply {
-                if (drmSessionManagerProvider != null) {
-                    setDrmSessionManagerProvider(drmSessionManagerProvider)
-                }
-            }.createMediaSource(mediaItem)
-
-            C.CONTENT_TYPE_HLS -> HlsMediaSource.Factory(mediaDataSourceFactory)
-                .apply {
-                    if (drmSessionManagerProvider != null) {
-                        setDrmSessionManagerProvider(drmSessionManagerProvider)
-                    }
-                }.createMediaSource(mediaItem)
-
-            C.CONTENT_TYPE_OTHER -> ProgressiveMediaSource.Factory(
-                mediaDataSourceFactory,
-                DefaultExtractorsFactory()
-            ).apply {
-                if (drmSessionManagerProvider != null) {
-                    setDrmSessionManagerProvider(drmSessionManagerProvider)
-                }
-            }.createMediaSource(mediaItem)
-
-            else -> {
-                throw IllegalStateException("Unsupported type: $type")
-            }
-        }
-    }
+    private fun isLikelyMpegTsUrl(uri: Uri?): Boolean =
+        MinaIptvMediaSourceFactory.isLikelyMpegTsUrl(uri)
 
     private fun setupVideoPlayer(
         eventChannel: EventChannel, result: MethodChannel.Result
@@ -731,7 +784,25 @@ internal class BetterPlayer(
             }
 
             override fun onPlayerError(error: PlaybackException) {
-                eventSink.error("VideoError", "Video player had error $error", "")
+                codecCompatStore.recordFromPlaybackException(error)
+                audioCompatStore.recordAudioFailure(currentDataSourceUrl, error)
+                // Flutter tarafı 403 / TsExtractor.seek ayrımı için cause zincirini de ilet.
+                val detail = buildString {
+                    append(error.errorCodeName)
+                    append(':')
+                    append(error.message ?: error.toString())
+                    var c: Throwable? = error.cause
+                    var depth = 0
+                    while (c != null && depth < 6) {
+                        append(" | ")
+                        append(c.javaClass.simpleName)
+                        append(':')
+                        append(c.message ?: "")
+                        c = c.cause
+                        depth++
+                    }
+                }
+                eventSink.error("VideoError", "Video player had error $detail", "")
             }
         })
         val reply: MutableMap<String, Any> = HashMap()
@@ -1219,15 +1290,26 @@ internal class BetterPlayer(
     fun dispose() {
         val tid = surfaceProducer.id()
         Log.d(SURFACE_LOG_TAG, "dispose START textureId=$tid releasing ExoPlayer + SurfaceProducer")
+        disposed = true
         disposeMediaSession()
         disposeRemoteNotifications()
         surfaceProducer.setCallback(null)
-        if (isInitialized) {
-            exoPlayer?.stop()
+        stallMonitor?.release()
+        stallMonitor = null
+        try {
+            exoPlayer?.volume = 0f
+            exoPlayer?.playWhenReady = false
+            if (isInitialized) {
+                exoPlayer?.stop()
+            }
+            exoPlayer?.setVideoSurface(null)
+        } catch (_: Exception) {
         }
-        exoPlayer?.setVideoSurface(null)
         eventChannel.setStreamHandler(null)
-        exoPlayer?.release()
+        try {
+            exoPlayer?.release()
+        } catch (_: Exception) {
+        }
         surfaceProducer.release()
         Log.d(SURFACE_LOG_TAG, "dispose END textureId=$tid SurfaceProducer.release() completed")
     }
@@ -1356,7 +1438,6 @@ internal class BetterPlayer(
         private const val TAG = "BetterPlayer"
         private const val FORMAT_SS = "ss"
         private const val FORMAT_DASH = "dash"
-        private const val FORMAT_HLS = "hls"
         private const val FORMAT_OTHER = "other"
         private const val DEFAULT_NOTIFICATION_CHANNEL = "BETTER_PLAYER_NOTIFICATION"
         private const val NOTIFICATION_ID = 20772077
@@ -1393,8 +1474,24 @@ internal class BetterPlayer(
         fun preCache(
             context: Context?, dataSource: String?, preCacheSize: Long,
             maxCacheSize: Long, maxCacheFileSize: Long, headers: Map<String, String?>,
-            cacheKey: String?, result: MethodChannel.Result
+            cacheKey: String?, formatHint: String?, result: MethodChannel.Result
         ) {
+            val normalizedHeaders = HashMap<String, String>()
+            for (headerKey in headers.keys) {
+                val value = headers[headerKey]
+                if (value != null) {
+                    normalizedHeaders[headerKey] = value
+                }
+            }
+            if (dataSource != null && context != null) {
+                MinaIptvPreloadCoordinator.prepare(
+                    context = context,
+                    url = dataSource,
+                    headers = normalizedHeaders,
+                    formatHint = formatHint,
+                    cacheKey = cacheKey,
+                )
+            }
             val dataBuilder = Data.Builder()
                 .putString(BetterPlayerPlugin.URL_PARAMETER, dataSource)
                 .putLong(BetterPlayerPlugin.PRE_CACHE_SIZE_PARAMETER, preCacheSize)
@@ -1421,6 +1518,7 @@ internal class BetterPlayer(
         //Stop pre cache of video with given url. If there's no work manager job for given url, then
         //it will be ignored.
         fun stopPreCache(context: Context?, url: String?, result: MethodChannel.Result) {
+            MinaIptvPreloadCoordinator.cancel(url)
             if (url != null && context != null) {
                 WorkManager.getInstance(context).cancelAllWorkByTag(url)
             }

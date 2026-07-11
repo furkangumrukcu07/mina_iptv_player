@@ -130,6 +130,7 @@ class BetterPlayerPlugin : FlutterPlugin, ActivityAware, MethodCallHandler {
                         call.argument(BUFFER_FOR_PLAYBACK_MS),
                         call.argument(BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS),
                         call.argument(PRIORITIZE_TIME_OVER_SIZE_THRESHOLDS),
+                        call.argument(TARGET_BUFFER_BYTES),
                     )
                 }
                 val preferSoftwareVideoDecoder = call.argument<Boolean>(PREFER_SOFTWARE_VIDEO_DECODER) ?: true
@@ -211,6 +212,10 @@ class BetterPlayerPlugin : FlutterPlugin, ActivityAware, MethodCallHandler {
                 result.success(null)
             }
 
+            SOFT_RECOVER_PLAYBACK_METHOD -> {
+                player.softRecoverPlayback(result)
+            }
+
             SEEK_TO_METHOD -> {
                 val location = (call.argument<Any>(LOCATION_PARAMETER) as Number?)!!.toInt()
                 player.seekTo(location)
@@ -288,6 +293,17 @@ class BetterPlayerPlugin : FlutterPlugin, ActivityAware, MethodCallHandler {
 
             DISPOSE_METHOD -> {
                 dispose(player, textureId)
+                result.success(null)
+            }
+
+            MARK_SURFACE_HANDOFF_RETAIN_METHOD -> {
+                val retain = call.argument<Boolean>(HANDOFF_RETAIN_PARAMETER) ?: false
+                player.setHandoffSurfaceRetain(retain)
+                result.success(null)
+            }
+
+            REATTACH_VIDEO_SURFACE_METHOD -> {
+                player.reattachVideoSurfaceIfNeeded()
                 result.success(null)
             }
 
@@ -386,6 +402,7 @@ class BetterPlayerPlugin : FlutterPlugin, ActivityAware, MethodCallHandler {
             val preCacheSize = preCacheSizeNumber.toLong()
             val uri = getParameter(dataSource, URI_PARAMETER, "")
             val cacheKey = getParameter<String?>(dataSource, CACHE_KEY_PARAMETER, null)
+            val formatHint = getParameter<String?>(dataSource, FORMAT_HINT_PARAMETER, null)
             val headers: Map<String, String> =
                 getParameter(dataSource, HEADERS_PARAMETER, HashMap())
             BetterPlayer.preCache(
@@ -396,6 +413,7 @@ class BetterPlayerPlugin : FlutterPlugin, ActivityAware, MethodCallHandler {
                 maxCacheFileSize,
                 headers,
                 cacheKey,
+                formatHint,
                 result
             )
         }
@@ -545,6 +563,13 @@ class BetterPlayerPlugin : FlutterPlugin, ActivityAware, MethodCallHandler {
     }
 
     private fun dispose(player: BetterPlayer, textureId: Long) {
+        if (player.isHandoffSurfaceRetained()) {
+            Log.d(
+                SURFACE_LOG_TAG,
+                "DISPOSE skipped (handoff retain) textureId=$textureId",
+            )
+            return
+        }
         val before = videoPlayers.size
         Log.d(
             SURFACE_LOG_TAG,
@@ -640,6 +665,7 @@ class BetterPlayerPlugin : FlutterPlugin, ActivityAware, MethodCallHandler {
         const val BUFFER_FOR_PLAYBACK_MS = "bufferForPlaybackMs"
         const val BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS = "bufferForPlaybackAfterRebufferMs"
         const val PRIORITIZE_TIME_OVER_SIZE_THRESHOLDS = "prioritizeTimeOverSizeThresholds"
+        const val TARGET_BUFFER_BYTES = "targetBufferBytes"
         const val PREFER_SOFTWARE_VIDEO_DECODER = "preferSoftwareVideoDecoder"
         const val ANDROID_SCALE_VIDEO_TO_FIT = "androidScaleVideoToFit"
         const val USE_TEXTURE_VIEW = "useTextureView"
@@ -652,6 +678,7 @@ class BetterPlayerPlugin : FlutterPlugin, ActivityAware, MethodCallHandler {
         private const val PLAY_METHOD = "play"
         private const val PAUSE_METHOD = "pause"
         private const val STOP_METHOD = "stop"
+        private const val SOFT_RECOVER_PLAYBACK_METHOD = "softRecoverPlayback"
         private const val SEEK_TO_METHOD = "seekTo"
         private const val POSITION_METHOD = "position"
         private const val ABSOLUTE_POSITION_METHOD = "absolutePosition"
@@ -670,6 +697,9 @@ class BetterPlayerPlugin : FlutterPlugin, ActivityAware, MethodCallHandler {
         private const val SET_MIX_WITH_OTHERS_METHOD = "setMixWithOthers"
         private const val CLEAR_CACHE_METHOD = "clearCache"
         private const val DISPOSE_METHOD = "dispose"
+        private const val MARK_SURFACE_HANDOFF_RETAIN_METHOD = "markSurfaceHandoffRetain"
+        private const val REATTACH_VIDEO_SURFACE_METHOD = "reattachVideoSurface"
+        private const val HANDOFF_RETAIN_PARAMETER = "retain"
         private const val PRE_CACHE_METHOD = "preCache"
         private const val STOP_PRE_CACHE_METHOD = "stopPreCache"
     }

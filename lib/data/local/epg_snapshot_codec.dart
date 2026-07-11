@@ -41,10 +41,10 @@ Map<String, dynamic> buildEpgSnapshotMap({
   };
 }
 
-String _encodeEpgSnapshotJson(Map<String, dynamic> m) => jsonEncode(m);
-
+/// Büyük EPG map'ini `compute`'a vermek `CopyMutableObjectGraph` ANR riski taşır.
+/// Map zaten ana isolate'te kurulmuşsa yalnızca `jsonEncode` yeter.
 Future<String> encodeEpgSnapshotInIsolate(Map<String, dynamic> serializable) {
-  return compute(_encodeEpgSnapshotJson, serializable);
+  return Future<String>.microtask(() => jsonEncode(serializable));
 }
 
 Map<String, dynamic>? _decodeEpgSnapshotJson(String json) {

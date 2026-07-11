@@ -15,6 +15,7 @@ import 'core/i18n/app_locale.dart';
 import 'core/i18n/app_translations.dart';
 import 'core/services/app_install_source_service.dart';
 import 'core/services/app_settings_service.dart';
+import 'core/services/showcase_in_app_pip_service.dart';
 import 'core/services/firebase_bootstrap.dart';
 import 'core/services/mina_push_service.dart';
 import 'core/services/opensubtitles_service.dart';
@@ -25,9 +26,11 @@ import 'core/services/system_volume_service.dart';
 import 'core/epg/global_epg_service.dart';
 import 'core/epg/home_epg_catalog_cache.dart';
 import 'core/routes/app_pages.dart';
+import 'core/home/showcase_in_app_pip_overlay_host.dart';
 import 'core/routes/app_routes.dart';
 import 'core/theme/app_performance.dart';
 import 'core/theme/app_scroll_physics.dart';
+import 'core/navigation/page_transition_builder.dart';
 import 'core/theme/app_theme.dart';
 import 'ui/adaptive_haptic_scroll_scope.dart';
 import 'ui/playlist_switch_overlay.dart';
@@ -111,6 +114,8 @@ Future<void> main() async {
     // TV box / düşük donanımlı cihazda canlı yayın biçimini bir kez otomatik
     // MPEG-TS'e zorla (HLS segment/ABR yükü bu cihazlarda takılma yapıyor).
     await settings.maybeForceTsLiveFormatForWeakHardware();
+    settings.syncPlaybackUrlNormalizationPolicy();
+    await settings.enforceAndroidTvShellLayoutLock();
     Get.updateLocale(
       materialLocaleFromLanguageCode(settings.languageCode.value),
     );
@@ -180,12 +185,14 @@ class MinaIptvApp extends StatelessWidget {
       initialBinding: InitialBinding(),
       initialRoute: initialRoute,
       getPages: AppPages.routes,
-      defaultTransition: settings.layoutMode.value == AppLayoutMode.tv
-          ? Transition.fadeIn
-          : Transition.rightToLeft,
-      transitionDuration: settings.layoutMode.value == AppLayoutMode.tv
-          ? const Duration(milliseconds: 80)
-          : const Duration(milliseconds: 240),
+      routingCallback: (routing) {
+        if (Get.isRegistered<ShowcaseInAppPipService>()) {
+          Get.find<ShowcaseInAppPipService>().bumpRouteEpoch();
+        }
+      },
+      defaultTransition: PageTransitionBuilder.getTransition(),
+      customTransition: PageTransitionBuilder.customTransition,
+      transitionDuration: PageTransitionBuilder.duration,
       builder: (context, child) {
         Get.find<IntegrityService>().scheduleReleaseCheckIfNeeded(context);
         // Liste geçişi sırasında (canlı TV / film / dizi / Film&Dizi) ekran
@@ -194,6 +201,7 @@ class MinaIptvApp extends StatelessWidget {
           children: [
             child ?? const SizedBox.shrink(),
             const Positioned.fill(child: PlaylistSwitchOverlay()),
+            const ShowcaseInAppPipFloatingLayer(),
           ],
         );
         return OrientationBuilder(

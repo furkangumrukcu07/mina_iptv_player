@@ -1,5 +1,18 @@
 part of '../channels_controller.dart';
 
+String? _playlistScopeKey(PlaylistCacheService cache) {
+  final k = cache.dbSourceKey.value?.trim();
+  if (k != null && k.isNotEmpty) return k;
+  final d = cache.result.value;
+  return d == null ? null : 'mem:${identityHashCode(d)}';
+}
+
+bool _shouldAvoidRamFullScan(ChannelsController c) {
+  if (c._ds.isDbBacked) return false;
+  final n = c._data?.channels.length ?? 0;
+  return n > kRamFullScanChannelCap;
+}
+
 extension ChannelsNavigationExtension on ChannelsController {
 bool _effectiveRemoteNav() {
     final m = _app.layoutMode.value;
@@ -138,8 +151,7 @@ void _onPlayerScreenActiveChanged(bool active) {
     now.value = DateTime.now();
     _startScreenClock();
     // TV kabuğu: tam ekran oynatıcıdan dönünce seçili kanal önizlemesini yeniden başlat.
-    if (_app.layoutMode.value == AppLayoutMode.tv &&
-        _app.tvHomeLayoutMode.value == TvHomeLayoutMode.shell) {
+    if (_app.usesTvShellHome) {
       clearStreamPreview();
       void maybeSchedulePreview() {
         if (isClosed) return;
@@ -168,34 +180,88 @@ void _onPlayerScreenActiveChanged(bool active) {
   /// "Tümü"ne döner.
   void _onActivePlaylistChanged(M3uResult? value) {
     if (value == null) return;
-    if (identical(value, _data)) return;
+    if (suppressTvShellPlaylistBoot) return;
+    final scope = _playlistScopeKey(_cache);
+    if (identical(value, _data) && scope == _syncedPlaylistScopeKey) return;
+    _applyActivePlaylistScope(
+      value,
+      scope: scope,
+      resetSelection: false,
+      awaitDbReload: false,
+    );
+  }
+
+  /// Aktif playlist önbelleği değiştiğinde kanal/kategori verisini tazeler.
+  /// TV Listeler panelinden geçişte [awaitDbReload] true ile çağrılır.
+  Future<void> reloadForActivePlaylistSwitch() async {
+    final value = _cache.result.value;
+    if (value == null) return;
+    await _applyActivePlaylistScope(
+      value,
+      scope: _playlistScopeKey(_cache),
+      resetSelection: true,
+      awaitDbReload: true,
+    );
+  }
+
+  Future<void> _applyActivePlaylistScope(
+    M3uResult value, {
+    required String? scope,
+    required bool resetSelection,
+    required bool awaitDbReload,
+  }) async {
     // Ana oynatıcı açıkken önizleme ikinci Exo örneği açmasın; ses oturumu
     // ve arka planda oynatmayı bozabilir.
     if (Get.isRegistered<PlayerController>()) {
       clearStreamPreview();
     }
     _data = value;
+    _syncedPlaylistScopeKey = scope;
     _invalidateChannelListCaches();
-    final sel = selectedCategoryId.value;
-    final stillExists = sel == null ||
-        sel == kFavoritesVirtualCategoryId ||
-        sel == kRecentlyWatchedVirtualCategoryId ||
-        (_data?.channelCategories.any((c) => c.id == sel) ?? false);
-    if (!stillExists) {
+
+    if (resetSelection) {
       selectedCategoryId.value = null;
+      selectedChannel.value = null;
+      clearStreamPreview();
+    } else {
+      final sel = selectedCategoryId.value;
+      final stillExists = sel == null ||
+          sel == kFavoritesVirtualCategoryId ||
+          sel == kRecentlyWatchedVirtualCategoryId ||
+          (_data?.channelCategories.any((c) => c.id == sel) ?? false);
+      if (!stillExists) {
+        selectedCategoryId.value = null;
+      }
     }
-    // Büyük listelerde (6 slot) geçişte tüm kanal listesini aynı frame'de
-    // yeniden taramayı ertele — ANR önlenir.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+
+    Future<void> finishReload({required bool fastAwait}) async {
       if (isClosed) return;
-      if (!identical(_cache.result.value, value)) return;
+      if (_playlistScopeKey(_cache) != scope) return;
       if (_dbBacked) {
-        unawaited(_reloadDbVisibleChannelsNow());
-        unawaited(_reloadDbCategoryCountsNow());
+        if (fastAwait) {
+          await _reloadDbVisibleChannelsFastNow();
+          unawaited(_reloadDbCategoryCountsNow());
+        } else if (awaitDbReload) {
+          await _reloadDbVisibleChannelsFastNow();
+          unawaited(_reloadDbCategoryCountsNow());
+        } else {
+          unawaited(_reloadDbVisibleChannelsNow());
+          unawaited(_reloadDbCategoryCountsNow());
+        }
       }
       playlistRevision.value++;
       _ensureSelectionInList();
-    });
+    }
+
+    if (awaitDbReload) {
+      await finishReload(fastAwait: true);
+    } else {
+      // Büyük listelerde (6 slot) geçişte tüm kanal listesini aynı frame'de
+      // yeniden taramayı ertele — ANR önlenir.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        unawaited(finishReload(fastAwait: false));
+      });
+    }
   }
 
 /// Üst çubuk ile aynı cam arama diyaloğu (ana ekrandan yönlendirme için).
@@ -250,13 +316,24 @@ Future<
     }
 
     var favCount = 0;
-    for (final cid in _fav.channelIds) {
-      final ch = await _ds.channelById(cid);
-      if (ch == null) continue;
-      if (PlaylistCategoryHide.channelHiddenInLive(_app, _cache, d, ch)) {
-        continue;
+    final favIds = _fav.channelIds;
+    if (favIds.isNotEmpty) {
+      final k = _cache.dbSourceKey.value?.trim();
+      if (k != null && k.isNotEmpty) {
+        favCount = await PlaylistSqliteStore.countVisibleChannelsByIds(
+          k,
+          favIds,
+        );
+      } else {
+        for (final cid in favIds) {
+          final ch = await _ds.channelById(cid);
+          if (ch == null) continue;
+          if (PlaylistCategoryHide.channelHiddenInLive(_app, _cache, d, ch)) {
+            continue;
+          }
+          favCount++;
+        }
       }
-      favCount++;
     }
 
     final recentCount = await _recentlyWatchedVisibleCountAsync();
@@ -318,6 +395,11 @@ List<Channel> get visibleChannels {
       _memChannelIdPoolKey = cacheKey;
       _memChannelWindowEnd = TvShellListWindow.memChannelInitialWindow
           .clamp(0, _memChannelIdPool!.length);
+      if (_shouldAvoidRamFullScan(this) &&
+          (_memChannelIdPool!.length >= kRamFullScanChannelCap ||
+              d.channels.length > kRamFullScanChannelCap)) {
+        unawaited(_expandMemChannelIdPoolInBackground(cacheKey, id, d, base));
+      }
     }
     _visibleChannelsCacheKey = cacheKey;
     _visibleChannelsCache = _memVisibleChannelSlice();
@@ -329,29 +411,61 @@ List<int> _buildMemChannelIdPool(
     M3uResult d,
     List<Channel> base,
   ) {
+    final cap = _shouldAvoidRamFullScan(this) ? kRamFullScanChannelCap : null;
     if (categoryId == null) {
-      return [
-        for (final c in base)
-          if (!PlaylistCategoryHide.channelHiddenInLive(
-            _app,
-            _cache,
-            d,
-            c,
-          ))
-            c.id,
-      ];
+      final out = <int>[];
+      for (final c in base) {
+        if (PlaylistCategoryHide.channelHiddenInLive(_app, _cache, d, c)) {
+          continue;
+        }
+        out.add(c.id);
+        if (cap != null && out.length >= cap) break;
+      }
+      return out;
     }
-    return [
-      for (final c in base)
-        if (c.categoryId == categoryId &&
-            !PlaylistCategoryHide.channelHiddenInLive(
-              _app,
-              _cache,
-              d,
-              c,
-            ))
-          c.id,
-    ];
+    final out = <int>[];
+    for (final c in base) {
+      if (c.categoryId != categoryId) continue;
+      if (PlaylistCategoryHide.channelHiddenInLive(_app, _cache, d, c)) {
+        continue;
+      }
+      out.add(c.id);
+      if (cap != null && out.length >= cap) break;
+    }
+    return out;
+  }
+
+Future<void> _expandMemChannelIdPoolInBackground(
+    int cacheKey,
+    int? categoryId,
+    M3uResult d,
+    List<Channel> base,
+  ) async {
+    final gen = ++_memChannelIdPoolBuildGen;
+    final seen = <int>{...?_memChannelIdPool};
+    final out = List<int>.from(_memChannelIdPool ?? const <int>[]);
+    const chunk = 400;
+    var processed = 0;
+    for (final c in base) {
+      if (categoryId != null && c.categoryId != categoryId) continue;
+      if (PlaylistCategoryHide.channelHiddenInLive(_app, _cache, d, c)) {
+        continue;
+      }
+      processed++;
+      if (seen.add(c.id)) out.add(c.id);
+      if (processed % chunk != 0) continue;
+      if (isClosed || gen != _memChannelIdPoolBuildGen) return;
+      if (_memChannelIdPoolKey != cacheKey) return;
+      _memChannelIdPool = out;
+      _visibleChannelsCache = _memVisibleChannelSlice();
+      playlistRevision.value++;
+      await Future<void>.delayed(Duration.zero);
+    }
+    if (isClosed || gen != _memChannelIdPoolBuildGen) return;
+    if (_memChannelIdPoolKey != cacheKey) return;
+    _memChannelIdPool = out;
+    _visibleChannelsCache = _memVisibleChannelSlice();
+    playlistRevision.value++;
   }
 
 List<Channel> _memVisibleChannelSlice() {
@@ -494,6 +608,20 @@ List<Channel> get filteredChannels {
       _categoryCountCache = empty;
       return empty;
     }
+    if (_shouldAvoidRamFullScan(this)) {
+      if (_categoryCountCacheKey == cacheKey && _categoryCountCache != null) {
+        return _categoryCountCache!;
+      }
+      _scheduleRamCategoryCountBuild(cacheKey);
+      if (_categoryCountCache != null) return _categoryCountCache!;
+      const pending = (
+        allVisibleCount: 0,
+        favoritesVisibleCount: 0,
+        recentlyWatchedVisibleCount: 0,
+        categoryCounts: <int, int>{},
+      );
+      return pending;
+    }
     final counts = <int, int>{};
     var visibleAll = 0;
     var favCount = 0;
@@ -527,7 +655,10 @@ void onSearchChanged(String v) {
     _invalidateChannelListCaches();
   }
 
-void selectCategory(int? categoryId, {bool moveFocusToChannels = false}) {
+void selectCategory(int? categoryId, {
+    bool moveFocusToChannels = false,
+    bool resumeChannelSelection = false,
+  }) {
     final prevCategory = selectedCategoryId.value;
     _invalidateVisibleChannelsCache();
     selectedCategoryId.value = categoryId;
@@ -541,7 +672,8 @@ void selectCategory(int? categoryId, {bool moveFocusToChannels = false}) {
     }
     if (moveFocusToChannels) {
       _tvCategoryChannelsApplyDebounce?.cancel();
-      unawaited(_applyMoveFocusToChannels());
+      final resume = resumeChannelSelection && prevCategory == categoryId;
+      unawaited(_applyMoveFocusToChannels(resumePrior: resume));
     } else {
       // Kategori değişince (ok ile sağa geçerken) her zaman 1. sıradan başla;
       // aynı kategoride sadece odağı kanallara taşıyorsak önceki seçimi koru.
@@ -630,10 +762,17 @@ void _applyFirstChannelForCategory() {
 
 /// TV: kategori seçildikten sonra odağı kanal listesine taşır. SQLite
   /// yedekli listelerde kanallar asenkron gelir; önce DB yüklemesi beklenir.
-  Future<void> _applyMoveFocusToChannels() async {
+  /// [resumePrior] true ise aynı kategoriye yeniden girildiğinde önceki kanal
+  /// seçimi ve satır odağı korunur.
+  Future<void> _applyMoveFocusToChannels({bool resumePrior = false}) async {
     final gen = ++_moveFocusToChannelsGen;
     if (_dbBacked) {
-      await _reloadDbVisibleChannelsNow();
+      final stale = filteredChannels;
+      if (stale.isEmpty) {
+        await _reloadDbVisibleChannelsFastNow();
+      } else {
+        unawaited(_reloadDbVisibleChannelsFastNow());
+      }
     }
     if (isClosed || gen != _moveFocusToChannelsGen) return;
     final list = filteredChannels;
@@ -642,16 +781,37 @@ void _applyFirstChannelForCategory() {
       tvTrapFocusInChannelList.value = false;
       return;
     }
-    final first = list.first;
-    selectedChannel.value = first;
-    unawaited(_app.setLastLiveChannelId(first.id));
-    _schedulePrecache(first.streamUrl);
-    _schedulePreview(first);
+
+    var focusIndex = 0;
+    var resumed = false;
+    if (resumePrior) {
+      _ensureSelectionInList();
+      final cur = selectedChannel.value;
+      if (cur != null) {
+        final i = list.indexWhere((c) => c.id == cur.id);
+        if (i >= 0) {
+          focusIndex = i;
+          resumed = true;
+          _schedulePrecache(cur.streamUrl);
+          _schedulePreview(cur);
+        }
+      }
+    }
+    if (!resumed) {
+      final first = list.first;
+      selectedChannel.value = first;
+      unawaited(_app.setLastLiveChannelId(first.id));
+      _schedulePrecache(first.streamUrl);
+      _schedulePreview(first);
+      focusIndex = 0;
+    }
+
     if (tvShellLiveActive.value) {
       tvTrapFocusInChannelList.value = false;
+      final idx = focusIndex;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (isClosed) return;
-        _focusTvShellChannelRow(0);
+        if (isClosed || gen != _moveFocusToChannelsGen) return;
+        _focusTvShellChannelRow(idx);
       });
       return;
     }
@@ -1135,8 +1295,7 @@ void _schedulePreview(Channel channel) {
     });
   }
 
-bool get _previewEnabled =>
-      _app.streamPreviewActive || tvShellLivePreviewActive;
+bool get _previewEnabled => _app.streamPreviewEnabled.value;
 
 /// Ayarlardan önizleme kapatılınca veya devre dışıyken oynatıcıyı temizler.
   void clearStreamPreview() {
@@ -1158,7 +1317,16 @@ bool get _previewEnabled =>
       previewPlayerMediaKit = null;
       previewVideoMediaKit = null;
       if (oldMk != null) {
-        unawaited(oldMk.dispose());
+        unawaited(() async {
+          try {
+            await oldMk.setVolume(0);
+            await oldMk.pause();
+            await oldMk.stop();
+          } catch (_) {}
+          try {
+            await oldMk.dispose();
+          } catch (_) {}
+        }());
       }
     } catch (_) {}
     isPreviewLoading.value = false;
@@ -1261,7 +1429,8 @@ Future<void> _startPreview(Channel channel) async {
       return;
     }
     final gen = ++_previewLoadGeneration;
-    final audible = true;
+    // Sessiz önizleme — tam ekran oynatıcıyla çift ses riskini önler.
+    const audible = false;
 
     try {
       final old = previewController;
@@ -1276,7 +1445,16 @@ Future<void> _startPreview(Channel channel) async {
       previewPlayerMediaKit = null;
       previewVideoMediaKit = null;
       if (oldMk != null) {
-        unawaited(oldMk.dispose());
+        unawaited(() async {
+          try {
+            await oldMk.setVolume(0);
+            await oldMk.pause();
+            await oldMk.stop();
+          } catch (_) {}
+          try {
+            await oldMk.dispose();
+          } catch (_) {}
+        }());
       }
     } catch (_) {}
 
@@ -1301,14 +1479,16 @@ Future<void> _startPreview(Channel channel) async {
       return;
     }
 
-    // Canlı yayın için liveUseMediaKit, VOD için useMediaKit kullan
-    final useMediaKitForPreview = live ? _app.liveUseMediaKit.value : _app.useMediaKit.value;
+    final previewEngine =
+        live ? _app.livePlaybackEngine.value : _app.vodPlaybackEngine.value;
+    final useMediaKitForPreview = previewEngine == PlaybackEngineKind.mediaKit;
     if (useMediaKitForPreview) {
       for (final url in urls) {
         if (gen != _previewLoadGeneration) return;
         try {
           final player = Player(configuration: const PlayerConfiguration(
-            bufferSize: 64 * 1024 * 1024,
+            // Önizleme yüzeyi küçük — tam canlı tampon gereksiz (RAM/ısınma).
+            bufferSize: 4 * 1024 * 1024,
             logLevel: MPVLogLevel.error,
           ));
           final videoController = VideoController(
@@ -1330,6 +1510,9 @@ Future<void> _startPreview(Channel channel) async {
             ),
             play: true,
           );
+          try {
+            await player.setVolume(0);
+          } catch (_) {}
           if (gen != _previewLoadGeneration) {
             await player.dispose();
             return;
@@ -1506,17 +1689,8 @@ String? categoryNameFor(Channel channel) {
   }
 
 void openChannel(Channel channel) {
-    _previewDebounce?.cancel();
-    _previewLoadGeneration++;
-    try {
-      final old = previewController;
-      previewController = null;
-      if (old != null) {
-        old.pause();
-        old.dispose(forceDispose: true);
-      }
-      update(['preview']);
-    } catch (_) {}
+    // Önizleme (Better + MediaKit) tam oynatıcıdan önce kapatılsın — çift decoder yok.
+    clearStreamPreview();
 
     unawaited(_app.setLastLiveCategoryId(selectedCategoryId.value));
     unawaited(_app.setLastLiveChannelId(channel.id));

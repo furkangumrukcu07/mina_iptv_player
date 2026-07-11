@@ -70,8 +70,9 @@ class ChatRoomsView extends GetView<ChatController> {
                   ),
                   Expanded(
                     child: Obx(() {
-                      // currentUser reaktif: giriş yapılınca otomatik odalar.
-                      final signedIn = auth.currentUser.value != null &&
+                      final user = auth.currentUser.value;
+                      final signedIn = user != null &&
+                          !user.isAnonymous &&
                           auth.isAvailable;
                       if (!signedIn) {
                         return _ChatSignInGate(controller: controller);

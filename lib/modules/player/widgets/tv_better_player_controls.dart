@@ -1051,21 +1051,32 @@ class _TvBetterPlayerControlsState extends State<TvBetterPlayerControls> {
               return KeyEventResult.handled;
             }
 
-            // Yukarı/aşağı: OSD kapalıyken tek basış yalnız OSD aç; açıkken canlıda zap vb.
-            if (key == LogicalKeyboardKey.arrowUp) {
+            // Canlı TV: ↑/↓ tek basış zap + kısa OSD (tvOsdAutoHide).
+            if (key == LogicalKeyboardKey.arrowUp ||
+                key == LogicalKeyboardKey.arrowDown) {
+              final zapDelta =
+                  key == LogicalKeyboardKey.arrowUp ? -1 : 1;
+              if (live && !liveTimeshift) {
+                if (!_visible) {
+                  _showControls();
+                } else {
+                  _restartHideTimer();
+                }
+                if (event is KeyRepeatEvent) {
+                  return KeyEventResult.handled;
+                }
+                _zap(zapDelta);
+                return KeyEventResult.handled;
+              }
               if (!_visible) {
                 _showControls();
                 return KeyEventResult.handled;
               }
-              _zap(-1);
-              return KeyEventResult.handled;
-            }
-            if (key == LogicalKeyboardKey.arrowDown) {
-              if (!_visible) {
-                _showControls();
-                return KeyEventResult.handled;
+              if (zapDelta < 0) {
+                _skipBack15();
+              } else {
+                _skipForward15();
               }
-              _zap(1);
               return KeyEventResult.handled;
             }
 
@@ -1281,6 +1292,8 @@ class _TvBetterPlayerControlsState extends State<TvBetterPlayerControls> {
                                               live: live,
                                               isSeries: controller.isSeries,
                                               engine: VideoPlayerEngine.betterPlayer,
+                                              transportFormat: controller
+                                                  .osdStreamTransportFormatLabel,
                                               portrait: isPortrait,
                                             ),
                                           ],

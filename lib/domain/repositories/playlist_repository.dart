@@ -3,6 +3,7 @@ import '../entities/channel.dart';
 import '../entities/m3u_result.dart';
 import '../entities/playlist_source.dart';
 import '../entities/series_episode_option.dart';
+import '../entities/stalker_compat.dart';
 
 abstract class PlaylistRepository {
   Future<M3uResult> loadFromM3uUrl(String url);
@@ -17,11 +18,23 @@ abstract class PlaylistRepository {
   Future<({M3uResult result, String resolvedUrl})> loadFromM3uUrlResolved(
       String url);
 
+  /// Kaynak slot'a yazıldıktan sonra M3U URL'sini **satır akışı** ile indirip
+  /// SQLite'a yazar. Dev film/dizi listelerinde bellek şişmesini önler.
+  Future<M3uResult> loadM3uUrlIntoSlot(int slot, String url);
+
   /// Ham M3U metnini doğrular ve ayrıştırır (ağ çağrısı yok).
   Future<M3uResult> loadFromM3uContent(String content);
 
   /// M3U metnini uygulama dizinine yazar, kaynağı işaretler; ayrıştırılmış sonucu döner.
   Future<M3uResult> persistM3uLocalContent(String content);
+
+  Future<M3uResult> loadFromStalker({
+    required String baseUrl,
+    required String macAddress,
+    StalkerMagPreset magPreset = StalkerMagPreset.genericSafe,
+    StalkerLinkType linkType = StalkerLinkType.wifi,
+    String hwVersionOverride = '',
+  });
 
   Future<M3uResult> loadFromXtream({
     required String baseUrl,
@@ -188,6 +201,13 @@ abstract class PlaylistRepository {
   /// taşınmadıysa (zaten ardışık) boş harita döner. Çağıran taraf aktif slot
   /// referansını bu harita ile güncellemelidir.
   Future<Map<int, int>> compactSlots();
+
+  /// Dolu listeleri [orderedOldSlots] sırasına göre 1..N olarak yeniden yazar.
+  ///
+  /// Örn. mevcut 1,2,3 iken kullanıcı 3. listeyi en üste çekerse
+  /// `orderedOldSlots = [3,1,2]` → içerikler slot 1,2,3'e o sırayla yazılır.
+  /// Dönüş: `{eskiSlot: yeniSlot}` (değişmeyenler hariç tutulabilir).
+  Future<Map<int, int>> reorderSlots(List<int> orderedOldSlots);
 
   /// Slot için yerel M3U gövdesini diske yazar ve kaynağı sentinel'le işaretler.
   Future<M3uResult> persistM3uLocalContentAt(int slot, String content);

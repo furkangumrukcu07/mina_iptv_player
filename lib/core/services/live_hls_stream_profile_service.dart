@@ -32,6 +32,13 @@ class LiveHlsStreamProfileService extends GetxService {
             ),
           ),
         M3uSource(:final url) => AppSettingsService.m3uPreferenceKey(url),
+        StalkerSource(:final baseUrl, :final macAddress) =>
+          AppSettingsService.stalkerPreferenceKey(
+            StalkerSource(
+              baseUrl: baseUrl,
+              macAddress: macAddress,
+            ),
+          ),
       };
 
   /// Aktif playlist değiştiğinde çağrılır; önceki profili sıfırlayıp yeni

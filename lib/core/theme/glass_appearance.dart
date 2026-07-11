@@ -73,14 +73,27 @@ abstract final class GlassThemeLabels {
     flyUi,
   };
 
+  /// Mobil/tablet düzeninde seçilemez / gösterilmez temalar (TV'ye özel).
+  static const Set<String> handheldExcludedThemeLabels = {
+    tvLite,
+  };
+
   static bool isThemeAllowedOnTv(String label) =>
       !tvExcludedThemeLabels.contains(label);
 
-  /// Ayarlar ve kurulum: TV'de [tvExcludedThemeLabels] hariç liste.
+  static bool isThemeAllowedOnHandheld(String label) =>
+      !handheldExcludedThemeLabels.contains(label);
+
+  /// Ayarlar ve kurulum: TV'de [tvExcludedThemeLabels], mobil/tablet'te
+  /// [handheldExcludedThemeLabels] hariç liste.
   static List<String> selectableThemesForLayout({required bool tv}) {
-    if (!tv) return selectableThemeLabels;
+    if (tv) {
+      return selectableThemeLabels
+          .where((t) => isThemeAllowedOnTv(t))
+          .toList(growable: false);
+    }
     return selectableThemeLabels
-        .where((t) => isThemeAllowedOnTv(t))
+        .where((t) => isThemeAllowedOnHandheld(t))
         .toList(growable: false);
   }
 }

@@ -11,6 +11,7 @@ class BetterPlayerBufferingConfiguration {
     /// Android Exo: [DefaultLoadControl.Builder.setPrioritizeTimeOverSizeThresholds] —
     /// `true` canlıda gecikmeyi azaltmaya yardımcı olur; VOD’da `false` daha akıcı sarma.
     this.prioritizeTimeOverSizeThresholds = true,
+    this.targetBufferBytes = 0,
   });
 
   ///Constants values are from the offical exoplayer documentation
@@ -42,4 +43,7 @@ class BetterPlayerBufferingConfiguration {
 
   /// Android Exo: zaman tabanlı tampon eşiklerini boyuta göre önceliklendir.
   final bool prioritizeTimeOverSizeThresholds;
+
+  /// Android Exo: hedef tampon boyutu (bayt); 0 ise Exo varsayılanı.
+  final int targetBufferBytes;
 }

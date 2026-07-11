@@ -39,7 +39,6 @@ class _FaqViewState extends State<FaqView> {
     'faq.entry.engine',
     'faq.entry.softwareDecoder',
     'faq.entry.lowEndMode',
-    'faq.entry.tvLite',
     'faq.entry.userAgent',
     'faq.entry.cardSize',
     'faq.entry.epg',

@@ -458,9 +458,9 @@ class SettingsView extends GetView<SettingsController> {
                                   // Playback tile yukarı (4. sıraya) taşındı.
                                   // «Hız Testi» «Diğer Araçlar» alt-sayfasına
                                   // taşındı.
-                                  // «Cihaz açılışında başlat» ve «Arka
-                                  // planda oynatma» «Oynatma Ayarları»
-                                  // alt-sayfasına taşındı.
+                                  // «Cihaz açılışında başlat» «Diğer Araçlar»
+                                  // alt-sayfasına taşındı; «Arka planda oynatma»
+                                  // «Oynatma Ayarları» alt-sayfasında.
                                   // «Altyazı Seçenekleri» «Oynatma Ayarları»
                                   // alt-sayfasına taşındı.
                                   // «Küçük ekran (PIP)» «Oynatma Ayarları»
@@ -594,6 +594,11 @@ class SettingsView extends GetView<SettingsController> {
                                         } else {
                                           sub = 'settings.subscription.premiumActive'.tr;
                                         }
+                                      } else if (licensing.deviceLimitExceeded.value) {
+                                        sub = 'settings.subscription.deviceLimit'.trParams({
+                                          'count': '${licensing.deviceCount.value}',
+                                          'max': '${licensing.maxDevices.value}',
+                                        });
                                       } else {
                                         if (licensing.isTrialActive.value) {
                                           sub = licensing.trialRemainingFormatted;
@@ -1169,6 +1174,10 @@ class _TvShellSettingsScrollBack extends StatelessWidget {
         if (event is! KeyDownEvent) return KeyEventResult.ignored;
         if (tvKeyIsBack(event.logicalKey) ||
             event.logicalKey == LogicalKeyboardKey.arrowLeft) {
+          if (Get.isDialogOpen == true) {
+            Get.back<void>();
+            return KeyEventResult.handled;
+          }
           onBack();
           return KeyEventResult.handled;
         }
@@ -1204,6 +1213,7 @@ class _TvShellSettingsHostState extends State<_TvShellSettingsHost> {
     if (widget.enabled && Get.isRegistered<TvShellController>()) {
       final shell = Get.find<TvShellController>();
       shell.registerSettingsFirstTileFocusHandler(_focusFirstTile);
+      shell.registerSettingsReturnFocusHandler(_focusTileIndex);
       shell.registerSettingsLeaveHandler(_coordinator.unfocusAll);
     }
   }
@@ -1215,9 +1225,11 @@ class _TvShellSettingsHostState extends State<_TvShellSettingsHost> {
     final shell = Get.find<TvShellController>();
     if (oldWidget.enabled && !widget.enabled) {
       shell.registerSettingsFirstTileFocusHandler(null);
+      shell.registerSettingsReturnFocusHandler(null);
       shell.registerSettingsLeaveHandler(null);
     } else if (!oldWidget.enabled && widget.enabled) {
       shell.registerSettingsFirstTileFocusHandler(_focusFirstTile);
+      shell.registerSettingsReturnFocusHandler(_focusTileIndex);
       shell.registerSettingsLeaveHandler(_coordinator.unfocusAll);
     }
   }
@@ -1227,6 +1239,7 @@ class _TvShellSettingsHostState extends State<_TvShellSettingsHost> {
     if (Get.isRegistered<TvShellController>()) {
       final shell = Get.find<TvShellController>();
       shell.registerSettingsFirstTileFocusHandler(null);
+      shell.registerSettingsReturnFocusHandler(null);
       shell.registerSettingsLeaveHandler(null);
     }
     _coordinator.dispose();
@@ -1256,6 +1269,43 @@ class _TvShellSettingsHostState extends State<_TvShellSettingsHost> {
               ctx,
               alignment: 0.08,
               duration: Duration.zero,
+            );
+          }
+          return;
+        }
+        attempt(n + 1);
+      });
+    }
+    attempt(0);
+  }
+
+  void _focusTileIndex(int index) {
+    if (!mounted) return;
+    if (Get.isRegistered<TvShellController>()) {
+      final shell = Get.find<TvShellController>();
+      for (final node in shell.railFocusNodes.values) {
+        if (node.hasFocus) node.unfocus();
+      }
+    }
+    void attempt(int n) {
+      if (!mounted || n > 24) return;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        final node = _coordinator.nodeFor(
+          index,
+          external: index == 0 ? _firstTileFocus : null,
+        );
+        if (node.canRequestFocus) {
+          node.requestFocus();
+        }
+        if (node.hasFocus) {
+          final ctx = node.context;
+          if (ctx != null) {
+            Scrollable.ensureVisible(
+              ctx,
+              alignment: 0.35,
+              duration: const Duration(milliseconds: 120),
+              curve: Curves.easeOutCubic,
             );
           }
           return;

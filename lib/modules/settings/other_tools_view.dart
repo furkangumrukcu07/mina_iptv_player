@@ -4,7 +4,6 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../../core/layout/app_layout_mode.dart';
-import '../../core/home/home_layout_style.dart';
 import '../../core/services/app_settings_service.dart';
 import '../../core/theme/app_scroll_physics.dart';
 import '../../ui/settings_glass_panel.dart';
@@ -16,10 +15,10 @@ import 'speed_test_screen.dart';
 /// Ayarlar → «Diğer Araçlar» alt-sayfası.
 ///
 /// Daha seyrek kullanılan yardımcı araçlar tek bir glass shell içinde
-/// gruplanır: uyku zamanlayıcısı, EPG, tema, yedekleme/geri yükleme, hız
-/// testi, adaptif titreşim ve uygulama fontu. Tüm aksiyonlar mevcut
-/// [SettingsController] / [AppSettingsService] API'lerini yeniden kullanır;
-/// işlevsellik değişmez, yalnızca tek yere taşınır.
+/// gruplanır: uyku zamanlayıcısı, cihaz açılışında başlat, EPG, tema,
+/// yedekleme/geri yükleme, hız testi, adaptif titreşim ve uygulama fontu.
+/// Tüm aksiyonlar mevcut [SettingsController] / [AppSettingsService]
+/// API'lerini yeniden kullanır; işlevsellik değişmez, yalnızca tek yere taşınır.
 class OtherToolsView extends StatelessWidget {
   const OtherToolsView({super.key});
 
@@ -32,14 +31,13 @@ class OtherToolsView extends StatelessWidget {
 
   static const _dpadLayout = 0;
   static const _dpadSleepTimer = 1;
-  static const _dpadEpg = 2;
-  static const _dpadBackup = 3;
-  static const _dpadSpeedTest = 4;
-  static const _dpadHaptics = 5;
-  static const _dpadLowEnd = 6;
-  static const _dpadTvLite = 7;
-  static const _dpadInAppPip = 8;
-  static const _dpadAppFont = 9;
+  static const _dpadLaunchBoot = 2;
+  static const _dpadEpg = 3;
+  static const _dpadBackup = 4;
+  static const _dpadSpeedTest = 5;
+  static const _dpadHaptics = 6;
+  static const _dpadLowEnd = 7;
+  static const _dpadAppFont = 8;
 
   @override
   Widget build(BuildContext context) {
@@ -75,20 +73,30 @@ class OtherToolsView extends StatelessWidget {
                       physics: AppScrollPhysics.list(),
                       padding: const EdgeInsets.fromLTRB(12, 4, 12, 16),
                       children: [
-                        _ToolTile(
-                          tvDpadIndex: _dpadLayout,
-                          icon: Icons.devices_rounded,
-                          title: 'settings.tile.layout'.tr,
-                          subtitle: Obx(
-                            () => Text(
-                              app.layoutMode.value.title,
-                              style: _subtitleStyle,
-                            ),
-                          ),
-                          primary: primary,
-                          onTap: controller.showLayoutModeDialog,
-                        ),
-                        const SizedBox(height: 10),
+                        Obx(() {
+                          if (app.androidTvShellLayoutLocked.value) {
+                            return const SizedBox.shrink();
+                          }
+                          return Column(
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              _ToolTile(
+                                tvDpadIndex: _dpadLayout,
+                                icon: Icons.devices_rounded,
+                                title: 'settings.tile.layout'.tr,
+                                subtitle: Obx(
+                                  () => Text(
+                                    app.layoutMode.value.title,
+                                    style: _subtitleStyle,
+                                  ),
+                                ),
+                                primary: primary,
+                                onTap: controller.showLayoutModeDialog,
+                              ),
+                              const SizedBox(height: 10),
+                            ],
+                          );
+                        }),
                         Obx(() {
                           app.sleepTimerEndMs.value;
                           return _ToolTile(
@@ -103,6 +111,24 @@ class OtherToolsView extends StatelessWidget {
                             onTap: controller.showSleepTimerDialog,
                           );
                         }),
+                        const SizedBox(height: 10),
+                        Obx(
+                          () => _ToolTile(
+                            tvDpadIndex: _dpadLaunchBoot,
+                            icon: Icons.power_settings_new_rounded,
+                            title: 'settings.tile.launchBoot'.tr,
+                            subtitle: Text(
+                              app.launchOnBoot.value
+                                  ? 'common.active'.tr
+                                  : 'common.inactive'.tr,
+                              style: _subtitleStyle,
+                            ),
+                            primary: primary,
+                            onTap: () => app.setLaunchOnBoot(
+                              !app.launchOnBoot.value,
+                            ),
+                          ),
+                        ),
                         const SizedBox(height: 10),
                         _ToolTile(
                           tvDpadIndex: _dpadEpg,
@@ -177,43 +203,6 @@ class OtherToolsView extends StatelessWidget {
                             ),
                           ),
                         ),
-                        const SizedBox(height: 10),
-                        Obx(
-                          () => _ToolTile(
-                            tvDpadIndex: _dpadTvLite,
-                            icon: Icons.tv_rounded,
-                            title: 'settings.tvLite.title'.tr,
-                            subtitle: Text(
-                              app.tvLite.value
-                                  ? 'settings.tvLite.subOn'.tr
-                                  : 'settings.tvLite.subOff'.tr,
-                              style: _subtitleStyle,
-                            ),
-                            primary: primary,
-                            onTap: () => app.setTvLite(!app.tvLite.value),
-                          ),
-                        ),
-                        if (app.homeLayoutStyle.value ==
-                            HomeLayoutStyle.showcase) ...[
-                          const SizedBox(height: 10),
-                          Obx(
-                            () => _ToolTile(
-                              tvDpadIndex: _dpadInAppPip,
-                              icon: Icons.picture_in_picture_alt_rounded,
-                              title: 'otherTools.inAppPip.title'.tr,
-                              subtitle: Text(
-                                app.showcaseInAppPipEnabled.value
-                                    ? 'otherTools.inAppPip.subOn'.tr
-                                    : 'otherTools.inAppPip.subOff'.tr,
-                                style: _subtitleStyle,
-                              ),
-                              primary: primary,
-                              onTap: () => app.setShowcaseInAppPipEnabled(
-                                !app.showcaseInAppPipEnabled.value,
-                              ),
-                            ),
-                          ),
-                        ],
                         if (Platform.isAndroid) ...[
                           const SizedBox(height: 10),
                           _ToolTile(

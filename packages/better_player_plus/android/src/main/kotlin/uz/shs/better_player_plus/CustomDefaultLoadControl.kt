@@ -37,6 +37,10 @@ internal class CustomDefaultLoadControl {
     @JvmField
     val prioritizeTimeOverSizeThresholds: Boolean
 
+    /** Exo [DefaultLoadControl.Builder.setTargetBufferBytes]; 0 = Exo varsayılanı. */
+    @JvmField
+    val targetBufferBytes: Int
+
     constructor() {
         // IPTV canlı: düşük gecikme — Flutter [IptvBetterPlayerConfig] ile uyumlu varsayılan.
         minBufferMs = 10_000
@@ -44,6 +48,7 @@ internal class CustomDefaultLoadControl {
         bufferForPlaybackMs = 1_400
         bufferForPlaybackAfterRebufferMs = 3_000
         prioritizeTimeOverSizeThresholds = true
+        targetBufferBytes = 0
     }
 
     constructor(
@@ -52,6 +57,7 @@ internal class CustomDefaultLoadControl {
         bufferForPlaybackMs: Int?,
         bufferForPlaybackAfterRebufferMs: Int?,
         prioritizeTimeOverSizeThresholds: Boolean?,
+        targetBufferBytes: Int?,
     ) {
         this.minBufferMs = minBufferMs ?: DefaultLoadControl.DEFAULT_MIN_BUFFER_MS
         this.maxBufferMs = maxBufferMs ?: DefaultLoadControl.DEFAULT_MAX_BUFFER_MS
@@ -60,5 +66,6 @@ internal class CustomDefaultLoadControl {
         this.bufferForPlaybackAfterRebufferMs = bufferForPlaybackAfterRebufferMs
             ?: DefaultLoadControl.DEFAULT_BUFFER_FOR_PLAYBACK_AFTER_REBUFFER_MS
         this.prioritizeTimeOverSizeThresholds = prioritizeTimeOverSizeThresholds ?: true
+        this.targetBufferBytes = targetBufferBytes?.coerceAtLeast(0) ?: 0
     }
 }

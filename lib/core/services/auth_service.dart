@@ -14,6 +14,7 @@ import 'firebase_bootstrap.dart';
 import 'mina_telemetry_service.dart';
 import '../platform/android_playback_soc_hints.dart';
 import 'profiles_service.dart';
+import 'licensing_service.dart';
 import 'toast_service.dart';
 
 /// Google ile giriş akışının sonucu.
@@ -124,6 +125,41 @@ class AuthService extends GetxService {
     return BackupService();
   }
 
+  void _syncLicenseAfterGoogleSignIn() {
+    if (!Get.isRegistered<LicensingService>()) return;
+    unawaited(Get.find<LicensingService>().syncLicenseFromAccount());
+  }
+
+  /// Paywall / ayarlar: giriş sonrası senkron bitene kadar bekler.
+  Future<bool> syncLicenseAfterGoogleSignInAndWait() async {
+    if (!Get.isRegistered<LicensingService>()) return false;
+    final licensing = Get.find<LicensingService>();
+
+    await licensing.initialization;
+
+    User? user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      try {
+        await user.reload();
+        await user.getIdToken(true);
+        user = FirebaseAuth.instance.currentUser ?? user;
+      } catch (e) {
+        debugPrint('[AuthService] post-sign-in user refresh: $e');
+      }
+    }
+
+    for (var attempt = 0; attempt < 3; attempt++) {
+      final ok = await licensing.syncLicenseFromAccount(user: user);
+      if (ok || licensing.isPremium.value) return true;
+      if (attempt < 2) {
+        await Future<void>.delayed(
+          Duration(milliseconds: 900 * (attempt + 1)),
+        );
+      }
+    }
+    return licensing.isPremium.value;
+  }
+
   @override
   void onInit() {
     super.onInit();
@@ -137,6 +173,7 @@ class AuthService extends GetxService {
         if (u != null) {
           // Birincil profilin isim + fotoğrafını Google hesabından eşitle.
           _syncPrimaryProfile(u);
+          _syncLicenseAfterGoogleSignIn();
           // Oturum hazır → zamanı geldiyse sessiz otomatik yedek (kısa gecikme
           // ile, açılış yükünü engellememek için).
           Future<void>.delayed(const Duration(seconds: 5), () {
@@ -273,6 +310,7 @@ class AuthService extends GetxService {
         return const GoogleSignInResult.failed('no-uid');
       }
       if (user != null) _syncPrimaryProfile(user);
+      _syncLicenseAfterGoogleSignIn();
       return GoogleSignInResult.success(uid);
     } on GoogleSignInException catch (e) {
       if (e.code == GoogleSignInExceptionCode.canceled) {
@@ -314,6 +352,7 @@ class AuthService extends GetxService {
         return const GoogleSignInResult.failed('no-uid');
       }
       if (user != null) _syncPrimaryProfile(user);
+      _syncLicenseAfterGoogleSignIn();
       return GoogleSignInResult.success(uid);
     } on FirebaseAuthException catch (e) {
       debugPrint('[AuthService] browser sign-in FirebaseAuthException: ${e.code}');

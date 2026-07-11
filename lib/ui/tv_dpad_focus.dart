@@ -17,7 +17,7 @@ import '../core/theme/app_performance.dart';
   double borderWidth
 }) _focusDecorTuning(
   Color primary, {
-  bool tiviMate = false,
+  bool tvFocus = false,
 }) {
   return (
     duration: const Duration(milliseconds: 150),
@@ -193,8 +193,8 @@ class TvDpadFocus extends StatefulWidget {
     this.blockLeft = false,
     this.blockRight = false,
     this.showFocusRing = true,
-    this.tiviMateStyle = false,
-    this.tiviMateFill = false,
+    this.tvFocusStyle = false,
+    this.tvFocusFill = false,
     this.borderRadius = 12,
     this.scaleOnFocus = 1.03,
     this.enableFocusScale = true,
@@ -219,10 +219,10 @@ class TvDpadFocus extends StatefulWidget {
   final bool blockLeft;
   final bool blockRight;
   final bool showFocusRing;
-  final bool tiviMateStyle;
+  final bool tvFocusStyle;
 
   /// Odak: `false` → yalnızca parlama + ölçek (poster kartları).
-  final bool tiviMateFill;
+  final bool tvFocusFill;
   final double borderRadius;
   final double scaleOnFocus;
 
@@ -270,7 +270,7 @@ class _TvDpadFocusState extends State<TvDpadFocus> {
 
   void _onFocusChange() {
     final needsRepaint = widget.showFocusRing ||
-        widget.tiviMateStyle ||
+        widget.tvFocusStyle ||
         (widget.enableFocusScale && widget.scaleOnFocus != 1.0);
     if (needsRepaint && mounted) setState(() {});
     if (!mounted || !widget.ensureVisibleOnFocus) return;
@@ -323,7 +323,7 @@ class _TvDpadFocusState extends State<TvDpadFocus> {
           final primary = Theme.of(context).colorScheme.primary;
           final tuning = _focusDecorTuning(
             primary,
-            tiviMate: widget.tiviMateStyle,
+            tvFocus: widget.tvFocusStyle,
           );
           Widget body = widget.child;
           final scale = !widget.enableFocusScale
@@ -344,7 +344,7 @@ class _TvDpadFocusState extends State<TvDpadFocus> {
             curve: Curves.easeOutCubic,
             decoration: BoxDecoration(
               borderRadius: BorderRadius.circular(widget.borderRadius),
-              color: focused && widget.tiviMateFill
+              color: focused && widget.tvFocusFill
                   ? primary.withValues(alpha: 0.12)
                   : Colors.transparent,
               border: focused
@@ -396,7 +396,7 @@ class TvFocusRing extends StatelessWidget {
   Widget build(BuildContext context) {
     final focused = Focus.of(context).hasFocus;
     final primary = Theme.of(context).colorScheme.primary;
-    final tuning = _focusDecorTuning(primary, tiviMate: false);
+    final tuning = _focusDecorTuning(primary, tvFocus: false);
     Widget body = Padding(padding: padding, child: child);
     if (scaleOnFocus != 1.0) {
       body = AnimatedScale(

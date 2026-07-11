@@ -830,6 +830,70 @@ CREATE TABLE $_tMeta (
     return r == null ? null : _channelFromRow(r);
   }
 
+  /// Birden fazla kanalı tek (veya parçalı) `IN` sorgusuyla getirir.
+  static Future<List<Channel>> channelsByIds(
+    String sourceKey,
+    List<int> ids, {
+    bool visibleOnly = false,
+  }) async {
+    if (sourceKey.isEmpty || ids.isEmpty) return const [];
+    final unique = <int>{};
+    final ordered = <int>[];
+    for (final id in ids) {
+      if (unique.add(id)) ordered.add(id);
+    }
+    if (ordered.isEmpty) return const [];
+    final db = await _open();
+    final byId = <int, Channel>{};
+    const chunkSize = 400;
+    final hiddenClause = visibleOnly ? ' AND hidden = 0' : '';
+    for (var i = 0; i < ordered.length; i += chunkSize) {
+      final chunk = ordered.sublist(
+        i,
+        i + chunkSize > ordered.length ? ordered.length : i + chunkSize,
+      );
+      final placeholders = List.filled(chunk.length, '?').join(',');
+      final rows = await db.query(
+        _tChannel,
+        where: 'source_key = ?$hiddenClause AND id IN ($placeholders)',
+        whereArgs: [sourceKey, ...chunk],
+      );
+      for (final r in rows) {
+        final ch = _channelFromRow(r);
+        byId[ch.id] = ch;
+      }
+      await Future<void>.delayed(Duration.zero);
+    }
+    return [for (final id in ordered) if (byId[id] != null) byId[id]!];
+  }
+
+  /// Favori rozeti: gizli olmayan eşleşen kanal sayısı (tek COUNT sorgusu).
+  static Future<int> countVisibleChannelsByIds(
+    String sourceKey,
+    List<int> ids,
+  ) async {
+    if (sourceKey.isEmpty || ids.isEmpty) return 0;
+    final unique = ids.toSet().toList();
+    final db = await _open();
+    var total = 0;
+    const chunkSize = 400;
+    for (var i = 0; i < unique.length; i += chunkSize) {
+      final chunk = unique.sublist(
+        i,
+        i + chunkSize > unique.length ? unique.length : i + chunkSize,
+      );
+      final placeholders = List.filled(chunk.length, '?').join(',');
+      final c = Sqflite.firstIntValue(await db.rawQuery(
+        'SELECT COUNT(*) FROM $_tChannel '
+        'WHERE source_key = ? AND hidden = 0 AND id IN ($placeholders)',
+        [sourceKey, ...chunk],
+      ));
+      total += c ?? 0;
+      await Future<void>.delayed(Duration.zero);
+    }
+    return total;
+  }
+
   static Future<VodItem?> vodById(String sourceKey, int id) async {
     final r = await _byId(sourceKey, _tVod, id);
     return r == null ? null : _vodFromRow(r);

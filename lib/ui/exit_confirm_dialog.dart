@@ -11,6 +11,20 @@ import 'glass_overlays.dart';
 class ExitConfirmDialog extends StatefulWidget {
   const ExitConfirmDialog({super.key});
 
+  /// TV / mobil çıkış onayı — zaten açıksa tekrar açmaz.
+  static void showIfNeeded() {
+    if (Get.isDialogOpen == true) return;
+    Get.dialog<void>(
+      const ExitConfirmDialog(),
+      barrierDismissible: false,
+    );
+  }
+
+  /// Android TV kutusu rail ekranında geri: onay diyaloğu olmadan çık.
+  static void exitAppImmediately() {
+    exit(0);
+  }
+
   @override
   State<ExitConfirmDialog> createState() => _ExitConfirmDialogState();
 }

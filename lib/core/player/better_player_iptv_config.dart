@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:math' as math;
 
 import 'package:better_player_plus/better_player_plus.dart';
 import 'package:crypto/crypto.dart';
@@ -73,16 +74,30 @@ abstract final class IptvBetterPlayerConfig {
   /// Geçmiş uyumluluk: ayar anahtarı korunur; Exo tampon ms [iptvLiveBufferingTv] / [iptvVodBuffering].
   static const int defaultLiveBufferSecondsForExo = 3;
 
+  /// Exo [DefaultLoadControl.Builder.setTargetBufferBytes] — MPEG-TS canlı.
+  static const int exoTargetBufferBytesTsLive = 16 * 1024 * 1024;
+
+  /// Uzun segment HLS canlı.
+  static const int exoTargetBufferBytesLongHls = 32 * 1024 * 1024;
+
+  /// Canlı UHD HLS.
+  static const int exoTargetBufferBytesUhd = 64 * 1024 * 1024;
+
+  /// VOD.
+  static const int exoTargetBufferBytesVod = 32 * 1024 * 1024;
+
   /// Canlı: düşük gecikme / hızlı zapping (kısa Exo [DefaultLoadControl] penceresi).
   static const BetterPlayerBufferingConfiguration iptvLiveBufferingTv =
       BetterPlayerBufferingConfiguration(
-    // İlk kare donma riskini azaltmak için daha stabil eşikler.
-    minBufferMs: 3000,
-    maxBufferMs: 8000,
-    bufferForPlaybackMs: 1000,
-    bufferForPlaybackAfterRebufferMs: 1500,
+    // Ağ jitter / kısa blip toleransı: daha geniş yastık, rebuffer sonrası
+    // biraz daha uzun bekleme (kesil-devam hissini azaltır).
+    minBufferMs: 5000,
+    maxBufferMs: 14000,
+    bufferForPlaybackMs: 1200,
+    bufferForPlaybackAfterRebufferMs: 4500,
     preferSoftwareVideoDecoder: false,
     prioritizeTimeOverSizeThresholds: true,
+    targetBufferBytes: exoTargetBufferBytesTsLive,
   );
 
   /// Bağlantı kurtarma / tekrar açılış sonrası stabilizasyon profili.
@@ -90,12 +105,13 @@ abstract final class IptvBetterPlayerConfig {
   /// uzun rebuffer bekleme süresi içerir; küçük ağ dalgalanmalarına karşı direnç sağlar.
   static const BetterPlayerBufferingConfiguration iptvLiveBufferingTvStabilized =
       BetterPlayerBufferingConfiguration(
-    minBufferMs: 5000,
-    maxBufferMs: 12000,
+    minBufferMs: 7000,
+    maxBufferMs: 18000,
     bufferForPlaybackMs: 2500,
-    bufferForPlaybackAfterRebufferMs: 4000,
+    bufferForPlaybackAfterRebufferMs: 5500,
     preferSoftwareVideoDecoder: false,
     prioritizeTimeOverSizeThresholds: true,
+    targetBufferBytes: exoTargetBufferBytesTsLive,
   );
 
   /// VOD: aynı tampon penceresi; sarma için `prioritizeTimeOverSizeThresholds` kapalı.
@@ -107,6 +123,7 @@ abstract final class IptvBetterPlayerConfig {
     bufferForPlaybackAfterRebufferMs: 5000,
     preferSoftwareVideoDecoder: false,
     prioritizeTimeOverSizeThresholds: false,
+    targetBufferBytes: exoTargetBufferBytesVod,
   );
 
   /// Eski ad — [iptvLiveBufferingTv] ile aynı profil (Exo [DefaultLoadControl]).
@@ -130,18 +147,19 @@ abstract final class IptvBetterPlayerConfig {
           bufferForPlaybackAfterRebufferMs: 5000,
           preferSoftwareVideoDecoder: false,
           prioritizeTimeOverSizeThresholds: true,
+          targetBufferBytes: exoTargetBufferBytesTsLive,
         );
       case DevicePlaybackSegment.high:
-        // bufferForPlaybackMs: 800 ms → 1400 ms: IPTV ağ jitter'ı genellikle 200–800 ms
-        // arasında olduğundan 800 ms eşiği mini kesintilerde hemen rebuffer'a yol açıyordu.
-        // afterRebuffer: 1500 → 2500 ms: rebuffer sonrası yeterli tampon dolana kadar bekle.
+        // Yüksek performanslı cihazlar (örn. Samsung S24) için geniş tampon penceresi.
+        // Hem ağ jitter'ını tolere eder hem de IPTV panellerine aşırı sık istek (rate-limit) gitmesini engeller.
         return const BetterPlayerBufferingConfiguration(
-          minBufferMs: 2500,
-          maxBufferMs: 10000,
-          bufferForPlaybackMs: 1400,
-          bufferForPlaybackAfterRebufferMs: 2500,
+          minBufferMs: 15000,
+          maxBufferMs: 30000,
+          bufferForPlaybackMs: 2000,
+          bufferForPlaybackAfterRebufferMs: 4000,
           preferSoftwareVideoDecoder: false,
           prioritizeTimeOverSizeThresholds: true,
+          targetBufferBytes: exoTargetBufferBytesVod, // 32MB
         );
       case DevicePlaybackSegment.mid:
         return iptvLiveBufferingTv;
@@ -159,6 +177,19 @@ abstract final class IptvBetterPlayerConfig {
     bufferForPlaybackAfterRebufferMs: 18000,
     preferSoftwareVideoDecoder: false,
     prioritizeTimeOverSizeThresholds: true,
+    targetBufferBytes: exoTargetBufferBytesLongHls,
+  );
+
+  /// Canlı UHD/4K HLS — runtime format tespiti sonrası geniş tampon.
+  static const BetterPlayerBufferingConfiguration liveBufferingUhdHls =
+      BetterPlayerBufferingConfiguration(
+    minBufferMs: 30000,
+    maxBufferMs: 90000,
+    bufferForPlaybackMs: 5000,
+    bufferForPlaybackAfterRebufferMs: 15000,
+    preferSoftwareVideoDecoder: false,
+    prioritizeTimeOverSizeThresholds: true,
+    targetBufferBytes: exoTargetBufferBytesUhd,
   );
 
   /// **VOD (film/dizi)** Exo tampon profili — cihaz gücüne göre.
@@ -178,6 +209,7 @@ abstract final class IptvBetterPlayerConfig {
           bufferForPlaybackAfterRebufferMs: 5000,
           preferSoftwareVideoDecoder: false,
           prioritizeTimeOverSizeThresholds: true,
+          targetBufferBytes: exoTargetBufferBytesVod,
         );
       case DevicePlaybackSegment.high:
         return const BetterPlayerBufferingConfiguration(
@@ -187,6 +219,7 @@ abstract final class IptvBetterPlayerConfig {
           bufferForPlaybackAfterRebufferMs: 4000,
           preferSoftwareVideoDecoder: false,
           prioritizeTimeOverSizeThresholds: false,
+          targetBufferBytes: exoTargetBufferBytesVod,
         );
       case DevicePlaybackSegment.mid:
         return iptvVodBuffering;
@@ -306,13 +339,15 @@ abstract final class IptvBetterPlayerConfig {
   static BetterPlayerBufferingConfiguration liveBufferingForDevice({
     bool useLongSegmentHls = false,
     bool isRawTs = false,
+    bool useUhdHls = false,
   }) {
+    if (useUhdHls) return liveBufferingUhdHls;
     // Raw TS için daha geniş buffering (kasma önleme)
     if (isRawTs) {
       return const BetterPlayerBufferingConfiguration(
         minBufferMs: 5000,
         maxBufferMs: 15000,
-        bufferForPlaybackMs: 2500,
+        bufferForPlaybackMs: 1500,
         bufferForPlaybackAfterRebufferMs: 4000,
         preferSoftwareVideoDecoder: false,
         prioritizeTimeOverSizeThresholds: true,
@@ -356,6 +391,80 @@ abstract final class IptvBetterPlayerConfig {
       );
     }
     return vodBufferingForSegment(AndroidPlaybackSocHints.playbackSegment);
+  }
+
+  /// mpv (MediaKit) canlı tampon ipuçları — Exo [liveBufferingForDevice] ile hizalı.
+  static MpvLiveCacheProfile mpvLiveCacheProfile({
+    required bool useLongSegmentHls,
+    required bool isRawTs,
+    required bool isHighSeg,
+    required bool isLowSeg,
+    required bool challengedTv,
+    required bool liveStream,
+    int liveBufferSeconds = 0,
+  }) {
+    var exo = liveStream
+        ? liveBufferingForDevice(
+            useLongSegmentHls: useLongSegmentHls,
+            isRawTs: isRawTs,
+          )
+        : vodBufferingForDevice();
+    if (Platform.isAndroid && challengedTv && liveStream) {
+      exo = textureSafeBufferingOverlay(exo);
+    }
+    var playbackMs = exo.bufferForPlaybackMs;
+    if (liveStream && liveBufferSeconds > 0) {
+      playbackMs = math.max(
+        playbackMs,
+        (liveBufferSeconds * 1000).clamp(800, 120000),
+      );
+    }
+    if (!liveStream) {
+      final cacheSecs = isHighSeg ? '20' : '15';
+      return MpvLiveCacheProfile(
+        cacheSecs: cacheSecs,
+        readaheadSecs: isHighSeg ? '30' : '20',
+        streamBufferSize: isHighSeg ? '32768KiB' : '16384KiB',
+        audioBuffer: isLowSeg ? '0.6' : (isHighSeg ? '0.2' : '0.4'),
+      );
+    }
+    // Telefon/tablet canlı: düşük readahead — ilk kare hızlı, ses-görüntü birlikte (initial-audio-sync=yes).
+    final handheldLiveFast = Platform.isAndroid &&
+        !challengedTv &&
+        !AndroidPlaybackSocHints.androidTv &&
+        !useLongSegmentHls &&
+        !isRawTs;
+    if (handheldLiveFast) {
+      return MpvLiveCacheProfile(
+        cacheSecs: '2',
+        readaheadSecs: isHighSeg ? '8' : '6',
+        streamBufferSize: isHighSeg ? '16384KiB' : '8192KiB',
+        audioBuffer: '0.25',
+      );
+    }
+    // Canlı: demuxer/readahead geniş; cache-secs çok düşük olmasın (1 sn siyah+ses yapabiliyordu).
+    final cacheSecNum = isLowSeg
+        ? math.max(2, (playbackMs / 1000).ceil()).clamp(2, 12)
+        : math.max(2, (playbackMs / 1000).ceil()).clamp(2, 6);
+    final readahead = isRawTs
+        ? 40
+        : (useLongSegmentHls
+            ? math.max(35, cacheSecNum * 3)
+            : (isHighSeg ? 20 : 15));
+    final streamKiB = isRawTs
+        ? (isHighSeg ? 16384 : 8192)
+        : (useLongSegmentHls
+            ? math.max(16384, cacheSecNum * 1024)
+            : (isHighSeg ? 16384 : (isLowSeg ? 4096 : 8192)));
+    final audioBuf = isLowSeg
+        ? '0.6'
+        : (useLongSegmentHls ? '0.7' : (isHighSeg ? '0.2' : '0.4'));
+    return MpvLiveCacheProfile(
+      cacheSecs: '$cacheSecNum',
+      readaheadSecs: '$readahead',
+      streamBufferSize: '${streamKiB}KiB',
+      audioBuffer: audioBuf,
+    );
   }
 
   /// Android’de güçlü cihazlarda disk önbelleği kapalı kalır (bazı TV / OEM’lerde sorun raporu).
@@ -620,16 +729,19 @@ BetterPlayerDataSource iptvBetterPlayerDataSource(
   /// VOD (film/dizi) için donanım dekoderi genellikle ses uyumluluğu (AC3/DTS) için daha iyidir.
   bool preferSoftwareVideoDecoder = false,
 
-  /// Ayarlardan canlı tampon (saniye); üst katman tampon profili artık sabit ms ile
-  /// hizalı — bu parametre geriye dönük API için tutulur.
+  /// Ayarlardan canlı tampon (saniye); cihaz profilinin üzerine uygulanır (0 = yalnız profil).
   int liveBufferSeconds = IptvBetterPlayerConfig.defaultLiveBufferSecondsForExo,
 
   /// [LiveHlsStreamProfileService] uzun segmentli ABR'siz HLS tespit ettiyse
   /// [IptvBetterPlayerConfig.liveBufferingForLongSegmentHls] kullanılır.
+  /// Zap / hızlı açılış yolunda `false` geçirilir.
   bool useLongSegmentHlsBuffer = false,
 
   /// Raw MPEG-TS formatı için özel buffering (kasma önleme).
   bool isRawTs = false,
+
+  /// Canlı UHD/4K HLS için geniş Exo tampon profili (runtime promotion).
+  bool useUhdLiveBuffer = false,
 }) {
   final hint = iptvVideoFormatHintForUrl(url);
   // Uzantısız "web manifest / embed" (ör. `vidmody.com/vs/tt.../`) aslında HLS
@@ -654,7 +766,7 @@ BetterPlayerDataSource iptvBetterPlayerDataSource(
   // parametrelerinden (output=ts, type=ts vb.) MPEG-TS olduğu anlaşılıyorsa
   // doğru tampon profili (liveBufferingForDevice isRawTs:true) uygulanır.
   final bool effectiveRawTs = isRawTs ||
-      (liveStream && _isLikelyMpegTsStreamUrl(url));
+      (liveStream && IptvPlaybackDefaults.isLikelyMpegTsStreamUrl(url));
 
   final isTs = hint == BetterPlayerVideoFormat.other && !isExtensionlessWebManifest;
   final isAdaptive = liveStream ||
@@ -672,11 +784,41 @@ BetterPlayerDataSource iptvBetterPlayerDataSource(
       ? IptvBetterPlayerConfig.liveBufferingForDevice(
           useLongSegmentHls: useLongSegmentHlsBuffer,
           isRawTs: effectiveRawTs,
+          useUhdHls: useUhdLiveBuffer,
         )
       : IptvBetterPlayerConfig.vodBufferingForDevice();
+  if (liveStream &&
+      Get.isRegistered<AppSettingsService>() &&
+      Get.find<AppSettingsService>().hasRuntimeLiveBufferOverride) {
+    baseBuffering = IptvBetterPlayerConfig.iptvLiveBufferingTvStabilized;
+  }
   if (Platform.isAndroid && AndroidPlaybackSocHints.playbackChallengedTv) {
     baseBuffering =
         IptvBetterPlayerConfig.textureSafeBufferingOverlay(baseBuffering);
+  }
+
+  if (liveStream && liveBufferSeconds > 0) {
+    final userMs = (liveBufferSeconds * 1000).clamp(800, 120000);
+    final playbackMs = math.max(baseBuffering.bufferForPlaybackMs, userMs);
+    var afterRebufferMs = math.max(
+      baseBuffering.bufferForPlaybackAfterRebufferMs,
+      (playbackMs * 1.5).round(),
+    );
+    afterRebufferMs = math.max(afterRebufferMs, playbackMs);
+    var minBufferMs = math.max(baseBuffering.minBufferMs, playbackMs);
+    // Exo DefaultLoadControl: minBufferMs >= bufferForPlaybackAfterRebufferMs
+    minBufferMs = math.max(minBufferMs, afterRebufferMs);
+    var maxBufferMs = math.max(baseBuffering.maxBufferMs, minBufferMs * 2);
+    maxBufferMs = math.max(maxBufferMs, minBufferMs);
+    baseBuffering = BetterPlayerBufferingConfiguration(
+      minBufferMs: minBufferMs,
+      maxBufferMs: maxBufferMs,
+      bufferForPlaybackMs: playbackMs,
+      bufferForPlaybackAfterRebufferMs: afterRebufferMs,
+      preferSoftwareVideoDecoder: baseBuffering.preferSoftwareVideoDecoder,
+      prioritizeTimeOverSizeThresholds:
+          baseBuffering.prioritizeTimeOverSizeThresholds,
+    );
   }
 
   final BetterPlayerBufferingConfiguration buffering =
@@ -745,14 +887,17 @@ bool _isLocalFilePath(String url) {
   return false;
 }
 
-/// Verilen `url` mpeg-ts yayını mı? (Uzantı veya parametrelere göre).
-bool _isLikelyMpegTsStreamUrl(String url) {
-  final streamLc = url.toLowerCase();
-  return streamLc.endsWith('.ts') ||
-      streamLc.contains('output=ts') ||
-      streamLc.contains('output=mpegts') ||
-      streamLc.contains('output=mpeg-ts') ||
-      streamLc.contains('output=m2ts') ||
-      streamLc.contains('type=ts') ||
-      streamLc.contains('container=ts');
+/// MediaKit mpv canlı/VOD önbellek boyutları ([IptvBetterPlayerConfig.mpvLiveCacheProfile]).
+final class MpvLiveCacheProfile {
+  const MpvLiveCacheProfile({
+    required this.cacheSecs,
+    required this.readaheadSecs,
+    required this.streamBufferSize,
+    required this.audioBuffer,
+  });
+
+  final String cacheSecs;
+  final String readaheadSecs;
+  final String streamBufferSize;
+  final String audioBuffer;
 }

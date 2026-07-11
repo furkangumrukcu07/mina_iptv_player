@@ -27,10 +27,14 @@ class _PremiumPaywallViewState extends State<PremiumPaywallView> {
 
   bool _buying = false;
   bool _restoring = false;
+  bool _signingIn = false;
+  bool _retryingDevice = false;
+  String? _removingDeviceId;
 
   @override
   void initState() {
     super.initState();
+    unawaited(licensing.refreshRegisteredDevices());
     // TV modundaysa ödeme butonuna varsayılan odaklanmayı ver
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (settings.layoutMode.value == AppLayoutMode.tv) {
@@ -38,11 +42,19 @@ class _PremiumPaywallViewState extends State<PremiumPaywallView> {
       }
     });
 
-    // Satın alım başarılı olursa otomatik olarak splash'e dönüp bootstrap'i çalıştır
+    // Satın alım veya bulut senkronu sonrası otomatik splash
     ever<bool>(licensing.purchaseCompleted, (completed) {
       if (completed && mounted) {
         Get.offAllNamed(AppRoutes.splash);
       }
+    });
+    ever<bool>(licensing.isPremium, (premium) {
+      if (premium && mounted) {
+        Get.offAllNamed(AppRoutes.splash);
+      }
+    });
+    ever<bool>(licensing.deviceLimitExceeded, (_) {
+      if (mounted) setState(() {});
     });
   }
 
@@ -73,13 +85,53 @@ class _PremiumPaywallViewState extends State<PremiumPaywallView> {
     }
   }
 
+  Future<void> _handleGoogleSignIn() async {
+    if (auth == null || _signingIn) return;
+    setState(() => _signingIn = true);
+    try {
+      final result = await auth!.signInWithGoogle();
+      if (!result.isSuccess || !mounted) return;
+
+      final unlocked = await auth!.syncLicenseAfterGoogleSignInAndWait();
+      if (!mounted) return;
+      if (unlocked || licensing.isPremium.value) {
+        Get.offAllNamed(AppRoutes.splash);
+        return;
+      }
+
+      // Billing / Firestore gecikmesi: isPremium reaktif güncellemesini bekle.
+      final deadline = DateTime.now().add(const Duration(seconds: 8));
+      while (DateTime.now().isBefore(deadline) && mounted) {
+        if (licensing.isPremium.value) {
+          Get.offAllNamed(AppRoutes.splash);
+          return;
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 400));
+      }
+
+      if (mounted && !licensing.isPremium.value) {
+        Get.snackbar(
+          'paywall.restore.title'.tr,
+          'paywall.restore.body'.tr,
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.white.withValues(alpha: 0.1),
+          colorText: Colors.white,
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _signingIn = false);
+    }
+  }
+
   Future<void> _handleRestore() async {
     if (_restoring) return;
     setState(() => _restoring = true);
     try {
       await licensing.triggerRestore();
-      // Kısa bir gecikme verip kontrol et
-      await Future<void>.delayed(const Duration(seconds: 3));
+      if (licensing.isPremium.value && mounted) {
+        Get.offAllNamed(AppRoutes.splash);
+        return;
+      }
       if (!licensing.isPremium.value && mounted) {
         Get.snackbar(
           'paywall.restore.title'.tr,
@@ -91,6 +143,50 @@ class _PremiumPaywallViewState extends State<PremiumPaywallView> {
       }
     } finally {
       if (mounted) setState(() => _restoring = false);
+    }
+  }
+
+  Future<void> _handleRetryDevice() async {
+    if (_retryingDevice) return;
+    setState(() => _retryingDevice = true);
+    try {
+      final ok = await licensing.retryDeviceRegistration();
+      if (ok && mounted) {
+        Get.offAllNamed(AppRoutes.splash);
+      }
+    } finally {
+      if (mounted) setState(() => _retryingDevice = false);
+    }
+  }
+
+  Future<void> _handleRemoveDevice(String deviceId) async {
+    if (_removingDeviceId != null) return;
+    setState(() => _removingDeviceId = deviceId);
+    try {
+      final ok = await licensing.removeRegisteredDevice(deviceId);
+      if (!mounted) return;
+      if (ok) {
+        Get.snackbar(
+          'paywall.deviceLimit.title'.tr,
+          'paywall.deviceLimit.removed'.tr,
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.green.withValues(alpha: 0.85),
+          colorText: Colors.white,
+        );
+        if (licensing.isPremium.value) {
+          Get.offAllNamed(AppRoutes.splash);
+        }
+      } else {
+        Get.snackbar(
+          'paywall.deviceLimit.title'.tr,
+          'paywall.deviceLimit.removeFailed'.tr,
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.red.withValues(alpha: 0.85),
+          colorText: Colors.white,
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _removingDeviceId = null);
     }
   }
 
@@ -154,6 +250,43 @@ class _PremiumPaywallViewState extends State<PremiumPaywallView> {
                             ),
                             const SizedBox(height: 8),
                             Obx(() {
+                              if (licensing.deviceLimitExceeded.value) {
+                                return Column(
+                                  children: [
+                                    Text(
+                                      'paywall.deviceLimit.title'.tr,
+                                      textAlign: TextAlign.center,
+                                      style: const TextStyle(
+                                        color: Colors.orangeAccent,
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      'paywall.deviceLimit.body'.trParams({
+                                        'max': '${licensing.maxDevices.value}',
+                                      }),
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        color: Colors.white.withValues(alpha: 0.75),
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 8),
+                                    Text(
+                                      'paywall.deviceLimit.count'.trParams({
+                                        'count': '${licensing.deviceCount.value}',
+                                        'max': '${licensing.maxDevices.value}',
+                                      }),
+                                      style: TextStyle(
+                                        color: Colors.white.withValues(alpha: 0.65),
+                                        fontSize: 13,
+                                      ),
+                                    ),
+                                  ],
+                                );
+                              }
                               final remaining = licensing.trialRemainingFormatted;
                               final text = remaining.isNotEmpty
                                   ? 'paywall.trial.active'.trParams({'time': remaining})
@@ -170,6 +303,15 @@ class _PremiumPaywallViewState extends State<PremiumPaywallView> {
                                 ),
                               );
                             }),
+                            Obx(() {
+                              if (!licensing.deviceLimitExceeded.value) {
+                                return const SizedBox.shrink();
+                              }
+                              return Padding(
+                                padding: const EdgeInsets.only(top: 20),
+                                child: _buildDeviceLimitList(cs),
+                              );
+                            }),
                             const SizedBox(height: 32),
 
                             // Premium Özellikler Listesi
@@ -177,7 +319,21 @@ class _PremiumPaywallViewState extends State<PremiumPaywallView> {
                             const SizedBox(height: 40),
 
                             // Eylem Butonları - Mobil ve TV için esnek düzen
-                            _buildActionButtons(cs, isTv),
+                            Obx(() {
+                              if (licensing.deviceLimitExceeded.value) {
+                                return _buildActionBtn(
+                                  focusNode: _restoreFocus,
+                                  label: _retryingDevice
+                                      ? 'paywall.button.restoring'.tr
+                                      : 'paywall.deviceLimit.retry'.tr,
+                                  icon: Icons.refresh_rounded,
+                                  color: cs.primary,
+                                  onTap: _handleRetryDevice,
+                                  isTv: isTv,
+                                );
+                              }
+                              return _buildActionButtons(cs, isTv);
+                            }),
 
                             // Google Giriş ile Muafiyet (Eski Kullanıcılar İçin)
                             if (auth != null) ...[
@@ -204,9 +360,13 @@ class _PremiumPaywallViewState extends State<PremiumPaywallView> {
                                           alignment: Alignment.centerLeft,
                                           child: TextButton(
                                             focusNode: _loginFocus,
-                                            onPressed: () => unawaited(auth!.signInWithGoogle()),
+                                            onPressed: _signingIn
+                                                ? null
+                                                : () => unawaited(_handleGoogleSignIn()),
                                             child: Text(
-                                              'paywall.grandfather.button'.tr,
+                                              _signingIn
+                                                  ? 'paywall.grandfather.syncing'.tr
+                                                  : 'paywall.grandfather.button'.tr,
                                               style: TextStyle(
                                                 color: cs.primary,
                                                 fontWeight: FontWeight.bold,
@@ -217,6 +377,14 @@ class _PremiumPaywallViewState extends State<PremiumPaywallView> {
                                         ),
                                       ),
                                     ],
+                                  );
+                                } else if (_signingIn) {
+                                  return Text(
+                                    'paywall.grandfather.syncing'.tr,
+                                    style: TextStyle(
+                                      color: Colors.white.withValues(alpha: 0.55),
+                                      fontSize: 13,
+                                    ),
                                   );
                                 } else {
                                   return Text(
@@ -240,6 +408,58 @@ class _PremiumPaywallViewState extends State<PremiumPaywallView> {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildDeviceLimitList(ColorScheme cs) {
+    final currentId = licensing.currentDeviceId.value;
+    return Column(
+      children: licensing.registeredDevices.map((device) {
+        final isCurrent = device.deviceId == currentId;
+        final removing = _removingDeviceId == device.deviceId;
+        return Container(
+          margin: const EdgeInsets.only(bottom: 8),
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: Colors.white.withValues(alpha: 0.06),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.12)),
+          ),
+          child: Row(
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      device.label,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    if (isCurrent)
+                      Text(
+                        'paywall.deviceLimit.thisDevice'.tr,
+                        style: TextStyle(
+                          color: cs.primary,
+                          fontSize: 12,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              TextButton(
+                onPressed: removing ? null : () => unawaited(_handleRemoveDevice(device.deviceId)),
+                child: Text(
+                  removing ? 'paywall.button.restoring'.tr : 'paywall.deviceLimit.remove'.tr,
+                  style: TextStyle(color: Colors.redAccent.shade100),
+                ),
+              ),
+            ],
+          ),
+        );
+      }).toList(),
     );
   }
 

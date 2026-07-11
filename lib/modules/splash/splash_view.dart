@@ -6,6 +6,7 @@ import 'package:get/get.dart';
 import '../../core/services/app_bootstrap_service.dart';
 import '../../core/services/app_settings_service.dart';
 import '../../core/services/licensing_service.dart';
+import '../../core/services/auth_service.dart';
 import '../../core/theme/app_theme.dart';
 import 'splash_controller.dart';
 
@@ -129,6 +130,26 @@ class SplashView extends GetView<SplashController> {
                             color: Colors.white,
                           ),
                         ),
+                        Obx(() {
+                          final email = Get.isRegistered<AuthService>()
+                              ? Get.find<AuthService>().currentUser.value?.email
+                              : null;
+                          if (email == null || email.isEmpty) {
+                            return const SizedBox.shrink();
+                          }
+                          return Padding(
+                            padding: const EdgeInsets.only(top: 4, bottom: 4),
+                            child: Text(
+                              email,
+                              style: TextStyle(
+                                color: Colors.white.withValues(alpha: 0.55),
+                                fontSize: 13.5,
+                                fontWeight: FontWeight.w500,
+                                letterSpacing: 0.3,
+                              ),
+                            ),
+                          );
+                        }),
                         const SizedBox(height: 12),
                         // Aşamalı durum metni: liste yükleniyor / program rehberi
                         // hazırlanıyor / neredeyse hazır vb.

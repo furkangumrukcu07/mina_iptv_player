@@ -14,6 +14,7 @@ import '../../core/services/toast_service.dart';
 import '../../data/remote/m3u_xtream_sniffer.dart';
 import '../../domain/entities/m3u_result.dart';
 import '../../domain/entities/playlist_source.dart';
+import '../../domain/entities/stalker_compat.dart';
 import '../../data/local/playlist_sqlite_store.dart';
 import '../../domain/repositories/playlist_repository.dart';
 import '../playlist/widgets/playlist_load_summary_dialog.dart';
@@ -52,6 +53,7 @@ class PlaylistSlotState {
   PlaylistSourceKind get kind {
     final s = source;
     if (s is XtreamSource) return PlaylistSourceKind.xtream;
+    if (s is StalkerSource) return PlaylistSourceKind.stalker;
     if (s is M3uSource) {
       return isAnyM3uLocalSentinel(s.url)
           ? PlaylistSourceKind.m3uLocal
@@ -64,6 +66,7 @@ class PlaylistSlotState {
   String get summary {
     final s = source;
     if (s is XtreamSource) return s.baseUrl;
+    if (s is StalkerSource) return s.baseUrl;
     if (s is M3uSource) {
       return isAnyM3uLocalSentinel(s.url) ? 'playlist.label.localM3u' : s.url;
     }
@@ -71,7 +74,7 @@ class PlaylistSlotState {
   }
 }
 
-enum PlaylistSourceKind { empty, m3uUrl, m3uLocal, xtream }
+enum PlaylistSourceKind { empty, m3uUrl, m3uLocal, xtream, stalker }
 
 /// Settings altında "Liste Yönetimi" sayfasının controller'ı.
 class PlaylistsManagerController extends GetxController {
@@ -91,6 +94,10 @@ class PlaylistsManagerController extends GetxController {
 
   /// [togglingSlot] için hedef durum: true → açılıyor, false → kapanıyor.
   final togglingToEnabled = false.obs;
+
+  /// [reloadSlots] eşzamanlı çağrılarda (onInit + silme/kaydet) eski turun
+  /// güncel listeyi ezmesini önler — yalnızca en son tur `assignAll` yapar.
+  int _slotsReloadGeneration = 0;
 
   int get totalSlots => kMaxPlaylistSlots;
   int get filledCount => slots.where((s) => !s.isEmpty).length;
@@ -124,6 +131,7 @@ class PlaylistsManagerController extends GetxController {
   /// Eski sabit 4-slot listesi yerine dinamik — kullanıcı 5, 6, 10. listeyi
   /// eklediğinde de aynı görünür şekilde sıralanır.
   Future<void> reloadSlots() async {
+    final generation = ++_slotsReloadGeneration;
     isLoading.value = true;
     try {
       // Tek `readAll()` turu: kaynak + devre dışı + isim. Eskiden her slot için
@@ -131,6 +139,8 @@ class PlaylistsManagerController extends GetxController {
       // yavaş Android Keystore'da 32 slot × method-channel turu ekranı saniyelerce
       // bekletiyordu. Artık hepsi bellek içinde tek turda üretiliyor.
       final slotInfos = await _repo.readAllSlotInfos();
+      if (generation != _slotsReloadGeneration) return;
+
       final filled = <PlaylistSlotState>[
         for (final e in slotInfos)
           PlaylistSlotState(
@@ -161,11 +171,15 @@ class PlaylistsManagerController extends GetxController {
         }
       }
 
+      if (generation != _slotsReloadGeneration) return;
       slots.assignAll(next);
+      slots.refresh();
     } catch (e, st) {
       debugPrint('mina_iptv: playlists manager refresh failed: $e\n$st');
     } finally {
-      isLoading.value = false;
+      if (generation == _slotsReloadGeneration) {
+        isLoading.value = false;
+      }
     }
   }
 
@@ -173,6 +187,29 @@ class PlaylistsManagerController extends GetxController {
   bool canAddMoreAfter(List<PlaylistSlotState> list) {
     final filled = list.where((s) => !s.isEmpty).length;
     return filled < kMaxPlaylistSlots;
+  }
+
+  /// Silme onayı sonrası anında satırı listeden düşürür; disk işlemi bitince
+  /// [reloadSlots] kesin durumu yazar.
+  void _optimisticRemoveSlot(int slot) {
+    final next = <PlaylistSlotState>[
+      for (final s in slots)
+        if (!(s.slot == slot && !s.isEmpty)) s,
+    ];
+    if (next.isNotEmpty && next.last.isEmpty) {
+      next.removeLast();
+    }
+    if (canAddMoreAfter(next)) {
+      final maxFilled = next
+          .where((s) => !s.isEmpty)
+          .fold<int>(0, (acc, s) => s.slot > acc ? s.slot : acc);
+      final nextSlot = maxFilled + 1;
+      if (nextSlot <= kMaxPlaylistSlots) {
+        next.add(PlaylistSlotState(slot: nextSlot, source: null));
+      }
+    }
+    slots.assignAll(next);
+    slots.refresh();
   }
 
   /// Slot'a M3U URL atar (gerekirse Xtream-sniff dönüşümü yapar) ve cache'i
@@ -249,14 +286,15 @@ class PlaylistsManagerController extends GetxController {
             );
           }
         }
-        // Bağlantı düzeyi şema swap fallback'i ağ tarafında çalışır
-        // (`loadFromM3uUrlResolved`), ancak kullanıcının yazdığı orijinal
-        // URL'i persist ederiz — yapıştırılan `http://` URL otomatik
-        // `https://`'ye çevrilmez. Bir sonraki açılışta gerekirse aynı
-        // fallback yine devreye girer.
-        final loaded = await _repo.loadFromM3uUrlResolved(trimmed);
+        // Önce kaynağı yaz, ardından slot anahtarıyla streaming yükle.
+        // Yükleme başarısız olursa hayalet liste girişi kalmasın diye geri al.
         await _repo.persistSourceAt(slot, M3uSource(url: trimmed));
-        return loaded.result;
+        try {
+          return await _repo.loadM3uUrlIntoSlot(slot, trimmed);
+        } catch (e) {
+          await _repo.clearSourceAt(slot);
+          rethrow;
+        }
       },
     );
   }
@@ -295,6 +333,46 @@ class PlaylistsManagerController extends GetxController {
           ),
         );
         return res.result;
+      },
+    );
+  }
+
+  /// Slot'a Stalker kaynağı yazar.
+  Future<bool> saveStalker({
+    required int slot,
+    required String baseUrl,
+    required String macAddress,
+    StalkerMagPreset magPreset = StalkerMagPreset.genericSafe,
+    StalkerLinkType linkType = StalkerLinkType.wifi,
+    String hwVersionOverride = '',
+  }) async {
+    final b = baseUrl.trim();
+    final mac = macAddress.trim();
+    if (b.isEmpty || mac.isEmpty) {
+      _toast('stalker.error.credentialsEmpty'.tr, isError: true);
+      return false;
+    }
+    return _saveAndReloadWithSummary(
+      slot: slot,
+      loadAndPersist: () async {
+        final result = await _repo.loadFromStalker(
+          baseUrl: b,
+          macAddress: mac,
+          magPreset: magPreset,
+          linkType: linkType,
+          hwVersionOverride: hwVersionOverride,
+        );
+        await _repo.persistSourceAt(
+          slot,
+          StalkerSource(
+            baseUrl: b,
+            macAddress: mac,
+            magPreset: magPreset,
+            linkType: linkType,
+            hwVersionOverride: hwVersionOverride,
+          ),
+        );
+        return result;
       },
     );
   }
@@ -366,10 +444,7 @@ class PlaylistsManagerController extends GetxController {
       return _saveAndReloadWithSummary(
         slot: slot,
         loadAndPersist: () async {
-          final loaded = await _repo.loadFromM3uUrlResolved(url);
-          // Kaynak değişmedi → tekrar persist gerekmez ama yan etki olarak
-          // disabled bayrağı korunur.
-          return loaded.result;
+          return _repo.loadM3uUrlIntoSlot(slot, url);
         },
       );
     }
@@ -386,8 +461,65 @@ class PlaylistsManagerController extends GetxController {
         },
       );
     }
+    if (src is StalkerSource) {
+      return _saveAndReloadWithSummary(
+        slot: slot,
+        loadAndPersist: () async {
+          final result = await _repo.loadFromStalker(
+            baseUrl: src.baseUrl,
+            macAddress: src.macAddress,
+            magPreset: src.magPreset,
+            linkType: src.linkType,
+            hwVersionOverride: src.hwVersionOverride,
+          );
+          return result;
+        },
+      );
+    }
     _toast('playlistsManager.toast.refreshUnsupported'.tr, isError: true);
     return false;
+  }
+
+  /// Dolu listeleri dokunmatik sürükle-bırak ile yeniden sıralar.
+  /// [oldIndex]/[newIndex] yalnızca dolu satırlar üzerindedir (ekle kartı hariç).
+  Future<void> reorderFilledSlots(int oldIndex, int newIndex) async {
+    final filled = slots.where((s) => !s.isEmpty).toList();
+    if (filled.length < 2) return;
+    if (oldIndex < 0 || oldIndex >= filled.length) return;
+    var ni = newIndex;
+    if (ni > oldIndex) ni -= 1;
+    if (ni < 0 || ni >= filled.length || ni == oldIndex) return;
+
+    final next = [...filled];
+    final moved = next.removeAt(oldIndex);
+    next.insert(ni, moved);
+
+    final placeholders = slots.where((s) => s.isEmpty).toList();
+    slots.assignAll([...next, ...placeholders]);
+    slots.refresh();
+
+    isLoading.value = true;
+    try {
+      final prevActive = _active.activeSlot.value;
+      final order = next.map((s) => s.slot).toList();
+      final remap = await _repo.reorderSlots(order);
+      if (remap.isNotEmpty) {
+        _active.invalidateAll();
+        final newActive = remap[prevActive];
+        if (newActive != null) {
+          await _active.remapActiveSlot(newActive);
+        }
+        await _reloadActiveIntoCache();
+      }
+      await reloadSlots();
+      await _active.refreshAvailable();
+      _toast('playlistsManager.toast.reordered'.tr, force: true);
+    } catch (e) {
+      _toast(e.toString(), isError: true);
+      await reloadSlots();
+    } finally {
+      isLoading.value = false;
+    }
   }
 
   /// Slot'u temizler. Birincil slot (1) dahil her slot silinebilir; ancak
@@ -405,6 +537,9 @@ class PlaylistsManagerController extends GetxController {
       _toast('playlistsManager.error.cannotRemoveLast'.tr, isError: true);
       return false;
     }
+    // Silme onayından hemen sonra UI'dan kaldır — persist/compact bitene kadar
+    // kullanıcı eski satırı görmesin.
+    _optimisticRemoveSlot(slot);
     isLoading.value = true;
     try {
       final prevActive = _active.activeSlot.value;
@@ -440,6 +575,7 @@ class PlaylistsManagerController extends GetxController {
       return true;
     } catch (e) {
       _toast(e.toString(), isError: true);
+      await reloadSlots();
       return false;
     } finally {
       isLoading.value = false;
@@ -587,9 +723,17 @@ class PlaylistsManagerController extends GetxController {
       await _awaitSummaryClose();
       return true;
     } on AppException catch (e) {
+      final msg = e.message.trim();
       progress?.value = PlaylistLoadProgress.error(
-        errorTitle: 'playlist.summary.errorTitle'.tr,
-        errorMessage: e.message,
+        errorTitle: msg.startsWith('stalker.error.')
+            ? 'stalker.error.title'.tr
+            : (msg.startsWith('xtream.error.')
+                ? 'xtream.error.title'.tr
+                : 'playlist.summary.errorTitle'.tr),
+        errorMessage: (msg.startsWith('stalker.error.') ||
+                msg.startsWith('xtream.error.'))
+            ? msg.tr
+            : e.message,
         canRetryUrl: false,
       );
       await _awaitSummaryClose();

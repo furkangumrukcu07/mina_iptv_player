@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- AppOps: boş attributionTag (log: "attributionTag  not declared") -->
+    <string name="attribution_tag_empty" translatable="false" />
+    <string name="attribution_label_media">Media playback</string>
+    <string name="attribution_tag_media" translatable="false">mediaPlayback</string>
+</resources>

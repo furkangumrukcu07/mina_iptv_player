@@ -19,6 +19,7 @@ import '../../data/remote/m3u_xtream_sniffer.dart';
 import '../../data/remote/xtream_api.dart';
 import '../../domain/entities/m3u_result.dart';
 import '../../domain/entities/playlist_source.dart';
+import '../../domain/entities/stalker_compat.dart';
 import '../../data/local/playlist_sqlite_store.dart';
 import '../../domain/repositories/playlist_repository.dart';
 import '../../ui/glass_overlays.dart';
@@ -31,6 +32,14 @@ class PlaylistController extends GetxController {
   final xtreamUsernameController = TextEditingController();
   final xtreamPasswordController = TextEditingController();
 
+  final stalkerBaseUrlController = TextEditingController();
+  final stalkerMacAddressController = TextEditingController();
+  final stalkerHwVersionController = TextEditingController();
+
+  /// MAG uyumluluk ön ayarları (giriş formu).
+  final stalkerMagPreset = StalkerMagPreset.genericSafe.obs;
+  final stalkerLinkType = StalkerLinkType.wifi.obs;
+
   final m3uSecondaryUrlController = TextEditingController();
   final xtreamSecondaryBaseUrlController = TextEditingController();
   final xtreamSecondaryUsernameController = TextEditingController();
@@ -39,7 +48,7 @@ class PlaylistController extends GetxController {
   final _repo = Get.find<PlaylistRepository>();
   final _cache = Get.find<PlaylistCacheService>();
 
-  /// 0 = M3U (sol / ilk sekme), 1 = Xtream.
+  /// 0 = M3U (sol / ilk sekme), 1 = Xtream, 2 = Stalker.
   final tabIndex = 0.obs;
 
   /// 0 = M3U, 1 = Xtream — birincil ile aynı sıra.
@@ -466,6 +475,9 @@ class PlaylistController extends GetxController {
     xtreamUsernameController.addListener(_updateSubmitState);
     xtreamPasswordController.addListener(_updateSubmitState);
 
+    stalkerBaseUrlController.addListener(_updateSubmitState);
+    stalkerMacAddressController.addListener(_updateSubmitState);
+
     m3uSecondaryUrlController.addListener(_updateSubmitState);
     xtreamSecondaryBaseUrlController.addListener(_updateSubmitState);
     xtreamSecondaryUsernameController.addListener(_updateSubmitState);
@@ -485,10 +497,13 @@ class PlaylistController extends GetxController {
     if (tabIndex.value == 0) {
       primaryOk = m3uUrlController.text.trim().isNotEmpty ||
           m3uLocalFileName.value != null;
-    } else {
+    } else if (tabIndex.value == 1) {
       primaryOk = xtreamBaseUrlController.text.trim().isNotEmpty &&
           xtreamUsernameController.text.trim().isNotEmpty &&
           xtreamPasswordController.text.trim().isNotEmpty;
+    } else {
+      primaryOk = stalkerBaseUrlController.text.trim().isNotEmpty &&
+          stalkerMacAddressController.text.trim().isNotEmpty;
     }
 
     if (!enableSecondary.value) {
@@ -561,6 +576,20 @@ class PlaylistController extends GetxController {
             xtreamUsernameController.text = username;
             xtreamPasswordController.text = password;
             break;
+          case StalkerSource(
+              :final baseUrl,
+              :final macAddress,
+              :final magPreset,
+              :final linkType,
+              :final hwVersionOverride,
+            ):
+            tabIndex.value = 2;
+            stalkerBaseUrlController.text = baseUrl;
+            stalkerMacAddressController.text = macAddress;
+            stalkerMagPreset.value = magPreset;
+            stalkerLinkType.value = linkType;
+            stalkerHwVersionController.text = hwVersionOverride;
+            break;
         }
       }
 
@@ -589,6 +618,8 @@ class PlaylistController extends GetxController {
           xtreamSecondaryUsernameController.text = username;
           xtreamSecondaryPasswordController.text = password;
           break;
+        case StalkerSource():
+          break;
       }
       _updateSubmitState();
     } catch (_) {
@@ -604,6 +635,8 @@ class PlaylistController extends GetxController {
     xtreamBaseUrlController.removeListener(_updateSubmitState);
     xtreamUsernameController.removeListener(_updateSubmitState);
     xtreamPasswordController.removeListener(_updateSubmitState);
+    stalkerBaseUrlController.removeListener(_updateSubmitState);
+    stalkerMacAddressController.removeListener(_updateSubmitState);
     m3uSecondaryUrlController.removeListener(_updateSubmitState);
     xtreamSecondaryBaseUrlController.removeListener(_updateSubmitState);
     xtreamSecondaryUsernameController.removeListener(_updateSubmitState);
@@ -613,6 +646,9 @@ class PlaylistController extends GetxController {
     xtreamBaseUrlController.dispose();
     xtreamUsernameController.dispose();
     xtreamPasswordController.dispose();
+    stalkerBaseUrlController.dispose();
+    stalkerMacAddressController.dispose();
+    stalkerHwVersionController.dispose();
     m3uSecondaryUrlController.dispose();
     xtreamSecondaryBaseUrlController.dispose();
     xtreamSecondaryUsernameController.dispose();
@@ -827,9 +863,12 @@ https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.m
           // Validate M3U URL before loading
           _m3uSource();
         }
-      } else {
+      } else if (tabIndex.value == 1) {
         // Validate Xtream credentials before loading
         _xtreamSource();
+      } else {
+        // Validate Stalker before loading
+        _stalkerSource();
       }
 
       // All validations passed, start loading
@@ -917,20 +956,20 @@ https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.m
             tabIndex.value = 1;
             isM3uLoaded.value = true;
           } else {
-            // `loadFromM3uUrlResolved`: yalnızca **bağlantı düzeyi** hata
-            // alındığında ters şemayı dener. Kullanıcının yazdığı orijinal
-            // metni hem text alanında hem disk persistleme'de koru —
-            // `http://` yazdıysa bir sonraki açılışta yine `http://` görür.
-            // Şema swap fallback'i gerekirse internal fetch sırasında yine
-            // devreye girer; persist edilen URL kullanıcının orijinali kalır.
-            final loaded = await _repo.loadFromM3uUrlResolved(source.url);
-            parsedPrimary = loaded.result;
+            // Kullanıcının yazdığı orijinal URL persist edilir; indirme
+            // satır akışı + SQLite ile yapılır (dev VOD listelerinde OOM önlenir).
             await _repo.persistSource(source);
+            try {
+              parsedPrimary = await _repo.loadM3uUrlIntoSlot(1, source.url);
+            } catch (e) {
+              await _repo.clearSourceAt(1);
+              rethrow;
+            }
             cacheLabel = source.url;
-            isM3uLoaded.value = true; // M3U listesi yüklendi olarak işaretle
+            isM3uLoaded.value = true;
           }
         }
-      } else {
+      } else if (tabIndex.value == 1) {
         final source = _xtreamSource();
         // Xtream sekmesinde de şema otomatik düzeltilir: kullanıcı `https://`
         // yazıp sunucu yalnızca `http://` veriyorsa (veya tersi) çalışan
@@ -951,6 +990,18 @@ https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.m
         if (res.resolvedBaseUrl != source.baseUrl) {
           xtreamBaseUrlController.text = res.resolvedBaseUrl;
         }
+      } else {
+        final source = _stalkerSource();
+        final res = await _repo.loadFromStalker(
+          baseUrl: source.baseUrl,
+          macAddress: source.macAddress,
+          magPreset: source.magPreset,
+          linkType: source.linkType,
+          hwVersionOverride: source.hwVersionOverride,
+        );
+        parsedPrimary = res;
+        await _repo.persistSource(source);
+        cacheLabel = source.baseUrl;
       }
 
       if (!enableSecondary.value) {
@@ -958,7 +1009,9 @@ https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.m
         await _repo.persistMergedPlaylistSnapshot(parsedPrimary);
         final xk = tabIndex.value == 1
             ? AppSettingsService.xtreamPreferenceKey(_xtreamSource())
-            : null;
+            : (tabIndex.value == 2
+                ? AppSettingsService.stalkerPreferenceKey(_stalkerSource())
+                : null);
         final persisted = await _repo.readSource();
         final m3uK = persisted is M3uSource
             ? AppSettingsService.m3uPreferenceKey(persisted.url)
@@ -1059,9 +1112,14 @@ https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.m
               // fetch sırasında çalışır ama kalıcı kaynak **kullanıcının
               // yazdığı orijinal URL** olur. Kullanıcı `http://` yazdıysa
               // sonraki açılışta yine `http://` görür.
-              await _repo.loadFromM3uUrlResolved(url);
               await _repo.persistSecondarySource(M3uSource(url: url));
-              isM3uLoaded.value = true; // M3U listesi yüklendi olarak işaretle
+              try {
+                await _repo.loadM3uUrlIntoSlot(2, url);
+              } catch (e) {
+                await _repo.clearSourceAt(2);
+                rethrow;
+              }
+              isM3uLoaded.value = true;
             }
           }
         }
@@ -1129,7 +1187,7 @@ https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.m
   /// * URL/ağ/SSL hataları → dialog içinde "URL'yi Düzelt" akışı.
   Future<void> _handleSubmitError(String raw, {Object? cause}) async {
     final t = raw.trim();
-    if (t.startsWith('xtream.error.')) {
+    if (t.startsWith('xtream.error.') || t.startsWith('stalker.error.')) {
       _abortLoadSummary();
       _showSubmitError(t, cause: cause);
       return;
@@ -1137,7 +1195,9 @@ https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.m
     final isM3uTab = tabIndex.value == 0;
     final url = isM3uTab
         ? m3uUrlController.text.trim()
-        : xtreamBaseUrlController.text.trim();
+        : (tabIndex.value == 2
+            ? stalkerBaseUrlController.text.trim()
+            : xtreamBaseUrlController.text.trim());
     final humanized = _humanizeUrlError(cause ?? t, url: url);
     await _failLoadSummary(
       humanized.message,
@@ -1146,10 +1206,7 @@ https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.m
     );
   }
 
-  /// `xtream.error.*` anahtarlarını insan okunabilir mesaja çevirip Xtream
-  /// hatasında kullanıcıya tekrar girmesini söyleyen snackbar gösterir.
-  /// Alanlar (`baseUrl`, `username`, `password`) **silinmez** — kullanıcı
-  /// düzeltip yeniden gönderebilir.
+  /// `xtream.error.*` / `stalker.error.*` anahtarlarını çevirip snackbar gösterir.
   void _showSubmitError(String raw, {Object? cause}) {
     final t = raw.trim();
     // `xtream.error.invalidCredentialsMsg|<panel mesajı>` — panelin mesajı varsa
@@ -1169,6 +1226,15 @@ https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.m
         t == 'xtream.error.credentialsEmpty') {
       GlassSnackbar.show(
         'xtream.error.title'.tr,
+        t.tr,
+        snackPosition: SnackPosition.BOTTOM,
+        duration: const Duration(seconds: 5),
+      );
+      return;
+    }
+    if (t.startsWith('stalker.error.')) {
+      GlassSnackbar.show(
+        'stalker.error.title'.tr,
         t.tr,
         snackPosition: SnackPosition.BOTTOM,
         duration: const Duration(seconds: 5),
@@ -1202,6 +1268,22 @@ https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.m
     final normalized = _normalizeBaseUrl(baseUrl);
     return XtreamSource(
         baseUrl: normalized, username: username, password: password);
+  }
+
+  StalkerSource _stalkerSource() {
+    final baseUrl = stalkerBaseUrlController.text.trim();
+    final macAddress = stalkerMacAddressController.text.trim();
+    if (baseUrl.isEmpty || macAddress.isEmpty) {
+      throw ParseException('stalker.error.credentialsEmpty'.tr);
+    }
+    final normalized = _normalizeBaseUrl(baseUrl);
+    return StalkerSource(
+      baseUrl: normalized,
+      macAddress: macAddress,
+      magPreset: stalkerMagPreset.value,
+      linkType: stalkerLinkType.value,
+      hwVersionOverride: stalkerHwVersionController.text.trim(),
+    );
   }
 
   XtreamSource _xtreamSecondarySource() {

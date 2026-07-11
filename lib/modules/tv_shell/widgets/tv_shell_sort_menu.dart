@@ -239,7 +239,7 @@ class _SortOptionRowState extends State<_SortOptionRow> {
       autofocus: widget.autofocus,
       onActivate: widget.onPressed,
       borderRadius: 12,
-      tiviMateStyle: true,
+      tvFocusStyle: true,
       showFocusRing: false,
       scaleOnFocus: TvShellPerf.defaultFocusScale,
       arrowUp: widget.dpadUp,

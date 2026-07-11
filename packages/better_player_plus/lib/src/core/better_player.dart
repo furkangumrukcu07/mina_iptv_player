@@ -91,7 +91,13 @@ class _BetterPlayerState extends State<BetterPlayer> with WidgetsBindingObserver
     ///state.
     if (_isFullScreen) {
       WakelockPlus.disable();
-      _navigatorState.maybePop();
+      // Tam ekran rootNavigator ile açılır; dispose'da yerel navigator pop'u
+      // route'u kapatmaz ve ana ekranda gri/siyah perde bırakır.
+      try {
+        Navigator.of(context, rootNavigator: true).maybePop();
+      } catch (_) {
+        _navigatorState.maybePop();
+      }
       SystemChrome.setEnabledSystemUIMode(
         SystemUiMode.manual,
         overlays: _betterPlayerConfiguration.systemOverlaysAfterFullScreen,

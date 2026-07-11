@@ -121,9 +121,9 @@ class PlaybackProgressWriteQueueService extends GetxService {
 
     for (final task in tasks) {
       if (task.clearOnly) {
-        await watch.clear(task.vodId);
+        await watch.clear(task.vodId, flushDisk: false);
         if (task.seriesId != null) {
-          await watch.clearSeries(task.seriesId!);
+          await watch.clearSeries(task.seriesId!, flushDisk: false);
         }
         continue;
       }
@@ -144,6 +144,7 @@ class PlaybackProgressWriteQueueService extends GetxService {
         );
       }
     }
+    await watch.flushPendingDisk();
     completer.complete();
     _activeFlush = null;
   }

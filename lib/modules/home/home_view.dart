@@ -10,7 +10,6 @@ import 'package:get/get.dart';
 import '../../core/home/home_card_swipe_effect.dart';
 import '../../core/home/home_category_card_id.dart';
 import '../../core/home/home_layout_style.dart';
-import '../../core/home/tv_home_layout_mode.dart';
 import '../../core/i18n/localized_short_date.dart';
 import '../../core/layout/app_layout_mode.dart';
 import '../../core/services/app_settings_service.dart';
@@ -28,6 +27,7 @@ import 'widgets/continue_watching_strip.dart';
 import 'widgets/mixed_live_tv_strip.dart';
 import 'widgets/upcoming_matches_strip.dart';
 import 'widgets/weekly_marquee.dart';
+import '../../core/home/showcase_in_app_pip_overlay_host.dart';
 import '../../ui/playlist_switch_overlay.dart';
 import '../tv_shell/tv_shell_view.dart';
 import '../../ui/exit_confirm_dialog.dart';
@@ -99,7 +99,7 @@ class HomeView extends GetView<HomeController> {
         canPop: false,
         onPopInvokedWithResult: (didPop, _) {
           if (didPop) return;
-          Get.dialog<void>(const ExitConfirmDialog());
+          ExitConfirmDialog.showIfNeeded();
         },
         child: const Scaffold(
           body: Center(child: CircularProgressIndicator()),
@@ -112,13 +112,10 @@ class HomeView extends GetView<HomeController> {
       onPopInvokedWithResult: (didPop, _) {
         if (didPop) return;
         final settings = Get.find<AppSettingsService>();
-        final isTvShell = settings.layoutMode.value == AppLayoutMode.tv &&
-            settings.tvHomeLayoutMode.value == TvHomeLayoutMode.shell;
-        if (isTvShell) {
-          // TV shell handles its own back key navigation and exit dialog.
-          return;
-        }
-        Get.dialog<void>(const ExitConfirmDialog());
+        // TV kabuğu kendi PopScope + Shortcuts ile geri tuşunu yönetir;
+        // burada tekrar onBack() çağrılırsa çıkış diyaloğu anında kapanır.
+        if (settings.usesTvShellHome) return;
+        ExitConfirmDialog.showIfNeeded();
       },
       child: Scaffold(
         backgroundColor: Colors.black,
@@ -186,8 +183,7 @@ class HomeView extends GetView<HomeController> {
               final mode = settings.layoutMode.value;
               final isPortrait =
                   MediaQuery.orientationOf(context) == Orientation.portrait;
-              if (mode == AppLayoutMode.tv &&
-                  settings.tvHomeLayoutMode.value == TvHomeLayoutMode.shell) {
+              if (settings.usesTvShellHome) {
                 return TvShellView(homeController: controller);
               }
               final style = settings.homeLayoutStyle.value;
@@ -208,6 +204,11 @@ class HomeView extends GetView<HomeController> {
             // sürede ekranın ortasında yanıp sönen Mina ikonu + "Liste
             // yenileniyor" ibaresi (vitrin + varsayılan düzen için ortak).
             PlaylistRefreshOverlay(active: controller.isRefreshing),
+            // Vitrin ve standart düzenler için ortak sağ-alt köşede bağımsız yüzen PiP tabakası.
+            // Bu sayede PiP açıkken alt sekme çubuğu (dockbar) daralmaz ve orijinal boyutunda kalır.
+            Positioned.fill(
+              child: const ShowcaseInAppPipHomeLayer(),
+            ),
           ],
         ),
       ),

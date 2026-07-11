@@ -111,15 +111,17 @@ abstract final class AppPerformance {
   static bool isWeakHardware(AppSettingsService settings) =>
       Platform.isAndroid && AndroidPlaybackSocHints.weakMpvDevice;
 
-  /// **TV Lite** etkin mi? Tüm GPU-pahalı süslemeleri (glow gölge, ağır kart
-  /// gölgesi, büyük köşe, gerçek zamanlı blur, uzun odak animasyonu) tek
-  /// noktadan sadeleştirmek için kapı. Kullanıcı bayrağı **veya** TV düzeni
-  /// **veya** düşük donanım modu **veya** zayıf donanım (RAM/çekirdek) → otomatik açık.
-  static bool isTvLite(AppSettingsService settings) =>
-      settings.tvLite.value ||
-      isTvLayout(settings) ||
-      isLowEndMode(settings) ||
-      isWeakHardware(settings);
+  /// **Düşük donanım / sade grafik** etkin mi?
+  ///
+  /// Öncelik: kullanıcı low-end açık → evet; TV düzeni → evet (blur zaten ayrı
+  /// kapanır); kullanıcı açıkça kapattıysa zayıf-donanım otomatik zorlaması yok;
+  /// aksi halde zayıf donanım → evet.
+  static bool isTvLite(AppSettingsService settings) {
+    if (isLowEndMode(settings) || settings.tvLite.value) return true;
+    if (isTvLayout(settings)) return true;
+    if (settings.lowEndUserChoseOff.value) return false;
+    return isWeakHardware(settings);
+  }
 
   /// TV Lite kapalıyken [full] gölgeyi, açıkken `null` döner (gölge yok).
   static List<BoxShadow>? liteShadow(

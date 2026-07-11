@@ -5,12 +5,14 @@
 /// * [fadeScale]: Yumuşak fade + scale geçişi (sayfa ortadan kaybolurken küçülür).
 enum PageTransitionEffect {
   ios,
-  fadeScale;
+  fadeScale,
+  jelly;
 
   /// SharedPreferences anahtarı içinde saklanan stabil isim.
   String get storageKey => switch (this) {
         PageTransitionEffect.ios => 'ios',
         PageTransitionEffect.fadeScale => 'fadeScale',
+        PageTransitionEffect.jelly => 'jelly',
       };
 
   /// `homeSettings.transitionEffect.<key>.title` — radio satırının başlığı.
@@ -19,6 +21,8 @@ enum PageTransitionEffect {
           'homeSettings.transitionEffect.ios.title',
         PageTransitionEffect.fadeScale =>
           'homeSettings.transitionEffect.fadeScale.title',
+        PageTransitionEffect.jelly =>
+          'homeSettings.transitionEffect.jelly.title',
       };
 
   /// `homeSettings.transitionEffect.<key>.sub` — radio satırının alt açıklaması.
@@ -27,6 +31,8 @@ enum PageTransitionEffect {
           'homeSettings.transitionEffect.ios.sub',
         PageTransitionEffect.fadeScale =>
           'homeSettings.transitionEffect.fadeScale.sub',
+        PageTransitionEffect.jelly =>
+          'homeSettings.transitionEffect.jelly.sub',
       };
 
   /// Tanınmayan / `null` storage değerini varsayılan [ios]'a çevirir.

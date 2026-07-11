@@ -1,12 +1,16 @@
 import 'dart:async';
 
+import 'package:better_player_plus/better_player_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:intl/intl.dart';
 
+import '../../../core/player/video_player_engine.dart';
+import '../../../core/services/app_settings_service.dart';
 import '../../../core/services/epg_service.dart';
 import '../../../core/theme/app_scroll_physics.dart';
+import '../../../core/utils/epg_channel_display.dart';
 import '../../../domain/entities/channel.dart';
 import '../../../domain/entities/epg_entities.dart';
 import '../../../ui/auto_scroll_text.dart';
@@ -16,6 +20,7 @@ import '../../../ui/iptv_channel_logo.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 import '../../../ui/tv_dpad_focus.dart' show TvDpadFocus, tvKeyIsBack;
 import '../../channels/channels_controller.dart';
+import '../../player/widgets/osd_stream_quality_badges.dart';
 import '../tv_shell_controller.dart';
 import 'tv_shell_interactive.dart';
 import 'tv_shell_motion.dart';
@@ -237,6 +242,13 @@ class _TvShellLivePanelState extends State<TvShellLivePanel> {
     _syncChannelRowFocusState();
   }
 
+  void _schedulePruneOutofViewport(int centerIndex, int listLength) {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _pruneOutofViewportFocusNodes(centerIndex, listLength);
+    });
+  }
+
   void _pruneOutofViewportFocusNodes(int centerIndex, int listLength) {
     final minKeep = (centerIndex - 25).clamp(0, listLength);
     final maxKeep = (centerIndex + 25).clamp(0, listLength);
@@ -297,7 +309,7 @@ class _TvShellLivePanelState extends State<TvShellLivePanel> {
     if (_focusedRowIndex == index) return;
     _focusedRowIndex = index;
     final list = widget.channels.filteredChannels;
-    _pruneOutofViewportFocusNodes(index, list.length);
+    _schedulePruneOutofViewport(index, list.length);
     if (index < 0 || index >= list.length) return;
     if (!widget.browseMode) {
       final metrics = _TvShellLiveMetrics.of(context, compact: widget.compact);
@@ -321,24 +333,34 @@ class _TvShellLivePanelState extends State<TvShellLivePanel> {
       _clearChannelRowFocus,
     );
     if (!widget.browseMode) {
-      _scheduleInitialChannelRowFocus(0);
+      _scheduleResumeChannelRowFocus();
     }
     _tick = Timer.periodic(const Duration(seconds: 30), (_) {
       if (mounted) _tickValue.value++;
     });
   }
 
-  void _scheduleInitialChannelRowFocus(int index, {int attempt = 0}) {
+  int _resumeRowIndex(List<Channel> list) {
+    final cur = widget.channels.selectedChannel.value;
+    if (cur != null) {
+      final i = list.indexWhere((c) => c.id == cur.id);
+      if (i >= 0) return i;
+    }
+    return 0;
+  }
+
+  void _scheduleResumeChannelRowFocus({int attempt = 0}) {
     if (attempt > 32) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || widget.browseMode) return;
       if (!widget.channels.tvShellLiveActive.value) return;
+      if (_focusedRowIndexFromNodes() != null) return;
       final list = widget.channels.filteredChannels;
       if (list.isEmpty) {
-        _scheduleInitialChannelRowFocus(index, attempt: attempt + 1);
+        _scheduleResumeChannelRowFocus(attempt: attempt + 1);
         return;
       }
-      _navigateToRow(index);
+      _navigateToRow(_resumeRowIndex(list));
     });
   }
 
@@ -846,26 +868,13 @@ class _TvShellLivePanelState extends State<TvShellLivePanel> {
       builder: (context, palette) {
         return Obx(() {
           widget.channels.playlistRevision.value;
-          widget.channels.selectedChannel.value;
           final list = widget.channels.filteredChannels;
-          _pruneOutofViewportFocusNodes(_focusedRowIndex, list.length);
+          _schedulePruneOutofViewport(_focusedRowIndex, list.length);
           final touchScroll = tvShellTouchInputEnabled(context);
           final remoteNav = tvShellUsesRemoteNav(context);
           final epg =
               Get.isRegistered<EpgService>() ? Get.find<EpgService>() : null;
           final showEpgColumn = _listHasAnyLiveEpg(epg, list);
-
-          final now = DateTime.now();
-          final w0 = _windowStart(now);
-          final w1 = w0.add(Duration(hours: _kEpgHours));
-          final gridW = w1.difference(w0).inMinutes * metrics.pxPerMin;
-
-          double xAt(DateTime t) {
-            return t.difference(w0).inMinutes * metrics.pxPerMin;
-          }
-
-          List<EpgProgramme> windowProgrammesFor(Channel ch) =>
-              epg?.programmesInWindowForLiveChannel(ch, w0, w1) ?? [];
 
           final panel = Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -891,6 +900,7 @@ class _TvShellLivePanelState extends State<TvShellLivePanel> {
                 final heroH =
                     (metrics.heroH / _kLivePreviewScale) * previewScale;
                 final previewW = heroH * 16 / 9;
+                final heroNow = DateTime.now();
                 return Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   mainAxisSize: MainAxisSize.min,
@@ -905,7 +915,7 @@ class _TvShellLivePanelState extends State<TvShellLivePanel> {
                         channel: selected,
                         programme: heroProg,
                         nextProgramme: heroNextProg,
-                        now: now,
+                        now: heroNow,
                         previewLoading: c.isPreviewLoading.value,
                         previewController: c.previewController,
                         mediaKitController: c.previewVideoMediaKit,
@@ -936,10 +946,22 @@ class _TvShellLivePanelState extends State<TvShellLivePanel> {
                           child: AnimatedBuilder(
                             animation: _epgHScroll,
                             builder: (context, child) {
-                              final scrollOffset = _epgHScroll.hasClients ? _epgHScroll.offset : 0.0;
+                              final scrollOffset = _epgHScroll.hasClients
+                                  ? _epgHScroll.offset
+                                  : 0.0;
                               return ValueListenableBuilder<int>(
                                 valueListenable: _tickValue,
                                 builder: (context, tick, child) {
+                                  final now = DateTime.now();
+                                  final w0 = _windowStart(now);
+                                  final w1 =
+                                      w0.add(Duration(hours: _kEpgHours));
+                                  final gridW = w1.difference(w0).inMinutes *
+                                      metrics.pxPerMin;
+                                  double xAt(DateTime t) {
+                                    return t.difference(w0).inMinutes *
+                                        metrics.pxPerMin;
+                                  }
                                   return _EpgTimelineStrip(
                                     palette: palette,
                                     windowStart: w0,
@@ -961,21 +983,37 @@ class _TvShellLivePanelState extends State<TvShellLivePanel> {
               ),
               Expanded(
                 child: ClipRect(
-                  child: _buildChannelEpgGrid(
-                    context: context,
-                    palette: palette,
-                    metrics: metrics,
-                    list: list,
-                    epg: epg,
-                    touchScroll: touchScroll,
-                    remoteNav: remoteNav,
-                    showEpgColumn: showEpgColumn,
-                    windowStart: w0,
-                    windowEnd: w1,
-                    gridWidth: gridW,
-                    xAt: xAt,
-                    windowProgrammesFor: windowProgrammesFor,
-                    now: now,
+                  child: ValueListenableBuilder<int>(
+                    valueListenable: _tickValue,
+                    builder: (context, tick, child) {
+                      final now = DateTime.now();
+                      final w0 = _windowStart(now);
+                      final w1 = w0.add(Duration(hours: _kEpgHours));
+                      final gridW =
+                          w1.difference(w0).inMinutes * metrics.pxPerMin;
+                      double xAt(DateTime t) {
+                        return t.difference(w0).inMinutes * metrics.pxPerMin;
+                      }
+                      List<EpgProgramme> windowProgrammesFor(Channel ch) =>
+                          epg?.programmesInWindowForLiveChannel(ch, w0, w1) ??
+                          [];
+                      return _buildChannelEpgGrid(
+                        context: context,
+                        palette: palette,
+                        metrics: metrics,
+                        list: list,
+                        epg: epg,
+                        touchScroll: touchScroll,
+                        remoteNav: remoteNav,
+                        showEpgColumn: showEpgColumn,
+                        windowStart: w0,
+                        windowEnd: w1,
+                        gridWidth: gridW,
+                        xAt: xAt,
+                        windowProgrammesFor: windowProgrammesFor,
+                        now: now,
+                      );
+                    },
                   ),
                 ),
               ),
@@ -1067,13 +1105,53 @@ class _HeroPanel extends StatelessWidget {
     return 'tvShell.live.noDescription'.tr;
   }
 
+  String? _qualityTierHint() {
+    // Önizleme oynatıcısından gerçek çözünürlük (varsa).
+    final bp = previewController;
+    if (bp is BetterPlayerController) {
+      final asms = bp.betterPlayerAsmsTrack;
+      final h = asms?.height ?? 0;
+      final w = asms?.width ?? 0;
+      if (h > 0) {
+        final dim = h > w ? h : w;
+        if (dim >= 2160) return '4K';
+        if (dim >= 1080) return 'FHD';
+        if (dim >= 720) return 'HD';
+        return 'SD';
+      }
+      final sz = bp.videoPlayerController?.value.size;
+      if (sz != null && sz.width > 0 && sz.height > 0) {
+        final dim = sz.height > sz.width ? sz.height : sz.width;
+        if (dim >= 2160) return '4K';
+        if (dim >= 1080) return 'FHD';
+        if (dim >= 720) return 'HD';
+        return 'SD';
+      }
+    }
+    final mk = mediaKitController?.player;
+    if (mk != null) {
+      final w = mk.state.width;
+      final h = mk.state.height;
+      if (w != null && h != null && w > 0 && h > 0) {
+        final dim = h > w ? h : w;
+        if (dim >= 2160) return '4K';
+        if (dim >= 1080) return 'FHD';
+        if (dim >= 720) return 'HD';
+        return 'SD';
+      }
+    }
+    final name = channel?.name;
+    if (name == null || name.isEmpty) return null;
+    return EpgChannelDisplay.qualityTierFromName(name);
+  }
+
   @override
   Widget build(BuildContext context) {
     final compact = heroH < 200;
-    final titleSize = compact ? 15.0 : 19.0;
-    final progTitleSize = compact ? 13.0 : 16.0;
+    final titleSize = compact ? 14.0 : 17.0;
+    final progTitleSize = compact ? 12.5 : 15.0;
     final descLines = compact ? 2 : 4;
-    final logoSize = compact ? 40.0 : 48.0;
+    final logoSize = compact ? 36.0 : 42.0;
     final hasEpg = programme != null;
 
     return SizedBox(
@@ -1118,66 +1196,88 @@ class _HeroPanel extends StatelessWidget {
                     ? Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: [
-                              if (channel != null) ...[
-                                IptvChannelLogo(
-                                  imageUrl: channel!.logoUrl ?? '',
-                                  width: logoSize,
-                                  height: logoSize,
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                const SizedBox(width: 8),
-                              ],
-                              if (channel != null)
+                          // Kanal + yayın bilgisi — narin, dinamik çerçeve
+                          Container(
+                            width: double.infinity,
+                            padding: EdgeInsets.fromLTRB(
+                              compact ? 8 : 10,
+                              compact ? 6 : 8,
+                              compact ? 8 : 10,
+                              compact ? 6 : 8,
+                            ),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(11),
+                              border: Border.all(
+                                color: Colors.white.withValues(alpha: 0.13),
+                                width: 0.85,
+                              ),
+                              gradient: LinearGradient(
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
+                                colors: [
+                                  Colors.white.withValues(alpha: 0.075),
+                                  Colors.white.withValues(alpha: 0.02),
+                                ],
+                              ),
+                            ),
+                            child: Row(
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                if (channel != null) ...[
+                                  IptvChannelLogo(
+                                    imageUrl: channel!.logoUrl ?? '',
+                                    width: logoSize,
+                                    height: logoSize,
+                                    borderRadius: BorderRadius.circular(7),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  Flexible(
+                                    flex: 2,
+                                    child: Text(
+                                      EpgChannelDisplay.liveChannelName(
+                                        channel!.name,
+                                      ),
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: palette.titleStyle(size: titleSize),
+                                    ),
+                                  ),
+                                  Padding(
+                                    padding: const EdgeInsets.symmetric(
+                                      horizontal: 6,
+                                    ),
+                                    child: Text(
+                                      '·',
+                                      style: palette.mutedStyle(
+                                        size: titleSize - 2,
+                                      ),
+                                    ),
+                                  ),
+                                ],
                                 Flexible(
-                                  flex: 2,
+                                  flex: 3,
                                   child: Text(
-                                    channel!.name,
+                                    programme!.title,
                                     maxLines: 1,
                                     overflow: TextOverflow.ellipsis,
-                                    style: palette.titleStyle(size: titleSize),
-                                  ),
-                                ),
-                              if (channel != null)
-                                Padding(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 7,
-                                  ),
-                                  child: Text(
-                                    '·',
-                                    style: palette.mutedStyle(
-                                      size: titleSize - 2,
+                                    style: palette.titleStyle(
+                                      size: progTitleSize,
+                                      weight: FontWeight.w700,
                                     ),
                                   ),
                                 ),
-                              Flexible(
-                                flex: 3,
-                                child: Text(
-                                  programme!.title,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: palette.titleStyle(
-                                    size: progTitleSize,
-                                    weight: FontWeight.w700,
-                                  ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  '${fmtClock(programme!.start)} – ${fmtClock(programme!.end)}',
+                                  style: palette.mutedStyle(size: 11),
                                 ),
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                '${fmtClock(programme!.start)} – ${fmtClock(programme!.end)}',
-                                style: palette.mutedStyle(size: 11.5),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
-                          const SizedBox(height: 6),
-                          LinearProgressIndicator(
-                            value: programme!.progressAt(now),
-                            minHeight: 3,
-                            backgroundColor:
-                                palette.subtle.withValues(alpha: 0.35),
-                            color: palette.progress,
+                          const SizedBox(height: 7),
+                          _ModernEpgProgressBar(
+                            progress: programme!.progressAt(now),
+                            accent: palette.progress,
                           ),
                           const SizedBox(height: 6),
                           Expanded(
@@ -1195,13 +1295,73 @@ class _HeroPanel extends StatelessWidget {
                           ),
                           if (nextProgramme != null) ...[
                             const SizedBox(height: 4),
-                            Text(
-                              '${'tvShell.live.nextProgramme'.tr}: ${nextProgramme!.title.trim()} · ${fmtClock(nextProgramme!.start)} – ${fmtClock(nextProgramme!.end)}',
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: palette.mutedStyle(size: 10).copyWith(
-                                    fontWeight: FontWeight.w600,
+                            Row(
+                              children: [
+                                Expanded(
+                                  child: Text(
+                                    '${'tvShell.live.nextProgramme'.tr}: ${nextProgramme!.title.trim()} · ${fmtClock(nextProgramme!.start)} – ${fmtClock(nextProgramme!.end)}',
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: palette.mutedStyle(size: 10).copyWith(
+                                          fontWeight: FontWeight.w600,
+                                        ),
                                   ),
+                                ),
+                                const SizedBox(width: 8),
+                                Obx(() {
+                                  final settings =
+                                      Get.find<AppSettingsService>();
+                                  settings.livePlaybackEngine.value;
+                                  settings.liveStreamFormat.value;
+                                  final engine =
+                                      VideoPlayerEngine.fromPlaybackEngineKind(
+                                    settings.livePlaybackEngine.value,
+                                  );
+                                  final transport =
+                                      settings.effectiveLiveStreamFormat
+                                          .toUpperCase();
+                                  final tier = _qualityTierHint();
+                                  const fs = 8.5;
+                                  const radius = 4.5;
+                                  const hPad = 5.0;
+                                  const vPad = 2.0;
+                                  return Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      if (tier != null) ...[
+                                        ...osdStreamQualityBadgeWidgets(
+                                          resolutionTier: tier,
+                                          hzLabel: null,
+                                          fontSize: fs,
+                                          borderRadius: radius,
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 5,
+                                            vertical: 2,
+                                          ),
+                                        ),
+                                        const SizedBox(width: 4),
+                                      ],
+                                      osdEngineBadge(
+                                        engine: engine,
+                                        fontSize: fs,
+                                        radius: radius,
+                                        hPad: hPad,
+                                        vPad: vPad,
+                                        portrait: true,
+                                      ),
+                                      const SizedBox(width: 4),
+                                      osdTransportBadge(
+                                        transportFormat: transport,
+                                        fontSize: fs,
+                                        radius: radius,
+                                        hPad: hPad,
+                                        vPad: vPad,
+                                        portrait: true,
+                                      ),
+                                    ],
+                                  );
+                                }),
+                              ],
                             ),
                           ],
                         ],
@@ -1245,6 +1405,88 @@ class _HeroPanel extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+/// Narin, gradient dolgulu EPG ilerleme çubuğu (eski düz LinearProgress yerine).
+class _ModernEpgProgressBar extends StatelessWidget {
+  const _ModernEpgProgressBar({
+    required this.progress,
+    required this.accent,
+  });
+
+  final double progress;
+  final Color accent;
+
+  @override
+  Widget build(BuildContext context) {
+    final p = progress.clamp(0.0, 1.0);
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final w = constraints.maxWidth;
+        final fill = w * p;
+        return SizedBox(
+          height: 7,
+          child: Stack(
+            clipBehavior: Clip.none,
+            alignment: Alignment.centerLeft,
+            children: [
+              Container(
+                height: 3.5,
+                width: w,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(999),
+                  color: Colors.white.withValues(alpha: 0.12),
+                ),
+              ),
+              Container(
+                height: 3.5,
+                width: fill.clamp(0.0, w),
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(999),
+                  gradient: LinearGradient(
+                    colors: [
+                      accent.withValues(alpha: 0.45),
+                      accent,
+                      accent.withValues(alpha: 0.92),
+                    ],
+                  ),
+                  boxShadow: [
+                    BoxShadow(
+                      color: accent.withValues(alpha: 0.4),
+                      blurRadius: 5,
+                      spreadRadius: 0.2,
+                    ),
+                  ],
+                ),
+              ),
+              if (p > 0.02)
+                Positioned(
+                  left: (fill - 4).clamp(0.0, w - 8),
+                  child: Container(
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.white.withValues(alpha: 0.95),
+                      border: Border.all(
+                        color: accent.withValues(alpha: 0.85),
+                        width: 1.2,
+                      ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: accent.withValues(alpha: 0.55),
+                          blurRadius: 5,
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
     );
   }
 }
@@ -1890,7 +2132,7 @@ class _ChannelListTileState extends State<_ChannelListTile> {
         borderRadius: 6,
         ensureVisibleOnFocus: false,
         enableFocusScale: false,
-        tiviMateStyle: true,
+        tvFocusStyle: true,
         scaleOnFocus: 1.0,
         showFocusRing: false,
         blockUp: true,
@@ -1906,6 +2148,7 @@ class _ChannelListTileState extends State<_ChannelListTile> {
       focusNode: _focusNode,
       onPressed: widget.onOpen,
       onRemoteLeft: widget.onRemoteLeft,
+      treatBackAsRemoteLeft: widget.onRemoteLeft != null,
       dpadUp: widget.dpadUp,
       dpadDown: widget.dpadDown,
       dpadRight: widget.dpadRight,

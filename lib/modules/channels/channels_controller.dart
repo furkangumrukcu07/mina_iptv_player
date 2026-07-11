@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
 import '../../core/layout/app_layout_mode.dart';
+import '../../core/player/playback_engine_kind.dart';
 import '../../core/home/tv_home_layout_mode.dart';
 import '../../core/routes/app_routes.dart';
 import '../../core/services/active_playlist_service.dart';
@@ -15,6 +16,7 @@ import '../../core/services/live_hls_stream_profile_service.dart';
 import '../../core/services/playlist_cache_service.dart';
 import '../../core/services/playlist_category_hide.dart';
 import '../../core/services/playlist_data_source.dart';
+import '../../data/local/playlist_sqlite_store.dart';
 import '../../core/services/search_history_service.dart';
 import '../../core/theme/app_performance.dart';
 import '../../core/tv/tv_shell_list_window.dart';
@@ -55,6 +57,9 @@ bool channelsTvShellBootPending = false;
 /// sayısı (en yeni → en eski).
 const int kRecentlyWatchedLiveLimit = 20;
 
+/// RAM'de tam kanal listesi senkron taraması yapılmadan önceki üst sınır.
+const int kRamFullScanChannelCap = 1500;
+
 class ChannelsController extends GetxController {
   /// DB'den tek seferde çekilecek kanal sayfası boyutu.
   static const int _kDbChannelPageSize = 2000;
@@ -63,7 +68,9 @@ static const int _kVisibleChannelWindowSize = 250;
 
 static const int _kVisibleChannelWindowSizeLowEnd = 100;
 
-static const int _kChannelListFastBatch = 50;
+static const int kChannelListFastBatch = 50;
+
+static const int _kChannelListFastBatch = kChannelListFastBatch;
 
 static const int _kVisibleChannelExpandLead = 40;
 
@@ -238,6 +245,15 @@ int? _pendingTvShellChannelFocusIndex;
 
 M3uResult? _data;
 
+/// Son senkronize edilen aktif playlist kapsamı ([PlaylistCacheService.dbSourceKey]
+/// veya bellek kimliği). Slim meta aynı referans kalsa bile slot değişimini
+/// yakalamak için [_onActivePlaylistChanged] bu anahtarı da izler.
+String? _syncedPlaylistScopeKey;
+
+/// TV Listeler panelinden geçişte [_scheduleTvLiveBoot] otomatik önizleme
+/// başlatmasın — [reloadForActivePlaylistSwitch] tamamlanana kadar.
+bool suppressTvShellPlaylistBoot = false;
+
 /// [Get.arguments] ile `{'openSearch': true}` gelince ilk karede arama popup’ı.
   bool _pendingOpenSearch = false;
 
@@ -267,6 +283,7 @@ int? _routeHomeUnifiedChannelCategoryId;
       return;
     }
     _data = value;
+    _syncedPlaylistScopeKey = _playlistScopeKey(_cache);
     if (_app.layoutMode.value == AppLayoutMode.tv &&
         Get.isRegistered<EpgDeferredLoadService>()) {
       unawaited(Get.find<EpgDeferredLoadService>().ensureTvLazyLoad());
@@ -409,6 +426,12 @@ void _handleAppLifecycleStateChanged(AppLifecycleState state) {
 /// Yüklenmekte olan sayım anahtarı — iki aşamalı yayın sırasında yeniden
   /// tetiklemeyi (sonsuz döngü) engeller.
   String? _categoryCountLoadingKey;
+
+int _ramCategoryCountBuildGen = 0;
+
+bool _ramCategoryCountBuildRunning = false;
+
+int _memChannelIdPoolBuildGen = 0;
 
 String? _categoryCountCacheKey;
 

@@ -6,11 +6,12 @@ import 'package:get/get.dart';
 
 import '../../../core/layout/app_layout_mode.dart';
 import '../../../core/services/app_settings_service.dart';
+import '../../../domain/entities/stalker_compat.dart';
 import '../../../ui/tv_dpad_focus.dart';
 import '../playlist_controller.dart';
 
 /// Kaynak türü: liste yönetimi (3) veya kurulum sihirbazı (4 — demo dahil).
-enum PlaylistSetupSourceKind { m3uUrl, m3uFile, xtream, demo }
+enum PlaylistSetupSourceKind { m3uUrl, m3uFile, xtream, stalker, demo }
 
 /// Liste yönetimi / mobil kurulum ile aynı cam düzen: tür seçici + dinamik form.
 ///
@@ -72,6 +73,9 @@ class _PlaylistSourceSetupFormState extends State<PlaylistSourceSetupForm> {
   late final FocusNode _xtreamBaseFocus;
   late final FocusNode _xtreamUserFocus;
   late final FocusNode _xtreamPassFocus;
+  late final FocusNode _stalkerBaseFocus;
+  late final FocusNode _stalkerMacFocus;
+  late final FocusNode _stalkerHwFocus;
   late final FocusNode _demoLoadFocus;
   late final FocusNode _submitFocus;
 
@@ -87,6 +91,9 @@ class _PlaylistSourceSetupFormState extends State<PlaylistSourceSetupForm> {
     _xtreamBaseFocus = FocusNode(debugLabel: 'setupXtreamBase');
     _xtreamUserFocus = FocusNode(debugLabel: 'setupXtreamUser');
     _xtreamPassFocus = FocusNode(debugLabel: 'setupXtreamPass');
+    _stalkerBaseFocus = FocusNode(debugLabel: 'setupStalkerBase');
+    _stalkerMacFocus = FocusNode(debugLabel: 'setupStalkerMac');
+    _stalkerHwFocus = FocusNode(debugLabel: 'setupStalkerHw');
     _demoLoadFocus = FocusNode(debugLabel: 'setupDemoLoad');
     _submitFocus = FocusNode(debugLabel: 'setupSubmit');
 
@@ -112,21 +119,33 @@ class _PlaylistSourceSetupFormState extends State<PlaylistSourceSetupForm> {
       });
     }
 
-    // Yatay modda Xtream alanları odaklanınca klavye altında kalmasın diye
+    // Yatay modda Xtream/Stalker alanları odaklanınca klavye altında kalmasın diye
     // hafif kaydır (kurulum sihirbazı + mobil yatay).
     _xtreamBaseFocus.addListener(_onXtreamBaseFocus);
     _xtreamUserFocus.addListener(_onXtreamUserFocus);
     _xtreamPassFocus.addListener(_onXtreamPassFocus);
+    _stalkerBaseFocus.addListener(_onStalkerBaseFocus);
+    _stalkerMacFocus.addListener(_onStalkerMacFocus);
   }
 
   void _onXtreamBaseFocus() =>
       _ensureXtreamFieldVisible(_xtreamBaseFocus, alignment: 0.05);
 
   void _onXtreamUserFocus() =>
-      _ensureXtreamFieldVisible(_xtreamUserFocus, alignment: 0.22);
+      _ensureXtreamPageVisible(_xtreamUserFocus, alignment: 0.22);
 
   void _onXtreamPassFocus() =>
       _ensureXtreamFieldVisible(_xtreamPassFocus, alignment: 0.38);
+
+  void _onStalkerBaseFocus() =>
+      _ensureXtreamFieldVisible(_stalkerBaseFocus, alignment: 0.05, forceStalker: true);
+
+  void _onStalkerMacFocus() =>
+      _ensureXtreamFieldVisible(_stalkerMacFocus, alignment: 0.22, forceStalker: true);
+
+  void _ensureXtreamPageVisible(FocusNode node, {required double alignment}) {
+    _ensureXtreamFieldVisible(node, alignment: alignment);
+  }
 
   bool get _isTvMode {
     if (!Get.isRegistered<AppSettingsService>()) return false;
@@ -141,7 +160,7 @@ class _PlaylistSourceSetupFormState extends State<PlaylistSourceSetupForm> {
         ? (widget.controller.m3uLocalFileName.value != null
             ? PlaylistSetupSourceKind.m3uFile
             : PlaylistSetupSourceKind.m3uUrl)
-        : PlaylistSetupSourceKind.xtream;
+        : (tab == 1 ? PlaylistSetupSourceKind.xtream : PlaylistSetupSourceKind.stalker);
     if (next != _kind) setState(() => _kind = next);
   }
 
@@ -161,6 +180,8 @@ class _PlaylistSourceSetupFormState extends State<PlaylistSourceSetupForm> {
       _kind = PlaylistSetupSourceKind.m3uFile;
     } else if (c.tabIndex.value == 1) {
       _kind = PlaylistSetupSourceKind.xtream;
+    } else if (c.tabIndex.value == 2) {
+      _kind = PlaylistSetupSourceKind.stalker;
     } else {
       _kind = PlaylistSetupSourceKind.m3uUrl;
     }
@@ -173,6 +194,8 @@ class _PlaylistSourceSetupFormState extends State<PlaylistSourceSetupForm> {
         widget.controller.setTab(0);
       case PlaylistSetupSourceKind.xtream:
         widget.controller.setTab(1);
+      case PlaylistSetupSourceKind.stalker:
+        widget.controller.setTab(2);
       case PlaylistSetupSourceKind.demo:
         break;
     }
@@ -190,6 +213,8 @@ class _PlaylistSourceSetupFormState extends State<PlaylistSourceSetupForm> {
           _filePickFocus.requestFocus();
         case PlaylistSetupSourceKind.xtream:
           _xtreamBaseFocus.requestFocus();
+        case PlaylistSetupSourceKind.stalker:
+          _stalkerBaseFocus.requestFocus();
         case PlaylistSetupSourceKind.demo:
           _demoLoadFocus.requestFocus();
       }
@@ -209,6 +234,7 @@ class _PlaylistSourceSetupFormState extends State<PlaylistSourceSetupForm> {
         PlaylistSetupSourceKind.m3uUrl,
         PlaylistSetupSourceKind.m3uFile,
         PlaylistSetupSourceKind.xtream,
+        PlaylistSetupSourceKind.stalker,
         if (widget.includeDemo) PlaylistSetupSourceKind.demo,
       ];
 
@@ -220,22 +246,26 @@ class _PlaylistSourceSetupFormState extends State<PlaylistSourceSetupForm> {
         return _filePickFocus;
       case PlaylistSetupSourceKind.xtream:
         return _xtreamBaseFocus;
+      case PlaylistSetupSourceKind.stalker:
+        return _stalkerBaseFocus;
       case PlaylistSetupSourceKind.demo:
         return _demoLoadFocus;
     }
   }
 
-  /// Xtream metin alanı odaklandığında (yalnızca mobil/tablet yatay) aktif
+  /// Xtream/Stalker metin alanı odaklandığında (yalnızca mobil/tablet yatay) aktif
   /// satırı klavyenin üstüne hafifçe kaydırır.
   void _ensureXtreamFieldVisible(
     FocusNode node, {
     required double alignment,
+    bool forceStalker = false,
   }) {
     if (!node.hasFocus) return;
     if (_tvDeferredKeyboard) return;
     if (!mounted) return;
     if (MediaQuery.orientationOf(context) != Orientation.landscape) return;
-    if (_kind != PlaylistSetupSourceKind.xtream) return;
+    if (!forceStalker && _kind != PlaylistSetupSourceKind.xtream) return;
+    if (forceStalker && _kind != PlaylistSetupSourceKind.stalker) return;
 
     void run() {
       if (!mounted || !node.hasFocus) return;
@@ -261,6 +291,8 @@ class _PlaylistSourceSetupFormState extends State<PlaylistSourceSetupForm> {
     _xtreamBaseFocus.removeListener(_onXtreamBaseFocus);
     _xtreamUserFocus.removeListener(_onXtreamUserFocus);
     _xtreamPassFocus.removeListener(_onXtreamPassFocus);
+    _stalkerBaseFocus.removeListener(_onStalkerBaseFocus);
+    _stalkerMacFocus.removeListener(_onStalkerMacFocus);
     _tabWorker?.dispose();
     _fileWorker?.dispose();
     _m3uUrlFocus.dispose();
@@ -268,6 +300,9 @@ class _PlaylistSourceSetupFormState extends State<PlaylistSourceSetupForm> {
     _xtreamBaseFocus.dispose();
     _xtreamUserFocus.dispose();
     _xtreamPassFocus.dispose();
+    _stalkerBaseFocus.dispose();
+    _stalkerMacFocus.dispose();
+    _stalkerHwFocus.dispose();
     _demoLoadFocus.dispose();
     _submitFocus.dispose();
     for (final entry in _kindFocusNodes.entries) {
@@ -384,9 +419,11 @@ class _PlaylistSourceSetupFormState extends State<PlaylistSourceSetupForm> {
                   ? _demoLoadFocus
                   : (_kind == PlaylistSetupSourceKind.xtream
                       ? _xtreamPassFocus
-                      : (_kind == PlaylistSetupSourceKind.m3uFile
-                          ? _filePickFocus
-                          : _m3uUrlFocus)),
+                      : (_kind == PlaylistSetupSourceKind.stalker
+                          ? _stalkerMacFocus
+                          : (_kind == PlaylistSetupSourceKind.m3uFile
+                              ? _filePickFocus
+                              : _m3uUrlFocus))),
               arrowDown: widget.footerFocusNode,
             ),
           ),
@@ -479,6 +516,127 @@ class _PlaylistSourceSetupFormState extends State<PlaylistSourceSetupForm> {
             ),
           ],
         );
+      case PlaylistSetupSourceKind.stalker:
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _glassField(
+              context: context,
+              controller: c.stalkerBaseUrlController,
+              focusNode: _stalkerBaseFocus,
+              label: 'stalker.field.portalUrl'.tr,
+              hint: 'http://domain:port',
+              icon: Icons.dns_rounded,
+              keyboard: TextInputType.url,
+              cs: cs,
+              useDeferredKeyboard: deferredKeyboard,
+              showPaste: true,
+              textInputAction: TextInputAction.next,
+              onSubmitted: () => _stalkerMacFocus.requestFocus(),
+              onArrowUp: () => _currentKindFocus()?.requestFocus(),
+              onArrowDown: () => _stalkerMacFocus.requestFocus(),
+            ),
+            const SizedBox(height: 12),
+            _glassField(
+              context: context,
+              controller: c.stalkerMacAddressController,
+              focusNode: _stalkerMacFocus,
+              label: 'stalker.field.mac'.tr,
+              hint: '00:1A:79:XX:XX:XX',
+              icon: Icons.person_outline_rounded,
+              cs: cs,
+              useDeferredKeyboard: deferredKeyboard,
+              showPaste: true,
+              textInputAction: TextInputAction.done,
+              onSubmitted: () => _submitFocus.requestFocus(),
+              onArrowUp: () => _stalkerBaseFocus.requestFocus(),
+              onArrowDown: () => _submitFocus.requestFocus(),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'stalker.compat.title'.tr,
+              style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                    color: cs.onSurface.withValues(alpha: 0.85),
+                    fontWeight: FontWeight.w600,
+                  ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              'stalker.compat.hint'.tr,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: cs.onSurface.withValues(alpha: 0.55),
+                  ),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              'stalker.field.magPreset'.tr,
+              style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                    color: cs.onSurface.withValues(alpha: 0.7),
+                  ),
+            ),
+            const SizedBox(height: 6),
+            Obx(() {
+              final selected = c.stalkerMagPreset.value;
+              return Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final p in StalkerMagPreset.values)
+                    ChoiceChip(
+                      label: Text(p.labelKey.tr),
+                      selected: selected == p,
+                      onSelected: (_) => c.stalkerMagPreset.value = p,
+                    ),
+                ],
+              );
+            }),
+            const SizedBox(height: 12),
+            Text(
+              'stalker.field.linkType'.tr,
+              style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                    color: cs.onSurface.withValues(alpha: 0.7),
+                  ),
+            ),
+            const SizedBox(height: 6),
+            Obx(() {
+              final selected = c.stalkerLinkType.value;
+              return Wrap(
+                spacing: 8,
+                runSpacing: 8,
+                children: [
+                  for (final l in StalkerLinkType.values)
+                    ChoiceChip(
+                      label: Text(l.labelKey.tr),
+                      selected: selected == l,
+                      onSelected: (_) => c.stalkerLinkType.value = l,
+                    ),
+                ],
+              );
+            }),
+            const SizedBox(height: 12),
+            _glassField(
+              context: context,
+              controller: c.stalkerHwVersionController,
+              focusNode: _stalkerHwFocus,
+              label: 'stalker.field.hwVersion'.tr,
+              hint: '1.7-BD-00',
+              icon: Icons.memory_rounded,
+              cs: cs,
+              useDeferredKeyboard: deferredKeyboard,
+              textInputAction: TextInputAction.done,
+              onSubmitted: () => _submitFocus.requestFocus(),
+              onArrowUp: () => _stalkerMacFocus.requestFocus(),
+              onArrowDown: () => _submitFocus.requestFocus(),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'stalker.compat.sslHint'.tr,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: cs.onSurface.withValues(alpha: 0.5),
+                  ),
+            ),
+          ],
+        );
       case PlaylistSetupSourceKind.demo:
         return _DemoSection(
           loadFocus: _demoLoadFocus,
@@ -529,6 +687,11 @@ class _SourceKindSelector extends StatelessWidget {
         PlaylistSetupSourceKind.xtream,
         'playlistsManager.tab.xtream'.tr,
         Icons.dns_outlined,
+      ),
+      (
+        PlaylistSetupSourceKind.stalker,
+        'stalker.chip.label'.tr,
+        Icons.portrait_rounded,
       ),
       if (includeDemo)
         (

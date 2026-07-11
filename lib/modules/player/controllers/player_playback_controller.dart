@@ -1,6 +1,6 @@
 part of '../player_controller.dart';
 
-extension PlayerPlaybackExtension on PlayerController {
+extension PlayerPlaybackController on PlayerController {
 bool get isMovie => _movieBrowseTape != null;
 
 bool get isSeries =>
@@ -110,6 +110,7 @@ void _setBetterPlayer(BetterPlayerController? next) {
 
 /// MediaKit aktifken [UniversalVideoPlayer] üzerinden [Player] örneği.
   Player? get mediaKitPlayer => _mediaKitPlayer;
+
 
 /// [PlayerView] yetim yüzey eşiği; TV’de daha yüksek ([PlayerController.maxOrphanBetterSurfaceRetriesTv]).
   int get effectiveMaxOrphanBetterSurfaceRetries =>
@@ -1021,11 +1022,14 @@ Future<void> enterPictureInPictureIfSupported() async {
   bool _eligibleForMiniPlayerPip() => _eligibleForAutoMiniPlayerPip();
 
   bool _eligibleForShowcaseInAppPip() {
-    if (!showcaseInAppPipHandoff) return false;
-    if (!_settings.showcaseInAppPipEnabled.value) return false;
-    if (_settings.homeLayoutStyle.value != HomeLayoutStyle.showcase) {
-      return false;
+    if (Get.isRegistered<ShowcaseInAppPipService>()) {
+      final pip = Get.find<ShowcaseInAppPipService>();
+      if (pip.shouldSkipShowcaseHandoffOnExit(channel.value)) {
+        return false;
+      }
     }
+    if (!showcaseInAppPipHandoff) return false;
+    if (!_settings.isShowcaseInAppPipEffectivelyEnabled) return false;
     if (isClosed || _externalPlayerHandoffActive.value) return false;
     return playbackEligibleForShowcaseHandoff();
   }
@@ -1041,6 +1045,7 @@ Future<void> enterPictureInPictureIfSupported() async {
       return s.playing || s.buffering || s.position > Duration.zero;
     }
 
+
     final v = better?.videoPlayerController?.value;
     if (v == null || !v.initialized || v.hasError) return false;
     return v.isPlaying || v.isBuffering || v.position > Duration.zero;
@@ -1055,6 +1060,26 @@ Future<void> enterPictureInPictureIfSupported() async {
   Player? peekMediaKitPlayerForShowcasePip() => _mediaKitPlayer;
 
   BetterPlayerController? peekBetterPlayerForShowcasePip() => better;
+
+
+  void applyShowcasePipRestoreEngine(PlaybackEngineKind engine) {
+    _showcasePipRestoreEngine = engine;
+  }
+
+  void clearShowcasePipRestoreEngine() {
+    _showcasePipRestoreEngine = null;
+    _showcasePipMediaKitVideo = null;
+  }
+
+  ({Player player, VideoController video})? takeShowcasePipMediaKitSurface() {
+    final p = _mediaKitPlayer;
+    final v = _showcasePipMediaKitVideo;
+    if (p == null || v == null) return null;
+    _showcasePipMediaKitVideo = null;
+    return (player: p, video: v);
+  }
+
+
 
   bool finalizeShowcaseInAppPipHandoff() {
     _playbackEnginesHaltedForRouteExit = true;
@@ -1081,19 +1106,81 @@ Future<void> enterPictureInPictureIfSupported() async {
     return true;
   }
 
-  bool restoreBetterFromShowcasePip(BetterPlayerController b) {
+  Future<bool> restoreBetterFromShowcasePip(BetterPlayerController b) async {
     if (isClosed) return false;
     _setBetterPlayer(b);
     try {
+      b.setSuppressLifecycleAutoPause(true);
       b.videoPlayerController?.addListener(_onVideoPlayerChanged);
+      try {
+        await b.videoPlayerController?.clearPlatformSurfaceHandoffMark();
+        await b.videoPlayerController?.reattachPlatformSurface();
+        betterSurfaceEpoch.value++;
+        final vpc = b.videoPlayerController;
+        if (vpc != null && !vpc.value.isPlaying) {
+          await b.play();
+        }
+      } catch (e, st) {
+        debugPrint('mina_iptv: showcase pip better reattach: $e\n$st');
+      }
     } catch (_) {}
     isBusy.value = false;
+    error.value = null;
     clearShowcaseInAppPipHandoffFlags();
     return true;
   }
 
+
+  Future<void> attachMediaKitPlayerFromShowcasePipRestore(
+    Player player,
+    VideoController video,
+  ) async {
+    _showcasePipMediaKitVideo = video;
+    await attachMediaKitPlayer(player);
+    isBusy.value = false;
+    error.value = null;
+    clearShowcaseInAppPipHandoffFlags();
+  }
+
   void clearShowcaseInAppPipHandoffFlags() {
     _playbackEnginesHaltedForRouteExit = false;
+  }
+
+  Future<void> _tryRestoreFromShowcaseInAppPipOrBoot() async {
+    if (isClosed) return;
+    final reopening = isReopeningFromInAppPip;
+    if (Get.isRegistered<ShowcaseInAppPipService>()) {
+      final pip = Get.find<ShowcaseInAppPipService>();
+      await pip.ensureResolvedForIndependentOpen(
+        channel.value,
+        reopeningFromPipBubble: reopening,
+      );
+      if (isClosed) return;
+
+      for (var attempt = 0; attempt < 10; attempt++) {
+        final restored = await pip.tryRestoreInto(this);
+        if (restored) {
+          _pipReopenHandled = true;
+          clearShowcasePipRestoreEngine();
+          return;
+        }
+        if (!reopening) break;
+        await Future<void>.delayed(
+          Duration(milliseconds: 60 * (attempt + 1)),
+        );
+        if (isClosed) return;
+      }
+    }
+
+    if (reopening) {
+      debugPrint(
+        'mina_iptv: in-app pip reopen could not restore engine — skipping cold boot',
+      );
+      isBusy.value = false;
+      return;
+    }
+
+    if (!isClosed) unawaited(_boot());
   }
 
   bool _androidDelegatesAutoPipToSystem() {
@@ -1179,6 +1266,15 @@ Future<void> _syncAndroidPipAutoEnterEligible({bool force = false}) async {
         return PlayerController._streamQualityLabelFromDimensions(h, w);
       }
     }
+    return null;
+  }
+
+  /// OSD: o an oynatılan taşıma biçimi — `HLS` / `TS` (bilinmiyorsa null).
+  String? get osdStreamTransportFormatLabel {
+    final u = (_lastPlaybackUrl ?? channel.value.streamUrl).trim();
+    if (u.isEmpty) return null;
+    if (IptvPlaybackDefaults.isLikelyMpegTsStreamUrl(u)) return 'TS';
+    if (IptvPlaybackDefaults.isLikelyHlsStreamUrl(u)) return 'HLS';
     return null;
   }
 
@@ -1299,16 +1395,25 @@ void setVideoFit(BoxFit fit) {
 /// Canlı yayında DVR/timeshift ile ileri–geri sarma kapalı (yalnızca kanal değiştirme).
   bool get liveTimeshiftSeekAvailable => false;
 
-/// Hangi motor kullanılıyor: **Canlı TV** → yalnızca Better (Exo); MediaKit yalnızca kullanıcı
-  /// OSD’den [switchToBackupPlayer] ile ([mediaKitFallbackSession]). Otomatik Exo→MediaKit yok.
-  /// **VOD** → [AppSettingsService.useMediaKit]; donanım hatasında [mediaKitFallbackSession] ile mpv.
+/// Hangi motor kullanılıyor: kullanıcı tercihi ([livePlaybackEngine] /
+  /// [vodPlaybackEngine]). Better birincil iken hata zinciri HLS↔TS sonra
+  /// [mediaKitFallbackSession] ile MediaKit'e düşer. Akıllı seçim yalnızca
+  /// MediaKit kanal hafızasını (sonraki açılış) kontrol eder.
   /// [betterOsdOverride]: OSD’den veya mpv açılamayınca zorunlu Exo.
   bool get effectiveUseMediaKit {
+    if (_showcasePipRestoreEngine == PlaybackEngineKind.mediaKit) return true;
+    if (_showcasePipRestoreEngine == PlaybackEngineKind.better) {
+      return false;
+    }
     if (betterOsdOverride.value) return false;
-    // Uzantısız "web manifest / embed" akışları (ör. aggregator film
-    // listelerindeki `/vs/tt…/` HLS adresleri) ExoPlayer'da container tespit
-    // edilemediği için açılmaz; mpv sniff ile sorunsuz açar → doğrudan MediaKit.
-    if (_forceMediaKitForCurrentUrl) return true;
+    // Uzantısız "web manifest / embed" (vidmody `/vs/tt…/`) — Exo artık gizli
+    // HLS segmentlerini (.jpg/.gif TS) destekler; kullanıcı VOD için Better
+    // seçtiyse MediaKit'e zorlama.
+    if (_forceMediaKitForCurrentUrl) {
+      final userChoseBetterVod = !_currentStreamIsLive &&
+          _settings.vodPlaybackEngine.value == PlaybackEngineKind.better;
+      if (!userChoseBetterVod) return true;
+    }
     // Kullanıcının içerik tipine göre seçtiği motor: canlı → liveUseMediaKit,
     // film/dizi → useMediaKit. Seçim MediaKit ise birincil motor mpv olur.
     if (_userPrefersMediaKitForCurrentType) return true;
@@ -1321,6 +1426,24 @@ void setVideoFit(BoxFit fit) {
     return mediaKitFallbackSession.value;
   }
 
+/// O an gerçekten aktif olan video motoru.
+  ///
+  /// UI (yüzey render'ı, motor değiştir butonu, iz/altyazı seçimi vb.) ve
+  /// dispose mantığı bu tek kaynaktan beslenir; `enum` ile "hangi motor aktif"
+  /// her yerde net okunur. Reaktif kullanım için bir `Obx` içinde
+  /// [effectiveUseMediaKit]'yi besleyen `Rx` alanları
+  /// (betterOsdOverride / mediaKitFallbackSession / ayar) gözlenmelidir.
+  VideoPlayerEngine get activeVideoEngine {
+    if (effectiveUseMediaKit) return VideoPlayerEngine.mediaKit;
+    return VideoPlayerEngine.betterPlayer;
+  }
+
+/// Kullanıcının geçerli içerik tipi (canlı / VOD) için seçtiği motor MediaKit mi?
+  bool get _userPrefersMediaKitForCurrentType => _currentStreamIsLive
+      ? _settings.livePlaybackEngine.value == PlaybackEngineKind.mediaKit
+      : _settings.vodPlaybackEngine.value == PlaybackEngineKind.mediaKit;
+
+
 /// VOD (film/dizi) + sorunlu ses kodeği + kullanıcı motoru seçmemiş →
   /// proaktif MediaKit. Canlı yayında ve kullanıcı tercihi varsa uygulanmaz.
   bool get _shouldProactivelyUseMediaKitForCodec {
@@ -1328,21 +1451,6 @@ void setVideoFit(BoxFit fit) {
     if (_settings.engineUserChosen) return false;
     return AudioCodecPlaybackHint.prefersMediaKit(_currentAudioCodecHint);
   }
-
-/// O an gerçekten aktif olan video motoru ([effectiveUseMediaKit] türevi).
-  ///
-  /// UI (yüzey render'ı, motor değiştir butonu, iz/altyazı seçimi vb.) ve
-  /// dispose mantığı bu tek kaynaktan beslenir; `enum` ile "hangi motor aktif"
-  /// her yerde net okunur. Reaktif kullanım için bir `Obx` içinde
-  /// [effectiveUseMediaKit]'i besleyen `Rx` alanları (betterOsdOverride /
-  /// mediaKitFallbackSession / ayar) gözlenmelidir.
-  VideoPlayerEngine get activeVideoEngine =>
-      VideoPlayerEngine.fromUseMediaKit(effectiveUseMediaKit);
-
-/// Kullanıcının geçerli içerik tipi (canlı / VOD) için seçtiği motor MediaKit mi?
-  bool get _userPrefersMediaKitForCurrentType => _currentStreamIsLive
-      ? _settings.liveUseMediaKit.value
-      : _settings.useMediaKit.value;
 
 void _refreshForceMediaKitForCurrentUrl() {
     final raw =
@@ -1386,6 +1494,7 @@ void _refreshForceMediaKitForCurrentUrl() {
 
 /// OSD: MediaKit’e geç (Better’dan veya Better OSD geçersiz kılma sonrası).
   Future<void> switchToBackupPlayer() async {
+    clearShowcasePipRestoreEngine();
     final wasBetterOverride = betterOsdOverride.value;
     betterOsdOverride.value = false;
     if (!wasBetterOverride && effectiveUseMediaKit) {
@@ -1412,15 +1521,18 @@ void _refreshForceMediaKitForCurrentUrl() {
     // Kullanıcı elle oynatıcı değiştirdiğinde eski başarı önbelleğini temizle
     unawaited(_settings.clearStreamSuccessFormat(channel.value.id));
 
-    final mk = _mediaKitPlayer;
-    if (mk != null) {
-      _mediaKitPlayer = null;
-      try {
-        await mk.pause();
-        await mk.stop();
-        await mk.dispose();
-      } catch (_) {}
-    }
+    // MediaKit→Better: eski mpv oturumunu ve bekleyen kurtarma zincirlerini kes.
+    _bumpPlaybackGeneration();
+    _cancelZapRelativeDebounce();
+    _cancelNetworkAutoResumeTimer();
+    _networkResumeAttempt = 0;
+    _liveKeepAliveArmed = false;
+    _cancelBetterBufferingRecoveryTimer();
+    _cancelLiveStallWatchdog();
+    _cancelLiveTvStartupWatchdog();
+    _cancelLiveAutoNextWatchdog();
+    _cancelLiveChannelPreload();
+    await _hardDisposeMediaKitPlayer(reason: 'osd-to-better');
     await _boot(
       preferredMaxHeight: null,
       disableAsms: false,
@@ -1434,19 +1546,180 @@ void _cancelMediaKitDimSubs() {
       unawaited(s.cancel());
     }
     _mediaKitDimSubs.clear();
+    _cancelMediaKitBlackScreenWatchdog();
+    _cancelMediaKitLiveStallWatchdog();
   }
 
-/// Canlı TV / mpv: düşük demuxer/önbellek + hızlı ağ zaman aşımı; [aml] Amlogic ipucu.
+void _cancelMediaKitBlackScreenWatchdog() {
+    _mediaKitBlackScreenWatchdog?.cancel();
+    _mediaKitBlackScreenWatchdog = null;
+  }
+
+void _cancelMediaKitLiveStallWatchdog() {
+    _mediaKitLiveStallWatchdog?.cancel();
+    _mediaKitLiveStallWatchdog = null;
+    _mediaKitStallTicks = 0;
+    _mediaKitLastKnownPosition = Duration.zero;
+  }
+
+/// Crispy-tivi: canlı oynatma pozisyonu 10 sn ilerlemezse aynı yayına yeniden bağlan.
+  void _startMediaKitLiveStallWatchdog(Player p, int gen) {
+    _cancelMediaKitLiveStallWatchdog();
+    if (!_currentStreamIsLive || !effectiveUseMediaKit) return;
+    if (!identical(_mediaKitPlayer, p)) return;
+    if (!_isPlaybackGenerationCurrent(gen)) return;
+
+    _mediaKitLiveStallWatchdog = Timer.periodic(
+      PlayerController._kMediaKitStallWatchdogInterval,
+      (_) {
+        if (!identical(_mediaKitPlayer, p) || !_isPlaybackGenerationCurrent(gen)) {
+          _cancelMediaKitLiveStallWatchdog();
+          return;
+        }
+        if (isClosed || !_currentStreamIsLive || _userPausedLive) {
+          _mediaKitStallTicks = 0;
+          return;
+        }
+        if (_shouldBlockAutomaticPlayback()) {
+          _mediaKitStallTicks = 0;
+          return;
+        }
+        final st = p.state;
+        if (!st.playing || st.buffering || isBusy.value) {
+          _mediaKitStallTicks = 0;
+          _mediaKitLastKnownPosition = st.position;
+          return;
+        }
+        final pos = st.position;
+        if (pos == _mediaKitLastKnownPosition) {
+          _mediaKitStallTicks++;
+          if (_mediaKitStallTicks >= PlayerController._kMediaKitStallThresholdTicks) {
+            _mediaKitStallTicks = 0;
+            _mediaKitLastKnownPosition = Duration.zero;
+            debugPrint(
+              'mina_iptv: MediaKit canlı stall '
+              '${PlayerController._kMediaKitStallThresholdTicks * PlayerController._kMediaKitStallWatchdogInterval.inSeconds}s '
+              '→ yeniden bağlan',
+            );
+            _scheduleNetworkAutoResumeIfNeeded('mediakit-live-stall');
+          }
+        } else {
+          _mediaKitStallTicks = 0;
+          _mediaKitLastKnownPosition = pos;
+        }
+      },
+    );
+  }
+
+/// Oynatma başladı ama video boyutu gelmiyorsa (ses+siyah ekran) yazılım kod çözücüye düş.
+  Future<void> _armMediaKitBlackScreenWatchdog(Player p, int gen) async {
+    _cancelMediaKitBlackScreenWatchdog();
+    if (!_currentStreamIsLive || mediaKitShouldUseSoftwareDecode) return;
+    if (!identical(_mediaKitPlayer, p)) return;
+    if (!_isPlaybackGenerationCurrent(gen)) return;
+
+    bool hasVideoDims() {
+      final st = p.state;
+      final w = st.width ?? 0;
+      final h = st.height ?? 0;
+      return w > 0 && h > 0;
+    }
+
+    if (hasVideoDims()) return;
+
+    void armTimerIfPlaying() {
+      if (!identical(_mediaKitPlayer, p)) return;
+      if (!_isPlaybackGenerationCurrent(gen)) return;
+      if (!p.state.playing) return;
+      if (hasVideoDims()) {
+        _cancelMediaKitBlackScreenWatchdog();
+        return;
+      }
+      if (_mediaKitBlackScreenWatchdog != null) return;
+      // Canlı TS + mediacodec-copy: yüzey/dims geç gelebilir; erken TS→HLS
+      // tek bağlantılı panellerde 403 üretir. Siyah ekranda önce SW.
+      final onTs = _isLiveMpegTsPlaybackUrl();
+      final Duration delay;
+      if (_userPrefersMediaKitForCurrentType) {
+        delay = onTs
+            ? const Duration(seconds: 14)
+            : const Duration(seconds: 10);
+      } else {
+        delay = const Duration(milliseconds: 2800);
+      }
+      _mediaKitBlackScreenWatchdog = Timer(delay, () {
+        _mediaKitBlackScreenWatchdog = null;
+        if (!identical(_mediaKitPlayer, p)) return;
+        if (!_isPlaybackGenerationCurrent(gen)) return;
+        if (!p.state.playing) return;
+        if (hasVideoDims()) return;
+        // Hâlâ tamponlanıyorsa bir kez daha bekle (geç yüzey).
+        if (p.state.buffering) {
+          debugPrint(
+            'mina_iptv: MediaKit siyah ekran — hâlâ buffering, +8s grace',
+          );
+          _mediaKitBlackScreenWatchdog = Timer(const Duration(seconds: 8), () {
+            _mediaKitBlackScreenWatchdog = null;
+            if (!identical(_mediaKitPlayer, p)) return;
+            if (!_isPlaybackGenerationCurrent(gen)) return;
+            if (!p.state.playing || hasVideoDims()) return;
+            _onMediaKitLiveBlackScreenConfirmed();
+          });
+          return;
+        }
+        _onMediaKitLiveBlackScreenConfirmed();
+      });
+    }
+
+    void onSignal([dynamic _]) => armTimerIfPlaying();
+
+    _mediaKitDimSubs.add(p.stream.playing.listen(onSignal));
+    _mediaKitDimSubs.add(p.stream.width.listen(onSignal));
+    _mediaKitDimSubs.add(p.stream.height.listen(onSignal));
+    armTimerIfPlaying();
+  }
+
+  /// Decode var / dims yok: önce yazılım hwdec (aynı URL), sonra taşıma, sonra Better.
+  void _onMediaKitLiveBlackScreenConfirmed() {
+    if (_userPrefersMediaKitForCurrentType) {
+      _handleMediaKitLivePrimaryFailure(
+        'MediaKit black screen / no video dims',
+        preferSoftwareBeforeTransport: true,
+      );
+      return;
+    }
+    if (_mediaKitBlackScreenRecoveryUsed) return;
+    _mediaKitBlackScreenRecoveryUsed = true;
+    debugPrint(
+      'mina_iptv: MediaKit canlı ses var görüntü yok → yazılım kod çözücü',
+    );
+    _mediaKitFallbackForceSoftwareDecode = true;
+    unawaited(restartCurrentStream());
+  }
+
+int _parseMpvKiBSize(String raw) {
+    final t = raw.trim().toLowerCase();
+    if (t.endsWith('kib')) {
+      return int.tryParse(t.replaceAll('kib', '').trim()) ?? 0;
+    }
+    if (t.endsWith('mb')) {
+      final n = int.tryParse(t.replaceAll('mb', '').trim()) ?? 0;
+      return n * 1024;
+    }
+    return int.tryParse(t) ?? 0;
+  }
+
+/// Canlı TV / mpv: demuxer/önbellek + ağ zaman aşımı; [aml] Amlogic ipucu.
+  /// [liveCache] ile [mpvLiveCacheProfile] değerleri çakışmaz (byte tavanı hizalanır).
   Future<void> _applyMpvIptvLiveZapTuning(
     dynamic plat, {
     required bool aml,
+    MpvLiveCacheProfile? liveCache,
   }) async {
     if (plat is! NativePlayer) return;
     try {
       await plat.setProperty('cache', 'yes');
-      final longSegHls = _useLongSegmentLiveHlsBuffer();
-      // Kademeli buffer: RAM sınıfına göre ([AndroidPlaybackSocHints.liveMpvBufferStep]).
-      // TV / zayıf kutuda step 0 (768 KB) çok dar → en az step 1 ile başla.
+      final longSegHls = _liveUseLongSegmentHlsBufferForBoot();
       var step = longSegHls
           ? 1
           : _mediaKitLiveBufferEscalationStep.clamp(
@@ -1454,20 +1727,38 @@ void _cancelMediaKitDimSubs() {
       await AndroidPlaybackSocHints.ensureLoaded();
       final tvLive = _settings.layoutMode.value == AppLayoutMode.tv ||
           AndroidPlaybackSocHints.playbackChallengedTv;
+      final seg = AndroidPlaybackSocHints.playbackSegment;
+      // TV/challenged: geniş tampon (step≥1). Telefon/tablet: step 0 ile hızlı ilk kare.
       if (tvLive) {
+        step = math.max(step, 1);
+      } else if (seg == DevicePlaybackSegment.low) {
         step = math.max(step, 1);
       }
       final buf = AndroidPlaybackSocHints.liveMpvBufferStep(step);
-      await plat.setProperty('cache-size', '${buf.cacheSizeKiB}');
+      var cacheSizeKiB = buf.cacheSizeKiB;
+      var demuxerMax = buf.demuxerMaxBytes;
+      var demuxerBack = buf.demuxerMaxBackBytes;
+      if (liveCache != null) {
+        final streamKiB = _parseMpvKiBSize(liveCache.streamBufferSize);
+        if (streamKiB > cacheSizeKiB) {
+          cacheSizeKiB = streamKiB;
+        }
+        final minDemuxer = math.max(
+          demuxerMax,
+          streamKiB * 1024 * 2,
+        );
+        demuxerMax = minDemuxer;
+        demuxerBack = math.max(demuxerBack, minDemuxer ~/ 2);
+      }
+      await plat.setProperty('cache-size', '${cacheSizeKiB}KiB');
       await plat.setProperty('cache-pause', 'no');
-      await plat.setProperty('demuxer-max-bytes', '${buf.demuxerMaxBytes}');
-      await plat.setProperty(
-        'demuxer-max-back-bytes',
-        '${buf.demuxerMaxBackBytes}',
-      );
+      await plat.setProperty('cache-pause-initial', 'no');
+      await plat.setProperty('cache-pause-wait', '0');
+      await plat.setProperty('demuxer-max-bytes', '$demuxerMax');
+      await plat.setProperty('demuxer-max-back-bytes', '$demuxerBack');
       await plat.setProperty('hr-seek', 'yes');
-      // IPTV panelleri aralıklı yanıt verir; 5 sn zaman aşımı canlıda erken EOF/kesinti yapıyordu.
-      final networkTimeoutSec = tvLive ? '20' : '12';
+      // IPTV panelleri aralıklı yanıt verir; mobil/tablet/TV box için yeterli süre.
+      final networkTimeoutSec = tvLive ? '20' : '18';
       for (final name in <String>[
         'stream-open-timeout',
         'http-timeout',
@@ -1478,9 +1769,12 @@ void _cancelMediaKitDimSubs() {
         } catch (_) {}
       }
       try {
-        await plat.setProperty('initial-audio-sync', 'no');
+        // Telefon/tablet: ses görüntü hazır olmadan başlamasın (siyah ekran + ses 5–6 sn).
+        // TV/challenged: eski davranış (initial-audio-sync=no + geniş tampon).
+        await plat.setProperty('initial-audio-sync', tvLive ? 'no' : 'yes');
       } catch (_) {}
-      if (aml && _currentStreamIsLive) {
+      // Amlogic/challenged TV: gecikme/ilk kare hızlandırma (telefonda siyah ekran yapabiliyordu).
+      if (_currentStreamIsLive && aml) {
         try {
           await plat.setProperty('video-latency-hacks', 'yes');
         } catch (_) {}
@@ -1497,7 +1791,9 @@ void _cancelMediaKitDimSubs() {
   ///   [applyMediaKitMpvPurpleFixOptions]. `vd-lavc-fast` / `vd-lavc-skiploopfilter=all` korunur.
   ///   `auto-safe` kullanılmaz (zayıf kutularda yazılım çözücüye düşüp kare kare oynatmayı tetikleyebilir).
   /// - `framedrop`: güçlü cihazda `vo`, düşük RAM / az çekirdekte `yes`
-  /// - `scale` / `cscale` / `dscale` = bilinear, `vd-lavc-fast=yes`, `video-sync=audio`
+  /// - `scale` / `cscale` / `dscale` = bilinear, `vd-lavc-fast=yes`
+  /// - Canlı: `video-sync=display-resample`, `untimed` (Crispy-tivi)
+  /// - VOD: `video-sync=audio`, `untimed=no`
   ///
   /// **Not:** TV kutusunda Better/ExoPlayer’da görülen `PlatformException` / `Source error` / `b.0.1`
   /// bu mpv ayarlarından **kaynaklanmaz** — canlıda varsayılan motor Exo iken MediaKit
@@ -1520,8 +1816,6 @@ void _cancelMediaKitDimSubs() {
         'volume-max',
         PlayerController._kMediaKitVolumePropertyMax.round().toString(),
       );
-      // libmpv: `--video-output-levels=full` / `--colormatrix=auto` (RGB/YUV ve ekran sapması).
-      await setMpvOpt('video-output-levels', 'full');
       await setMpvOpt('colormatrix', 'auto');
 
       // VOD altyazısı VARSAYILAN OLARAK KAPALI. libmpv normalde `sid=auto` /
@@ -1548,9 +1842,10 @@ void _cancelMediaKitDimSubs() {
       // Geçersiz/self-signed sertifikalı panellerde "certificate verify failed"
       // hatasını giderir.
       final ignoreSsl = _settings.ignoreSslCertificate.value;
-      final lavfOpts = ignoreSsl
-          ? 'allowed_extensions=ALL,tls_verify=0'
-          : 'allowed_extensions=ALL';
+      final lavfOpts = MediaKitMpvCrispyConfig.buildDemuxerLavfOpts(
+        live: _currentStreamIsLive,
+        ignoreSsl: ignoreSsl,
+      );
       await setMpvOpt('demuxer-lavf-o', lavfOpts);
       if (ignoreSsl) {
         await setMpvOpt('tls-verify', 'no');
@@ -1566,12 +1861,8 @@ void _cancelMediaKitDimSubs() {
         final weak = AndroidPlaybackSocHints.weakMpvDevice;
         final aml = AndroidPlaybackSocHints.amlogicLike;
         final challengedTv = AndroidPlaybackSocHints.playbackChallengedTv;
-        // Better/Exo kodek hatasından düşüldüyse (veya Rockchip benzeri zayıf
-        // cihaz) bu oturumda yazılımsal çözüme zorla — donanım kod çözücü zaten
-        // patladığı için mpv'de de `hwdec=no` en güvenli açılış.
-        final swPurpleFix = _settings.preferSoftwareVideoDecoder.value ||
-            AndroidPlaybackSocHints.isSamsungSmT530 ||
-            _mediaKitFallbackForceSoftwareDecode;
+        // Yazılım kod çözücü: ayar, önbellek (software), hızlı zap veya bilinen cihaz.
+        final swPurpleFix = mediaKitShouldUseSoftwareDecode;
 
         // Cihaz güç sınıfı (düşük/orta/yüksek): framedrop, thread, cache ve
         // demuxer tampon boyutları buna göre seçilir.
@@ -1591,6 +1882,7 @@ void _cancelMediaKitDimSubs() {
 
         final String hwdecLog;
         if (swPurpleFix) {
+          // Yazılım: hem VideoController hem NativePlayer hwdec=no (mor/pembe önleme).
           await setMpvOpt('hwdec', 'no');
           hwdecLog = 'no';
         } else {
@@ -1598,8 +1890,10 @@ void _cancelMediaKitDimSubs() {
             amlogicLike: aml,
             playbackChallengedTv: challengedTv,
           );
-          await setMpvOpt('hwdec', hwdec);
-          hwdecLog = hwdec;
+          // Donanım hwdec yalnızca [VideoControllerConfiguration] üzerinden verilir.
+          // NativePlayer'da tekrar setProperty('hwdec', …) yüzey bağlantısını koparıp
+          // «ses var, görüntü siyah» yapabiliyor (Qualcomm/Xiaomi vb.).
+          hwdecLog = '$hwdec(via-VideoController)';
         }
         // Düşük segment: kare düşürmeyi aç (takılma yerine kare atla).
         await setMpvOpt('framedrop', isLowSeg ? 'yes' : 'vo');
@@ -1625,54 +1919,45 @@ void _cancelMediaKitDimSubs() {
         // MediaKit/mpv canlı açılış donması: cache açık + daha geniş stream buffer + hızlı ffmpeg decode.
         // Yüksek segmentte daha derin okuma/önbellek (bol RAM) → daha az takılma.
         final longSegHls =
-            _currentStreamIsLive && _useLongSegmentLiveHlsBuffer();
-        // Raw TS tespiti: yalnızca .ts uzantısına değil, URL parametrelerine de bakılır.
-        // IPTV panellerinin çoğu MPEG-TS'i uzantısız URL'lerle sunar
-        // (get.php?output=ts, /stream/123?type=ts vb.).
+            _currentStreamIsLive && _liveUseLongSegmentHlsBufferForBoot();
         final streamUrl = _normalizePlaybackStreamUrl(channel.value.streamUrl);
-        final streamLc = streamUrl.toLowerCase();
         final isRawTs = _currentStreamIsLive &&
-            (streamLc.endsWith('.ts') ||
-                streamLc.contains('output=ts') ||
-                streamLc.contains('output=mpegts') ||
-                streamLc.contains('output=mpeg-ts') ||
-                streamLc.contains('output=m2ts') ||
-                streamLc.contains('type=ts') ||
-                streamLc.contains('container=ts'));
-        final readaheadSecs = isRawTs ? '40' : (longSegHls ? '35' : (isHighSeg ? '30' : '20'));
-        
-        // VOD streams do not need low-latency live buffers. We give them a deep cache
-        // buffer to withstand network fluctuations and jitter without rebuffering.
-        final cacheSecs = !_currentStreamIsLive
-            ? (isHighSeg ? '20' : '15')
-            : (isRawTs
-                ? '5'
-                : (longSegHls
-                    ? '4'
-                    : (isHighSeg ? '2' : (challengedTv && isLowSeg ? '3' : '1'))));
+            IptvPlaybackDefaults.isLikelyMpegTsStreamUrl(streamUrl);
+        final mpvCache = IptvBetterPlayerConfig.mpvLiveCacheProfile(
+          useLongSegmentHls: longSegHls,
+          isRawTs: isRawTs,
+          isHighSeg: isHighSeg,
+          isLowSeg: isLowSeg,
+          challengedTv: challengedTv,
+          liveStream: _currentStreamIsLive,
+          liveBufferSeconds: _currentStreamIsLive
+              ? _settings.effectiveLiveBufferSeconds
+              : 0,
+        );
 
         await setMpvOpt('cache', 'yes');
-        await setMpvOpt('demuxer-readahead-secs', readaheadSecs);
-        // İstek metnindeki anahtar (muhtemel typo) için de dene; desteklenmiyorsa sessizce geç.
-        await setMpvOpt('demuxer-readahead-defs', readaheadSecs);
+        await setMpvOpt('demuxer-readahead-secs', mpvCache.readaheadSecs);
+        await setMpvOpt('demuxer-readahead-defs', mpvCache.readaheadSecs);
         await setMpvOpt('min-cache-percent', '0');
-        await setMpvOpt('cache-secs', cacheSecs);
-
-        final streamBufferSize = !_currentStreamIsLive
-            ? (isHighSeg ? '4096KiB' : '2048KiB')
-            : (isRawTs ? '3072KiB' : (longSegHls ? '2048KiB' : (isHighSeg ? '1024KiB' : '512KiB')));
-        await setMpvOpt('stream-buffer-size', streamBufferSize);
+        await setMpvOpt('cache-secs', mpvCache.cacheSecs);
+        await setMpvOpt('stream-buffer-size', mpvCache.streamBufferSize);
         await setMpvOpt('ffmpeg-fast', 'yes');
         await setMpvOpt('vd-lavc-fast', 'yes');
-        // Ses tamponu: ağ jitter'ı varsayılan 0,2 s sınırını aşatığında ses
-        // kesintisi yaşanır; `video-sync=audio` nedeniyle video da durur (“donma”
-        // hissi). Cihaz segment'ine göre tampon büyütülerek bu riski azaltılır.
-        final audioBuffer = isLowSeg ? '0.6' : (isHighSeg ? '0.2' : '0.4');
-        await setMpvOpt('audio-buffer', audioBuffer);
+        await setMpvOpt('audio-buffer', mpvCache.audioBuffer);
+        if (_currentStreamIsLive) {
+          await setMpvOpt('cache-pause-initial', 'no');
+          await setMpvOpt('cache-pause-wait', '0');
+        }
 
         if (_currentStreamIsLive) {
-          await _applyMpvIptvLiveZapTuning(plat, aml: aml);
+          await _applyMpvIptvLiveZapTuning(
+            plat,
+            aml: aml,
+            liveCache: mpvCache,
+          );
         } else {
+          // VOD: canlı mpv bayraklarını sıfırla (Crispy; seçenekler player/open arasında kalır).
+          await MediaKitMpvCrispyConfig.resetLiveFlagsForVod(setMpvOpt);
           // VOD demuxer tamponu — yüksek bit hızlı 4K dosyalar için en kritik
           // ayar. Eski segment-temelli değerler (16-32M) çok küçüktü:
           // `demuxer-readahead-secs=20` hedefi byte tavanına takılıp ~2 sn'lik
@@ -1692,6 +1977,8 @@ void _cancelMediaKitDimSubs() {
         if (swPurpleFix) {
           await applyMediaKitMpvPurpleFixOptions(plat);
         }
+        // Donanım yolunda video-output-levels zorlama yok — `limited` gri/karanlık,
+        // `full` IPTV'de renk bozulması yapabiliyor; mpv varsayılanı + colormatrix=auto yeterli.
 
         final ramGiBLog = AndroidPlaybackSocHints.totalRamBytes != null
             ? '${(AndroidPlaybackSocHints.totalRamBytes! / (1024 * 1024 * 1024)).toStringAsFixed(1)}GiB'
@@ -1704,7 +1991,9 @@ void _cancelMediaKitDimSubs() {
           'aml=$aml challengedTv=$challengedTv '
           'capableTv=${AndroidPlaybackSocHints.capableChallengedTvForVod} '
           'budgetSoc=${AndroidPlaybackSocHints.budgetTvBoxSoc} '
-          'swPurpleFix=$swPurpleFix model=${AndroidPlaybackSocHints.buildModel}',
+          'swPurpleFix=$swPurpleFix cacheSec=${mpvCache.cacheSecs} '
+          'readahead=${mpvCache.readaheadSecs} streamBuf=${mpvCache.streamBufferSize} '
+          'model=${AndroidPlaybackSocHints.buildModel}',
         );
       } else {
         await setMpvOpt('hwdec', 'auto-safe');
@@ -1715,6 +2004,8 @@ void _cancelMediaKitDimSubs() {
         );
         if (_currentStreamIsLive) {
           await _applyMpvIptvLiveZapTuning(plat, aml: false);
+        } else {
+          await MediaKitMpvCrispyConfig.resetLiveFlagsForVod(setMpvOpt);
         }
         // Android olmayan platformlar için dengeli ses tamponu.
         await setMpvOpt('audio-buffer', '0.4');
@@ -1724,7 +2015,19 @@ void _cancelMediaKitDimSubs() {
       await setMpvOpt('cscale', 'bilinear');
       await setMpvOpt('dscale', 'bilinear');
       await setMpvOpt('vd-lavc-fast', 'yes');
-      await setMpvOpt('video-sync', 'audio');
+      if (_currentStreamIsLive) {
+        await setMpvOpt('video-sync', 'display-resample');
+        await setMpvOpt('untimed', '');
+      } else {
+        await setMpvOpt('video-sync', 'audio');
+        await setMpvOpt('untimed', 'no');
+      }
+
+      final streamUrlForHls = _normalizePlaybackStreamUrl(channel.value.streamUrl);
+      if (MediaKitMpvCrispyConfig.shouldApplyHlsBitrate(streamUrlForHls)) {
+        final hlsBitrate = MediaKitMpvCrispyConfig.resolveHlsBitrate();
+        await setMpvOpt('hls-bitrate', hlsBitrate);
+      }
     } catch (e, st) {
       debugPrint('mina_iptv: MediaKit libmpv playback options: $e\n$st');
     }
@@ -1752,9 +2055,23 @@ Future<void> attachMediaKitPlayer(Player? p) async {
     _cancelMediaKitDimSubs();
     _cancelMediaKitWakelockSubs();
 
+    final previous = _mediaKitPlayer;
     _mediaKitPlayer = p;
     if (p == null) {
       _mediaKitZapAbrTargetGen = null;
+    } else if (previous != null && !identical(previous, p)) {
+      final retainPrevious = Get.isRegistered<ShowcaseInAppPipService>() &&
+          Get.find<ShowcaseInAppPipService>().retainsMediaKitPlayer(previous);
+      if (!retainPrevious) {
+        try {
+          await previous.pause();
+          await previous.stop();
+          await previous.dispose();
+        } catch (_) {}
+        if (Platform.isAndroid) {
+          await Future<void>.delayed(const Duration(milliseconds: 100));
+        }
+      }
     }
 
     if (isClosed) {
@@ -1767,6 +2084,7 @@ Future<void> attachMediaKitPlayer(Player? p) async {
       _mediaKitErrorSub = p.stream.error.listen((e) {
         if (e.isEmpty) return;
         debugPrint('mina_iptv: MediaKit stream error: $e');
+        if (_handleMediaKitLivePrimaryFailure(e)) return;
         _emitPlaybackErrorForRecovery(e);
       });
       void dimBump([dynamic _]) {
@@ -1811,11 +2129,16 @@ Future<void> attachMediaKitPlayer(Player? p) async {
           final st = p.state;
           final w = st.width;
           final h = st.height;
-          if (w != null && h != null && w > 0 && h > 0) {
+          final hasDims = w != null && h != null && w > 0 && h > 0;
+          if (hasDims) {
             for (final s in _mediaKitBusyDimsSubs) {
               s.cancel();
             }
             _mediaKitBusyDimsSubs.clear();
+            if (_currentStreamIsLive) {
+              _livePlaybackEstablished = true;
+              _cancelMediaKitLiveTsHlsWatchdog();
+            }
             _finishBootBusyHold(holdGen, _busyHoldVodSession);
           }
         }
@@ -1823,6 +2146,11 @@ Future<void> attachMediaKitPlayer(Player? p) async {
         _mediaKitBusyDimsSubs.add(p.stream.width.listen(tryMkFirstFrame));
         _mediaKitBusyDimsSubs.add(p.stream.height.listen(tryMkFirstFrame));
         tryMkFirstFrame();
+      }
+
+      if (_currentStreamIsLive) {
+        unawaited(_armMediaKitBlackScreenWatchdog(p, _playbackGeneration));
+        _startMediaKitLiveStallWatchdog(p, _playbackGeneration);
       }
 
       unawaited(
@@ -1864,6 +2192,7 @@ Future<void> attachMediaKitPlayer(Player? p) async {
       _syncPlaybackWakelock(force: true);
     });
   }
+
 
 /// Canlıda oynatıcıdaki [Channel] örneği ile liste önbelleğindeki satırı hizalar (isim/logo, yinelenen URL vb.).
   Future<void> _rebindLiveChannelRowFromPlaylistCache() async {
@@ -1977,6 +2306,12 @@ bool _useLongSegmentLiveHlsBuffer() {
         .value;
   }
 
+  /// Zap yolunda uzun segment tamponunu atla; soğuk açılışta probe aktifse uygula.
+  bool _liveUseLongSegmentHlsBufferForBoot() {
+    if (_preferFastLiveStartBuffer) return false;
+    return _useLongSegmentLiveHlsBuffer();
+  }
+
 /// Exo/MediaKit canlıda yayın durduğunda (ENDED/EOF/sessiz durma) kullanıcı
   /// duraklatmadıysa aynı kanalı keep-alive ile yeniden başlatır.
   void _handleLiveStreamStopped(String reason) {
@@ -2054,14 +2389,25 @@ bool _useLongSegmentLiveHlsBuffer() {
   ///   (takılma/durma/hata) hemen daha geniş tamponla yeniden bağlan.
   /// - **Revert (ağ iyileşti, daha küçük tampon):** sağlıklı oynatmada düşük
   ///   tamponu/gecikmeyi geri getirmek için tek seferlik temiz yeniden bağlanma.
-  ///   Flapping monitör tarafında 3 «iyi» döngü gerekliliğiyle zaten engellenir.
   void _onRuntimeLiveBufferOverrideChanged() {
     if (isClosed || isBusy.value) return;
     if (!_currentStreamIsLive || isMovie || isSeries || _userPausedLive) return;
-    // Override yalnızca Exo tamponunu etkiler.
-    if (effectiveUseMediaKit) return;
 
     final target = _settings.effectiveLiveBufferSeconds;
+    if (effectiveUseMediaKit) {
+      final mk = _mediaKitPlayer;
+      final struggling = mk == null ||
+          !(mk.state.playing) ||
+          ((mk.state.width ?? 0) <= 0 && (mk.state.height ?? 0) <= 0);
+      if (target > _settings.liveBufferSeconds.value && struggling) {
+        debugPrint(
+          'mina_iptv: MediaKit canlı tampon override $target sn → yeniden bağlan',
+        );
+        unawaited(restartCurrentStream());
+      }
+      return;
+    }
+
     final applied = _appliedExoLiveBufferSeconds;
     if (applied < 0 || target == applied) return;
 
@@ -2094,6 +2440,86 @@ bool _useLongSegmentLiveHlsBuffer() {
         unawaited(restartCurrentStream());
       }
     }
+  }
+
+  int _liveAutoBufferEngageTargetSec() {
+    final user = _settings.liveBufferSeconds.value;
+    return (user + PlayerController.liveAutoBufferBoostStepSec)
+        .clamp(
+          PlayerController.liveAutoBufferBoostMinSec,
+          PlayerController.liveAutoBufferBoostMaxSec,
+        );
+  }
+
+  /// Ağ/tampon stresi: kullanıcı ayarının üstüne geçici geniş tampon (ayar yok).
+  void _engageLiveAutoBufferIfNeeded(String reason) {
+    if (!_currentStreamIsLive || isMovie || isSeries || _userPausedLive) return;
+    if (effectiveUseMediaKit) return;
+    if (_settings.hasRuntimeLiveBufferOverride) return;
+    final target = _liveAutoBufferEngageTargetSec();
+    if (target <= _settings.liveBufferSeconds.value) return;
+    debugPrint('mina_iptv: canlı otomatik tampon → $target sn ($reason)');
+    _settings.setRuntimeLiveBufferOverride(target);
+    _liveAutoBufferHealthySince = null;
+    _scheduleLiveAutoBufferRevertWatch();
+  }
+
+  void _scheduleLiveAutoBufferRevertWatch() {
+    _liveAutoBufferRevertTimer?.cancel();
+    if (!_settings.hasRuntimeLiveBufferOverride) return;
+    _liveAutoBufferRevertTimer = Timer.periodic(
+      const Duration(seconds: 15),
+      (_) => _tickLiveAutoBufferRevert(),
+    );
+  }
+
+  void _tickLiveAutoBufferRevert() {
+    if (isClosed) {
+      _cancelLiveAutoBufferGuard();
+      return;
+    }
+    if (!_settings.hasRuntimeLiveBufferOverride) {
+      _cancelLiveAutoBufferGuard();
+      return;
+    }
+    if (!_currentStreamIsLive || isMovie || isSeries) {
+      _revertLiveAutoBuffer('content-kind');
+      return;
+    }
+    final v = better?.videoPlayerController?.value;
+    final healthy = v != null &&
+        v.initialized &&
+        v.isPlaying &&
+        !v.isBuffering &&
+        !v.hasError;
+    if (healthy) {
+      _liveAutoBufferHealthySince ??= DateTime.now();
+      final since = _liveAutoBufferHealthySince!;
+      if (DateTime.now().difference(since) >=
+          PlayerController.liveAutoBufferHealthyRevertAfter) {
+        _revertLiveAutoBuffer(
+          'healthy-${PlayerController.liveAutoBufferHealthyRevertAfter.inSeconds}s',
+        );
+      }
+    } else {
+      _liveAutoBufferHealthySince = null;
+    }
+  }
+
+  void _revertLiveAutoBuffer(String reason) {
+    if (!_settings.hasRuntimeLiveBufferOverride) {
+      _cancelLiveAutoBufferGuard();
+      return;
+    }
+    debugPrint('mina_iptv: canlı otomatik tampon kapatıldı ($reason)');
+    _settings.setRuntimeLiveBufferOverride(null);
+    _cancelLiveAutoBufferGuard();
+  }
+
+  void _cancelLiveAutoBufferGuard() {
+    _liveAutoBufferRevertTimer?.cancel();
+    _liveAutoBufferRevertTimer = null;
+    _liveAutoBufferHealthySince = null;
   }
 
 /// Sağlıklı (gerçekten oynayan) canlıya dönülünce keep-alive zincirini durdur.
@@ -2201,6 +2627,7 @@ void play() {
       unawaited(mk.play().catchError((_, __) {}));
       return;
     }
+
 
     if (_isCurrentChannelLive()) {
       if (_userPausedLive) {
@@ -2632,6 +3059,7 @@ void _resetOrphanBetterSurfaceRecoveryForZap() {
 /// [PlayerView]: Better yüzeyi yok, hata/mesgul yok — kısa gecikmeyle sınırlı [_boot].
   Future<void> ensureOrphanBetterBootRetry() async {
     if (isClosed) return;
+    if (isReopeningFromInAppPipPending) return;
     if (effectiveUseMediaKit) return;
     if (better != null) {
       orphanBetterSurfaceRecoveryAttempts.value = 0;
@@ -2704,6 +3132,34 @@ void _resetOrphanBetterSurfaceRecoveryForZap() {
             n.bufferForPlaybackAfterRebufferMs;
   }
 
+/// Başarı önbelleğindeki taşıma/motor biçimini [_boot] ve [zapTo] için uygular.
+  void _applyStreamSuccessCacheForBoot(String? savedFormat, {required int channelId}) {
+    if (savedFormat == null) return;
+    debugPrint(
+      'mina_iptv: Using cached format for channel $channelId: $savedFormat',
+    );
+    if (AppSettingsService.isStreamSuccessMediaKitFormat(savedFormat)) {
+      // MediaKit kanal hafızası yalnız akıllı seçim açıkken.
+      if (!_settings.smartPlayerSelection.value) return;
+      if (!betterOsdOverride.value) {
+        mediaKitFallbackSession.value = true;
+        betterOsdOverride.value = false;
+      }
+      if (AppSettingsService.streamSuccessFormatUsesSoftwareDecode(savedFormat)) {
+        _forceSoftwareVideoDecoder = true;
+        _mediaKitFallbackForceSoftwareDecode = true;
+      }
+      return;
+    }
+    if (savedFormat == AppSettingsService.streamSuccessFormatSoftware) {
+      _forceSoftwareVideoDecoder = true;
+      _mediaKitFallbackForceSoftwareDecode = true;
+    } else if (savedFormat == AppSettingsService.streamSuccessFormatTs) {
+      // TS URL dönüşümü [_boot] içinde uygulanır; burada yalnızca bayrak.
+      _cachedTsFormatForBoot = true;
+    }
+  }
+
 /// [zapTo] öncesi: motor değişmeyecekse Better örneğini dispose etme.
   bool _shouldReuseBetterOnChannelChange(Channel newCh) {
     if (better == null) return false;
@@ -2712,27 +3168,29 @@ void _resetOrphanBetterSurfaceRecoveryForZap() {
     if (nextNormalized.isEmpty) return false;
 
     final nextLive = IptvPlaybackDefaults.isLikelyLiveStream(nextNormalized);
-    final nextIsRawTs = nextLive && nextNormalized.toLowerCase().endsWith('.ts');
+    // Canlı: tek texture — tampon profili farkında bile setupDataSource
+    // (SurfaceProducer aynı kalır). mapSize şişmesin.
+    if (nextLive) return true;
+
     final nextDs = iptvBetterPlayerDataSource(
       nextNormalized,
-      liveStream: nextLive,
+      liveStream: false,
       cacheConfiguration: null,
       useAsmsTracks: null,
       useAsmsAudioTracks: null,
       useAsmsSubtitles: null,
-      preferSoftwareVideoDecoder:
-          nextLive && _settings.preferSoftwareVideoDecoder.value,
-      liveBufferSeconds: nextLive
-          ? _settings.effectiveLiveBufferSeconds
-          : IptvBetterPlayerConfig.defaultLiveBufferSecondsForExo,
-      isRawTs: nextIsRawTs,
-      useLongSegmentHlsBuffer: nextLive && _useLongSegmentLiveHlsBuffer(),
+      preferSoftwareVideoDecoder: _forceSoftwareVideoDecoder ||
+          _settings.preferSoftwareVideoDecoder.value,
+      liveBufferSeconds: IptvBetterPlayerConfig.defaultLiveBufferSecondsForExo,
+      isRawTs: false,
+      useLongSegmentHlsBuffer: false,
+      useUhdLiveBuffer: false,
     );
     return _canReuseBetterForDataSource(nextDs);
   }
 
-/// HLS/M3U8 çoklu varyant: cihaz + [AppSettingsService.adaptiveStreamQualityCeiling]
-  /// ile üst çözünürlük (4K varyant zayıf kutularda kilitlenmesin).
+/// HLS/M3U8 çoklu varyant: ekran + cihaz sınıfına göre otomatik tavan
+  /// (kullanıcı ayarı yok; 4K varyant zayıf kutularda kilitlenmesin).
   int? _preferredMaxVideoHeightForAdaptivePlayback() {
     int deviceH;
     try {
@@ -2756,8 +3214,7 @@ void _resetOrphanBetterSurfaceRecoveryForZap() {
     } catch (_) {
       deviceH = 1080;
     }
-    final cap = _settings.adaptiveStreamQualityCeiling.value.maxHeightPxOrNull;
-    var result = cap == null ? deviceH : math.min(deviceH, cap);
+    var result = deviceH;
     if (Platform.isAndroid && AndroidPlaybackSocHints.oneGiBRamClass) {
       result = math.min(result, 720);
     }
@@ -2816,6 +3273,30 @@ void _cancelLiveZapAbrQualityRamp() {
         preferredMaxHeight: preferredMaxHeight,
         disableAsms: disableAsms,
       );
+      return;
+    }
+    if (Platform.isAndroid) {
+      unawaited(AndroidPlaybackSocHints.ensureLoaded().then((_) {
+        if (AndroidPlaybackSocHints.weakMpvDevice ||
+            AndroidPlaybackSocHints.playbackChallengedTv ||
+            AndroidPlaybackSocHints.playbackSegment ==
+                DevicePlaybackSegment.low) {
+          _applyPreferredMaxHeightToBetter(
+            ctrl,
+            preferredMaxHeight: preferredMaxHeight,
+            disableAsms: disableAsms,
+          );
+          return;
+        }
+        _cancelLiveZapAbrQualityRamp();
+        unawaited(
+          _runLiveZapAbrRampsExoAsync(
+            ctrl,
+            expectedGen,
+            preferredMaxHeight: preferredMaxHeight,
+          ),
+        );
+      }));
       return;
     }
     _cancelLiveZapAbrQualityRamp();
@@ -2878,6 +3359,14 @@ Future<void> _runLiveZapAbrRampsExoAsync(
 /// MediaKit çoklu video iz: düşük → 2s sonra tercih tavanı.
   Future<void> _tryLiveZapAbrRampsMediaKit(Player p) async {
     if (!_currentStreamIsLive) return;
+    if (Platform.isAndroid) {
+      await AndroidPlaybackSocHints.ensureLoaded();
+      if (AndroidPlaybackSocHints.weakMpvDevice ||
+          AndroidPlaybackSocHints.playbackChallengedTv ||
+          AndroidPlaybackSocHints.playbackSegment == DevicePlaybackSegment.low) {
+        return;
+      }
+    }
     final g = _mediaKitZapAbrTargetGen;
     if (g == null || !_isPlaybackGenerationCurrent(g)) return;
     if (!identical(_mediaKitPlayer, p)) return;
@@ -3007,8 +3496,10 @@ Future<void> _runLiveZapAbrRampsExoAsync(
       disposeFutures.add(
         Future<void>(() async {
           try {
+            await b.setVolume(0);
+            await b.stop();
             await b.pause();
-            b.dispose(forceDispose: true);
+            await b.dispose(forceDispose: true);
           } catch (_) {}
         }),
       );
@@ -3049,6 +3540,66 @@ void _cancelLiveTransientErrorEmitTimer() {
 void _cancelBetterBufferingRecoveryTimer() {
     _betterBufferingRecoveryTimer?.cancel();
     _betterBufferingRecoveryTimer = null;
+  }
+
+  /// MediaKit/mpv oturumunu mute → pause → stop → dispose ile keser.
+  /// Better’a geçiş veya route çıkışında çift sesi önlemek için.
+  Future<bool> _hardDisposeMediaKitPlayer({
+    String reason = 'reset',
+  }) async {
+    _cancelMediaKitDimSubs();
+    final mk = _mediaKitPlayer;
+    if (mk == null) return false;
+    debugPrint('mina_iptv: MediaKit temizleniyor ($reason)...');
+    _mediaKitPlayer = null;
+    _mediaKitZapAbrTargetGen = null;
+    _mediaKitErrorSub?.cancel();
+    _mediaKitErrorSub = null;
+    try {
+      await mk.setVolume(0);
+      await mk.pause();
+      await mk.stop();
+      await mk.dispose();
+    } catch (e) {
+      debugPrint('mina_iptv: MediaKit dispose hatası pas geçildi: $e');
+    }
+    return true;
+  }
+
+  /// Yeni BetterController CREATE öncesi: recovery timer’ları kes + eski oyuncuyu
+  /// sert dispose + Xiaomi MediaCodec settle. mapSize şişmesini önler.
+  Future<bool> _hardDisposeBetterPlayerBeforeCreate({
+    String reason = 'reset',
+  }) async {
+    _cancelNetworkAutoResumeTimer();
+    _cancelBetterBufferingRecoveryTimer();
+    _cancelLiveTransientErrorEmitTimer();
+    _detachExoStallEventListener();
+    final old = better;
+    if (old == null) return false;
+    debugPrint(
+      'mina_iptv: Eski oyuncu temizleniyor ($reason)... MapSize düşürülüyor.',
+    );
+    _setBetterPlayer(null);
+    try {
+      old.videoPlayerController?.removeListener(_onVideoPlayerChanged);
+      try {
+        await old.setVolume(0);
+      } catch (_) {}
+      try {
+        await old.stop();
+      } catch (_) {}
+      try {
+        await old.pause();
+      } catch (_) {}
+      await old.dispose(forceDispose: true);
+    } catch (e) {
+      debugPrint('mina_iptv: Dispose hatası pas geçildi: $e');
+    }
+    if (Platform.isAndroid) {
+      await Future<void>.delayed(PlayerController._betterHardResetSettle);
+    }
+    return true;
   }
 
 void _attachBetterBufferingRecoveryListener(BetterPlayerController ctrl) {
@@ -3100,11 +3651,13 @@ void _cancelLiveStallWatchdog() {
     _liveTvStallPollTimer?.cancel();
     _liveTvStallPollTimer = null;
     _liveTvBufferingSince = null;
+    _liveStallRecoveryStage = 0;
   }
 
 void _cancelLiveTvStartupWatchdog() {
     _liveTvStartupWatchdog?.cancel();
     _liveTvStartupWatchdog = null;
+    _liveStartupWatchdogArmedAt = null;
   }
 
 void _cancelLiveAutoNextWatchdog() {
@@ -3184,31 +3737,176 @@ void _resetNetworkRecoveryState() {
     _networkResumeAttempt = 0;
   }
 
+bool _isLikelyHlsLivePlaybackUrl([String? url]) {
+    final u = (url ?? _lastPlaybackUrl ?? channel.value.streamUrl).trim();
+    if (u.isEmpty) return false;
+    return IptvPlaybackDefaults.isLikelyHlsStreamUrl(u);
+  }
+
+Duration _liveStartupSwapThresholdForCurrentUrl() {
+    if (_isLikelyHlsLivePlaybackUrl()) {
+      return PlayerController._liveStartupHlsSwapThreshold;
+    }
+    return PlayerController._liveStartupSwapThreshold;
+  }
+
+String? _convertLivePlayUrlToTsIfNeeded(String url) =>
+      IptvPlaybackDefaults.convertLiveUrlToTsIfNeeded(url);
+
+void _detachExoStallEventListener() {
+    unawaited(_exoStallEventSub?.cancel());
+    _exoStallEventSub = null;
+  }
+
+void _attachExoStallEventListener(BetterPlayerController ctrl) {
+    _detachExoStallEventListener();
+    final vpc = ctrl.videoPlayerController;
+    if (vpc == null) return;
+    _exoStallEventSub = vpc.videoEventStreamController.stream.listen((event) {
+      if (isClosed) return;
+      switch (event.eventType) {
+        case VideoEventType.playbackEstablished:
+          _livePlaybackEstablished = true;
+          if (_liveTvStartupWatchdog != null) {
+            _cancelLiveTvStartupWatchdog();
+            debugPrint(
+              'mina_iptv: Canlı başlangıç watchdog iptal (playbackEstablished)',
+            );
+          }
+          break;
+        case VideoEventType.videoFormat:
+          if (_currentStreamIsLive &&
+              !effectiveUseMediaKit &&
+              _liveTvStartupWatchdog != null &&
+              _liveStartupLooksHealthy()) {
+            _cancelLiveTvStartupWatchdog();
+            debugPrint(
+              'mina_iptv: Canlı başlangıç watchdog iptal (videoFormat)',
+            );
+          }
+          break;
+        case VideoEventType.videoStall:
+        case VideoEventType.bufferingStall:
+          // Kısa ağ blip'i: hemen HLS↔TS swap yapma (yayını gereksiz keser).
+          // Önce softRecover; uzun tampon takılmasını [_startLiveStallWatchdog] yönetir.
+          if (_currentStreamIsLive &&
+              !effectiveUseMediaKit &&
+              !_conservativeRecoverInFlight) {
+            unawaited(_tryConservativeLiveRecover());
+          }
+          break;
+        default:
+          break;
+      }
+    });
+  }
+
+Future<bool> _tryConservativeLiveRecover() async {
+    if (isClosed || _conservativeRecoverInFlight) return false;
+    if (!_currentStreamIsLive || effectiveUseMediaKit) {
+      return false;
+    }
+    final gen = _playbackGeneration;
+    final vpc = better?.videoPlayerController;
+    if (vpc == null) return false;
+    final pos = vpc.value.position;
+    if (!_livePlaybackEstablished && pos <= Duration.zero) return false;
+
+    final now = DateTime.now();
+    final last = _liveSoftRecoverLastAt;
+    if (last != null &&
+        now.difference(last) < const Duration(seconds: 4)) {
+      return false;
+    }
+    _liveSoftRecoverLastAt = now;
+
+    _conservativeRecoverInFlight = true;
+    try {
+      debugPrint('mina_iptv: Canlı muhafazakâr kurtarma (softRecover, seek yok)');
+      final ok = await vpc.softRecoverPlayback();
+      if (!ok) return false;
+      // Motor değişimi / dispose sonrası softRecover hayalet ses üretmesin.
+      if (!_isPlaybackGenerationCurrent(gen) ||
+          effectiveUseMediaKit ||
+          better?.videoPlayerController != vpc) {
+        return false;
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 900));
+      if (isClosed ||
+          !_isPlaybackGenerationCurrent(gen) ||
+          effectiveUseMediaKit ||
+          better?.videoPlayerController != vpc) {
+        return false;
+      }
+      var v = vpc.value;
+      if (v.hasError) return false;
+      if (v.isPlaying || v.isBuffering) return true;
+      // Hâlâ duruyorsa bir kez play dene (ağ blip sonrası).
+      try {
+        await better?.play();
+      } catch (_) {}
+      await Future<void>.delayed(const Duration(milliseconds: 600));
+      if (isClosed ||
+          !_isPlaybackGenerationCurrent(gen) ||
+          effectiveUseMediaKit ||
+          better?.videoPlayerController != vpc) {
+        return false;
+      }
+      v = vpc.value;
+      return (v.isPlaying || v.isBuffering) && !v.hasError;
+    } catch (_) {
+      return false;
+    } finally {
+      _conservativeRecoverInFlight = false;
+    }
+  }
+
 Duration _networkResumeDelayForAttempt() {
-    const steps = [1, 3, 6, 12, 24];
+    // Exo BUFFERING→READY için en az 10 sn; 1–3 sn’lik öldürme yok.
+    const steps = [10, 12, 16, 20, 30];
     final i = _networkResumeAttempt.clamp(0, steps.length - 1);
-    return Duration(seconds: steps[i]);
+    final d = Duration(seconds: steps[i]);
+    final min = PlayerController._networkResumeMinDelay;
+    return d < min ? min : d;
   }
 
 void _scheduleNetworkAutoResumeIfNeeded(String msg) {
     if (_shouldBlockAutomaticPlayback()) return;
+    if (PlayerController._isExoTsExtractorSeekFailure(msg)) return;
+    if (PlayerController._isHttpForbiddenOrUnauthorizedError(msg) &&
+        _liveHttpForbiddenRetryCount >= 2) {
+      return;
+    }
     final eligible = PlayerController._isLikelyNetworkOrTransientError(msg) ||
-        (_currentStreamIsLive && !PlayerController._isNotFoundStyleError(msg));
+        PlayerController._isHttpForbiddenOrUnauthorizedError(msg) ||
+        (_currentStreamIsLive &&
+            !PlayerController._isNotFoundStyleError(msg) &&
+            !PlayerController._isExoTsExtractorSeekFailure(msg));
     if (!eligible) return;
-    if (_recovering) return;
+    if (_networkResumeInFlight) return;
+    if (_currentStreamIsLive &&
+        !effectiveUseMediaKit &&
+        !PlayerController._isHttpForbiddenOrUnauthorizedError(msg)) {
+      _engageLiveAutoBufferIfNeeded('network-resume');
+    }
     // Keep-alive: yayın geri gelene kadar sessizce denemeye devam; kullanıcıya
-    // kalıcı «oynatılamadı» hatası gösterme. Klasik akışta 8 denemeden sonra
-    // genel hata gösterilir (eski davranış korunur).
+    // kalıcı «oynatılamadı» hatası gösterme. Klasik akışta 8 denemeden sonra dur.
     if (_networkResumeAttempt >= 8 && !_liveKeepAliveArmed) {
       error.value ??= 'player.error.playbackGeneric'.tr;
+      debugPrint('mina_iptv: Network recovery limit (8) — durduruldu');
+      return;
     }
     _networkAutoResumeTimer?.cancel();
     final d = _networkResumeDelayForAttempt();
+    final idx = _networkResumeAttempt;
     debugPrint(
-      'mina_iptv: Network recovery in ${d.inSeconds}s (attempt idx $_networkResumeAttempt)',
+      'mina_iptv: Network recovery in ${d.inSeconds}s (attempt idx $idx)',
     );
     _networkAutoResumeTimer = Timer(d, () {
       _networkAutoResumeTimer = null;
+      // Boot senkron «başarılı» olsa bile async Source error yeniden schedule
+      // eder; idx burada artsın ki backoff ve limit işlesin.
+      _networkResumeAttempt = (_networkResumeAttempt + 1).clamp(0, 16);
       unawaited(_performNetworkResume());
     });
   }
@@ -3224,6 +3922,12 @@ void _emitPlaybackErrorForRecovery(
         error.value = 'player.error.contentNotFound'.tr;
         return;
       }
+      if (_handleLiveHttpForbiddenError(msg)) {
+        return;
+      }
+      if (_handleLiveTsExtractorSeekFailure(msg)) {
+        return;
+      }
       if (_scheduleXtreamVodPathGetPhpRetry()) {
         return;
       }
@@ -3236,24 +3940,31 @@ void _emitPlaybackErrorForRecovery(
       if (_maybeSwitchToBetterAfterMediaKitVodFailure(msg)) {
         return;
       }
-      if (PlayerController._isLikelyNetworkOrTransientError(msg)) {
+      // Canlı Source error / transient: önce HLS↔TS swap (403 / TsExtractor hariç).
+      if (_currentStreamIsLive &&
+          !PlayerController._isNotFoundStyleError(msg) &&
+          !PlayerController._isHttpForbiddenOrUnauthorizedError(msg) &&
+          !PlayerController._isExoTsExtractorSeekFailure(msg) &&
+          !_decoderTriedTsToM3u8Swap &&
+          !effectiveUseMediaKit) {
+        final norm = _normalizePlaybackStreamUrl(channel.value.streamUrl);
+        if (_tryLiveTransportFormatSwapRecovery(norm)) {
+          return;
+        }
+      }
+      if (PlayerController._isLikelyNetworkOrTransientError(msg) ||
+          PlayerController._isHttpForbiddenOrUnauthorizedError(msg)) {
         error.value = null;
         if (!suppressNetworkRecoverySchedule) {
           _scheduleNetworkAutoResumeIfNeeded(msg);
         }
         return;
       }
-      if (_currentStreamIsLive && !PlayerController._isNotFoundStyleError(msg)) {
+      if (_currentStreamIsLive &&
+          !PlayerController._isNotFoundStyleError(msg) &&
+          !PlayerController._isExoTsExtractorSeekFailure(msg)) {
         error.value = null;
         if (!suppressNetworkRecoverySchedule) {
-          if (!_decoderTriedTsToM3u8Swap && !effectiveUseMediaKit) {
-            // Clear cache since we're about to try a fallback
-            unawaited(_settings.clearStreamSuccessFormat(channel.value.id));
-            final norm = _normalizePlaybackStreamUrl(channel.value.streamUrl);
-            if (_tryLiveTransportFormatSwapRecovery(norm)) {
-              return;
-            }
-          }
           _scheduleNetworkAutoResumeIfNeeded(msg);
         }
         return;
@@ -3262,6 +3973,153 @@ void _emitPlaybackErrorForRecovery(
     } finally {
       _syncLiveAutoNextWatchdog();
     }
+  }
+
+/// Canlı HLS HTTP 403/401: TS'ye düşme; sınırlı aynı-URL retry, sonra MediaKit.
+  bool _handleLiveHttpForbiddenError(String msg) {
+    if (!_currentStreamIsLive) return false;
+    if (!PlayerController._isHttpForbiddenOrUnauthorizedError(msg)) {
+      return false;
+    }
+    _cancelNetworkAutoResumeTimer();
+    // Başarısız HLS sonrası TS önbelleği yazılmasın / zorlanmasın.
+    unawaited(_settings.clearStreamSuccessFormat(channel.value.id));
+    _settings.syncPlaybackUrlNormalizationPolicy();
+    IptvPlaybackDefaults.setSkipAutoM3u8LiveManifest(false);
+
+    if (effectiveUseMediaKit) {
+      error.value = 'player.error.streamForbidden'.tr;
+      return true;
+    }
+
+    if (_liveHttpForbiddenRetryCount < 2) {
+      _liveHttpForbiddenRetryCount++;
+      error.value = null;
+      debugPrint(
+        'mina_iptv: Canlı HTTP 403/401 → aynı HLS yeniden deneme '
+        '($_liveHttpForbiddenRetryCount/2), TS swap yok',
+      );
+      _networkResumeAttempt = _liveHttpForbiddenRetryCount;
+      _scheduleNetworkAutoResumeIfNeeded(msg);
+      return true;
+    }
+
+    if (!_autoEngineSwitchUsed) {
+      _autoEngineSwitchUsed = true;
+      betterOsdOverride.value = false;
+      mediaKitFallbackSession.value = true;
+      _showEngineFallbackToast(toMediaKit: true);
+      debugPrint('mina_iptv: Canlı HTTP 403/401 → MediaKit yedek (TS yok)');
+      unawaited(_performMediaKitFallbackBoot());
+      return true;
+    }
+
+    error.value = 'player.error.streamForbidden'.tr;
+    return true;
+  }
+
+/// Canlı progressive TS: TsExtractor.seek — yazılım decoder / network loop yok.
+  bool _handleLiveTsExtractorSeekFailure(String msg) {
+    if (!_currentStreamIsLive || effectiveUseMediaKit) return false;
+    final onTs = _isLiveMpegTsPlaybackUrl();
+    final explicit = PlayerController._isExoTsExtractorSeekFailure(msg);
+    // Swap sonrası TS'de genel Source error da aynı Exo seek yoluna düşer.
+    final likelyAfterSwap = onTs &&
+        _decoderTriedTsToM3u8Swap &&
+        msg.toLowerCase().contains('source error');
+    if (!explicit && !likelyAfterSwap) return false;
+
+    _cancelNetworkAutoResumeTimer();
+    unawaited(_settings.clearStreamSuccessFormat(channel.value.id));
+    _settings.syncPlaybackUrlNormalizationPolicy();
+
+    if (_liveTsSeekFailureHandled) {
+      // Exception + VideoPlayer listener aynı hatayı iki kez iletir; ikinci
+      // çağrı sticky «açılamıyor» basmasın (HLS/MediaKit kurtarma zaten yolda).
+      return true;
+    }
+    _liveTsSeekFailureHandled = true;
+
+    // Kullanıcı MPEG-TS tercih ettiyse: önce Better'da kalmayı dene (native
+    // live-TS düzeltmesi). Hâlâ kırılıyorsa MediaKit yedek.
+    final preferTs = _settings.effectiveLiveStreamFormat ==
+        AppSettingsService.liveStreamFormatTs;
+    if (preferTs &&
+        onTs &&
+        !_autoEngineSwitchUsed &&
+        !betterOsdOverride.value) {
+      _autoEngineSwitchUsed = true;
+      betterOsdOverride.value = false;
+      mediaKitFallbackSession.value = true;
+      _networkResumeAttempt = 0;
+      error.value = null;
+      _showEngineFallbackToast(toMediaKit: true);
+      debugPrint(
+        'mina_iptv: TsExtractor.seek + MPEG tercihi → MediaKit yedek (.ts)',
+      );
+      unawaited(_performMediaKitFallbackBoot());
+      return true;
+    }
+
+    // TS başarısız → orijinal HLS'e dön veya MediaKit.
+    final basis = (_lastPlaybackUrl?.trim().isNotEmpty ?? false)
+        ? _lastPlaybackUrl!.trim()
+        : _normalizePlaybackStreamUrl(channel.value.streamUrl);
+    final hls = _trySwapLiveTsM3u8Url(basis, live: true);
+    final toHls = hls != null &&
+        hls != basis &&
+        !IptvPlaybackDefaults.isLikelyMpegTsStreamUrl(hls);
+
+    if (toHls) {
+      IptvPlaybackDefaults.setSkipAutoM3u8LiveManifest(false);
+      // Telefonda TS seek fail → HLS bounce + 403/dispose yarışı; MediaKit.
+      final phone = Platform.isAndroid &&
+          !AndroidPlaybackSocHints.androidTv &&
+          _settings.layoutMode.value != AppLayoutMode.tv;
+      if (phone && !_autoEngineSwitchUsed && !betterOsdOverride.value) {
+        _autoEngineSwitchUsed = true;
+        betterOsdOverride.value = false;
+        mediaKitFallbackSession.value = true;
+        _playUrlOverride = hls;
+        _networkResumeAttempt = 0;
+        error.value = null;
+        _showEngineFallbackToast(toMediaKit: true);
+        debugPrint(
+          'mina_iptv: TsExtractor.seek → MediaKit (HLS URL, telefon cool-down)',
+        );
+        unawaited(_performMediaKitFallbackBoot());
+        return true;
+      }
+      _playUrlOverride = hls;
+      _networkResumeAttempt = 0;
+      error.value = null;
+      debugPrint(
+        'mina_iptv: TsExtractor.seek → HLS geri dönüş (TS network loop yok): $hls',
+      );
+      unawaited(
+        _boot(
+          preferredMaxHeight: null,
+          disableAsms: false,
+          reuseSameBetterPlayer: true,
+          suppressNetworkRecoverySchedule: true,
+        ),
+      );
+      return true;
+    }
+
+    if (!_autoEngineSwitchUsed) {
+      _autoEngineSwitchUsed = true;
+      betterOsdOverride.value = false;
+      mediaKitFallbackSession.value = true;
+      error.value = null;
+      _showEngineFallbackToast(toMediaKit: true);
+      debugPrint('mina_iptv: TsExtractor.seek → MediaKit yedek');
+      unawaited(_performMediaKitFallbackBoot());
+      return true;
+    }
+
+    error.value = 'player.error.playbackGeneric'.tr;
+    return true;
   }
 
 /// mpv / yüzey açılamadığında ExoPlayer (yazılım kod çözücü) ile bir kez dener.
@@ -3290,6 +4148,15 @@ void _emitPlaybackErrorForRecovery(
                 l.contains('surface')));
     if (!matches) return false;
 
+    // Canlı + önbellekte mediakit: Exo ping-pong yapma (HW codec çökmesi + swap gecikmesi).
+    if (_currentStreamIsLive &&
+        AppSettingsService.isStreamSuccessMediaKitFormat(
+          _settings.peekStreamSuccessFormat(channel.value.id),
+        )) {
+      _maybeEscalateMediaKitLiveBuffer();
+      return false;
+    }
+
     // Clear cache since cached MediaKit format failed
     unawaited(_settings.clearStreamSuccessFormat(channel.value.id));
 
@@ -3307,27 +4174,39 @@ void _emitPlaybackErrorForRecovery(
       'mina_iptv: MediaKit hatası → Better (Exo) deneniyor'
       '${challengedTv ? " (yazılım kod çözücü)" : ""}: $last — $msg',
     );
-    unawaited(
-      _boot(
+    // Better boot öncesi mpv'yi sert kapat — aksi halde çift ses kalır
+    // (manuel switchToBetterPlayer ile aynı teardown).
+    unawaited(() async {
+      _bumpPlaybackGeneration();
+      _cancelZapRelativeDebounce();
+      _cancelNetworkAutoResumeTimer();
+      _networkResumeAttempt = 0;
+      _liveKeepAliveArmed = false;
+      _cancelBetterBufferingRecoveryTimer();
+      _cancelLiveStallWatchdog();
+      _cancelLiveTvStartupWatchdog();
+      _cancelLiveAutoNextWatchdog();
+      _cancelLiveChannelPreload();
+      await _hardDisposeMediaKitPlayer(reason: 'mk-fail-to-better');
+      if (isClosed) return;
+      await _boot(
         preferredMaxHeight: null,
         disableAsms: false,
         reuseSameBetterPlayer: false,
         suppressNetworkRecoverySchedule: false,
-      ),
-    );
+      );
+    }());
     return true;
   }
+
 
 /// [UniversalVideoPlayer] VideoController kurulumu başarısız (TCL/Google TV vb.).
   Future<void> handleMediaKitSurfaceInitFailed(Object e) async {
     if (isClosed) return;
     await AndroidPlaybackSocHints.ensureLoaded();
-    final msg = e.toString();
-    if (_maybeSwitchToBetterAfterMediaKitVodFailure(
-      'VideoController init failed: $msg',
-    )) {
-      return;
-    }
+    final msg = 'VideoController init failed: $e';
+    if (_handleMediaKitLivePrimaryFailure(msg)) return;
+    if (_maybeSwitchToBetterAfterMediaKitVodFailure(msg)) return;
     _maybeEscalateMediaKitLiveBuffer();
     final gen = _busyHoldBootGen;
     if (gen != null && _isPlaybackGenerationCurrent(gen)) {
@@ -3339,8 +4218,228 @@ void _emitPlaybackErrorForRecovery(
 /// [UniversalVideoPlayer] `player.open` hatası.
   void onMediaKitOpenFailed(Object e) {
     if (isClosed) return;
+    final msg = e.toString();
+    if (_handleMediaKitLivePrimaryFailure(msg)) return;
+    if (_tryMediaKitLiveTsToHlsFallback(msg)) return;
+    if (_maybeSwitchToBetterAfterMediaKitVodFailure(msg)) return;
     _maybeEscalateMediaKitLiveBuffer();
-    _emitPlaybackErrorForRecovery(e.toString());
+    _emitPlaybackErrorForRecovery(msg);
+  }
+
+  /// MediaKit **birincil** canlı kurtarma.
+  ///
+  /// Varsayılan: HLS↔TS → yazılım hwdec → Better.
+  /// Siyah ekran / dims yok: decode çoğu zaman çalışır, yüzey bağlanmaz →
+  /// önce yazılım (aynı URL), sonra taşıma (tek bağlantılı panelde erken
+  /// TS→HLS 403 riski).
+  bool _handleMediaKitLivePrimaryFailure(
+    String msg, {
+    bool preferSoftwareBeforeTransport = false,
+  }) {
+    if (!_currentStreamIsLive || !effectiveUseMediaKit) return false;
+    if (!_userPrefersMediaKitForCurrentType) return false;
+    if (betterOsdOverride.value) return false;
+    if (PlayerController._isNotFoundStyleError(msg)) return false;
+    if (PlayerController._isHttpForbiddenOrUnauthorizedError(msg)) {
+      return false;
+    }
+
+    final blackScreenLike = preferSoftwareBeforeTransport ||
+        msg.toLowerCase().contains('black screen') ||
+        msg.toLowerCase().contains('no video dims') ||
+        msg.toLowerCase().contains('startup stall');
+
+    if (blackScreenLike) {
+      if (_maybeRetryMediaKitWithSoftwareDecoder(msg)) return true;
+      if (_tryMediaKitLiveTransportSwapRecovery(msg)) return true;
+    } else {
+      if (_tryMediaKitLiveTransportSwapRecovery(msg)) return true;
+      if (_maybeRetryMediaKitWithSoftwareDecoder(msg)) return true;
+    }
+    if (_maybeFallbackToBetterFromMediaKitLive(msg)) return true;
+    return false;
+  }
+
+  /// MediaKit canlı: bir kez HLS↔MPEG-TS taşıma biçimi değiştir.
+  bool _tryMediaKitLiveTransportSwapRecovery(String reason) {
+    if (!effectiveUseMediaKit || !_currentStreamIsLive) return false;
+    if (_decoderTriedTsToM3u8Swap) return false;
+
+    final basis = (_playUrlOverride ??
+            _lastPlaybackUrl ??
+            _normalizePlaybackStreamUrl(channel.value.streamUrl))
+        .trim();
+    if (basis.isEmpty) return false;
+    final swapped = _trySwapLiveTsM3u8Url(basis, live: true);
+    if (swapped == null || swapped == basis) return false;
+
+    _decoderTriedTsToM3u8Swap = true;
+    final toTs = IptvPlaybackDefaults.isLikelyMpegTsStreamUrl(swapped);
+    final fromTs = IptvPlaybackDefaults.isLikelyMpegTsStreamUrl(basis);
+    if (fromTs && !toTs) {
+      _mediaKitLiveTriedHlsAfterTs = true;
+      unawaited(_settings.clearStreamSuccessFormat(channel.value.id));
+      _settings.syncPlaybackUrlNormalizationPolicy();
+      IptvPlaybackDefaults.setSkipAutoM3u8LiveManifest(false);
+    } else if (toTs) {
+      IptvPlaybackDefaults.setSkipAutoM3u8LiveManifest(true);
+    }
+
+    _cancelMediaKitLiveTsHlsWatchdog();
+    _cancelNetworkAutoResumeTimer();
+    _networkResumeAttempt = 0;
+    _playUrlOverride = swapped;
+    error.value = null;
+    debugPrint(
+      'mina_iptv: MediaKit canlı taşıma '
+      '${fromTs ? "TS" : "HLS"} → ${toTs ? "TS" : "HLS"}: $swapped ($reason)',
+    );
+    unawaited(
+      _boot(
+        preferredMaxHeight: null,
+        disableAsms: false,
+        reuseSameBetterPlayer: false,
+        suppressNetworkRecoverySchedule: true,
+      ),
+    );
+    return true;
+  }
+
+  /// MediaKit canlı: donanım hwdec başarısız → bir kez `hwdec=no`.
+  bool _maybeRetryMediaKitWithSoftwareDecoder(String reason) {
+    if (!effectiveUseMediaKit || !_currentStreamIsLive) return false;
+    if (!_userPrefersMediaKitForCurrentType) return false;
+    if (mediaKitShouldUseSoftwareDecode) return false;
+    if (_mediaKitBlackScreenRecoveryUsed) return false;
+
+    _mediaKitBlackScreenRecoveryUsed = true;
+    _mediaKitFallbackForceSoftwareDecode = true;
+    _forceSoftwareVideoDecoder = true;
+    _cancelMediaKitLiveTsHlsWatchdog();
+    mediaKitAttachEpoch.value++;
+    error.value = null;
+    debugPrint(
+      'mina_iptv: MediaKit canlı → yazılım kod çözücü ($reason)',
+    );
+    unawaited(restartCurrentStream());
+    return true;
+  }
+
+  /// MediaKit canlı zinciri tükendi → Better/Exo.
+  bool _maybeFallbackToBetterFromMediaKitLive(String reason) {
+    if (!effectiveUseMediaKit || !_currentStreamIsLive) return false;
+    if (!_userPrefersMediaKitForCurrentType) return false;
+    if (_vodAutoTriedBetterAfterMpvFail) return false;
+
+    final last = (_playUrlOverride ?? _lastPlaybackUrl ?? '').trim();
+    if (last.isEmpty) return false;
+
+    unawaited(_settings.clearStreamSuccessFormat(channel.value.id));
+    _vodAutoTriedBetterAfterMpvFail = true;
+    _autoEngineSwitchUsed = true;
+    betterOsdOverride.value = true;
+    mediaKitFallbackSession.value = false;
+    _cancelMediaKitLiveTsHlsWatchdog();
+    _playUrlOverride = last;
+    error.value = null;
+    _showEngineFallbackToast(toMediaKit: false);
+    debugPrint(
+      'mina_iptv: MediaKit canlı zincir → Better: $last ($reason)',
+    );
+    unawaited(
+      _boot(
+        preferredMaxHeight: null,
+        disableAsms: false,
+        reuseSameBetterPlayer: false,
+        suppressNetworkRecoverySchedule: false,
+      ),
+    );
+    return true;
+  }
+
+  /// MediaKit canlı `.ts` açılamazsa bir kez `.m3u8` (Better→MK yedek oturumu).
+  bool _tryMediaKitLiveTsToHlsFallback(String msg) {
+    if (!_currentStreamIsLive || !effectiveUseMediaKit) return false;
+    // Birincil MediaKit zinciri taşıma adımını zaten kapsar.
+    if (_userPrefersMediaKitForCurrentType) {
+      return _tryMediaKitLiveTransportSwapRecovery(msg);
+    }
+    if (_mediaKitLiveTriedHlsAfterTs) return false;
+    if (_livePlaybackEstablished) return false;
+    final last = (_playUrlOverride ?? _lastPlaybackUrl ?? '').trim();
+    if (last.isEmpty || !IptvPlaybackDefaults.isLikelyMpegTsStreamUrl(last)) {
+      return false;
+    }
+    final hls = _trySwapLiveTsM3u8Url(last, live: true);
+    if (hls == null ||
+        hls == last ||
+        IptvPlaybackDefaults.isLikelyMpegTsStreamUrl(hls)) {
+      return false;
+    }
+    _mediaKitLiveTriedHlsAfterTs = true;
+    _decoderTriedTsToM3u8Swap = true;
+    _mediaKitLiveTsHlsWatchdog?.cancel();
+    _mediaKitLiveTsHlsWatchdog = null;
+    IptvPlaybackDefaults.setSkipAutoM3u8LiveManifest(false);
+    _playUrlOverride = hls;
+    error.value = null;
+    debugPrint(
+      'mina_iptv: MediaKit .ts açılamadı → HLS ile MediaKit: $hls ($msg)',
+    );
+    unawaited(
+      _boot(
+        preferredMaxHeight: null,
+        disableAsms: false,
+        reuseSameBetterPlayer: false,
+        suppressNetworkRecoverySchedule: true,
+      ),
+    );
+    return true;
+  }
+
+  void _cancelMediaKitLiveTsHlsWatchdog() {
+    _mediaKitLiveTsHlsWatchdog?.cancel();
+    _mediaKitLiveTsHlsWatchdog = null;
+  }
+
+  /// MediaKit canlı başlangıç: birincil ise tam zincir; yedek oturumda TS→HLS.
+  void _armMediaKitLiveTsHlsWatchdog(String playUrl) {
+    _cancelMediaKitLiveTsHlsWatchdog();
+    if (!effectiveUseMediaKit || !_currentStreamIsLive) return;
+
+    if (_userPrefersMediaKitForCurrentType) {
+      final onTs = IptvPlaybackDefaults.isLikelyMpegTsStreamUrl(playUrl);
+      // TS: yüzey/dims için daha uzun; stall da siyah ekran gibi SW-önce zincir.
+      final stallAfter =
+          onTs ? const Duration(seconds: 16) : const Duration(seconds: 12);
+      _mediaKitLiveTsHlsWatchdog = Timer(stallAfter, () {
+        _mediaKitLiveTsHlsWatchdog = null;
+        if (isClosed || !effectiveUseMediaKit) return;
+        if (_livePlaybackEstablished) return;
+        final p = _mediaKitPlayer;
+        if (p != null) {
+          final w = p.state.width ?? 0;
+          final h = p.state.height ?? 0;
+          if (w > 0 && h > 0 && (p.state.playing || p.state.buffering)) {
+            _livePlaybackEstablished = true;
+            return;
+          }
+        }
+        _handleMediaKitLivePrimaryFailure(
+          'MediaKit live startup stall',
+          preferSoftwareBeforeTransport: onTs,
+        );
+      });
+      return;
+    }
+
+    if (_mediaKitLiveTriedHlsAfterTs) return;
+    if (!IptvPlaybackDefaults.isLikelyMpegTsStreamUrl(playUrl)) return;
+    _mediaKitLiveTsHlsWatchdog = Timer(const Duration(seconds: 12), () {
+      _mediaKitLiveTsHlsWatchdog = null;
+      if (isClosed) return;
+      _tryMediaKitLiveTsToHlsFallback('MediaKit live .ts stall');
+    });
   }
 
 /// MediaKit/mpv canlı yayını açamadığında, sonraki yeniden deneme buffer'ı
@@ -3482,57 +4581,77 @@ bool _scheduleXtreamVodMkvToTsRetry() {
 Future<void> _performNetworkResume() async {
     if (isClosed) return;
     if (_shouldBlockAutomaticPlayback()) return;
-    if (_recovering) {
-      _scheduleNetworkAutoResumeIfNeeded(error.value ?? 'connection');
+    if (_networkResumeInFlight) {
       return;
     }
-    // Canlı HLS açılmıyorsa önce TS (veya tersi) dene; aksi halde aynı m3u8
-    // ile yeniden bağlanma döngüsü oluşur (logcat: swap sonrası tekrar .m3u8).
-    if (_currentStreamIsLive &&
-        !_decoderTriedTsToM3u8Swap &&
-        !effectiveUseMediaKit) {
-      final norm = _normalizePlaybackStreamUrl(channel.value.streamUrl);
-      if (_tryLiveTransportFormatSwapRecovery(norm)) {
-        return;
+    _networkResumeInFlight = true;
+    try {
+      // Canlı HLS açılmıyorsa önce TS (veya tersi) dene — 403 / TS-seek hariç.
+      if (_currentStreamIsLive &&
+          !_decoderTriedTsToM3u8Swap &&
+          !effectiveUseMediaKit &&
+          _liveHttpForbiddenRetryCount == 0 &&
+          !_liveTsSeekFailureHandled) {
+        final norm = _normalizePlaybackStreamUrl(channel.value.streamUrl);
+        if (_tryLiveTransportFormatSwapRecovery(norm)) {
+          return;
+        }
       }
-    }
-    _cancelNetworkAutoResumeTimer();
-    error.value = null;
-    await _boot(
-      preferredMaxHeight: null,
-      disableAsms: false,
-      reuseSameBetterPlayer: false,
-      suppressNetworkRecoverySchedule: true,
-    );
-    if (error.value != null) {
-      final err = error.value!;
-      final canRetry = PlayerController._isLikelyNetworkOrTransientError(err) ||
-          (_currentStreamIsLive && !PlayerController._isNotFoundStyleError(err));
-      if (canRetry) {
-        _networkResumeAttempt = (_networkResumeAttempt + 1).clamp(0, 8);
-        // Keep-alive (durma/EOF kaynaklı): kanalı asla terk etme; yayın geri
-        // gelene kadar (limit boşalana dek) ısrarla aynı yayını dene.
-        // Aksi halde (klasik ağ hatası): art arda aynı yayına _boot yinelemesi
-        // bazen yanlış/varyant URL'lere sapıyor; birkaç denemeden sonra
-        // kategoride sıradaki kanala geç (OSD [zapTo] ile güncellenir).
-        if (!_liveKeepAliveArmed &&
-            _currentStreamIsLive &&
-            !isMovie &&
-            !isSeries &&
-            _networkResumeAttempt >= 3) {
+      // Oynatma kurulduysa tam URL yeniden açmadan önce hafif kurtarma dene.
+      if (_livePlaybackEstablished &&
+          _currentStreamIsLive &&
+          !isMovie &&
+          !isSeries &&
+          !effectiveUseMediaKit) {
+        final recovered = await _tryConservativeLiveRecover();
+        if (recovered) {
           _networkResumeAttempt = 0;
           error.value = null;
-          unawaited(_zapToNextLiveInCategoryOrRestart());
-        } else {
-          _scheduleNetworkAutoResumeIfNeeded(err);
+          return;
         }
-      } else {
-        _networkResumeAttempt = 0;
-        _liveKeepAliveArmed = false;
       }
-    } else {
-      _networkResumeAttempt = 0;
-      _liveKeepAliveArmed = false;
+      _cancelNetworkAutoResumeTimer();
+      error.value = null;
+      await _boot(
+        preferredMaxHeight: null,
+        disableAsms: false,
+        // Canlı: aynı Better/texture; dispose+CREATE mapSize şişirir.
+        reuseSameBetterPlayer: better != null && !effectiveUseMediaKit,
+        suppressNetworkRecoverySchedule: true,
+      );
+      if (error.value != null) {
+        final err = error.value!;
+        final canRetry =
+            PlayerController._isLikelyNetworkOrTransientError(err) ||
+                PlayerController._isHttpForbiddenOrUnauthorizedError(err) ||
+                (_currentStreamIsLive &&
+                    !PlayerController._isNotFoundStyleError(err) &&
+                    !PlayerController._isExoTsExtractorSeekFailure(err));
+        if (canRetry) {
+          // Keep-alive (durma/EOF kaynaklı): kanalı asla terk etme; yayın geri
+          // gelene kadar (limit boşalana dek) ısrarla aynı yayını dene.
+          // Aksi halde (klasik ağ hatası): art arda aynı yayına _boot yinelemesi
+          // bazen yanlış/varyant URL'lere sapıyor; birkaç denemeden sonra
+          // kategoride sıradaki kanala geç (OSD [zapTo] ile güncellenir).
+          if (!_liveKeepAliveArmed &&
+              _currentStreamIsLive &&
+              !isMovie &&
+              !isSeries &&
+              _networkResumeAttempt >= 3) {
+            _networkResumeAttempt = 0;
+            error.value = null;
+            unawaited(_zapToNextLiveInCategoryOrRestart());
+          } else {
+            _scheduleNetworkAutoResumeIfNeeded(err);
+          }
+        } else {
+          _liveKeepAliveArmed = false;
+        }
+      }
+      // Boot senkron hatasız bitse bile async Source error gelebilir —
+      // attempt'i burada sıfırlama; başarı [_applyBootSuccessSideEffects]'te.
+    } finally {
+      _networkResumeInFlight = false;
     }
   }
 
@@ -3542,44 +4661,86 @@ void _armLiveTvStartupWatchdog() {
     if (!IptvPlaybackDefaults.isLikelyLiveStream(norm)) return;
 
     _liveTvStartupWatchdog?.cancel();
-    _liveTvStartupWatchdog = Timer(PlayerController._liveStartupSwapThreshold, () {
+    _liveStartupWatchdogArmedAt = DateTime.now();
+    final initial = _liveStartupSwapThresholdForCurrentUrl();
+
+    void onTick() {
       _liveTvStartupWatchdog = null;
       if (isClosed || effectiveUseMediaKit) return;
+      if (_liveStartupLooksHealthy()) {
+        debugPrint(
+          'mina_iptv: Canlı başlangıç watchdog — initialized/decoder OK, swap yok',
+        );
+        _liveStartupWatchdogArmedAt = null;
+        return;
+      }
+
+      final armedAt = _liveStartupWatchdogArmedAt ?? DateTime.now();
+      final elapsed = DateTime.now().difference(armedAt);
       final v = better?.videoPlayerController?.value;
+      // HLS tampon doluyorsa sabırsız dispose/swap yok — en az 15 sn.
+      final hlsBufferingGrace = _isLikelyHlsLivePlaybackUrl() &&
+          v != null &&
+          !v.hasError &&
+          (v.isBuffering || v.initialized || v.isPlaying);
+      final deadline = hlsBufferingGrace
+          ? PlayerController._liveStartupHlsBufferingDeadline
+          : initial;
 
-      // Tamamen stabil oynatma → sorun yok.
-      if (v != null && v.isPlaying && !v.isBuffering && !v.hasError) return;
-      // Oynatma başlamış (konum ilerledi) ama anlık tampon → sağlıklı kabul et;
-      // erken swap/MediaKit ile bölme, uzun tampon takılmasını ayrı watchdog alır.
-      if (v != null && !v.hasError && v.position > Duration.zero) return;
+      if (elapsed < deadline) {
+        final remain = deadline - elapsed;
+        debugPrint(
+          'mina_iptv: Canlı başlangıç watchdog — tampon/grace '
+          '${elapsed.inMilliseconds}ms/${deadline.inSeconds}s, '
+          '+${remain.inMilliseconds}ms bekle',
+        );
+        _liveTvStartupWatchdog = Timer(
+          remain > const Duration(seconds: 1)
+              ? const Duration(seconds: 1)
+              : remain,
+          onTick,
+        );
+        return;
+      }
 
-      // Buraya kadar geldiyse: yüzey hiç gelmedi ya da 0. saniyede takıldı /
-      // hata var → kullanıcı boş ekranda. Bir an önce kurtar.
+      _liveStartupWatchdogArmedAt = null;
       debugPrint(
-        'mina_iptv: Canlı Better ${PlayerController._liveStartupSwapThreshold.inSeconds}s '
+        'mina_iptv: Canlı Better ${elapsed.inSeconds}s '
         'başlangıçta stabil oynatma yok → hızlı kurtarma',
       );
 
-      // 1) Henüz denenmediyse HLS↔TS taşıma biçimi swap (ucuz; çoğu paneli açar).
-      //    Swap _boot'u bu watchdog'u tekrar kurar → ikinci şans.
       if (!_decoderTriedTsToM3u8Swap &&
           _tryLiveTransportFormatSwapRecovery(norm)) {
         debugPrint('mina_iptv: Canlı başlangıç takılması → hızlı HLS↔TS swap');
         return;
       }
 
-      // 2) Swap denendi/uygunsuz ve hâlâ açılmıyor → MediaKit yedeğe geç.
       if (_maybeFallbackToMediaKitFromLiveStartupStall()) return;
 
-      // 3) MediaKit'e geçilemiyorsa (örn. bu yayın için zaten kullanıldı) eski
-      //    TV/telefon kurtarma davranışına bırak.
       if (_settings.layoutMode.value == AppLayoutMode.tv) {
         unawaited(_handleLiveTvStallRecovery());
       } else {
         _networkResumeAttempt = 0;
         unawaited(_performNetworkResume());
       }
-    });
+    }
+
+    _liveTvStartupWatchdog = Timer(initial, onTick);
+  }
+
+  /// Başlangıç watchdog: Exo decode/yüzey ayağa kalktıysa HLS→TS zorlama.
+  bool _liveStartupLooksHealthy() {
+    if (_livePlaybackEstablished) return true;
+    final v = better?.videoPlayerController?.value;
+    if (v == null || v.hasError) return false;
+    if (v.isPlaying && !v.isBuffering) return true;
+    if (v.position > Duration.zero) return true;
+    final sz = v.size;
+    final hasVideoSize = sz != null && sz.width > 1 && sz.height > 1;
+    if (v.initialized && hasVideoSize) return true;
+    if (v.initialized && v.isBuffering) return true;
+    if (v.isPlaying) return true;
+    return false;
   }
 
 /// Canlı Better başlangıçta açılmadı ve HLS↔TS swap da çözmedi → MediaKit yedek.
@@ -3610,8 +4771,26 @@ void _armLiveTvStartupWatchdog() {
   /// canlı, MediaKit dışı ve bu oturumda henüz denenmemişken çalışır.
   /// Başarıyla bir swap planlandıysa `true` döner.
   bool _tryLiveTransportFormatSwapRecovery(String normalizedUrl) {
-    if (effectiveUseMediaKit || _decoderTriedTsToM3u8Swap) return false;
+    if ((effectiveUseMediaKit) ||
+        _decoderTriedTsToM3u8Swap) {
+      return false;
+    }
     if (!_currentStreamIsLive) return false;
+    // Telefon/tablet: Exo progressive .ts → TsExtractor.seek; HLS→TS atla,
+    // MediaKit yedeğine bırak (tek bağlantılı panellerde 403 döngüsü olmasın).
+    if (Platform.isAndroid &&
+        !AndroidPlaybackSocHints.androidTv &&
+        _settings.layoutMode.value != AppLayoutMode.tv) {
+      final basis = (_lastPlaybackUrl?.trim().isNotEmpty ?? false)
+          ? _lastPlaybackUrl!.trim()
+          : normalizedUrl;
+      if (!IptvPlaybackDefaults.isLikelyMpegTsStreamUrl(basis)) {
+        debugPrint(
+          'mina_iptv: Canlı telefon — HLS→TS swap atlandı (TsExtractor risk)',
+        );
+        return false;
+      }
+    }
     final basis = (_lastPlaybackUrl?.trim().isNotEmpty ?? false)
         ? _lastPlaybackUrl!.trim()
         : normalizedUrl;
@@ -3619,17 +4798,32 @@ void _armLiveTvStartupWatchdog() {
     if (swapped == null || swapped == basis) return false;
     _decoderTriedTsToM3u8Swap = true;
     _playUrlOverride = swapped;
+
+    final toTs = IptvPlaybackDefaults.isLikelyMpegTsStreamUrl(swapped);
+    final fromTs = IptvPlaybackDefaults.isLikelyMpegTsStreamUrl(basis);
+    if (fromTs && !toTs) {
+      // TS → HLS: kötü TS başarı önbelleğini temizle.
+      unawaited(_settings.clearStreamSuccessFormat(channel.value.id));
+      _settings.syncPlaybackUrlNormalizationPolicy();
+    } else if (toTs) {
+      // HLS → TS: normalize'ın .ts'yi tekrar .m3u8 yapmasını engelle.
+      // Başarı önbelleğine YAZMA — TS gerçekten oynayana kadar bekle
+      // ([_onVideoPlayerChanged] / playbackEstablished).
+      IptvPlaybackDefaults.setSkipAutoM3u8LiveManifest(true);
+    }
+
     _cancelNetworkAutoResumeTimer();
     _networkResumeAttempt = 0;
     error.value = null;
     debugPrint(
-      'mina_iptv: Canlı sessiz takılma → taşıma biçimi değişimi: $swapped',
+      'mina_iptv: Canlı taşıma biçimi değişimi '
+      '${fromTs ? "TS" : "HLS"} → ${toTs ? "TS" : "HLS"}: $swapped',
     );
     unawaited(
       _boot(
         preferredMaxHeight: null,
         disableAsms: false,
-        reuseSameBetterPlayer: false,
+        reuseSameBetterPlayer: true,
         suppressNetworkRecoverySchedule: true,
       ),
     );
@@ -3644,9 +4838,14 @@ void _armLiveTvStartupWatchdog() {
   /// (kullanıcı doğruladı). Swap URL'yi gerçekten değiştirmiyorsa (Xtream canlı
   /// kalıbı değil / zaten denenmiş) `false` döner ve normal zincir sürer.
   bool _maybeSwapLiveTransportBeforeDecoderFallback(String msg) {
-    if (effectiveUseMediaKit || _decoderTriedTsToM3u8Swap) return false;
+    if ((effectiveUseMediaKit) ||
+        _decoderTriedTsToM3u8Swap) {
+      return false;
+    }
     if (!_currentStreamIsLive) return false;
     if (PlayerController._isNotFoundStyleError(msg)) return false;
+    if (PlayerController._isHttpForbiddenOrUnauthorizedError(msg)) return false;
+    if (PlayerController._isExoTsExtractorSeekFailure(msg)) return false;
     final norm = _normalizePlaybackStreamUrl(channel.value.streamUrl);
     if (!_tryLiveTransportFormatSwapRecovery(norm)) return false;
     debugPrint('mina_iptv: Canlı hata → önce taşıma biçimi değişimi (HLS↔TS)');
@@ -3716,62 +4915,86 @@ void _startLiveStallWatchdog() {
     final norm = _normalizePlaybackStreamUrl(channel.value.streamUrl);
     if (!IptvPlaybackDefaults.isLikelyLiveStream(norm)) return;
 
-    if (_settings.layoutMode.value == AppLayoutMode.tv) {
-      // Ardışık bufferingStart süreyi sıfırlamasın (15 sn ilk takılmadan sayılır).
-      if (_liveTvStallPollTimer != null) return;
-      _liveTvBufferingSince = DateTime.now();
-      _liveTvStallPollTimer = Timer.periodic(PlayerController._liveTvStallPollInterval, (_) {
+    // Ardışık bufferingStart süreyi sıfırlamasın; kademeli eşikler tek sayaç üzerinden.
+    if (_liveTvStallPollTimer != null) return;
+    _liveStallRecoveryStage = 0;
+    _liveTvBufferingSince = DateTime.now();
+    final isTv = _settings.layoutMode.value == AppLayoutMode.tv;
+    final reconnectThreshold = isTv
+        ? PlayerController._liveTvStallReconnectThreshold
+        : PlayerController._liveMobileStallReconnectThreshold;
+    final swapThreshold = isTv
+        ? PlayerController._liveTvStallSwapThreshold
+        : PlayerController._liveMobileStallSwapThreshold;
+    final fullThreshold = isTv
+        ? PlayerController._liveTvStallFullRecoveryThreshold
+        : PlayerController._liveMobileStallFullRecoveryThreshold;
+
+    _liveTvStallPollTimer = Timer.periodic(
+      PlayerController._liveTvStallPollInterval,
+      (_) {
         if (isClosed || better == null || effectiveUseMediaKit) {
-          _liveTvStallPollTimer?.cancel();
-          _liveTvStallPollTimer = null;
+          _cancelLiveStallWatchdog();
           return;
         }
         if (_shouldBlockAutomaticPlayback()) return;
         final since = _liveTvBufferingSince;
         if (since == null) {
-          _liveTvStallPollTimer?.cancel();
-          _liveTvStallPollTimer = null;
+          _cancelLiveStallWatchdog();
           return;
         }
         final v = better?.videoPlayerController?.value;
         if (v == null) return;
         if (!v.isBuffering || v.hasError) {
-          _liveTvStallPollTimer?.cancel();
-          _liveTvStallPollTimer = null;
-          _liveTvBufferingSince = null;
+          _cancelLiveStallWatchdog();
           return;
         }
-        if (DateTime.now().difference(since) < PlayerController._liveTvStallThreshold) return;
-        _liveTvStallPollTimer?.cancel();
-        _liveTvStallPollTimer = null;
-        _liveTvBufferingSince = null;
-        debugPrint(
-          'mina_iptv: TV live ${PlayerController._liveTvStallThreshold.inSeconds}s tampon takılması',
-        );
-        unawaited(_handleLiveTvStallRecovery());
-      });
-      return;
-    }
 
-    // Telefon / tablet: uzun tampon → tek seferde yeniden bağlan (kısa dalgalanmaları kesmeyi azalt).
-    if (_liveStallWatchdogTimer != null) return;
-    _liveStallWatchdogTimer = Timer(const Duration(seconds: 72), () {
-      _liveStallWatchdogTimer = null;
-      if (isClosed) return;
-      if (_shouldBlockAutomaticPlayback()) return;
-      final v = better?.videoPlayerController?.value;
-      if (v == null) return;
-      if (!v.isBuffering || v.hasError) return;
-      // Henüz taşıma biçimi denenmediyse önce HLS↔TS swap (panel tek biçim
-      // veriyor olabilir); aksi halde normal yeniden bağlan.
-      if (_tryLiveTransportFormatSwapRecovery(norm)) {
-        debugPrint('mina_iptv: Live buffering stall → taşıma biçimi değişimi');
-        return;
-      }
-      debugPrint('mina_iptv: Live buffering stall → reconnect');
-      _networkResumeAttempt = 0;
-      unawaited(_performNetworkResume());
-    });
+        final elapsed = DateTime.now().difference(since);
+
+        if (elapsed >= const Duration(seconds: 6) &&
+            !_settings.hasRuntimeLiveBufferOverride) {
+          _engageLiveAutoBufferIfNeeded('stall-6s');
+        }
+
+        if (elapsed >= fullThreshold && _liveStallRecoveryStage < 3) {
+          _liveStallRecoveryStage = 3;
+          _cancelLiveStallWatchdog();
+          debugPrint(
+            'mina_iptv: live ${fullThreshold.inSeconds}s tampon → tam kurtarma',
+          );
+          if (isTv) {
+            unawaited(_handleLiveTvStallRecovery());
+          } else {
+            if (_tryLiveTransportFormatSwapRecovery(norm)) return;
+            _networkResumeAttempt = 0;
+            unawaited(_performNetworkResume());
+          }
+          return;
+        }
+
+        if (elapsed >= swapThreshold && _liveStallRecoveryStage < 2) {
+          _liveStallRecoveryStage = 2;
+          if (_tryLiveTransportFormatSwapRecovery(norm)) {
+            debugPrint(
+              'mina_iptv: live ${swapThreshold.inSeconds}s tampon → HLS↔TS',
+            );
+            _cancelLiveStallWatchdog();
+          }
+          return;
+        }
+
+        if (elapsed >= reconnectThreshold && _liveStallRecoveryStage < 1) {
+          _liveStallRecoveryStage = 1;
+          _engageLiveAutoBufferIfNeeded('stall-reconnect');
+          debugPrint(
+            'mina_iptv: live ${reconnectThreshold.inSeconds}s tampon → yeniden bağlan',
+          );
+          _networkResumeAttempt = 0;
+          unawaited(_performNetworkResume());
+        }
+      },
+    );
   }
 
 /// Dikey telefon/tablet OSD şeridi: mevcut kanalla aynı kategorideki canlı kanallar.
@@ -3819,10 +5042,55 @@ void _startLiveStallWatchdog() {
   /// duraklatmasını günceller. Oynatıcı yeniden kullanılsa bile (kanal zap,
   /// liste değişimi) ayar anında yansır.
   void _applyBackgroundPlaybackPolicy() {
-    final suppress = _settings.backgroundPlayback.value;
+    final bg = _settings.backgroundPlayback.value;
     final b = better;
     if (b != null) {
-      b.setSuppressLifecycleAutoPause(suppress);
+      b.setSuppressLifecycleAutoPause(bg);
+      try {
+        // mixWithOthers=true → ExoPlayer ses odağı kaybında duraklatmaz (ana
+        // ekrana geçişte bazı cihazlarda odağı bırakıp sesi kesiyordu).
+        b.setMixWithOthers(bg);
+      } catch (_) {}
+    }
+  }
+
+  bool _isAppInBackgroundForPlayback() {
+    if (_nativeActivityBackground) return true;
+    final state = WidgetsBinding.instance.lifecycleState;
+    if (state == null || state == AppLifecycleState.resumed) return false;
+    if (_settings.layoutMode.value == AppLayoutMode.tv &&
+        state == AppLifecycleState.inactive) {
+      return true;
+    }
+    return state == AppLifecycleState.paused ||
+        state == AppLifecycleState.hidden ||
+        state == AppLifecycleState.inactive;
+  }
+
+  bool _shouldResumeAfterBackgroundPause() {
+    if (!_settings.backgroundPlayback.value) return false;
+    if (vodResumeDialogOpen.value) return false;
+    if (_userPausedLive || _showcaseInAppPipUserPaused) return false;
+    return true;
+  }
+
+  /// Ayar açıkken ana ekrana / arka plana geçişte oynatmayı sürdür.
+  Future<void> _maintainBackgroundPlayback() async {
+    if (!_shouldResumeAfterBackgroundPause()) return;
+    if (isClosed) return;
+
+    _applyBackgroundPlaybackPolicy();
+    _lastWakelockApplied = null;
+    _syncPlaybackWakelock(force: true);
+    await _resumePlaybackAfterBackgroundIfNeeded();
+
+    for (final delay in const [
+      Duration(milliseconds: 180),
+      Duration(milliseconds: 550),
+    ]) {
+      await Future<void>.delayed(delay);
+      if (isClosed || !_shouldResumeAfterBackgroundPause()) return;
+      await _resumePlaybackAfterBackgroundIfNeeded();
     }
   }
 
@@ -3871,7 +5139,11 @@ Future<dynamic> _onNativeActivityLifecycleCall(MethodCall call) async {
         // Don't pause if PiP is active - BetterPlayer handles it
         final vpc = better?.videoPlayerController?.value;
         if (vpc?.isPip != true && !_suppressPauseForAndroidMiniPip) {
-          _pauseForLeavingAppIfBackgroundPlaybackDisabled();
+          if (_settings.backgroundPlayback.value) {
+            unawaited(_maintainBackgroundPlayback());
+          } else {
+            _pauseForLeavingAppIfBackgroundPlaybackDisabled();
+          }
         }
         return null;
       case 'foreground':
@@ -3888,8 +5160,7 @@ Future<dynamic> _onNativeActivityLifecycleCall(MethodCall call) async {
   }
 
 Future<void> _resumePlaybackAfterBackgroundIfNeeded() async {
-    if (!_settings.backgroundPlayback.value) return;
-    if (vodResumeDialogOpen.value) return;
+    if (!_shouldResumeAfterBackgroundPause()) return;
     try {
       if (effectiveUseMediaKit) {
         final p = _mediaKitPlayer;
@@ -3929,15 +5200,27 @@ void _syncPlaybackWakelock({bool force = false}) {
   }
 
 bool _playbackActiveForWakelock() {
+    final keepAliveInBackground =
+        _settings.backgroundPlayback.value && _isAppInBackgroundForPlayback();
+
     if (effectiveUseMediaKit) {
       final p = _mediaKitPlayer;
       if (p == null) return false;
-      return p.state.playing;
+      final s = p.state;
+      if (keepAliveInBackground) {
+        if (_userPausedLive || _showcaseInAppPipUserPaused) return false;
+        return s.playing || s.buffering || s.position > Duration.zero;
+      }
+      return s.playing;
     }
     final v = better?.videoPlayerController?.value;
     if (v == null) return false;
     if (v.hasError) return false;
     if (!v.initialized) return false;
+    if (keepAliveInBackground) {
+      if (_userPausedLive || _showcaseInAppPipUserPaused) return false;
+      return v.isPlaying || v.isBuffering || v.position > Duration.zero;
+    }
     return v.isPlaying;
   }
 
@@ -4096,6 +5379,14 @@ void _beginBootBusyHold(int gen, int vodSession) {
         return;
       }
       if (effectiveUseMediaKit &&
+          _handleMediaKitLivePrimaryFailure('MediaKit first frame timeout')) {
+        return;
+      }
+      if (effectiveUseMediaKit &&
+          _tryMediaKitLiveTsToHlsFallback('MediaKit first frame timeout')) {
+        return;
+      }
+      if (effectiveUseMediaKit &&
           !_currentStreamIsLive &&
           AndroidPlaybackSocHints.playbackChallengedTv &&
           _maybeSwitchToBetterAfterMediaKitVodFailure(
@@ -4113,22 +5404,33 @@ void _applyBootSuccessSideEffects(int gen, int vodSession) {
     if (_bootSuccessHooksApplied) return;
     _bootSuccessHooksApplied = true;
     _networkResumeAttempt = 0;
+    _cancelMediaKitLiveTsHlsWatchdog();
+    // Kurtarma sonrası sticky hata (ses/görüntü açıkken «açılamıyor») kalksın.
+    error.value = null;
 
     // --- Stream Success Cache: Save successful format ---
     final cur = channel.value;
-    String formatToSave;
     if (effectiveUseMediaKit) {
-      formatToSave = AppSettingsService.streamSuccessFormatMediaKit;
-    } else if (_lastBootUsedSoftwareVideoDecoder) {
-      formatToSave = AppSettingsService.streamSuccessFormatSoftware;
+      // MediaKit kanal hafızası yalnız akıllı seçim açıkken.
+      if (_settings.smartPlayerSelection.value) {
+        final formatToSave = mediaKitShouldUseSoftwareDecode
+            ? AppSettingsService.streamSuccessFormatMediaKitSoftware
+            : AppSettingsService.streamSuccessFormatMediaKit;
+        unawaited(_settings.setStreamSuccessFormat(cur.id, formatToSave));
+      }
     } else {
-      // Check if we used TS format
-      final isTs = _lastPlaybackUrl?.endsWith('.ts') ?? false;
-      formatToSave = isTs
-          ? AppSettingsService.streamSuccessFormatTs
-          : AppSettingsService.streamSuccessFormatHls;
+      final String formatToSave;
+      if (_lastBootUsedSoftwareVideoDecoder) {
+        formatToSave = AppSettingsService.streamSuccessFormatSoftware;
+      } else {
+        final lastUrl = _lastPlaybackUrl ?? '';
+        final isTs = IptvPlaybackDefaults.isLikelyMpegTsStreamUrl(lastUrl);
+        formatToSave = isTs
+            ? AppSettingsService.streamSuccessFormatTs
+            : AppSettingsService.streamSuccessFormatHls;
+      }
+      unawaited(_settings.setStreamSuccessFormat(cur.id, formatToSave));
     }
-    unawaited(_settings.setStreamSuccessFormat(cur.id, formatToSave));
     // ---------------------------------------------------
 
     // --- Save last watched channel for LIVE TV or VOD ---
@@ -4249,6 +5551,7 @@ Future<void> _boot({
     _cancelLiveZapAbrQualityRamp();
     _mediaKitZapAbrTargetGen = null;
     _bootSuccessHooksApplied = false;
+    _livePlaybackEstablished = false;
     isBusy.value = true;
     inAppPlaybackBrightness.value = 1.0;
     error.value = null;
@@ -4265,6 +5568,16 @@ Future<void> _boot({
       final layoutMode = _settings.layoutMode.value;
 
       final cur = channel.value;
+
+      // --- Stream Success Cache (normalize'dan önce: TS önbelleği .m3u8'e çevrilmesin) ---
+      final savedFormat = await _settings.getStreamSuccessFormat(cur.id);
+      final forceTsFromCache =
+          savedFormat == AppSettingsService.streamSuccessFormatTs;
+      if (forceTsFromCache) {
+        IptvPlaybackDefaults.setSkipAutoM3u8LiveManifest(true);
+      }
+      _applyStreamSuccessCacheForBoot(savedFormat, channelId: cur.id);
+
       final normalizedUrl = _normalizePlaybackStreamUrl(cur.streamUrl);
       // Uzantısız web manifest/embed (ör. `/vs/tt…/`) → mpv'ye yönlendir.
       // Motor seçiminden ÖNCE belirlenmeli ki [effectiveUseMediaKit] doğru olsun.
@@ -4272,28 +5585,8 @@ Future<void> _boot({
           IptvPlaybackDefaults.isExtensionlessWebManifestUrl(normalizedUrl);
       final live = IptvPlaybackDefaults.isLikelyLiveStream(normalizedUrl);
 
-      // --- Stream Success Cache ---
-      final savedFormat = await _settings.getStreamSuccessFormat(cur.id);
-      if (savedFormat != null) {
-        debugPrint(
-            'mina_iptv: Using cached format for channel ${cur.id}: $savedFormat');
-        if (savedFormat == AppSettingsService.streamSuccessFormatMediaKit) {
-          // Sadece kullanıcı OSD üzerinden zorla Better (Exo) seçmediyse cache'i uygula
-          if (!betterOsdOverride.value) {
-            mediaKitFallbackSession.value = true;
-            betterOsdOverride.value = false;
-          }
-        } else if (savedFormat ==
-            AppSettingsService.streamSuccessFormatSoftware) {
-          _forceSoftwareVideoDecoder = true;
-        } else if (savedFormat == AppSettingsService.streamSuccessFormatTs) {
-          _decoderTriedTsToM3u8Swap = true;
-          _xtreamTriedLiveUrlFormat = true;
-        } else if (savedFormat == AppSettingsService.streamSuccessFormatHls) {
-          // Default, nothing to do
-        }
-      }
-      // ---------------------------
+      // Better + MPEG-TS: native MinaLiveMpegTsSupport (LENGTH_UNSET + safe seek)
+      // ile Exo progressive TS denenir; proaktif MediaKit atlaması yok.
 
       if (live && !effectiveUseMediaKit) {
         _armLiveTvStartupWatchdog();
@@ -4322,8 +5615,79 @@ Future<void> _boot({
         }
       }
 
+      // Canlı HLS ön-probe kaldırıldı: Dio 403/timeout Exo’dan önce TS’ye
+      // zorluyor ve Network recovery döngüsünü tetikliyordu. Bağlantıyı
+      // DataSource headers ile Exo kursun.
+
+      if (live && (forceTsFromCache || _cachedTsFormatForBoot)) {
+        final tsUrl = _convertLivePlayUrlToTsIfNeeded(playUrl);
+        if (tsUrl != null && tsUrl.isNotEmpty) {
+          playUrl = tsUrl;
+          // Önbellekten TS zorlamak «swap denendi» sayılmaz; aksi halde
+          // TsExtractor Source error sonrası HLS fallback tamamen kilitlenirdi
+          // (logcat: Network recovery aynı .ts URL ile sonsuz döngü).
+          debugPrint('mina_iptv: Kanal önbelleği → MPEG-TS: $playUrl');
+        }
+      }
+
       if (playUrl.isNotEmpty) {
         _lastPlaybackUrl = playUrl;
+      }
+
+      if (Get.isRegistered<ActivePlaylistService>()) {
+        final activeSvc = Get.find<ActivePlaylistService>();
+        final source = activeSvc.activeInfo?.source;
+        if (source is StalkerSource) {
+          IptvPlaybackDefaults.setStalkerUserAgentOverride(
+            StalkerApi.magUserAgent,
+          );
+          debugPrint('mina_iptv: Resolving Stalker Portal link for command: $playUrl');
+          final api = StalkerApi(
+            baseUrl: source.baseUrl,
+            macAddress: source.macAddress,
+            magPreset: source.magPreset,
+            linkType: source.linkType,
+            hwVersionOverride: source.hwVersionOverride,
+          );
+          try {
+            final dio = Dio(
+              BaseOptions(
+                connectTimeout: const Duration(seconds: 45),
+                receiveTimeout: const Duration(seconds: 60),
+                sendTimeout: const Duration(seconds: 30),
+                followRedirects: true,
+                maxRedirects: 8,
+              ),
+            );
+            await api.handshake(dio);
+            final resolvedLink = await api.createLink(
+              dio,
+              live ? 'itv' : 'vod',
+              playUrl,
+            );
+            if (resolvedLink != null && resolvedLink.isNotEmpty) {
+              debugPrint('mina_iptv: Stalker link resolved: $resolvedLink');
+              playUrl = resolvedLink;
+            } else {
+              // cmd zaten düz URL olabilir (nadir); ffmpeg önekini temizle.
+              final stripped = playUrl.trim();
+              final lower = stripped.toLowerCase();
+              if (lower.startsWith('ffmpeg ') || lower.startsWith('ffrt ')) {
+                playUrl = stripped.substring(stripped.indexOf(' ') + 1).trim();
+              }
+              debugPrint(
+                'mina_iptv: Stalker link resolution returned null, '
+                'fallback cmd=$playUrl',
+              );
+            }
+          } catch (e) {
+            debugPrint('mina_iptv: Stalker link resolution failed with error: $e');
+          }
+        } else {
+          IptvPlaybackDefaults.setStalkerUserAgentOverride(null);
+        }
+      } else {
+        IptvPlaybackDefaults.setStalkerUserAgentOverride(null);
       }
 
       debugPrint(
@@ -4347,24 +5711,29 @@ Future<void> _boot({
         );
       }
       final useSoftwareVideoDecoder = _forceSoftwareVideoDecoder ||
+          _preferExoSoftwareForFastZap ||
           (live ? _settings.preferSoftwareVideoDecoder.value : false) ||
           vodChallengedTv;
 
       if (effectiveUseMediaKit) {
         _lastBootUsedSoftwareVideoDecoder = false;
-        // MediaKit (ayar veya yedek oturum): BetterPlayer'ı tamamen temizle.
-        final old = better;
-        _setBetterPlayer(null);
-        if (old != null) {
-          old.videoPlayerController?.removeListener(_onVideoPlayerChanged);
-          old.pause();
-          old.dispose(forceDispose: true);
+        // MediaKit: Better’ı sert temizle (mapSize + MediaCodec).
+        if (better != null) {
+          await _hardDisposeBetterPlayerBeforeCreate(reason: 'mediakit-boot');
+          if (!_isPlaybackGenerationCurrent(expectedGen)) return;
         }
         if (_isPlaybackGenerationCurrent(expectedGen)) {
           _beginBootBusyHold(expectedGen, vodSession);
         }
+        _armMediaKitLiveTsHlsWatchdog(playUrl);
         _mediaKitZapAbrTargetGen = expectedGen;
         return;
+      }
+
+      // Better/Exo yolu: önceki mpv oturumu varsa önce kes (çift ses).
+      if (_mediaKitPlayer != null) {
+        await _hardDisposeMediaKitPlayer(reason: 'better-boot');
+        if (!_isPlaybackGenerationCurrent(expectedGen)) return;
       }
 
       _lastBootUsedSoftwareVideoDecoder = useSoftwareVideoDecoder;
@@ -4372,7 +5741,8 @@ Future<void> _boot({
           ? _settings.effectiveLiveBufferSeconds
           : IptvBetterPlayerConfig.defaultLiveBufferSecondsForExo;
       _appliedExoLiveBufferSeconds = appliedLiveBuffer;
-      final isRawTs = live && playUrl.toLowerCase().endsWith('.ts');
+      final isRawTs =
+          live && IptvPlaybackDefaults.isLikelyMpegTsStreamUrl(playUrl);
       final ds = iptvBetterPlayerDataSource(
         playUrl,
         liveStream: live,
@@ -4382,90 +5752,119 @@ Future<void> _boot({
         useAsmsSubtitles: disableAsms ? false : null,
         preferSoftwareVideoDecoder: useSoftwareVideoDecoder,
         liveBufferSeconds: appliedLiveBuffer,
-        useLongSegmentHlsBuffer: live && _useLongSegmentLiveHlsBuffer(),
+        useLongSegmentHlsBuffer: live && _liveUseLongSegmentHlsBufferForBoot(),
         isRawTs: isRawTs,
+        useUhdLiveBuffer: _liveUhdBufferActive,
       );
 
       debugPrint('mina_iptv: DataSource headers: ${ds.headers}');
 
-      if (reuseSameBetterPlayer &&
-          better != null &&
-          _canReuseBetterForDataSource(ds)) {
-        final ctrl = better!;
-        ctrl.setOverriddenFit(videoFit.value);
-        await ctrl.setupDataSource(ds);
-        _attachBetterBufferingRecoveryListener(ctrl);
-        if (!_isPlaybackGenerationCurrent(expectedGen)) {
+      // Canlı Better: reuse bayrağı false olsa bile tek texture (setupDataSource).
+      // VOD: yalnızca tampon/decoder uyuşunca veya açık reuse isteğinde.
+      final tryBetterReuse = better != null &&
+          !effectiveUseMediaKit &&
+          (reuseSameBetterPlayer || live);
+      if (tryBetterReuse) {
+        final canReuseBuffers = _canReuseBetterForDataSource(ds);
+        final softSame = better!.videoPlayerController
+                ?.bufferingConfiguration.preferSoftwareVideoDecoder ==
+            ds.bufferingConfiguration?.preferSoftwareVideoDecoder;
+        final reuseSurface = live || canReuseBuffers || softSame;
+        if (reuseSurface) {
+          if (!_isPlaybackGenerationCurrent(expectedGen)) {
+            debugPrint(
+              'mina_iptv: stale playback gen before setupDataSource (reuse), skip',
+            );
+            return;
+          }
+          final ctrl = better!;
+          ctrl.setOverriddenFit(videoFit.value);
           debugPrint(
-            'mina_iptv: stale playback gen after setupDataSource (reuse), skip',
+            'mina_iptv: Better setupDataSource reuse '
+            '(buffersMatch=$canReuseBuffers, live=$live, '
+            'forced=${live && !reuseSameBetterPlayer})',
           );
+          await ctrl.setupDataSource(ds);
+          if (!_isPlaybackGenerationCurrent(expectedGen)) {
+            debugPrint(
+              'mina_iptv: stale playback gen after setupDataSource (reuse), dispose',
+            );
+            if (identical(better, ctrl)) {
+              try {
+                ctrl.videoPlayerController
+                    ?.removeListener(_onVideoPlayerChanged);
+                await ctrl.setVolume(0);
+                await ctrl.stop();
+                await ctrl.pause();
+                await ctrl.dispose(forceDispose: true);
+              } catch (_) {}
+              _setBetterPlayer(null);
+            }
+            return;
+          }
+          _attachBetterBufferingRecoveryListener(ctrl);
+          if (live) {
+            _scheduleLiveZapAbrRampsExo(
+              ctrl,
+              expectedGen,
+              preferredMaxHeight: effectivePreferredMaxHeight,
+              disableAsms: disableAsms,
+            );
+          } else {
+            _applyPreferredMaxHeightToBetter(
+              ctrl,
+              preferredMaxHeight: effectivePreferredMaxHeight,
+              disableAsms: disableAsms,
+            );
+          }
+          await iptvApplyBetterPlayerLowRam720CapIfNeeded(ctrl);
+          _applyBackgroundPlaybackPolicy();
+          if (!_isPlaybackGenerationCurrent(expectedGen)) {
+            debugPrint(
+              'mina_iptv: stale playback gen before play (reuse), skip',
+            );
+            return;
+          }
+          if (_shouldBlockAutomaticPlayback()) {
+            await ctrl.pause();
+          } else {
+            await ctrl.play();
+          }
+          if (!_isPlaybackGenerationCurrent(expectedGen)) {
+            debugPrint(
+              'mina_iptv: stale playback gen after play (reuse), skip',
+            );
+            return;
+          }
+          _autoQPlaybackStartedAt = DateTime.now();
+
+          if (!effectiveUseMediaKit) {
+            unawaited(ctrl.setVolume(1.0).catchError((_, __) {}));
+          }
+
+          if (live) {
+            _armLiveTvStartupWatchdog();
+          }
+          if (Platform.isAndroid && !live) {
+            _scheduleAndroidVodAudioFix(ctrl, expectedGen);
+          }
+          unawaited(
+              _applyVodSubtitleDefaultOrPreferenceForBetter(ctrl, expectedGen));
+          _startBetterBusyHoldFirstFrame(ctrl, expectedGen, vodSession);
           return;
         }
-        if (live) {
-          _scheduleLiveZapAbrRampsExo(
-            ctrl,
-            expectedGen,
-            preferredMaxHeight: effectivePreferredMaxHeight,
-            disableAsms: disableAsms,
-          );
-        } else {
-          _applyPreferredMaxHeightToBetter(
-            ctrl,
-            preferredMaxHeight: effectivePreferredMaxHeight,
-            disableAsms: disableAsms,
-          );
-        }
-        await iptvApplyBetterPlayerLowRam720CapIfNeeded(ctrl);
-        _applyBackgroundPlaybackPolicy();
-        if (_shouldBlockAutomaticPlayback()) {
-          await ctrl.pause();
-        } else {
-          await ctrl.play();
-        }
-        if (!_isPlaybackGenerationCurrent(expectedGen)) {
-          debugPrint(
-            'mina_iptv: stale playback gen after play (reuse), skip',
-          );
-          return;
-        }
-        _autoQPlaybackStartedAt = DateTime.now();
+      }
 
-        // BetterPlayer için ses reset - çoklu kanal degisiminde ses kaybini onle
-        if (!effectiveUseMediaKit) {
-          unawaited(ctrl.setVolume(1.0).catchError((_, __) {}));
-        }
+      if (better != null) {
+        await _hardDisposeBetterPlayerBeforeCreate(reason: 'new-controller');
+        if (!_isPlaybackGenerationCurrent(expectedGen)) return;
+      }
 
-        if (live) {
-          _armLiveTvStartupWatchdog();
-        }
-        if (Platform.isAndroid && !live) {
-          _scheduleAndroidVodAudioFix(ctrl, expectedGen);
-        }
-        unawaited(
-            _applyVodSubtitleDefaultOrPreferenceForBetter(ctrl, expectedGen));
-        _startBetterBusyHoldFirstFrame(ctrl, expectedGen, vodSession);
+      if (!_isPlaybackGenerationCurrent(expectedGen)) {
+        debugPrint(
+          'mina_iptv: stale playback gen before new BetterController, skip',
+        );
         return;
-      }
-
-      if (reuseSameBetterPlayer && better != null) {
-        try {
-          better!.videoPlayerController?.removeListener(_onVideoPlayerChanged);
-          await better!.pause();
-          better!.dispose(forceDispose: true);
-        } catch (_) {}
-        _setBetterPlayer(null);
-      }
-
-      // Ağ/stall kurtarma ve benzeri yollar `reuseSameBetterPlayer: false` ile _boot
-      // çağırırken eski ExoPlayer'ı atlamış oluyordu; ikinci ses + çıkış sonrası ses
-      // (özellikle Amlogic TV kutularında) bu yüzden oluşabiliyordu.
-      if (!reuseSameBetterPlayer && better != null) {
-        try {
-          better!.videoPlayerController?.removeListener(_onVideoPlayerChanged);
-          await better!.pause();
-          better!.dispose(forceDispose: true);
-        } catch (_) {}
-        _setBetterPlayer(null);
       }
 
       final controls = IptvBetterPlayerConfig.tvControls(
@@ -4485,6 +5884,7 @@ Future<void> _boot({
         },
       );
 
+      // Xiaomi telefon: TextureView (SurfaceView TV’de kalır).
       final useTextureView = Platform.isAndroid &&
           layoutMode != AppLayoutMode.tv &&
           AndroidPlaybackSocHints.xiaomiFamily;
@@ -4511,19 +5911,31 @@ Future<void> _boot({
 
       final ctrl = BetterPlayerController(cfg);
       ctrl.setOverriddenFit(videoFit.value);
+      // VideoPlayerController._create() texture üretir — setup öncesi gen kilidi.
+      if (!_isPlaybackGenerationCurrent(expectedGen)) {
+        debugPrint(
+          'mina_iptv: stale playback gen before setupDataSource (new Better), dispose',
+        );
+        try {
+          await ctrl.dispose(forceDispose: true);
+        } catch (_) {}
+        return;
+      }
       await ctrl.setupDataSource(ds);
-      _attachBetterBufferingRecoveryListener(ctrl);
       if (!_isPlaybackGenerationCurrent(expectedGen)) {
         debugPrint(
           'mina_iptv: stale playback gen after setupDataSource (new Better), dispose',
         );
         try {
           ctrl.videoPlayerController?.removeListener(_onVideoPlayerChanged);
+          await ctrl.setVolume(0);
+          await ctrl.stop();
           await ctrl.pause();
-          ctrl.dispose(forceDispose: true);
+          await ctrl.dispose(forceDispose: true);
         } catch (_) {}
         return;
       }
+      _attachBetterBufferingRecoveryListener(ctrl);
       if (live) {
         _scheduleLiveZapAbrRampsExo(
           ctrl,
@@ -4545,6 +5957,7 @@ Future<void> _boot({
 
       // Native hataları yakalamak için VideoPlayerController'ı dinle
       ctrl.videoPlayerController?.addListener(_onVideoPlayerChanged);
+      _attachExoStallEventListener(ctrl);
 
       if (_shouldBlockAutomaticPlayback()) {
         await ctrl.pause();
@@ -4566,6 +5979,7 @@ Future<void> _boot({
 
       if (live) {
         _armLiveTvStartupWatchdog();
+        _scheduleLiveChannelPreload();
       }
 
       // Film/dizi (VOD): telefonda AC3 öncelikli parça sessiz kalabiliyor; mix + AAC seçimi tekrarlanır.
@@ -4587,6 +6001,11 @@ Future<void> _boot({
         suppressNetworkRecoverySchedule: suppressNetworkRecoverySchedule,
       );
     } finally {
+      if (_cachedTsFormatForBoot) {
+        _cachedTsFormatForBoot = false;
+        _settings.syncPlaybackUrlNormalizationPolicy();
+      }
+      _preferFastLiveStartBuffer = false;
       // Not: `finally` içinde `return` kullanmak try/catch'ten gelen akışı
       // yutar (control_flow_in_finally). Aynı davranış return'süz iç içe
       // if/else ile korunur.
@@ -4909,7 +6328,7 @@ Future<bool?> _showVodResumeDialog() async {
     void tryFix() {
       if (!stillThisPlayback()) return;
       try {
-        c.setMixWithOthers(false);
+        c.setMixWithOthers(_settings.backgroundPlayback.value);
       } catch (_) {}
       final tracks = c.betterPlayerAsmsAudioTracks;
       if (tracks == null || tracks.isEmpty) return;
@@ -5195,7 +6614,11 @@ Future<void> playVodAutoplayNow() async {
 /// Ağ / geçici kaynak kopması: tam [_boot] öncesi Exo aynı URL’yi [retryDataSource] ile yeniler.
   bool _maybeLightweightBetterPlayerRetry(String msg) {
     if (effectiveUseMediaKit || better == null) return false;
+    if (PlayerController._isExoTsExtractorSeekFailure(msg)) return false;
+    if (PlayerController._isHttpForbiddenOrUnauthorizedError(msg)) return false;
     if (!PlayerController._isLikelyNetworkOrTransientError(msg)) return false;
+    // Canlı: 1–2 sn’lik retry Exo BUFFERING→READY’yi öldürür; network recovery (10s+).
+    if (_currentStreamIsLive) return false;
     if (_betterPlayerLightRetryWave >= 2) {
       _betterPlayerLightRetryWave = 0;
       return false;
@@ -5205,7 +6628,7 @@ Future<void> playVodAutoplayNow() async {
       'mina_iptv: BetterPlayer retryDataSource ($_betterPlayerLightRetryWave/2): $msg',
     );
     unawaited(
-      Future.delayed(const Duration(milliseconds: 1400), () async {
+      Future.delayed(PlayerController._networkResumeMinDelay, () async {
         if (isClosed) return;
         final b = better;
         if (b == null || effectiveUseMediaKit) return;
@@ -5224,6 +6647,12 @@ void _onBetterPlayerEvent(BetterPlayerEvent event) {
       final ex = event.parameters?['exception'];
       if (ex != null && ex.toString().isNotEmpty) {
         final msg = ex.toString();
+        if (_handleLiveHttpForbiddenError(msg)) {
+          return;
+        }
+        if (_handleLiveTsExtractorSeekFailure(msg)) {
+          return;
+        }
         // Canlı: yazılım kod çözücü / MediaKit'ten ÖNCE HLS↔TS swap dene
         // (mp2t-in-HLS renderer hatası direkt .ts ile çözülüyor).
         if (_maybeSwapLiveTransportBeforeDecoderFallback(msg)) {
@@ -5248,7 +6677,9 @@ void _onBetterPlayerEvent(BetterPlayerEvent event) {
           unawaited(_performMediaKitFallbackBoot());
           return;
         }
-        if (_currentStreamIsLive && PlayerController._isLikelyNetworkOrTransientError(msg)) {
+        if (_currentStreamIsLive &&
+            (PlayerController._isLikelyNetworkOrTransientError(msg) ||
+                PlayerController._isHttpForbiddenOrUnauthorizedError(msg))) {
           _cancelLiveTransientErrorEmitTimer();
           _liveTransientErrorEmitTimer =
               Timer(const Duration(milliseconds: 500), () {
@@ -5275,6 +6706,9 @@ void _onBetterPlayerEvent(BetterPlayerEvent event) {
         _liveTvStallRecoveryAttempts = 0;
         _betterPlayerLightRetryWave = 0;
         _cancelLiveTransientErrorEmitTimer();
+        if (_settings.hasRuntimeLiveBufferOverride) {
+          _scheduleLiveAutoBufferRevertWatch();
+        }
       }
       return;
     }
@@ -5366,6 +6800,11 @@ void _onBetterPlayerEvent(BetterPlayerEvent event) {
     if (effectiveUseMediaKit) return false;
     if (mediaKitFallbackSession.value) return false;
     if (_autoEngineSwitchUsed) return false;
+    // Canlı: kaynak/ağ Exo hatası → ağ kurtarma / HLS↔TS; gereksiz MediaKit değil.
+    if (_currentStreamIsLive &&
+        PlayerController._isLikelyLiveSourceOrNetworkExoError(msg)) {
+      return false;
+    }
     if (PlayerController._isPlaybackDecoderFailure(msg)) return true;
     final l = msg.toLowerCase();
     if (!_currentStreamIsLive) {
@@ -5451,26 +6890,48 @@ void _onBetterPlayerEvent(BetterPlayerEvent event) {
 
 Future<void> _performMediaKitFallbackBoot() async {
     if (isClosed) return;
+    // OSD Better→MediaKit: generation + stall listener kesilmezse softRecover
+    // gecikmeli playWhenReady ile Exo sesi MediaKit yanında devam eder.
+    _bumpPlaybackGeneration();
+    final expectedGen = _playbackGeneration;
     _cancelZapRelativeDebounce();
     _cancelNetworkAutoResumeTimer();
+    _networkResumeAttempt = 0;
+    _liveKeepAliveArmed = false;
+    _cancelBetterBufferingRecoveryTimer();
     _cancelLiveStallWatchdog();
     _cancelLiveTvStartupWatchdog();
+    _cancelLiveAutoNextWatchdog();
+    _cancelLiveChannelPreload();
+    _detachExoStallEventListener();
     error.value = null;
     try {
-      final old = better;
-      _setBetterPlayer(null);
-      if (old != null) {
-        old.videoPlayerController?.removeListener(_onVideoPlayerChanged);
-        await old.pause();
-        old.dispose(forceDispose: true);
-      }
+      await _hardDisposeBetterPlayerBeforeCreate(reason: 'mediakit-fallback');
     } catch (_) {}
+
+    // Panel tek-oturum + MediaCodec BufferPool: hemen MediaKit açma → 403/timeout.
+    // Hard dispose zaten 300ms settle etti; ek cool-down panel slot için.
+    if (Platform.isAndroid) {
+      final extra = PlayerController._betterToMediaKitCooldown -
+          PlayerController._betterHardResetSettle;
+      if (extra > Duration.zero) {
+        await Future<void>.delayed(extra);
+      }
+    }
+    if (isClosed || !_isPlaybackGenerationCurrent(expectedGen)) {
+      debugPrint(
+        'mina_iptv: MediaKit fallback iptal (stale gen after cool-down)',
+      );
+      return;
+    }
+
     mediaKitAttachEpoch.value++;
     await _boot(
       preferredMaxHeight: null,
       disableAsms: false,
       reuseSameBetterPlayer: false,
       suppressNetworkRecoverySchedule: false,
+      playbackGeneration: expectedGen,
     );
   }
 
@@ -5479,18 +6940,15 @@ Future<void> _performMediaKitFallbackBoot() async {
   Future<void> _performBetterSoftwareDecoderRetryBoot() async {
     if (isClosed) return;
     if (effectiveUseMediaKit) return;
+    _bumpPlaybackGeneration();
     _cancelNetworkAutoResumeTimer();
+    _cancelBetterBufferingRecoveryTimer();
     _cancelLiveStallWatchdog();
     _cancelLiveTvStartupWatchdog();
+    _detachExoStallEventListener();
     error.value = null;
     try {
-      final old = better;
-      _setBetterPlayer(null);
-      if (old != null) {
-        old.videoPlayerController?.removeListener(_onVideoPlayerChanged);
-        await old.pause();
-        old.dispose(forceDispose: true);
-      }
+      await _hardDisposeBetterPlayerBeforeCreate(reason: 'software-decoder-retry');
     } catch (_) {}
     await _boot(
       preferredMaxHeight: null,
@@ -5514,11 +6972,31 @@ Future<void> _performMediaKitFallbackBoot() async {
   /// bir kez düşülür (KM2 Plus gibi kutularda donanım sorunsuz; eski kutularda
   /// Exo «Source error» / MediaCodec hatası verebilir).
   bool _shouldRetryBetterSoftwareDecoderForError(String msg) {
+    // TsExtractor.seek / HTTP 403: yazılım kod çözücü işe yaramaz.
+    if (PlayerController._isExoTsExtractorSeekFailure(msg)) return false;
+    if (PlayerController._isHttpForbiddenOrUnauthorizedError(msg)) return false;
     if (PlayerController._isPlaybackDecoderFailure(msg)) {
       if (_currentStreamIsLive) return true;
       return _shouldAutoFallbackToMediaKit(msg);
     }
     if (!_currentStreamIsLive) return false;
+    // Canlı progressive TS Source error → seek hatası sınıfı; yazılım decoder değil.
+    if (_isLiveMpegTsPlaybackUrl() &&
+        msg.toLowerCase().contains('source error')) {
+      return false;
+    }
+    // Xiaomi telefon: canlı HLS kaynak hatasında bir kez yazılım kod çözücü
+    // (native OMX.google önceliği ile; kullanıcı ayarı açmadan otomatik kurtarma).
+    if (Platform.isAndroid && AndroidPlaybackSocHints.xiaomiHandheld) {
+      final l = msg.toLowerCase();
+      if (l.contains('source error') ||
+          l.contains('exoplaybackexception') ||
+          l.contains('video/mp2t') ||
+          l.contains('unable to decode') ||
+          l.contains('renderer error')) {
+        return true;
+      }
+    }
     if (!_isLiveMpegTsPlaybackUrl()) return false;
     if (PlayerController._isNotFoundStyleError(msg)) return false;
     final l = msg.toLowerCase();
@@ -5568,6 +7046,13 @@ bool _maybeRetryBetterWithSoftwareDecoderBeforeMediaKit(String msg) {
     if (swapped == null || swapped == basis) return false;
     _decoderTriedTsToM3u8Swap = true;
     _playUrlOverride = swapped;
+    if (IptvPlaybackDefaults.isLikelyMpegTsStreamUrl(basis) &&
+        !IptvPlaybackDefaults.isLikelyMpegTsStreamUrl(swapped)) {
+      unawaited(_settings.clearStreamSuccessFormat(channel.value.id));
+      _settings.syncPlaybackUrlNormalizationPolicy();
+    } else if (IptvPlaybackDefaults.isLikelyMpegTsStreamUrl(swapped)) {
+      IptvPlaybackDefaults.setSkipAutoM3u8LiveManifest(true);
+    }
     _cancelNetworkAutoResumeTimer();
     _networkResumeAttempt = 0;
     error.value = null;
@@ -5578,17 +7063,121 @@ bool _maybeRetryBetterWithSoftwareDecoderBeforeMediaKit(String msg) {
       _boot(
         preferredMaxHeight: null,
         disableAsms: false,
-        reuseSameBetterPlayer: false,
+        reuseSameBetterPlayer: true,
         suppressNetworkRecoverySchedule: true,
       ),
     );
     return true;
   }
 
+void _cancelLiveChannelPreload() {
+    _livePreloadTimer?.cancel();
+    _livePreloadTimer = null;
+    _livePreloadScheduledUrl = null;
+  }
+
+void _scheduleLiveChannelPreload() {
+    if (!Platform.isAndroid) return;
+    if (!_currentStreamIsLive || effectiveUseMediaKit) return;
+    if (better == null) return;
+    _livePreloadTimer?.cancel();
+    _livePreloadTimer = Timer(const Duration(seconds: 5), () {
+      _livePreloadTimer = null;
+      if (isClosed) return;
+      unawaited(_preloadNextLiveChannelInCategory());
+    });
+  }
+
+Future<void> _preloadNextLiveChannelInCategory() async {
+    final ctrl = better;
+    if (ctrl == null) return;
+    if (!_currentStreamIsLive || effectiveUseMediaKit) return;
+    final list = liveChannelsInCurrentCategory();
+    if (list.length < 2) return;
+
+    final cur = channel.value;
+    var idx = list.indexWhere((c) => c.id == cur.id);
+    if (idx < 0) {
+      idx = list.indexWhere((c) => _isSameChannelRow(c, cur));
+    }
+    if (idx < 0) return;
+
+    final next = list[(idx + 1) % list.length];
+    var url = _normalizePlaybackStreamUrl(next.streamUrl);
+    final preferred = _applyPreferredLiveStreamFormat(url);
+    if (preferred != null && preferred.isNotEmpty) {
+      url = preferred;
+    }
+    if (url.isEmpty || url == _lastPlaybackUrl) return;
+    if (_livePreloadScheduledUrl == url) return;
+
+    _livePreloadScheduledUrl = url;
+    try {
+      final cacheKey = IptvBetterPlayerConfig.cacheKeyForUrl(url);
+      final formatHint = iptvVideoFormatHintForUrl(url);
+      final ds = BetterPlayerDataSource(
+        BetterPlayerDataSourceType.network,
+        url,
+        liveStream: true,
+        headers: IptvPlaybackDefaults.headersForStreamUrl(url),
+        videoFormat: formatHint,
+        cacheConfiguration: IptvBetterPlayerConfig.iptvPrecacheConfig(cacheKey),
+      );
+      await ctrl.preCache(ds);
+      debugPrint('mina_iptv: Canlı zap ön-yükleme: ${next.name}');
+    } catch (e) {
+      debugPrint('mina_iptv: Canlı ön-yükleme atlandı: $e');
+    }
+  }
+
+void _maybePromoteLiveUhdExoBuffer() {
+    if (_liveUhdBufferActive || _liveUhdBufferPromotionInFlight) return;
+    if (!_currentStreamIsLive || effectiveUseMediaKit) return;
+    if (_preferFastLiveStartBuffer) return;
+    final v = better?.videoPlayerController?.value;
+    if (v == null || !v.isPlaying || v.hasError) return;
+    final sz = v.size;
+    if (sz == null || sz.width <= 0 || sz.height <= 0) return;
+    final maxDim = math.max(sz.width, sz.height);
+    if (maxDim < 2160) return;
+
+    _liveUhdBufferPromotionInFlight = true;
+    _liveUhdBufferActive = true;
+    debugPrint(
+      'mina_iptv: Canlı UHD (${maxDim.round()}p) → geniş Exo tampon profili',
+    );
+    unawaited(
+      _boot(
+        preferredMaxHeight: null,
+        disableAsms: false,
+        reuseSameBetterPlayer: true,
+        suppressNetworkRecoverySchedule: true,
+      ).whenComplete(() {
+        _liveUhdBufferPromotionInFlight = false;
+      }),
+    );
+  }
+
 void _onVideoPlayerChanged() {
     try {
       final v = better?.videoPlayerController?.value;
       if (v == null) return;
+      if (v.isPlaying && !v.hasError && v.position > const Duration(seconds: 3)) {
+        _livePlaybackEstablished = true;
+      }
+      // Decoder/yüzey sinyali → başlangıç HLS↔TS watchdog'unu erken kapat.
+      if (_currentStreamIsLive &&
+          !effectiveUseMediaKit &&
+          _liveTvStartupWatchdog != null &&
+          _liveStartupLooksHealthy()) {
+        _cancelLiveTvStartupWatchdog();
+        debugPrint(
+          'mina_iptv: Canlı başlangıç watchdog iptal (initialized/decoder)',
+        );
+      }
+      if (v.isPlaying && !v.hasError) {
+        _maybePromoteLiveUhdExoBuffer();
+      }
       _handlePipActiveTransition(v.isPip);
       if (!v.hasError) {
         _cancelLiveTransientErrorEmitTimer();
@@ -5598,6 +7187,12 @@ void _onVideoPlayerChanged() {
         debugPrint('mina_iptv: VideoPlayer error: $msg');
         if (PlayerController._isNotFoundStyleError(msg)) {
           _emitPlaybackErrorForRecovery(msg);
+          return;
+        }
+        if (_handleLiveHttpForbiddenError(msg)) {
+          return;
+        }
+        if (_handleLiveTsExtractorSeekFailure(msg)) {
           return;
         }
         // Canlı: yazılım kod çözücü / MediaKit'ten ÖNCE HLS↔TS swap dene.

@@ -11,6 +11,10 @@ abstract final class IptvPlaybackDefaults {
   /// bağımlı değildir (circular import yok).
   static String? _overrideUserAgent;
 
+  /// Zayıf TV box / MPEG-TS tercihinde Xtream `/live/*.ts` → `.m3u8` otomatik
+  /// dönüşümünü atla ([AppSettingsService.syncPlaybackUrlNormalizationPolicy]).
+  static bool _skipAutoM3u8LiveManifest = false;
+
   /// AppSettingsService tarafından çağrılır; boş veya null değer override'ı
   /// kaldırır ve varsayılan UA'ya döner.
   static void setOverrideUserAgent(String? value) {
@@ -18,12 +22,59 @@ abstract final class IptvPlaybackDefaults {
     _overrideUserAgent = (t == null || t.isEmpty) ? null : t;
   }
 
-  /// Aktif User-Agent (override > default).
+  /// Canlı Xtream `.ts` → `.m3u8` otomatik dönüşümünü geçici olarak kapat/aç.
+  static void setSkipAutoM3u8LiveManifest(bool skip) {
+    _skipAutoM3u8LiveManifest = skip;
+  }
+
+  /// Verilen URL ham MPEG-TS taşıma biçimi mi? (uzantı veya `output=ts` vb.)
+  static bool isLikelyMpegTsStreamUrl(String url) {
+    final streamLc = url.toLowerCase();
+    return streamLc.endsWith('.ts') ||
+        streamLc.contains('output=ts') ||
+        streamLc.contains('output=mpegts') ||
+        streamLc.contains('output=mpeg-ts') ||
+        streamLc.contains('output=m2ts') ||
+        streamLc.contains('type=ts') ||
+        streamLc.contains('container=ts');
+  }
+
+  /// HLS manifest / m3u8 taşıma biçimi ipucu (canlı taşıma biçimi değişimi için).
+  static bool isLikelyHlsStreamUrl(String url) {
+    final streamLc = url.toLowerCase();
+    final path = streamLc.split('?').first;
+    return path.endsWith('.m3u8') ||
+        path.endsWith('.m3u') ||
+        streamLc.contains('output=m3u8') ||
+        streamLc.contains('output=m3u') ||
+        streamLc.contains('output=hls') ||
+        streamLc.contains('type=m3u8') ||
+        streamLc.contains('type=hls') ||
+        streamLc.contains('container=m3u8') ||
+        streamLc.contains('.m3u8');
+  }
+
+  /// Canlı Xtream URL'sini MPEG-TS biçimine çevirir; zaten TS ise `null`.
+  static String? convertLiveUrlToTsIfNeeded(String url) {
+    if (isLikelyMpegTsStreamUrl(url)) return null;
+    final preferred = applyPreferredLiveStreamFormat(url, preferTs: true);
+    if (preferred != null) return preferred;
+    if (!isLikelyHlsStreamUrl(url)) return null;
+    return swapLiveTsM3u8Url(url, live: true);
+  }
+
+  /// Kullanıcının Ayarlar > Oynatıcı > User Agent menüsünden seçtiği UA.
   static String get effectiveUserAgent =>
       _overrideUserAgent ?? _defaultUserAgent;
 
   static const String _defaultUserAgent =
       'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+
+  static String? _stalkerUserAgentOverride;
+
+  static void setStalkerUserAgentOverride(String? value) {
+    _stalkerUserAgentOverride = value;
+  }
 
   /// Sabit yapı için geriye dönük getter; aktif UA'yı içerir.
   static Map<String, String> get httpHeaders => <String, String>{
@@ -35,6 +86,9 @@ abstract final class IptvPlaybackDefaults {
   /// Bazı Xtream panelleri istekte `Referer` (köken) bekler; aksi halde bağlantı resetlenebilir.
   static Map<String, String> headersForStreamUrl(String streamUrl) {
     final m = Map<String, String>.from(httpHeaders);
+    if (_stalkerUserAgentOverride != null) {
+      m['User-Agent'] = _stalkerUserAgentOverride!;
+    }
     final u = Uri.tryParse(streamUrl);
     if (u != null && u.hasScheme && u.host.isNotEmpty) {
       m['Referer'] = '${u.scheme}://${u.host}${u.hasPort ? ':${u.port}' : ''}/';
@@ -80,6 +134,7 @@ abstract final class IptvPlaybackDefaults {
   /// Xtream tarzı `.../live/kullanıcı/şifre/123.ts` adreslerinde çoğu panel aynı yayını
   /// `.../123.m3u8` ile de sunar. OSD kalite listesi (HLS varyantları) yalnızca m3u8/mpd ile dolar.
   static String preferM3u8LiveManifestIfXtreamTs(String url) {
+    if (_skipAutoM3u8LiveManifest) return url;
     final uri = Uri.tryParse(url.trim());
     if (uri == null) return url;
     final path = uri.path.toLowerCase();
@@ -101,6 +156,9 @@ abstract final class IptvPlaybackDefaults {
     // uzantıya bakmadan canlı sayılmalı (aksi halde VOD sanılıp otomatik MediaKit/Exo yolu karışır).
     if (pathNorm.contains('/live/')) return true;
 
+    // Aggregator film embed (vidmody `/vs/tt…/`) → VOD HLS, canlı değil.
+    if (isExtensionlessWebManifestUrl(url)) return false;
+
     if (path.endsWith('.mp4') ||
         path.endsWith('.mkv') ||
         path.endsWith('.avi') ||
@@ -118,10 +176,9 @@ abstract final class IptvPlaybackDefaults {
   ///
   /// Örn. aggregator film listelerindeki `https://vidmody.com/vs/tt8637498/`
   /// adresleri aslında HLS (m3u8) manifestidir ama URL'de `.m3u8` uzantısı
-  /// taşımaz ve segmentleri `.jpg/.gif` kılığındadır. ExoPlayer container'ı
-  /// URL uzantısından/içerikten tespit edemediği için bunları progressive sanıp
-  /// "Source error" verir. mpv (MediaKit) içerik sniff'i ile sorunsuz açar; bu
-  /// yüzden bu adresleri doğrudan MediaKit'e yönlendiririz.
+  /// taşımaz ve segmentleri `.jpg/.gif` kılığındadır. ExoPlayer (Better) artık
+  /// [MinaDisguisedHlsExtractorFactory] ile bu segmentleri MPEG-TS olarak açar;
+  /// otomatik modda hâlâ MediaKit tercih edilebilir.
   ///
   /// Normal IPTV canlı/VOD kalıpları (`/live/`, `/movie/`, `/series/`, `.ts`,
   /// `.m3u8`, `.mpd`, `output=`, `get.php`) ve bilinen medya uzantıları HARİÇ

@@ -14,11 +14,13 @@ import '../home/widgets/google_signin_prompt_dialog.dart';
 import '../../core/layout/app_layout_mode.dart';
 import '../../domain/entities/playlist_source.dart';
 import '../../core/error/app_exception.dart';
+import '../../core/error/playlist_url_error_humanizer.dart';
 import '../../core/routes/app_routes.dart';
 import '../../core/services/app_bootstrap_service.dart';
 import '../../core/services/app_settings_service.dart';
 import '../../core/services/active_playlist_service.dart';
 import '../../core/services/licensing_service.dart';
+import '../../core/services/auth_service.dart';
 import '../../core/services/app_image_cache_service.dart';
 import '../../core/services/epg_service.dart';
 import '../../core/services/epg_deferred_load_service.dart';
@@ -141,7 +143,26 @@ class SplashController extends GetxController {
     try {
       if (Get.isRegistered<LicensingService>()) {
         final licensing = Get.find<LicensingService>();
-        await licensing.initialization.timeout(const Duration(seconds: 5), onTimeout: () {});
+        await licensing.initialization.timeout(
+          const Duration(seconds: 15),
+          onTimeout: () {},
+        );
+        if (!licensing.isTrialActive.value && !licensing.isPremium.value) {
+          // Xiaomi vb.: Firebase oturumu geç restore olabilir; paywall'a
+          // gitmeden bir kez daha bulut + Play senkronu dene.
+          if (Get.isRegistered<AuthService>()) {
+            final authUser = Get.find<AuthService>().currentUser.value;
+            if (authUser != null) {
+              await licensing.syncLicenseFromAccount(user: authUser);
+            }
+          }
+        }
+        if (licensing.deviceLimitExceeded.value) {
+          _finished = true;
+          _failSafe?.cancel();
+          Get.offAllNamed(AppRoutes.paywall);
+          return;
+        }
         if (!licensing.isTrialActive.value && !licensing.isPremium.value) {
           _finished = true;
           _failSafe?.cancel();
@@ -264,13 +285,19 @@ class SplashController extends GetxController {
       _afterHomeRemoteConfigTasks(remote?.value);
     } on AppException catch (e) {
       debugPrint('mina_iptv: AppException: ${e.message}');
-      _handleBootstrapError(e.message, clearCache: false);
+      _handleBootstrapError(
+        humanizePlaylistUrlError(e),
+        clearCache: false,
+      );
     } on TimeoutException {
       debugPrint('mina_iptv: Load TimeoutException');
       _handleBootstrapError('playlist.error.url.timeout'.tr, clearCache: false);
     } catch (e, st) {
       debugPrint('mina_iptv: Error: $e\n$st');
-      _handleBootstrapError(e.toString(), clearCache: false);
+      _handleBootstrapError(
+        humanizePlaylistUrlError(e),
+        clearCache: false,
+      );
     }
   }
 

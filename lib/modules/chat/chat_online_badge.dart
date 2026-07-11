@@ -4,8 +4,8 @@ import 'package:get/get.dart';
 import '../../core/services/chat_service.dart';
 
 /// Sohbet bölümünde başlığın sağ tarafında gösterilen "N Online" rozeti —
-/// yeşil canlı nokta + o an çevrimiçi kullanıcı sayısı. Sayı 0 iken (veya
-/// servis hazır değilse) tamamen gizlenir; yer kaplamaz.
+/// yeşil canlı nokta + uygulamada anlık çevrimiçi kullanıcı sayısı. Sayı 0
+/// iken (veya servis hazır değilse) tamamen gizlenir; yer kaplamaz.
 class ChatOnlineBadge extends StatelessWidget {
   const ChatOnlineBadge({super.key});
 

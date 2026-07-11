@@ -7,10 +7,10 @@ import '../../core/layout/app_layout_mode.dart';
 import '../../core/routes/app_routes.dart';
 import '../../core/services/app_settings_service.dart';
 import '../../core/services/auth_service.dart';
+import '../../core/services/cloud_restore_coordinator.dart';
 import '../../core/services/profiles_service.dart';
 import '../../core/services/toast_service.dart';
 import '../../domain/repositories/playlist_repository.dart';
-import '../../ui/cloud_sync_loading_dialog.dart';
 import '../playlist/playlist_controller.dart';
 
 /// Kurulum sihirbazı: mobil 8 adım; TV 6 adım (… → font → kaynak).
@@ -89,6 +89,11 @@ class SetupWizardController extends GetxController {
   @override
   void onInit() {
     super.onInit();
+    if (Get.isRegistered<AppSettingsService>()) {
+      unawaited(
+        Get.find<AppSettingsService>().ensureHandheldHomeLayoutDefault(),
+      );
+    }
     if (Get.isRegistered<PlaylistController>()) {
       ever(
         Get.find<PlaylistController>().canSubmit,
@@ -123,72 +128,61 @@ class SetupWizardController extends GetxController {
       return;
     }
     isCloudBusy.value = true;
-    var dialogOpen = true;
-    showCloudSyncLoadingDialog(); // Show loading dialog immediately!
     try {
       final result = await auth.signInWithGoogle();
       switch (result.outcome) {
         case GoogleSignInOutcome.cancelled:
-          dismissCloudSyncLoadingDialog();
           return;
         case GoogleSignInOutcome.notConfigured:
           toast.show('cloud.notConfigured'.tr, isError: true);
-          dismissCloudSyncLoadingDialog();
           return;
         case GoogleSignInOutcome.failed:
           toast.show(result.messageKey.tr, isError: true);
-          dismissCloudSyncLoadingDialog();
           return;
         case GoogleSignInOutcome.success:
           break;
       }
 
-      final cloud = await auth
-          .loadUserSettingsFromCloud()
-          .timeout(const Duration(seconds: 45), onTimeout: () => null);
-
-      final hasCloudPlaylist = cloud != null &&
-          cloud.isNotEmpty &&
-          auth.cloudBackupHasPlaylistSource(cloud);
-
-      if (hasCloudPlaylist) {
-        final applied = await auth
-            .applyCloudSettingsLocally(cloud)
-            .timeout(const Duration(seconds: 120), onTimeout: () => false);
-        if (!applied) {
-          toast.show('cloud.restoreFailed'.tr, isError: true);
-          dismissCloudSyncLoadingDialog();
-          return;
-        }
-        final app = Get.find<AppSettingsService>();
-        try {
+      final restore = await CloudRestoreCoordinator.restoreWithProgressDialog(
+        auth: auth,
+        navigateToSplashOnSuccess: false,
+        afterApply: () async {
+          final app = Get.find<AppSettingsService>();
           await app.reloadAllFromPrefs();
           await app.reconcileDeviceLocalHardwareSettings();
-        } catch (e, st) {
-          debugPrint('[SetupWizard] prefs reload after cloud: $e\n$st');
-        }
-        if (Get.isRegistered<ProfilesService>()) {
-          try {
+          if (Get.isRegistered<ProfilesService>()) {
             await Get.find<ProfilesService>().reload();
-          } catch (e, st) {
-            debugPrint('[SetupWizard] profiles reload after cloud: $e\n$st');
           }
-        }
-        await app.setSetupCompleted(true, markShowcaseSuggestionSeen: true);
-        _clearHook();
-        dismissCloudSyncLoadingDialog();
-        dialogOpen = false;
-        await Future<void>.delayed(const Duration(milliseconds: 150));
-        Get.offAllNamed(AppRoutes.splash);
-      } else {
-        dismissCloudSyncLoadingDialog();
-        dialogOpen = false;
-        await _stayOnSetupAfterCloudSignIn(auth, cloud, toast);
+        },
+      );
+
+      switch (restore.outcome) {
+        case CloudRestoreOutcome.failed:
+          toast.show('cloud.restoreFailed'.tr, isError: true);
+          return;
+        case CloudRestoreOutcome.empty:
+          await _stayOnSetupAfterCloudSignIn(auth, null, toast);
+          return;
+        case CloudRestoreOutcome.success:
+          final preview = restore.preview;
+          if (preview != null && preview.hasPlaylistData) {
+            final app = Get.find<AppSettingsService>();
+            await app.setSetupCompleted(true, markShowcaseSuggestionSeen: true);
+            _clearHook();
+            await Future<void>.delayed(const Duration(milliseconds: 150));
+            Get.offAllNamed(AppRoutes.splash);
+          } else {
+            await _stayOnSetupAfterCloudSignIn(
+              auth,
+              null,
+              toast,
+              alreadyApplied: true,
+            );
+          }
       }
     } catch (e, st) {
       debugPrint('[SetupWizard] signInWithGoogleAndSync error: $e\n$st');
       toast.show('cloud.restoreFailed'.tr, isError: true);
-      if (dialogOpen) dismissCloudSyncLoadingDialog();
     } finally {
       isCloudBusy.value = false;
     }
@@ -198,10 +192,11 @@ class SetupWizardController extends GetxController {
   Future<void> _stayOnSetupAfterCloudSignIn(
     AuthService auth,
     Map<String, dynamic>? cloud,
-    ToastService toast,
-  ) async {
+    ToastService toast, {
+    bool alreadyApplied = false,
+  }) async {
     _syncToCloudOnComplete = true;
-    if (cloud != null && cloud.isNotEmpty) {
+    if (!alreadyApplied && cloud != null && cloud.isNotEmpty) {
       try {
         await auth.applyCloudSettingsLocally(cloud);
         final app = Get.find<AppSettingsService>();

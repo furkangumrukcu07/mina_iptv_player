@@ -49,6 +49,10 @@ enum HomeLayoutStyle {
   static List<HomeLayoutStyle> selectableFor(AppLayoutMode mode) =>
       values.where((s) => s.availableForLayout(mode)).toList(growable: false);
 
+  /// İlk kurulum / kayıtlı tercih yokken varsayılan yerleşim.
+  static HomeLayoutStyle defaultFor(AppLayoutMode mode) =>
+      mode == AppLayoutMode.tv ? standard : showcase;
+
   static HomeLayoutStyle fromStorageKey(String? raw) {
     if (raw == 'minimal') return HomeLayoutStyle.standard;
     for (final v in values) {

@@ -8,8 +8,11 @@ import 'package:get/get.dart';
 import '../../core/layout/app_layout_mode.dart';
 import '../../core/routes/app_routes.dart';
 import '../../core/services/app_settings_service.dart';
+import '../../core/services/auth_service.dart';
 import '../../core/theme/app_theme.dart';
+import '../../ui/google_cloud_sign_in_panel.dart';
 import '../../ui/tv_dpad_focus.dart';
+import '../setup/setup_wizard_controller.dart';
 import 'playlist_controller.dart';
 import 'widgets/playlist_qr_loader_dialog.dart';
 import 'widgets/playlist_source_setup_form.dart';
@@ -26,6 +29,9 @@ class PlaylistView extends StatefulWidget {
 
 class _PlaylistViewState extends State<PlaylistView> {
   final controller = Get.find<PlaylistController>();
+  bool get _showCloudSignIn =>
+      Get.isRegistered<AuthService>() &&
+      Get.find<AuthService>().isCloudBackupSupported;
   final _scrollController = ScrollController();
   final _backFocus = FocusNode(debugLabel: 'playlistBack');
   final _firstKindFocus = FocusNode(debugLabel: 'playlistFirstKind');
@@ -173,6 +179,20 @@ class _PlaylistViewState extends State<PlaylistView> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  if (_showCloudSignIn) ...[
+                    Obx(() {
+                      final ctrl = Get.find<SetupWizardController>();
+                      return GoogleCloudSignInCard(
+                        isBusy: ctrl.isCloudBusy.value,
+                        onSignIn: ctrl.isCloudBusy.value
+                            ? null
+                            : () => unawaited(ctrl.signInWithGoogleAndSync()),
+                      );
+                    }),
+                    const SizedBox(height: 14),
+                    const CloudSignInOrDivider(),
+                    const SizedBox(height: 14),
+                  ],
                   _GlassCard(
                     padding: const EdgeInsets.fromLTRB(24, 22, 24, 18),
                     child: Column(

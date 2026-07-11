@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
@@ -235,12 +236,15 @@ M3uResult m3uResultFromJsonMap(Map<String, dynamic> m) {
   );
 }
 
-/// [compute] için: `args[0]` = beklenen anahtar, `args[1]` = UTF-8 JSON baytları.
-M3uResult? decodeMergedPlaylistSnapshotBytes(List<dynamic> args) {
+/// [compute] için: `args[0]` = beklenen anahtar, `args[1]` = UTF-8 JSON **String**.
+///
+/// Büyük `List<int>` / `M3uResult` göndermek `CopyMutableObjectGraph` ile
+/// ana isolate'i kilitleyip ANR üretir; String kopyası çok daha ucuz.
+M3uResult? decodeMergedPlaylistSnapshotJsonString(List<dynamic> args) {
   final expectedKey = args[0] as String;
-  final bytes = args[1] as List<int>;
+  final jsonStr = args[1] as String;
   try {
-    final root = jsonDecode(utf8.decode(bytes)) as Map<String, dynamic>;
+    final root = jsonDecode(jsonStr) as Map<String, dynamic>;
     final version = root['v'];
     if (version != kPlaylistSnapshotVersionFull &&
         version != kPlaylistSnapshotVersionSlim) {
@@ -255,6 +259,16 @@ M3uResult? decodeMergedPlaylistSnapshotBytes(List<dynamic> args) {
   }
 }
 
+/// Eski imza — bayt listesini String'e çevirip [decodeMergedPlaylistSnapshotJsonString].
+M3uResult? decodeMergedPlaylistSnapshotBytes(List<dynamic> args) {
+  final expectedKey = args[0] as String;
+  final bytes = args[1] as List<int>;
+  return decodeMergedPlaylistSnapshotJsonString([
+    expectedKey,
+    utf8.decode(bytes),
+  ]);
+}
+
 /// [compute] için: `args[0]` = anahtar, `args[1]` = [m3uResultToJsonMap] çıktısı.
 String encodeMergedPlaylistSnapshotJson(List<dynamic> args) {
   final key = args[0] as String;
@@ -266,17 +280,133 @@ String encodeMergedPlaylistSnapshotJson(List<dynamic> args) {
   });
 }
 
-/// [compute] için: `args[0]` = anahtar, `args[1]` = [M3uResult].
-/// Payload map'i (46k+ item) ana thread yerine isolate içinde kurulur.
+Future<void> _yieldEvery(int index, {int every = 400}) async {
+  if (index > 0 && index % every == 0) {
+    await Future<void>.delayed(Duration.zero);
+  }
+}
+
+/// Büyük listeleri isolate'e kopyalamadan (ANR'siz) JSON üretir.
+/// Ara sıra event-loop'a yield eder.
+Future<String> encodeMergedPlaylistSnapshotForWrite(
+  String key,
+  M3uResult merged, {
+  bool slim = false,
+}) async {
+  final version =
+      slim ? kPlaylistSnapshotVersionSlim : kPlaylistSnapshotVersionFull;
+  final buf = StringBuffer()
+    ..write('{"v":')
+    ..write(version)
+    ..write(',"sk":')
+    ..write(jsonEncode(key));
+  if (slim) {
+    buf.write(',"slim":true');
+  }
+  buf.write(',"payload":{');
+
+  var firstField = true;
+  void writeFieldName(String name) {
+    if (!firstField) buf.write(',');
+    firstField = false;
+    buf.write(jsonEncode(name));
+    buf.write(':');
+  }
+
+  Future<void> writeObjectList(
+    String name,
+    int length,
+    Map<String, dynamic> Function(int i) at,
+  ) async {
+    writeFieldName(name);
+    buf.write('[');
+    for (var i = 0; i < length; i++) {
+      if (i > 0) buf.write(',');
+      buf.write(jsonEncode(at(i)));
+      await _yieldEvery(i);
+    }
+    buf.write(']');
+  }
+
+  Future<void> writeIdNameCats(
+    String name,
+    List<({int id, String name})> cats,
+  ) async {
+    writeFieldName(name);
+    buf.write('[');
+    for (var i = 0; i < cats.length; i++) {
+      if (i > 0) buf.write(',');
+      buf.write(jsonEncode({'id': cats[i].id, 'name': cats[i].name}));
+      await _yieldEvery(i, every: 200);
+    }
+    buf.write(']');
+  }
+
+  if (!slim) {
+    await writeObjectList(
+      'channels',
+      merged.channels.length,
+      (i) => _channelToJson(merged.channels[i]),
+    );
+  }
+
+  await writeIdNameCats(
+    'channelCategories',
+    [
+      for (final c in merged.channelCategories) (id: c.id, name: c.name),
+    ],
+  );
+
+  if (!slim) {
+    await writeObjectList(
+      'vod',
+      merged.vod.length,
+      (i) => _vodToJson(merged.vod[i]),
+    );
+  }
+
+  await writeIdNameCats(
+    'vodCategories',
+    [
+      for (final c in merged.vodCategories) (id: c.id, name: c.name),
+    ],
+  );
+
+  if (!slim) {
+    await writeObjectList(
+      'series',
+      merged.series.length,
+      (i) => _seriesToJson(merged.series[i]),
+    );
+  }
+
+  await writeIdNameCats(
+    'seriesCategories',
+    [
+      for (final c in merged.seriesCategories) (id: c.id, name: c.name),
+    ],
+  );
+
+  writeFieldName('recentVodIds');
+  buf.write(jsonEncode(merged.recentVodIds));
+  writeFieldName('recentSeriesIds');
+  buf.write(jsonEncode(merged.recentSeriesIds));
+  writeFieldName('userInfo');
+  buf.write(jsonEncode(_userInfoToJson(merged.userInfo)));
+
+  buf.write('}}');
+  return buf.toString();
+}
+
+/// Test / senkron yol — [M3uResult]'ı isolate'e **göndermez**.
 String encodeMergedPlaylistSnapshotFromResult(List<dynamic> args) {
   final key = args[0] as String;
   final merged = args[1] as M3uResult;
   final slim = args.length > 2 && args[2] == true;
   final version =
       slim ? kPlaylistSnapshotVersionSlim : kPlaylistSnapshotVersionFull;
-  final payload = slim
-      ? m3uResultToSlimJsonMap(merged)
-      : m3uResultToJsonMap(merged);
+  final payload =
+      slim ? m3uResultToSlimJsonMap(merged) : m3uResultToJsonMap(merged);
   return jsonEncode(<String, dynamic>{
     'v': version,
     'sk': key,
@@ -285,19 +415,11 @@ String encodeMergedPlaylistSnapshotFromResult(List<dynamic> args) {
   });
 }
 
-Future<String> encodeMergedPlaylistSnapshotForWrite(
-  String key,
-  M3uResult merged, {
-  bool slim = false,
-}) {
-  // Hem payload map kurulumu hem jsonEncode isolate'te çalışır; ana thread
-  // büyük listelerde (46k+) bloklanmaz.
-  return compute(encodeMergedPlaylistSnapshotFromResult, [key, merged, slim]);
-}
-
 Future<M3uResult?> decodeMergedPlaylistSnapshotFromBytes(
   String expectedKey,
   List<int> bytes,
-) {
-  return compute(decodeMergedPlaylistSnapshotBytes, [expectedKey, bytes]);
+) async {
+  // Bayt → String ana isolate'te; decode isolate'e yalnızca String gider.
+  final jsonStr = utf8.decode(bytes);
+  return compute(decodeMergedPlaylistSnapshotJsonString, [expectedKey, jsonStr]);
 }
