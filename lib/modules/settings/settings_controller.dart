@@ -240,14 +240,15 @@ class SettingsController extends GetxController {
         }
         // Auto'da Xtream başarılı olsa bile GitHub yedek paralel; mode != xtreamOnly.
         if (allowGithub && Get.isRegistered<GlobalEpgService>()) {
-          final pl = Get.find<PlaylistCacheService>().result.value;
-          if (pl != null) {
-            try {
+          try {
+            final liveChannels =
+                await Get.find<PlaylistDataSource>().channelsPageAll();
+            if (liveChannels.isNotEmpty) {
               await Get.find<GlobalEpgService>()
-                  .loadGlobalEpgForChannels(pl.channels);
-            } catch (e) {
-              debugPrint('mina_iptv: Global EPG fallback (refresh) failed: $e');
+                  .loadGlobalEpgForChannels(liveChannels);
             }
+          } catch (e) {
+            debugPrint('mina_iptv: Global EPG fallback (refresh) failed: $e');
           }
         }
       } else if (source is M3uSource) {
@@ -2945,9 +2946,17 @@ class SettingsController extends GetxController {
           await _app.markM3uEpgFetchedOk();
         }
       }
+      var isSuccess = epg.hasLoadedGuideData();
+      if (!isSuccess && Get.isRegistered<GlobalEpgService>()) {
+        final globalEpg = Get.find<GlobalEpgService>();
+        if (globalEpg.loadedMemoryChannelCount > 0 || globalEpg.activeCountries.isNotEmpty) {
+          isSuccess = true;
+        }
+      }
+
       GlassSnackbar.show(
         'settings.epg.status'.tr,
-        epg.hasLoadedGuideData() ? 'common.success'.tr : 'common.error'.tr,
+        isSuccess ? 'common.success'.tr : 'common.error'.tr,
         snackPosition: SnackPosition.BOTTOM,
       );
     } catch (_) {
