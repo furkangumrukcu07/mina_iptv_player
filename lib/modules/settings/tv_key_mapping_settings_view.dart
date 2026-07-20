@@ -33,9 +33,18 @@ class TvKeyMappingSettingsView extends StatelessWidget {
 
   void _showCaptureDialog(BuildContext context, String actionId, String actionTitle) {
     final keyService = TvKeyMappingService.to;
+
+    // Önce eski callback'i temizle — değiştirme senaryosunda
+    // eski listener kalmaması için.
+    keyService.onKeyRegistered = null;
+    keyService.isListeningForRegistration = false;
+
+    // Diyalog açıldıktan sonra dinlemeye başla
     keyService.isListeningForRegistration = true;
 
     keyService.onKeyRegistered = (key) {
+      // Callback tek seferlik olmalı — hemen temizle
+      keyService.onKeyRegistered = null;
       keyService.assignKey(key.keyId, key.keyLabel, actionId);
       if (Navigator.canPop(context)) {
         Navigator.pop(context);
@@ -65,6 +74,7 @@ class TvKeyMappingSettingsView extends StatelessWidget {
           onPopInvokedWithResult: (didPop, result) {
             if (didPop) {
               keyService.isListeningForRegistration = false;
+              keyService.onKeyRegistered = null;
             }
           },
           child: Center(
@@ -117,6 +127,7 @@ class TvKeyMappingSettingsView extends StatelessWidget {
                     TextButton(
                       onPressed: () {
                         keyService.isListeningForRegistration = false;
+                        keyService.onKeyRegistered = null;
                         Navigator.pop(dialogContext);
                       },
                       child: const Text(
@@ -218,16 +229,24 @@ class TvKeyMappingSettingsView extends StatelessWidget {
                     ],
                   ),
                 ),
-                if (isMapped)
+                if (isMapped) ...[
+                  // Değiştir butonu
+                  IconButton(
+                    icon: const Icon(Icons.edit_rounded, color: Colors.blueAccent),
+                    tooltip: 'Değiştir',
+                    onPressed: () => _showCaptureDialog(context, actionId, title),
+                  ),
+                  // Sil butonu
                   IconButton(
                     icon: const Icon(Icons.delete_forever_rounded, color: Colors.redAccent),
+                    tooltip: 'Kaldır',
                     onPressed: () {
                       if (mappedKeyId != null) {
                         keyService.removeMapping(mappedKeyId);
                       }
                     },
-                  )
-                else
+                  ),
+                ] else
                   const Icon(
                     Icons.chevron_right_rounded,
                     color: Colors.white54,

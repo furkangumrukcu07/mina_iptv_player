@@ -10,6 +10,12 @@ import '../../core/routes/app_routes.dart';
 import '../../core/services/active_playlist_service.dart';
 import '../../core/services/app_settings_service.dart';
 import '../../core/services/epg_deferred_load_service.dart';
+import '../../core/services/epg_service.dart';
+import '../../core/epg/catch_up_url_template.dart';
+import '../../data/remote/xtream_api.dart';
+import '../../domain/entities/epg_entities.dart';
+import '../../domain/entities/playlist_source.dart';
+import '../../data/remote/m3u_xtream_sniffer.dart';
 import '../../core/services/favorites_service.dart';
 import '../../core/services/iptv_precache_service.dart';
 import '../../core/services/live_hls_stream_profile_service.dart';
@@ -107,6 +113,58 @@ final searchQuery = ''.obs;
 final effectiveSearchQuery = ''.obs;
 
 final now = DateTime.now().obs;
+
+final archiveDayOffset = 0.obs;
+
+void setArchiveDay(int offset) {
+  archiveDayOffset.value = offset;
+}
+
+Future<void> playCatchUp(Channel ch, EpgProgramme p) async {
+  final activePl = Get.find<ActivePlaylistService>();
+  final source = activePl.activeInfo?.source;
+  XtreamSource? xtream;
+  
+  if (source is XtreamSource) {
+    xtream = source;
+  } else if (source is M3uSource) {
+    // If it's M3U but has Xtream credentials in the URL
+    xtream = M3uXtreamSniffer.toXtreamSource(source.url);
+  }
+  
+  if (xtream == null) return;
+  final configured = _app.catchUpTemplateEffective;
+  final template = configured.isNotEmpty
+      ? configured
+      : CatchUpUrlDefaults.xtreamTimeshiftPath;
+  final epgService = Get.find<EpgService>();
+  final api = XtreamApi(
+    baseUrl: xtream.baseUrl,
+    username: xtream.username,
+    password: xtream.password,
+  );
+  final url = epgService.buildCatchUpPlaybackUrl(
+    api: api,
+    channel: ch,
+    programme: p,
+    template: template,
+  );
+  if (url == null || url.isEmpty) return;
+  
+  final virtual = Channel(
+    id: ch.id,
+    name: '${ch.name} — ${p.title}',
+    streamUrl: url,
+    categoryId: ch.categoryId,
+    logoUrl: ch.logoUrl,
+    epgChannelId: ch.epgChannelId,
+    sortOrder: ch.sortOrder,
+  );
+  Get.toNamed(
+    AppRoutes.player,
+    arguments: virtual,
+  );
+}
 
 /// "Listeler" barından farklı bir listeye geçildiğinde artar — kategori
   /// paneli ve kanal listesi `Obx`'lerini yeniden çizmek için.
@@ -392,14 +450,7 @@ void _handleAppLifecycleStateChanged(AppLifecycleState state) {
     _cacheWorker?.dispose();
     _hideAdultWorker?.dispose();
     _appLifecycleListener?.dispose();
-    try {
-      final old = previewController;
-      previewController = null;
-      if (old != null) {
-        old.pause();
-        old.dispose(forceDispose: true);
-      }
-    } catch (_) {}
+    clearStreamPreview();
     searchController.dispose();
     channelsListFocusNode.removeListener(_onChannelsListFocusChanged);
     categoryFocusNode.dispose();

@@ -5,6 +5,8 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'mina_secure_storage.dart';
+
 /// Ebeveyn PIN'i (SHA-256 + sabit tuz) çift yedeklemeli depoda tutar.
 ///
 /// **Neden iki depo?** Bazı Android cihazlarda (özellikle keystore reset /
@@ -27,7 +29,7 @@ class ParentalControlService extends GetxService {
   static const _kRecovery = 'mina_parental_recovery_sha256_v1';
   static const _salt = 'mina_iptv_parental|v1';
 
-  final _secure = const FlutterSecureStorage();
+  final _secure = MinaSecureStorage.instance;
   final hasPin = false.obs;
 
   /// Kurtarma kelimesi belirlenmiş mi? PIN sıfırlamada bu kelime sorulur.

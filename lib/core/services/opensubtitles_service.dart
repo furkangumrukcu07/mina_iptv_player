@@ -7,6 +7,7 @@ import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../constants/api_constants.dart';
+import 'mina_secure_storage.dart';
 
 /// OpenSubtitles.com API v1 — oturum (indirme sonraki aşamada).
 class OpenSubtitlesService extends GetxService {
@@ -27,7 +28,7 @@ class OpenSubtitlesService extends GetxService {
     ),
   );
 
-  final FlutterSecureStorage _secure = const FlutterSecureStorage();
+  final FlutterSecureStorage _secure = MinaSecureStorage.instance;
 
   final isLoggedIn = false.obs;
   final username = RxnString();

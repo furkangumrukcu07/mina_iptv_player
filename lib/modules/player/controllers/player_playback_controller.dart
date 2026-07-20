@@ -1,16 +1,16 @@
 part of '../player_controller.dart';
 
 extension PlayerPlaybackController on PlayerController {
-bool get isMovie => _movieBrowseTape != null;
+  bool get isMovie => _movieBrowseTape != null;
 
-bool get isSeries =>
+  bool get isSeries =>
       _seriesBrowseTape != null ||
       _playingSeriesInTape != null ||
       _episodeBrowseTape != null;
 
-SeriesItem? get playingSeries => _playingSeriesInTape;
+  SeriesItem? get playingSeries => _playingSeriesInTape;
 
-/// O an oynayan içeriğin favori durumu — canlı kanal / film (VOD) / dizi.
+  /// O an oynayan içeriğin favori durumu — canlı kanal / film (VOD) / dizi.
   /// OSD'deki kalp ikonu bu getter ile çizilir; [FavoritesService] reaktif
   /// listelerini okuduğundan `Obx` içinde çağrılmalı.
   bool get isCurrentMediaFavorite {
@@ -25,7 +25,7 @@ SeriesItem? get playingSeries => _playingSeriesInTape;
     return favs.hasChannel(channel.value.id);
   }
 
-/// OSD kalp ikonu: o an oynayan içeriği favorilere ekler/çıkarır.
+  /// OSD kalp ikonu: o an oynayan içeriği favorilere ekler/çıkarır.
   void toggleCurrentMediaFavorite() {
     if (!Get.isRegistered<FavoritesService>()) return;
     final favs = Get.find<FavoritesService>();
@@ -40,29 +40,29 @@ SeriesItem? get playingSeries => _playingSeriesInTape;
     }
   }
 
-/// Dikey panelde "Bölümler" sekmesi için kullanılacak sıralı bölüm listesi
+  /// Dikey panelde "Bölümler" sekmesi için kullanılacak sıralı bölüm listesi
   /// (sezon → bölüm). Browse'tan gelen `_episodeBrowseTape` üzerinden türetilir.
   List<SeriesEpisodeOption> get seriesEpisodeBrowseTape =>
       List.unmodifiable(_episodeBrowseTape ?? const <SeriesEpisodeOption>[]);
 
-/// Şu anda oynayan bölümü `_episodeBrowseTape` içinde tespit eder.
+  /// Şu anda oynayan bölümü `_episodeBrowseTape` içinde tespit eder.
   SeriesEpisodeOption? get currentSeriesEpisodeOption =>
       _currentEpisodeOption();
 
-/// Dizi oturumunda [xtream_api] URL’leri (container_extension / get.php) olduğu gibi kalır.
+  /// Dizi oturumunda [xtream_api] URL’leri (container_extension / get.php) olduğu gibi kalır.
   String _normalizePlaybackStreamUrl(String raw) =>
       IptvPlaybackDefaults.normalizeStreamUrl(
         raw,
         xtreamSeriesEpisode: isSeries,
       );
 
-/// Aynı kanal satırı (id + normalize URL). Yalnız id eşleşip URL farklıysa farklı yayındır.
+  /// Aynı kanal satırı (id + normalize URL). Yalnız id eşleşip URL farklıysa farklı yayındır.
   bool _isSameChannelRow(Channel a, Channel b) =>
       a.id == b.id &&
       _normalizePlaybackStreamUrl(a.streamUrl) ==
           _normalizePlaybackStreamUrl(b.streamUrl);
 
-void _setBetterPlayer(BetterPlayerController? next) {
+  void _setBetterPlayer(BetterPlayerController? next) {
     if (identical(better, next)) return;
 
     // Eğer controller kapatılmışsa yeni oynatıcıyı kabul etme ve temizle
@@ -83,7 +83,7 @@ void _setBetterPlayer(BetterPlayerController? next) {
     _configureTvBoxAudioProcessor();
   }
 
-/// TV Box için ExoPlayer audio processor konfigürasyonu
+  /// TV Box için ExoPlayer audio processor konfigürasyonu
   void _configureTvBoxAudioProcessor() {
     if (better == null) return;
 
@@ -108,56 +108,56 @@ void _setBetterPlayer(BetterPlayerController? next) {
     });
   }
 
-/// MediaKit aktifken [UniversalVideoPlayer] üzerinden [Player] örneği.
+  /// MediaKit aktifken [UniversalVideoPlayer] üzerinden [Player] örneği.
   Player? get mediaKitPlayer => _mediaKitPlayer;
 
-
-/// [PlayerView] yetim yüzey eşiği; TV’de daha yüksek ([PlayerController.maxOrphanBetterSurfaceRetriesTv]).
+  /// [PlayerView] yetim yüzey eşiği; TV’de daha yüksek ([PlayerController.maxOrphanBetterSurfaceRetriesTv]).
   int get effectiveMaxOrphanBetterSurfaceRetries =>
       _settings.layoutMode.value == AppLayoutMode.tv
           ? PlayerController.maxOrphanBetterSurfaceRetriesTv
           : PlayerController.maxOrphanBetterSurfaceRetries;
 
-/// Dikey oynatıcı yüzeyi (telefon/tablet portrait) açık mı?
+  /// Dikey oynatıcı yüzeyi (telefon/tablet portrait) açık mı?
   bool get isPortraitPlaybackUi => _playbackPortraitForAutoHide;
 
-void requestPortraitLivePanelTab(int tabIndex) {
+  void requestPortraitLivePanelTab(int tabIndex) {
     portraitLivePanelTabRequest.value = tabIndex.clamp(0, 2);
     portraitLivePanelTabPulse.value++;
   }
 
-void requestOpenLiveChannelStripFromTvOsd() {
+  void requestOpenLiveChannelStripFromTvOsd() {
     onRequestLiveChannelStripFromTvOsd?.call();
   }
 
-/// Kanal seçildikten sonra otomatik kapanma sayacını başlatır/sıfırlar.
+  /// Kanal seçildikten sonra otomatik kapanma sayacını başlatır/sıfırlar.
   void scheduleLiveStripAutoClose() {
     _liveStripAutoCloseTimer?.cancel();
     if (!liveChannelStripOverlayOpen.value) return;
-    _liveStripAutoCloseTimer = Timer(PlayerController._liveStripAutoCloseDelay, () {
+    _liveStripAutoCloseTimer =
+        Timer(PlayerController._liveStripAutoCloseDelay, () {
       _liveStripAutoCloseTimer = null;
       if (!liveChannelStripOverlayOpen.value) return;
       onRequestCloseLiveChannelStrip?.call();
     });
   }
 
-/// Yalnızca sayaç etkinse (bir seçim yapıldıysa) süreyi sıfırlar; etkileşim
+  /// Yalnızca sayaç etkinse (bir seçim yapıldıysa) süreyi sıfırlar; etkileşim
   /// devam ettikçe şerit açık kalır.
   void bumpLiveStripAutoCloseIfActive() {
     if (_liveStripAutoCloseTimer == null) return;
     scheduleLiveStripAutoClose();
   }
 
-void cancelLiveStripAutoClose() {
+  void cancelLiveStripAutoClose() {
     _liveStripAutoCloseTimer?.cancel();
     _liveStripAutoCloseTimer = null;
   }
 
-void requestOpenVodBrowseRailFromTvOsd() {
+  void requestOpenVodBrowseRailFromTvOsd() {
     onRequestVodBrowseRailFromTvOsd?.call();
   }
 
-/// Gözat şeridi: film veya (dizi listesi + oynanan dizi) varsa uzun OK ile ray açılabilir.
+  /// Gözat şeridi: film veya (dizi listesi + oynanan dizi) varsa uzun OK ile ray açılabilir.
   bool get vodBrowseRailAvailable {
     final mv = _movieBrowseTape;
     if (mv != null && mv.isNotEmpty) return true;
@@ -180,7 +180,7 @@ void requestOpenVodBrowseRailFromTvOsd() {
     return false;
   }
 
-/// OSD orta tuşta uzun OK ile hızlı ray açılacaksa küçük rozet ikonu gösterilir.
+  /// OSD orta tuşta uzun OK ile hızlı ray açılacaksa küçük rozet ikonu gösterilir.
   bool get osdQuickMenuHoldBadgeVisible {
     if (vodBrowseRailAvailable) return true;
     final cur = channel.value;
@@ -197,7 +197,7 @@ void requestOpenVodBrowseRailFromTvOsd() {
     return true;
   }
 
-List<Channel>? get vodBrowseRailMovies {
+  List<Channel>? get vodBrowseRailMovies {
     final tabs = _movieBrowseCategoryTapes;
     if (tabs != null && tabs.isNotEmpty) {
       final i = vodBrowseRailCategoryIndex.value.clamp(0, tabs.length - 1);
@@ -207,7 +207,7 @@ List<Channel>? get vodBrowseRailMovies {
     return _movieBrowseTape;
   }
 
-List<SeriesItem>? get vodBrowseRailSeriesItems {
+  List<SeriesItem>? get vodBrowseRailSeriesItems {
     final tabs = _seriesBrowseCategoryTapes;
     if (tabs != null && tabs.isNotEmpty) {
       final i = vodBrowseRailCategoryIndex.value.clamp(0, tabs.length - 1);
@@ -217,7 +217,7 @@ List<SeriesItem>? get vodBrowseRailSeriesItems {
     return _seriesBrowseTape;
   }
 
-bool get vodBrowseRailShowsCategoryTabs {
+  bool get vodBrowseRailShowsCategoryTabs {
     final m = _movieBrowseCategoryTapes;
     if (m != null && m.length > 1) return true;
     final s = _seriesBrowseCategoryTapes;
@@ -225,7 +225,7 @@ bool get vodBrowseRailShowsCategoryTabs {
     return false;
   }
 
-List<String> get vodBrowseRailCategoryTabNames {
+  List<String> get vodBrowseRailCategoryTabNames {
     final m = _movieBrowseCategoryTapes;
     if (m != null && m.isNotEmpty) {
       return [for (final t in m) t.name];
@@ -237,7 +237,7 @@ List<String> get vodBrowseRailCategoryTabNames {
     return const [];
   }
 
-void shiftVodBrowseRailCategory(int delta) {
+  void shiftVodBrowseRailCategory(int delta) {
     final movieTabs = _movieBrowseCategoryTapes;
     if (movieTabs != null && movieTabs.length > 1) {
       final n = (vodBrowseRailCategoryIndex.value + delta)
@@ -253,7 +253,7 @@ void shiftVodBrowseRailCategory(int delta) {
     }
   }
 
-void _syncVodBrowseRailCategoryIndex() {
+  void _syncVodBrowseRailCategoryIndex() {
     final mvTabs = _movieBrowseCategoryTapes;
     if (mvTabs != null && mvTabs.isNotEmpty) {
       final curId = channel.value.id;
@@ -281,7 +281,7 @@ void _syncVodBrowseRailCategoryIndex() {
     }
   }
 
-/// Film/dizi kumanda yukarı-aşağı: tüm kategori şeritleri birleşik sıra.
+  /// Film/dizi kumanda yukarı-aşağı: tüm kategori şeritleri birleşik sıra.
   List<Channel> _flatMovieTapeForZap() {
     final tabs = _movieBrowseCategoryTapes;
     if (tabs != null && tabs.isNotEmpty) {
@@ -290,7 +290,7 @@ void _syncVodBrowseRailCategoryIndex() {
     return _movieBrowseTape ?? const [];
   }
 
-List<SeriesItem> _flatSeriesTapeForZap() {
+  List<SeriesItem> _flatSeriesTapeForZap() {
     final tabs = _seriesBrowseCategoryTapes;
     if (tabs != null && tabs.isNotEmpty) {
       return [...tabs.expand((t) => t.items)];
@@ -298,7 +298,7 @@ List<SeriesItem> _flatSeriesTapeForZap() {
     return _seriesBrowseTape ?? const [];
   }
 
-List<PlayerBrowseCategoryTape<Channel>> liveChannelStripCategoryTapes() {
+  List<PlayerBrowseCategoryTape<Channel>> liveChannelStripCategoryTapes() {
     final cache = Get.find<PlaylistCacheService>();
     final data = cache.result.value;
     if (data == null) return const [];
@@ -369,7 +369,7 @@ List<PlayerBrowseCategoryTape<Channel>> liveChannelStripCategoryTapes() {
     return tapes;
   }
 
-void _scheduleDbLiveStripTapes(
+  void _scheduleDbLiveStripTapes(
     M3uResult data,
     int hideRev,
     bool reviewMode,
@@ -378,8 +378,8 @@ void _scheduleDbLiveStripTapes(
     final cache = Get.find<PlaylistCacheService>();
     unawaited(() async {
       final ds = Get.find<PlaylistDataSource>();
-      final page =
-          await ds.channelsPageAll(pageSize: PlayerController._kPlayerDbChannelPageSize);
+      final page = await ds.channelsPageAll(
+          pageSize: PlayerController._kPlayerDbChannelPageSize);
       final live = <Channel>[];
       for (final c in page) {
         if (PlaylistCategoryHide.channelHiddenInLive(
@@ -432,7 +432,7 @@ void _scheduleDbLiveStripTapes(
     }());
   }
 
-Future<void> _ensureDbLiveCatZapListLoaded(
+  Future<void> _ensureDbLiveCatZapListLoaded(
     int categoryId,
     M3uResult data,
   ) async {
@@ -468,27 +468,27 @@ Future<void> _ensureDbLiveCatZapListLoaded(
     update();
   }
 
-List<Channel> liveChannelStripChannelsForOverlay() {
+  List<Channel> liveChannelStripChannelsForOverlay() {
     final tapes = liveChannelStripCategoryTapes();
     if (tapes.isEmpty) return const [];
     final i = liveStripCategoryIndex.value.clamp(0, tapes.length - 1);
     return tapes[i].items;
   }
 
-bool get liveChannelStripShowsCategoryTabs =>
+  bool get liveChannelStripShowsCategoryTabs =>
       liveChannelStripCategoryTapes().length > 1;
 
-void shiftLiveStripCategory(int delta) {
+  void shiftLiveStripCategory(int delta) {
     final tapes = liveChannelStripCategoryTapes();
     if (tapes.length <= 1) return;
     final n = (liveStripCategoryIndex.value + delta).clamp(0, tapes.length - 1);
     liveStripCategoryIndex.value = n;
   }
 
-List<String> liveStripCategoryTabNames() =>
+  List<String> liveStripCategoryTabNames() =>
       [for (final t in liveChannelStripCategoryTapes()) t.name];
 
-void prepareLiveChannelStrip() {
+  void prepareLiveChannelStrip() {
     final tapes = liveChannelStripCategoryTapes();
     if (tapes.isEmpty) return;
     final curId = channel.value.id;
@@ -501,7 +501,7 @@ void prepareLiveChannelStrip() {
     liveStripCategoryIndex.value = 0;
   }
 
-void openVodBrowseRail() {
+  void openVodBrowseRail() {
     if (!vodBrowseRailAvailable) return;
     if (liveChannelStripOverlayOpen.value) return;
     if (liveSingleChannelEpgOpen.value) return;
@@ -510,7 +510,7 @@ void openVodBrowseRail() {
     hideTvOsdNow();
   }
 
-void closeVodBrowseRail({bool showOsdAfter = true}) {
+  void closeVodBrowseRail({bool showOsdAfter = true}) {
     if (!vodBrowseRailOpen.value) return;
     vodBrowseRailOpen.value = false;
     if (!_usesRemoteOsdChrome) return;
@@ -521,28 +521,28 @@ void closeVodBrowseRail({bool showOsdAfter = true}) {
     }
   }
 
-Future<void> pickVodBrowseRailMovie(Channel target) async {
+  Future<void> pickVodBrowseRailMovie(Channel target) async {
     if (_isSameChannelRow(target, channel.value)) {
       return;
     }
     await zapTo(target);
   }
 
-Future<void> pickVodBrowseRailSeries(SeriesItem ser) async {
+  Future<void> pickVodBrowseRailSeries(SeriesItem ser) async {
     if (_playingSeriesInTape?.id == ser.id) return;
     await _zapToBrowseTapeSeries(ser);
   }
 
-int _bumpPlaybackGeneration() => ++_playbackGeneration;
+  int _bumpPlaybackGeneration() => ++_playbackGeneration;
 
-bool _isPlaybackGenerationCurrent(int gen) => gen == _playbackGeneration;
+  bool _isPlaybackGenerationCurrent(int gen) => gen == _playbackGeneration;
 
-void bumpTvOsdKeyFocus() {
+  void bumpTvOsdKeyFocus() {
     if (!_usesRemoteOsdChrome) return;
     tvOsdKeyFocusBump.value++;
   }
 
-/// Dikey oynatıcı yüzeyi açık/kapalı — OSD otomatik gizleme için.
+  /// Dikey oynatıcı yüzeyi açık/kapalı — OSD otomatik gizleme için.
   void setPlaybackPortraitForAutoHide(bool portrait) {
     final was = _playbackPortraitForAutoHide;
     _playbackPortraitForAutoHide = portrait;
@@ -558,46 +558,46 @@ void bumpTvOsdKeyFocus() {
     }
   }
 
-/// [UniversalVideoPlayer] mpv ayarı için canlı buffer kademesi (0..2).
+  /// [UniversalVideoPlayer] mpv ayarı için canlı buffer kademesi (0..2).
   int get mediaKitLiveBufferEscalationStep => _mediaKitLiveBufferEscalationStep
       .clamp(0, PlayerController._kMediaKitLiveBufferEscalationMax);
 
-/// Internal alias — dış API kirletmeden harici handoff state'ini değiştirir.
+  /// Internal alias — dış API kirletmeden harici handoff state'ini değiştirir.
   RxBool get _externalPlayerHandoffActive => externalPlayerHandoffActive;
 
-List<BetterPlayerAsmsTrack> get availableTracks =>
+  List<BetterPlayerAsmsTrack> get availableTracks =>
       better?.betterPlayerAsmsTracks ?? [];
 
-BetterPlayerAsmsTrack? get currentTrack => better?.betterPlayerAsmsTrack;
+  BetterPlayerAsmsTrack? get currentTrack => better?.betterPlayerAsmsTrack;
 
-List<BetterPlayerAsmsAudioTrack> get availableAudioTracks =>
+  List<BetterPlayerAsmsAudioTrack> get availableAudioTracks =>
       better?.betterPlayerAsmsAudioTracks ?? [];
 
-BetterPlayerAsmsAudioTrack? get currentAudioTrack =>
+  BetterPlayerAsmsAudioTrack? get currentAudioTrack =>
       better?.betterPlayerAsmsAudioTrack;
 
-List<BetterPlayerSubtitlesSource> get availableSubtitleSources =>
+  List<BetterPlayerSubtitlesSource> get availableSubtitleSources =>
       better?.betterPlayerSubtitlesSourceList ?? const [];
 
-BetterPlayerSubtitlesSource? get currentSubtitleSource =>
+  BetterPlayerSubtitlesSource? get currentSubtitleSource =>
       better?.betterPlayerSubtitlesSource;
 
-String _normalizeSubtitleToken(String? raw) {
+  String _normalizeSubtitleToken(String? raw) {
     return (raw ?? '').trim().toLowerCase();
   }
 
-String _subtitleTokenFromBetterSource(BetterPlayerSubtitlesSource src) {
+  String _subtitleTokenFromBetterSource(BetterPlayerSubtitlesSource src) {
     return _normalizeSubtitleToken(src.name);
   }
 
-bool _subtitleLabelMatchesToken(String label, String token) {
+  bool _subtitleLabelMatchesToken(String label, String token) {
     if (token.isEmpty) return false;
     final n = _normalizeSubtitleToken(label);
     if (n.isEmpty) return false;
     return n == token || n.contains(token) || token.contains(n);
   }
 
-/// VOD açılışında Better/Exo altyazı politikası.
+  /// VOD açılışında Better/Exo altyazı politikası.
   ///
   /// Kural: **altyazı varsayılan olarak KAPALI**. Kullanıcı daha önce bir
   /// altyazı dili seçtiyse (`vodPreferredSubtitleToken`), bu dile uyan bir parça
@@ -658,7 +658,7 @@ bool _subtitleLabelMatchesToken(String label, String token) {
     }
   }
 
-/// Altyazıyı sessizce kapatır (hatırlanan dili TEMİZLEMEDEN). Açılışta
+  /// Altyazıyı sessizce kapatır (hatırlanan dili TEMİZLEMEDEN). Açılışta
   /// hatırlanan dil yokken veya eşleşme bulunmazken çağrılır.
   Future<void> _disableBetterSubtitlesQuietly(
     BetterPlayerController ctrl,
@@ -679,7 +679,7 @@ bool _subtitleLabelMatchesToken(String label, String token) {
     }
   }
 
-Future<void> setBetterSubtitleSource(
+  Future<void> setBetterSubtitleSource(
     BetterPlayerSubtitlesSource src, {
     bool disableEmbeddedExoSubtitles = true,
   }) async {
@@ -711,7 +711,7 @@ Future<void> setBetterSubtitleSource(
     await disableExoNativeTextTracks();
   }
 
-List<ExoNativeTrackOption> _parseExoTrackList(dynamic list) {
+  List<ExoNativeTrackOption> _parseExoTrackList(dynamic list) {
     if (list is! List) return const [];
     final out = <ExoNativeTrackOption>[];
     for (final e in list) {
@@ -757,7 +757,7 @@ List<ExoNativeTrackOption> _parseExoTrackList(dynamic list) {
     return out;
   }
 
-Future<ExoNativeTracksBundle> loadExoNativeTracks() async {
+  Future<ExoNativeTracksBundle> loadExoNativeTracks() async {
     if (!canQueryExoNativeTracks) return ExoNativeTracksBundle.empty;
     try {
       final raw = await better!.getExoPlayerTracks();
@@ -770,7 +770,7 @@ Future<ExoNativeTracksBundle> loadExoNativeTracks() async {
     }
   }
 
-/// VOD CC menüsü: parçalar demuxer/Exo/MediaKit hazır olana kadar kısa süre bekler.
+  /// VOD CC menüsü: parçalar demuxer/Exo/MediaKit hazır olana kadar kısa süre bekler.
   Future<VodSubtitleDiscoveryResult> discoverVodSubtitleOptions() async {
     if (_currentStreamIsLive) {
       return VodSubtitleDiscoveryResult(
@@ -829,14 +829,14 @@ Future<ExoNativeTracksBundle> loadExoNativeTracks() async {
     );
   }
 
-Future<void> selectExoNativeAudioTrack(ExoNativeTrackOption opt) async {
+  Future<void> selectExoNativeAudioTrack(ExoNativeTrackOption opt) async {
     if (!canQueryExoNativeTracks) return;
     try {
       await better!.selectExoPlayerTrack(opt.tracksGroupIndex, opt.trackIndex);
     } catch (_) {}
   }
 
-Future<void> selectExoNativeTextTrack(ExoNativeTrackOption opt) async {
+  Future<void> selectExoNativeTextTrack(ExoNativeTrackOption opt) async {
     if (!canQueryExoNativeTracks) return;
     try {
       await setBetterSubtitleSource(
@@ -856,7 +856,7 @@ Future<void> selectExoNativeTextTrack(ExoNativeTrackOption opt) async {
     } catch (_) {}
   }
 
-Future<void> disableExoNativeTextTracks() async {
+  Future<void> disableExoNativeTextTracks() async {
     if (!canQueryExoNativeTracks) return;
     try {
       better?.setExoEmbeddedSubtitlesActive(false);
@@ -864,7 +864,7 @@ Future<void> disableExoNativeTextTracks() async {
     } catch (_) {}
   }
 
-/// MediaKit altyazı parçaları; `no` = kapalı.
+  /// MediaKit altyazı parçaları; `no` = kapalı.
   Map<String, String> mediaKitSubtitleTrackLabels() {
     final player = _mediaKitPlayer;
     if (player == null) return {};
@@ -882,7 +882,7 @@ Future<void> disableExoNativeTextTracks() async {
     return out;
   }
 
-Future<void> setMediaKitSubtitleById(String id) async {
+  Future<void> setMediaKitSubtitleById(String id) async {
     final player = _mediaKitPlayer;
     if (player == null) return;
     try {
@@ -915,7 +915,7 @@ Future<void> setMediaKitSubtitleById(String id) async {
     } catch (_) {}
   }
 
-/// VOD açılışında MediaKit altyazı politikası.
+  /// VOD açılışında MediaKit altyazı politikası.
   ///
   /// Kural: **altyazı varsayılan KAPALI** (libmpv `sub-auto=no` / `sid=no` ile
   /// otomatik seçim engellenir). Kullanıcı daha önce bir altyazı dili seçtiyse
@@ -958,7 +958,7 @@ Future<void> setMediaKitSubtitleById(String id) async {
     }
   }
 
-Future<void> enterPictureInPictureIfSupported() async {
+  Future<void> enterPictureInPictureIfSupported() async {
     if (effectiveUseMediaKit) {
       _showPipToast('player.pip.mediaKit');
       return;
@@ -1045,7 +1045,6 @@ Future<void> enterPictureInPictureIfSupported() async {
       return s.playing || s.buffering || s.position > Duration.zero;
     }
 
-
     final v = better?.videoPlayerController?.value;
     if (v == null || !v.initialized || v.hasError) return false;
     return v.isPlaying || v.isBuffering || v.position > Duration.zero;
@@ -1060,7 +1059,6 @@ Future<void> enterPictureInPictureIfSupported() async {
   Player? peekMediaKitPlayerForShowcasePip() => _mediaKitPlayer;
 
   BetterPlayerController? peekBetterPlayerForShowcasePip() => better;
-
 
   void applyShowcasePipRestoreEngine(PlaybackEngineKind engine) {
     _showcasePipRestoreEngine = engine;
@@ -1078,8 +1076,6 @@ Future<void> enterPictureInPictureIfSupported() async {
     _showcasePipMediaKitVideo = null;
     return (player: p, video: v);
   }
-
-
 
   bool finalizeShowcaseInAppPipHandoff() {
     _playbackEnginesHaltedForRouteExit = true;
@@ -1129,7 +1125,6 @@ Future<void> enterPictureInPictureIfSupported() async {
     clearShowcaseInAppPipHandoffFlags();
     return true;
   }
-
 
   Future<void> attachMediaKitPlayerFromShowcasePipRestore(
     Player player,
@@ -1230,7 +1225,7 @@ Future<void> enterPictureInPictureIfSupported() async {
     }
   }
 
-Future<void> _syncAndroidPipAutoEnterEligible({bool force = false}) async {
+  Future<void> _syncAndroidPipAutoEnterEligible({bool force = false}) async {
     if (!Platform.isAndroid) return;
     final eligible = _eligibleForAutoMiniPlayerPip();
     if (!force && _lastPipAutoEnterEligibleApplied == eligible) return;
@@ -1245,11 +1240,12 @@ Future<void> _syncAndroidPipAutoEnterEligible({bool force = false}) async {
     }
   }
 
-/// 4K / FHD / HD / SD (yükseklik/genişliğe göre); Hz ayrı [osdStreamFrameRateHzLabel].
+  /// 4K / FHD / HD / SD (yükseklik/genişliğe göre); Hz ayrı [osdStreamFrameRateHzLabel].
   String? get osdStreamResolutionTierLabel {
     final asms = better?.betterPlayerAsmsTrack;
     if (asms != null && (asms.height ?? 0) > 0) {
-      return PlayerController._streamQualityLabelFromDimensions(asms.height!, asms.width ?? 0);
+      return PlayerController._streamQualityLabelFromDimensions(
+          asms.height!, asms.width ?? 0);
     }
     final sz = better?.videoPlayerController?.value.size;
     if (sz != null && sz.width > 0 && sz.height > 0) {
@@ -1278,7 +1274,7 @@ Future<void> _syncAndroidPipAutoEnterEligible({bool force = false}) async {
     return null;
   }
 
-int? _osdStreamFrameRateHz() {
+  int? _osdStreamFrameRateHz() {
     final asms = better?.betterPlayerAsmsTrack;
     if (asms != null) {
       final fr = asms.frameRate;
@@ -1298,14 +1294,14 @@ int? _osdStreamFrameRateHz() {
     return null;
   }
 
-/// OSD kanal satırı: `25 Hz` gibi; mümkün değilse `null`.
+  /// OSD kanal satırı: `25 Hz` gibi; mümkün değilse `null`.
   String? get osdStreamFrameRateHzLabel {
     final hz = _osdStreamFrameRateHz();
     if (hz == null || hz <= 0) return null;
     return '$hz Hz';
   }
 
-/// Birleşik etiket (geriye dönük); UI’de tercihen [osdStreamResolutionTierLabel] + [osdStreamFrameRateHzLabel].
+  /// Birleşik etiket (geriye dönük); UI’de tercihen [osdStreamResolutionTierLabel] + [osdStreamFrameRateHzLabel].
   String? get osdStreamQualityLabel {
     final base = osdStreamResolutionTierLabel;
     final hz = osdStreamFrameRateHzLabel;
@@ -1314,7 +1310,7 @@ int? _osdStreamFrameRateHz() {
     return base;
   }
 
-void _maybeBumpOsdQualitySignature() {
+  void _maybeBumpOsdQualitySignature() {
     final s = _osdQualitySignature();
     if (s != _lastOsdQualitySignature) {
       _lastOsdQualitySignature = s;
@@ -1323,7 +1319,7 @@ void _maybeBumpOsdQualitySignature() {
     }
   }
 
-int _osdQualitySignature() {
+  int _osdQualitySignature() {
     final t = better?.betterPlayerAsmsTrack;
     final v = better?.videoPlayerController?.value;
     final sz = v?.size;
@@ -1346,7 +1342,7 @@ int _osdQualitySignature() {
     );
   }
 
-void setQuality(BetterPlayerAsmsTrack track) {
+  void setQuality(BetterPlayerAsmsTrack track) {
     final auto = (track.height ?? 0) <= 0 &&
         (track.width ?? 0) <= 0 &&
         (track.bitrate ?? 0) <= 0;
@@ -1360,7 +1356,7 @@ void setQuality(BetterPlayerAsmsTrack track) {
     update(['osd']);
   }
 
-void setVideoFit(BoxFit fit) {
+  void setVideoFit(BoxFit fit) {
     videoFit.value = fit;
     better?.setOverriddenFit(fit);
     update(['osd']);
@@ -1371,7 +1367,7 @@ void setVideoFit(BoxFit fit) {
     );
   }
 
-/// Geçerli içeriğin türüne göre hatırlanan görüntü oranını uygula. Oynatıcı
+  /// Geçerli içeriğin türüne göre hatırlanan görüntü oranını uygula. Oynatıcı
   /// açılışında ve tür değişiminde (zap) çağrılır.
   void _applyRememberedVideoFit() {
     final remembered = _settings.videoFitForKind(live: _currentStreamIsLive);
@@ -1381,7 +1377,7 @@ void setVideoFit(BoxFit fit) {
     better?.setOverriddenFit(remembered);
   }
 
-/// O anki kanal URL’sine göre canlı TV mi (VOD film/dizi değil).
+  /// O anki kanal URL’sine göre canlı TV mi (VOD film/dizi değil).
   /// `/movie/` ve gözat film şeridi [isMovie] her zaman VOD sayılır (Xtream get.php tek başına
   /// bazen canlı sanılıyordu).
   bool get _currentStreamIsLive {
@@ -1392,10 +1388,10 @@ void setVideoFit(BoxFit fit) {
     return IptvPlaybackDefaults.isLikelyLiveStream(norm);
   }
 
-/// Canlı yayında DVR/timeshift ile ileri–geri sarma kapalı (yalnızca kanal değiştirme).
+  /// Canlı yayında DVR/timeshift ile ileri–geri sarma kapalı (yalnızca kanal değiştirme).
   bool get liveTimeshiftSeekAvailable => false;
 
-/// Hangi motor kullanılıyor: kullanıcı tercihi ([livePlaybackEngine] /
+  /// Hangi motor kullanılıyor: kullanıcı tercihi ([livePlaybackEngine] /
   /// [vodPlaybackEngine]). Better birincil iken hata zinciri HLS↔TS sonra
   /// [mediaKitFallbackSession] ile MediaKit'e düşer. Akıllı seçim yalnızca
   /// MediaKit kanal hafızasını (sonraki açılış) kontrol eder.
@@ -1426,7 +1422,7 @@ void setVideoFit(BoxFit fit) {
     return mediaKitFallbackSession.value;
   }
 
-/// O an gerçekten aktif olan video motoru.
+  /// O an gerçekten aktif olan video motoru.
   ///
   /// UI (yüzey render'ı, motor değiştir butonu, iz/altyazı seçimi vb.) ve
   /// dispose mantığı bu tek kaynaktan beslenir; `enum` ile "hangi motor aktif"
@@ -1438,13 +1434,12 @@ void setVideoFit(BoxFit fit) {
     return VideoPlayerEngine.betterPlayer;
   }
 
-/// Kullanıcının geçerli içerik tipi (canlı / VOD) için seçtiği motor MediaKit mi?
+  /// Kullanıcının geçerli içerik tipi (canlı / VOD) için seçtiği motor MediaKit mi?
   bool get _userPrefersMediaKitForCurrentType => _currentStreamIsLive
       ? _settings.livePlaybackEngine.value == PlaybackEngineKind.mediaKit
       : _settings.vodPlaybackEngine.value == PlaybackEngineKind.mediaKit;
 
-
-/// VOD (film/dizi) + sorunlu ses kodeği + kullanıcı motoru seçmemiş →
+  /// VOD (film/dizi) + sorunlu ses kodeği + kullanıcı motoru seçmemiş →
   /// proaktif MediaKit. Canlı yayında ve kullanıcı tercihi varsa uygulanmaz.
   bool get _shouldProactivelyUseMediaKitForCodec {
     if (_currentStreamIsLive) return false;
@@ -1452,7 +1447,7 @@ void setVideoFit(BoxFit fit) {
     return AudioCodecPlaybackHint.prefersMediaKit(_currentAudioCodecHint);
   }
 
-void _refreshForceMediaKitForCurrentUrl() {
+  void _refreshForceMediaKitForCurrentUrl() {
     final raw =
         (_lastPlaybackUrl != null && _lastPlaybackUrl!.trim().isNotEmpty)
             ? _lastPlaybackUrl!
@@ -1461,7 +1456,7 @@ void _refreshForceMediaKitForCurrentUrl() {
         IptvPlaybackDefaults.isExtensionlessWebManifestUrl(raw);
   }
 
-/// Geçerli kanal/bölümün ses kodek ipucunu tazeler. Dizi bölüm şeridinde her
+  /// Geçerli kanal/bölümün ses kodek ipucunu tazeler. Dizi bölüm şeridinde her
   /// bölüm kendi `audioCodec`'ini taşır (zap sonrası doğru motor seçilir). Film
   /// şeridinde öğe başına kodek bilgisi yoktur → açılış ipucu korunur; başka
   /// bir filme geçilirse temizlenir (reaktif fallback devrede kalır).
@@ -1474,25 +1469,25 @@ void _refreshForceMediaKitForCurrentUrl() {
     _currentAudioCodecHint = fallbackToCurrent;
   }
 
-/// [UniversalVideoPlayer] / mpv ile [_boot] içindeki Better kaynağı aynı normalleştirilmiş URL’yi kullanır.
+  /// [UniversalVideoPlayer] / mpv ile [_boot] içindeki Better kaynağı aynı normalleştirilmiş URL’yi kullanır.
   String get surfaceStreamUrl {
     final u = _lastPlaybackUrl;
     if (u != null && u.isNotEmpty) return u;
     return _normalizePlaybackStreamUrl(channel.value.streamUrl);
   }
 
-/// MediaKit OSD’den Better’a — film/dizi/canlı: aynı davranış (konum [switchToBetterPlayer] ile korunur).
+  /// MediaKit OSD’den Better’a — film/dizi/canlı: aynı davranış (konum [switchToBetterPlayer] ile korunur).
   Future<void> promptSwitchToBetterFromMediaKit() async {
     await switchToBetterPlayer();
   }
 
-/// Android Better: ExoPlayer [currentTracks] ile gömülü ses/altyazı sorgulanabilir.
+  /// Android Better: ExoPlayer [currentTracks] ile gömülü ses/altyazı sorgulanabilir.
   bool get canQueryExoNativeTracks =>
       Platform.isAndroid &&
       !effectiveUseMediaKit &&
       better?.videoPlayerController != null;
 
-/// OSD: MediaKit’e geç (Better’dan veya Better OSD geçersiz kılma sonrası).
+  /// OSD: MediaKit’e geç (Better’dan veya Better OSD geçersiz kılma sonrası).
   Future<void> switchToBackupPlayer() async {
     clearShowcasePipRestoreEngine();
     final wasBetterOverride = betterOsdOverride.value;
@@ -1511,7 +1506,7 @@ void _refreshForceMediaKitForCurrentUrl() {
     await _performMediaKitFallbackBoot();
   }
 
-/// OSD: Better/Exo’ya geç (MediaKit ayarı açık olsa bile bu oturumda).
+  /// OSD: Better/Exo’ya geç (MediaKit ayarı açık olsa bile bu oturumda).
   Future<void> switchToBetterPlayer() async {
     _resumeAtAfterOsdEngineSwitch = currentPosition;
     betterOsdOverride.value = true;
@@ -1541,7 +1536,7 @@ void _refreshForceMediaKitForCurrentUrl() {
     );
   }
 
-void _cancelMediaKitDimSubs() {
+  void _cancelMediaKitDimSubs() {
     for (final s in _mediaKitDimSubs) {
       unawaited(s.cancel());
     }
@@ -1550,19 +1545,19 @@ void _cancelMediaKitDimSubs() {
     _cancelMediaKitLiveStallWatchdog();
   }
 
-void _cancelMediaKitBlackScreenWatchdog() {
+  void _cancelMediaKitBlackScreenWatchdog() {
     _mediaKitBlackScreenWatchdog?.cancel();
     _mediaKitBlackScreenWatchdog = null;
   }
 
-void _cancelMediaKitLiveStallWatchdog() {
+  void _cancelMediaKitLiveStallWatchdog() {
     _mediaKitLiveStallWatchdog?.cancel();
     _mediaKitLiveStallWatchdog = null;
     _mediaKitStallTicks = 0;
     _mediaKitLastKnownPosition = Duration.zero;
   }
 
-/// Crispy-tivi: canlı oynatma pozisyonu 10 sn ilerlemezse aynı yayına yeniden bağlan.
+  /// Crispy-tivi: canlı oynatma pozisyonu 10 sn ilerlemezse aynı yayına yeniden bağlan.
   void _startMediaKitLiveStallWatchdog(Player p, int gen) {
     _cancelMediaKitLiveStallWatchdog();
     if (!_currentStreamIsLive || !effectiveUseMediaKit) return;
@@ -1572,7 +1567,8 @@ void _cancelMediaKitLiveStallWatchdog() {
     _mediaKitLiveStallWatchdog = Timer.periodic(
       PlayerController._kMediaKitStallWatchdogInterval,
       (_) {
-        if (!identical(_mediaKitPlayer, p) || !_isPlaybackGenerationCurrent(gen)) {
+        if (!identical(_mediaKitPlayer, p) ||
+            !_isPlaybackGenerationCurrent(gen)) {
           _cancelMediaKitLiveStallWatchdog();
           return;
         }
@@ -1593,7 +1589,8 @@ void _cancelMediaKitLiveStallWatchdog() {
         final pos = st.position;
         if (pos == _mediaKitLastKnownPosition) {
           _mediaKitStallTicks++;
-          if (_mediaKitStallTicks >= PlayerController._kMediaKitStallThresholdTicks) {
+          if (_mediaKitStallTicks >=
+              PlayerController._kMediaKitStallThresholdTicks) {
             _mediaKitStallTicks = 0;
             _mediaKitLastKnownPosition = Duration.zero;
             debugPrint(
@@ -1611,7 +1608,7 @@ void _cancelMediaKitLiveStallWatchdog() {
     );
   }
 
-/// Oynatma başladı ama video boyutu gelmiyorsa (ses+siyah ekran) yazılım kod çözücüye düş.
+  /// Oynatma başladı ama video boyutu gelmiyorsa (ses+siyah ekran) yazılım kod çözücüye düş.
   Future<void> _armMediaKitBlackScreenWatchdog(Player p, int gen) async {
     _cancelMediaKitBlackScreenWatchdog();
     if (!_currentStreamIsLive || mediaKitShouldUseSoftwareDecode) return;
@@ -1641,9 +1638,8 @@ void _cancelMediaKitLiveStallWatchdog() {
       final onTs = _isLiveMpegTsPlaybackUrl();
       final Duration delay;
       if (_userPrefersMediaKitForCurrentType) {
-        delay = onTs
-            ? const Duration(seconds: 14)
-            : const Duration(seconds: 10);
+        delay =
+            onTs ? const Duration(seconds: 14) : const Duration(seconds: 10);
       } else {
         delay = const Duration(milliseconds: 2800);
       }
@@ -1697,7 +1693,7 @@ void _cancelMediaKitLiveStallWatchdog() {
     unawaited(restartCurrentStream());
   }
 
-int _parseMpvKiBSize(String raw) {
+  int _parseMpvKiBSize(String raw) {
     final t = raw.trim().toLowerCase();
     if (t.endsWith('kib')) {
       return int.tryParse(t.replaceAll('kib', '').trim()) ?? 0;
@@ -1709,7 +1705,7 @@ int _parseMpvKiBSize(String raw) {
     return int.tryParse(t) ?? 0;
   }
 
-/// Canlı TV / mpv: demuxer/önbellek + ağ zaman aşımı; [aml] Amlogic ipucu.
+  /// Canlı TV / mpv: demuxer/önbellek + ağ zaman aşımı; [aml] Amlogic ipucu.
   /// [liveCache] ile [mpvLiveCacheProfile] değerleri çakışmaz (byte tavanı hizalanır).
   Future<void> _applyMpvIptvLiveZapTuning(
     dynamic plat, {
@@ -1784,7 +1780,7 @@ int _parseMpvKiBSize(String raw) {
     }
   }
 
-/// libmpv ([NativePlayer]) — yalnızca **MediaKit** oynatıcısı için; [open] öncesi uygulanır.
+  /// libmpv ([NativePlayer]) — yalnızca **MediaKit** oynatıcısı için; [open] öncesi uygulanır.
   ///
   /// - **Android:** `hwdec` = ayar + Amlogic kuralı ([AppSettingsService.resolveMediaKitHwdecMpvValue]);
   ///   SM-T530 veya [AppSettingsService.mediaKitLowPowerHwdec]: `hwdec=no` mor/pembe önleme;
@@ -1930,9 +1926,8 @@ int _parseMpvKiBSize(String raw) {
           isLowSeg: isLowSeg,
           challengedTv: challengedTv,
           liveStream: _currentStreamIsLive,
-          liveBufferSeconds: _currentStreamIsLive
-              ? _settings.effectiveLiveBufferSeconds
-              : 0,
+          liveBufferSeconds:
+              _currentStreamIsLive ? _settings.effectiveLiveBufferSeconds : 0,
         );
 
         await setMpvOpt('cache', 'yes');
@@ -2023,7 +2018,8 @@ int _parseMpvKiBSize(String raw) {
         await setMpvOpt('untimed', 'no');
       }
 
-      final streamUrlForHls = _normalizePlaybackStreamUrl(channel.value.streamUrl);
+      final streamUrlForHls =
+          _normalizePlaybackStreamUrl(channel.value.streamUrl);
       if (MediaKitMpvCrispyConfig.shouldApplyHlsBitrate(streamUrlForHls)) {
         final hlsBitrate = MediaKitMpvCrispyConfig.resolveHlsBitrate();
         await setMpvOpt('hls-bitrate', hlsBitrate);
@@ -2033,7 +2029,7 @@ int _parseMpvKiBSize(String raw) {
     }
   }
 
-Future<void> attachMediaKitPlayer(Player? p) async {
+  Future<void> attachMediaKitPlayer(Player? p) async {
     if (identical(_mediaKitPlayer, p)) return;
 
     // Eğer controller kapatılmışsa yeni gelen MediaKit player'ı durdur ve kapat
@@ -2193,8 +2189,7 @@ Future<void> attachMediaKitPlayer(Player? p) async {
     });
   }
 
-
-/// Canlıda oynatıcıdaki [Channel] örneği ile liste önbelleğindeki satırı hizalar (isim/logo, yinelenen URL vb.).
+  /// Canlıda oynatıcıdaki [Channel] örneği ile liste önbelleğindeki satırı hizalar (isim/logo, yinelenen URL vb.).
   Future<void> _rebindLiveChannelRowFromPlaylistCache() async {
     if (!_currentStreamIsLive) return;
     if (!Get.isRegistered<PlaylistCacheService>()) return;
@@ -2228,7 +2223,7 @@ Future<void> attachMediaKitPlayer(Player? p) async {
     channel.value = match;
   }
 
-Map<String, String> mediaKitAudioTrackLabels() {
+  Map<String, String> mediaKitAudioTrackLabels() {
     final player = _mediaKitPlayer;
     if (player == null) return {};
     final out = <String, String>{};
@@ -2243,7 +2238,7 @@ Map<String, String> mediaKitAudioTrackLabels() {
     return out;
   }
 
-Future<void> setMediaKitAudioTrackById(String id) async {
+  Future<void> setMediaKitAudioTrackById(String id) async {
     final player = _mediaKitPlayer;
     if (player == null) return;
     AudioTrack? picked;
@@ -2260,7 +2255,7 @@ Future<void> setMediaKitAudioTrackById(String id) async {
     } catch (_) {}
   }
 
-Map<String, String> mediaKitVideoTrackLabels() {
+  Map<String, String> mediaKitVideoTrackLabels() {
     final player = _mediaKitPlayer;
     if (player == null) return {};
     final out = <String, String>{};
@@ -2276,7 +2271,7 @@ Map<String, String> mediaKitVideoTrackLabels() {
     return out;
   }
 
-Future<void> setMediaKitVideoTrackById(String id) async {
+  Future<void> setMediaKitVideoTrackById(String id) async {
     final player = _mediaKitPlayer;
     if (player == null) return;
     VideoTrack? picked;
@@ -2293,13 +2288,13 @@ Future<void> setMediaKitVideoTrackById(String id) async {
     } catch (_) {}
   }
 
-bool _isCurrentChannelLive() {
+  bool _isCurrentChannelLive() {
     if (isSeries) return false;
     final norm = _normalizePlaybackStreamUrl(channel.value.streamUrl);
     return IptvPlaybackDefaults.isLikelyLiveStream(norm);
   }
 
-bool _useLongSegmentLiveHlsBuffer() {
+  bool _useLongSegmentLiveHlsBuffer() {
     if (!Get.isRegistered<LiveHlsStreamProfileService>()) return false;
     return Get.find<LiveHlsStreamProfileService>()
         .useLongSegmentLiveBuffer
@@ -2312,7 +2307,7 @@ bool _useLongSegmentLiveHlsBuffer() {
     return _useLongSegmentLiveHlsBuffer();
   }
 
-/// Exo/MediaKit canlıda yayın durduğunda (ENDED/EOF/sessiz durma) kullanıcı
+  /// Exo/MediaKit canlıda yayın durduğunda (ENDED/EOF/sessiz durma) kullanıcı
   /// duraklatmadıysa aynı kanalı keep-alive ile yeniden başlatır.
   void _handleLiveStreamStopped(String reason) {
     if (!_currentStreamIsLive || isMovie || isSeries) return;
@@ -2322,7 +2317,8 @@ bool _useLongSegmentLiveHlsBuffer() {
     }
     final started = _autoQPlaybackStartedAt;
     if (started == null) return;
-    if (DateTime.now().difference(started) < PlayerController._liveMinPlaybackBeforeRestart) {
+    if (DateTime.now().difference(started) <
+        PlayerController._liveMinPlaybackBeforeRestart) {
       return;
     }
 
@@ -2339,7 +2335,8 @@ bool _useLongSegmentLiveHlsBuffer() {
 
     final now = DateTime.now();
     final last = _liveSpuriousStopLastRecovery;
-    if (last != null && now.difference(last) < PlayerController._liveRestartDebounce) {
+    if (last != null &&
+        now.difference(last) < PlayerController._liveRestartDebounce) {
       return;
     }
     _liveSpuriousStopLastRecovery = now;
@@ -2349,12 +2346,12 @@ bool _useLongSegmentLiveHlsBuffer() {
     _scheduleLiveKeepAliveResume(reason);
   }
 
-/// Exo/MediaKit canlıda bazen ENDED/bitiş bildirir; kullanıcı duraklatmadıysa yeniden bağlan.
+  /// Exo/MediaKit canlıda bazen ENDED/bitiş bildirir; kullanıcı duraklatmadıysa yeniden bağlan.
   void _maybeRecoverLiveAfterSpuriousEngineStop() {
     _handleLiveStreamStopped('live-engine-stop');
   }
 
-/// MediaKit/Exo EOF (completed/ENDED) veya sessiz durmada kullanıcı
+  /// MediaKit/Exo EOF (completed/ENDED) veya sessiz durmada kullanıcı
   /// duraklatmadıysa ısrarlı keep-alive yeniden bağlanma zincirini başlatır.
   ///
   /// Tek seferlik boot yerine [_scheduleNetworkAutoResumeIfNeeded] kuyruğunu
@@ -2371,14 +2368,14 @@ bool _useLongSegmentLiveHlsBuffer() {
     _scheduleNetworkAutoResumeIfNeeded(reason);
   }
 
-/// MediaKit `completed` (EOF) olayı: canlıda kullanıcı duraklatmadıysa
+  /// MediaKit `completed` (EOF) olayı: canlıda kullanıcı duraklatmadıysa
   /// keep-alive zincirine düşer. VOD/dizi tamamlanması bu yoldan etkilenmez
   /// (yalnızca [_currentStreamIsLive] için çalışır).
   void _handleMediaKitCompletedForKeepAlive() {
     _handleLiveStreamStopped('mediakit-eof');
   }
 
-/// Smart Route auto-buffer override'ı değişti (engage/revert) → aktif CANLI
+  /// Smart Route auto-buffer override'ı değişti (engage/revert) → aktif CANLI
   /// yayında tamponu yeniden uygula.
   ///
   /// Override **yalnızca Better/Exo** canlı tamponunu etkiler (MediaKit canlı
@@ -2444,11 +2441,10 @@ bool _useLongSegmentLiveHlsBuffer() {
 
   int _liveAutoBufferEngageTargetSec() {
     final user = _settings.liveBufferSeconds.value;
-    return (user + PlayerController.liveAutoBufferBoostStepSec)
-        .clamp(
-          PlayerController.liveAutoBufferBoostMinSec,
-          PlayerController.liveAutoBufferBoostMaxSec,
-        );
+    return (user + PlayerController.liveAutoBufferBoostStepSec).clamp(
+      PlayerController.liveAutoBufferBoostMinSec,
+      PlayerController.liveAutoBufferBoostMaxSec,
+    );
   }
 
   /// Ağ/tampon stresi: kullanıcı ayarının üstüne geçici geniş tampon (ayar yok).
@@ -2465,45 +2461,50 @@ bool _useLongSegmentLiveHlsBuffer() {
   }
 
   void _scheduleLiveAutoBufferRevertWatch() {
-    _liveAutoBufferRevertTimer?.cancel();
+    _liveAutoBufferGuardActive = false;
     if (!_settings.hasRuntimeLiveBufferOverride) return;
-    _liveAutoBufferRevertTimer = Timer.periodic(
-      const Duration(seconds: 15),
-      (_) => _tickLiveAutoBufferRevert(),
-    );
-  }
 
-  void _tickLiveAutoBufferRevert() {
-    if (isClosed) {
-      _cancelLiveAutoBufferGuard();
-      return;
-    }
-    if (!_settings.hasRuntimeLiveBufferOverride) {
-      _cancelLiveAutoBufferGuard();
-      return;
-    }
-    if (!_currentStreamIsLive || isMovie || isSeries) {
-      _revertLiveAutoBuffer('content-kind');
-      return;
-    }
-    final v = better?.videoPlayerController?.value;
-    final healthy = v != null &&
-        v.initialized &&
-        v.isPlaying &&
-        !v.isBuffering &&
-        !v.hasError;
-    if (healthy) {
-      _liveAutoBufferHealthySince ??= DateTime.now();
-      final since = _liveAutoBufferHealthySince!;
-      if (DateTime.now().difference(since) >=
-          PlayerController.liveAutoBufferHealthyRevertAfter) {
-        _revertLiveAutoBuffer(
-          'healthy-${PlayerController.liveAutoBufferHealthyRevertAfter.inSeconds}s',
-        );
+    _liveAutoBufferGuardActive = true;
+    final gen = _playbackGeneration;
+
+    unawaited(() async {
+      while (!isClosed &&
+          _isPlaybackGenerationCurrent(gen) &&
+          _liveAutoBufferGuardActive) {
+        await Future<void>.delayed(const Duration(seconds: 15));
+
+        if (isClosed) {
+          _cancelLiveAutoBufferGuard();
+          return;
+        }
+        if (!_settings.hasRuntimeLiveBufferOverride) {
+          _cancelLiveAutoBufferGuard();
+          return;
+        }
+        if (!_currentStreamIsLive || isMovie || isSeries) {
+          _revertLiveAutoBuffer('content-kind');
+          return;
+        }
+        final v = better?.videoPlayerController?.value;
+        final healthy = v != null &&
+            v.initialized &&
+            v.isPlaying &&
+            !v.isBuffering &&
+            !v.hasError;
+        if (healthy) {
+          _liveAutoBufferHealthySince ??= DateTime.now();
+          final since = _liveAutoBufferHealthySince!;
+          if (DateTime.now().difference(since) >=
+              PlayerController.liveAutoBufferHealthyRevertAfter) {
+            _revertLiveAutoBuffer(
+              'healthy-${PlayerController.liveAutoBufferHealthyRevertAfter.inSeconds}s',
+            );
+          }
+        } else {
+          _liveAutoBufferHealthySince = null;
+        }
       }
-    } else {
-      _liveAutoBufferHealthySince = null;
-    }
+    }());
   }
 
   void _revertLiveAutoBuffer(String reason) {
@@ -2517,12 +2518,11 @@ bool _useLongSegmentLiveHlsBuffer() {
   }
 
   void _cancelLiveAutoBufferGuard() {
-    _liveAutoBufferRevertTimer?.cancel();
-    _liveAutoBufferRevertTimer = null;
+    _liveAutoBufferGuardActive = false;
     _liveAutoBufferHealthySince = null;
   }
 
-/// Sağlıklı (gerçekten oynayan) canlıya dönülünce keep-alive zincirini durdur.
+  /// Sağlıklı (gerçekten oynayan) canlıya dönülünce keep-alive zincirini durdur.
   void _resetLiveKeepAliveOnHealthyPlayback() {
     if (!_liveKeepAliveArmed) return;
     _liveKeepAliveArmed = false;
@@ -2530,7 +2530,7 @@ bool _useLongSegmentLiveHlsBuffer() {
     _cancelNetworkAutoResumeTimer();
   }
 
-/// Aynı kanalı baştan yükler (canlı kesinti / takılı Exo durumu).
+  /// Aynı kanalı baştan yükler (canlı kesinti / takılı Exo durumu).
   Future<void> restartCurrentStream() async {
     if (isClosed) return;
     _resetNetworkRecoveryState();
@@ -2547,7 +2547,7 @@ bool _useLongSegmentLiveHlsBuffer() {
     );
   }
 
-/// UI'ın okuyacağı maksimum logical volume (1.0..2.0). Ayarlardaki
+  /// UI'ın okuyacağı maksimum logical volume (1.0..2.0). Ayarlardaki
   /// `volumeBoostMaxPercent` 100..200 değerine göre türetilir.
   double get maxPlaybackVolume {
     final raw = _settings.volumeBoostMaxPercent.value;
@@ -2555,7 +2555,7 @@ bool _useLongSegmentLiveHlsBuffer() {
     return normalized / 100.0;
   }
 
-/// `value01` (= logical 0..maxPlaybackVolume) için libmpv `volume` özelliği.
+  /// `value01` (= logical 0..maxPlaybackVolume) için libmpv `volume` özelliği.
   /// Logical 1.0 → 130 (önceki davranışla aynı). Logical 2.0 → 200. Aradaki
   /// değerler lineer enterpolasyon.
   double _mediaKitVolumeFor(double logical) {
@@ -2567,11 +2567,13 @@ bool _useLongSegmentLiveHlsBuffer() {
     }
     final extra = clamped - 1.0; // 0..1
     final mpv = PlayerController._kMediaKitVolumeBaseAt1x +
-        extra * (PlayerController._kMediaKitVolumePropertyMax - PlayerController._kMediaKitVolumeBaseAt1x);
+        extra *
+            (PlayerController._kMediaKitVolumePropertyMax -
+                PlayerController._kMediaKitVolumeBaseAt1x);
     return mpv.clamp(0.0, PlayerController._kMediaKitVolumePropertyMax);
   }
 
-double get currentVolume {
+  double get currentVolume {
     // Sistem ses (0..1) + ek boost (0..maxBoost-1). Logical 0..maxBoost.
     if (Get.isRegistered<SystemVolumeService>()) {
       final sys = SystemVolumeService.to.currentVolume;
@@ -2580,13 +2582,14 @@ double get currentVolume {
     }
     final mk = _mediaKitPlayer;
     if (mk != null) {
-      return (mk.state.volume.clamp(0.0, PlayerController._kMediaKitVolumePropertyMax)) /
+      return (mk.state.volume
+              .clamp(0.0, PlayerController._kMediaKitVolumePropertyMax)) /
           PlayerController._kMediaKitVolumePropertyMax;
     }
     return better?.videoPlayerController?.value.volume ?? 1.0;
   }
 
-Duration get currentPosition {
+  Duration get currentPosition {
     final mk = _mediaKitPlayer;
     if (mk != null) {
       return mk.state.position;
@@ -2594,7 +2597,7 @@ Duration get currentPosition {
     return better?.videoPlayerController?.value.position ?? Duration.zero;
   }
 
-void play() {
+  void play() {
     if (showcaseInAppPipHandoff) {
       _showcaseInAppPipUserPaused = false;
     }
@@ -2628,7 +2631,6 @@ void play() {
       return;
     }
 
-
     if (_isCurrentChannelLive()) {
       if (_userPausedLive) {
         _userPausedLive = false;
@@ -2650,7 +2652,7 @@ void play() {
     better?.play();
   }
 
-void pause() {
+  void pause() {
     if (showcaseInAppPipHandoff) {
       _showcaseInAppPipUserPaused = true;
     }
@@ -2670,7 +2672,7 @@ void pause() {
     better?.pause();
   }
 
-void seekTo(Duration position) {
+  void seekTo(Duration position) {
     final beforeSec = currentPosition.inSeconds;
     _learnIntroFromUserSeek(beforeSec, position.inSeconds);
     final mk = _mediaKitPlayer;
@@ -2681,7 +2683,7 @@ void seekTo(Duration position) {
     better?.seekTo(position);
   }
 
-/// Kullanıcının manuel ileri seek'ini servise iletir (öğrenme).
+  /// Kullanıcının manuel ileri seek'ini servise iletir (öğrenme).
   /// Dizi olmayan veya 1./2. bölüm dışı içeriklerde no-op'a yakın çalışır;
   /// servis kuralları (ilk 5 dk + 30+ sn delta) kabulü doğrular.
   void _learnIntroFromUserSeek(int beforeSec, int afterSec) {
@@ -2706,7 +2708,7 @@ void seekTo(Duration position) {
     );
   }
 
-/// Mevcut çalan bölümün öğrenme/gösterme anahtarı.
+  /// Mevcut çalan bölümün öğrenme/gösterme anahtarı.
   /// Xtream `series_id` varsa onu, yoksa dizi adının normalize hali.
   String _seriesIdForLearning() {
     final ser = playingSeries;
@@ -2717,12 +2719,12 @@ void seekTo(Duration position) {
     return '';
   }
 
-String _normalizeNameKey(String s) {
+  String _normalizeNameKey(String s) {
     final t = s.trim().toLowerCase();
     return t.replaceAll(RegExp(r'\s+'), ' ');
   }
 
-SeriesEpisodeOption? _currentEpisodeOption() {
+  SeriesEpisodeOption? _currentEpisodeOption() {
     final tape = _episodeBrowseTape;
     if (tape == null || tape.isEmpty) return null;
     final idx = _episodeTapeIndexOfCurrent();
@@ -2730,7 +2732,7 @@ SeriesEpisodeOption? _currentEpisodeOption() {
     return tape[idx];
   }
 
-String _seriesSearchTitleForResolve() {
+  String _seriesSearchTitleForResolve() {
     var searchTitle = '';
     final tape = _episodeBrowseTape;
     if (tape != null && tape.isNotEmpty) {
@@ -2756,7 +2758,7 @@ String _seriesSearchTitleForResolve() {
     return searchTitle;
   }
 
-SeriesItem? _matchSeriesByTitle(
+  SeriesItem? _matchSeriesByTitle(
     Iterable<SeriesItem> items,
     String searchTitle,
   ) {
@@ -2772,7 +2774,7 @@ SeriesItem? _matchSeriesByTitle(
     return null;
   }
 
-Future<void> _ensureDbResolvedSeries() async {
+  Future<void> _ensureDbResolvedSeries() async {
     if (_playingSeriesInTape != null || _dbResolvedSeries != null) return;
     final data = Get.find<PlaylistCacheService>().result.value;
     if (data == null) return;
@@ -2794,7 +2796,7 @@ Future<void> _ensureDbResolvedSeries() async {
     _dbResolvedSeries = _matchSeriesByTitle(page, searchTitle);
   }
 
-/// Oynatıcıya `playingSeriesInTape` verilmemişse playlist'ten eşleşen dizi.
+  /// Oynatıcıya `playingSeriesInTape` verilmemişse playlist'ten eşleşen dizi.
   SeriesItem? _resolveSeriesForPanel() {
     if (_playingSeriesInTape != null) return _playingSeriesInTape;
     if (_dbResolvedSeries != null) return _dbResolvedSeries;
@@ -2807,7 +2809,7 @@ Future<void> _ensureDbResolvedSeries() async {
     return _matchSeriesByTitle(data.series, _seriesSearchTitleForResolve());
   }
 
-/// "Bling Empire S01-E03" gibi başlıklardan dizinin gerçek adını ayıklar.
+  /// "Bling Empire S01-E03" gibi başlıklardan dizinin gerçek adını ayıklar.
   /// Detay sayfasıyla aynı: [SeriesNameGrouping.displayTitleFromName].
   String _deriveSeriesDisplayTitle() {
     final ser = _resolveSeriesForPanel();
@@ -2838,7 +2840,7 @@ Future<void> _ensureDbResolvedSeries() async {
     return t;
   }
 
-String? _deriveSeriesPosterUrl() {
+  String? _deriveSeriesPosterUrl() {
     final ser = _resolveSeriesForPanel();
     final p = ser?.posterUrl;
     if (p != null && p.trim().isNotEmpty) return p.trim();
@@ -2852,14 +2854,14 @@ String? _deriveSeriesPosterUrl() {
     return null;
   }
 
-String? _deriveSeriesPlotFallback() {
+  String? _deriveSeriesPlotFallback() {
     final ser = _resolveSeriesForPanel();
     final p = ser?.plot;
     if (PlayerController._seriesMetaUsable(p)) return p!.trim();
     return null;
   }
 
-List<SeriesPlayerCastMember> _castFromMovieModel(MovieModel? m) {
+  List<SeriesPlayerCastMember> _castFromMovieModel(MovieModel? m) {
     final list = m?.cast;
     if (list == null || list.isEmpty) return const <SeriesPlayerCastMember>[];
     return [
@@ -2873,7 +2875,7 @@ List<SeriesPlayerCastMember> _castFromMovieModel(MovieModel? m) {
     ];
   }
 
-/// Detay sayfasıyla aynı kaynaklar: Xtream özet/puan + [MovieService] TMDB/OMDb.
+  /// Detay sayfasıyla aynı kaynaklar: Xtream özet/puan + [MovieService] TMDB/OMDb.
   Future<void> _loadSeriesPanelDataAsync() async {
     if (_seriesPanelDataLoaded) return;
     _seriesPanelDataLoaded = true;
@@ -2917,11 +2919,13 @@ List<SeriesPlayerCastMember> _castFromMovieModel(MovieModel? m) {
       if (PlayerController._seriesMetaUsable(xtream.seriesPlot)) {
         plot = xtream.seriesPlot!.trim();
       }
-      if (PlayerController._seriesMetaUsable(xtream.coverUrl)) poster = xtream.coverUrl!.trim();
+      if (PlayerController._seriesMetaUsable(xtream.coverUrl))
+        poster = xtream.coverUrl!.trim();
       if (PlayerController._seriesMetaUsable(xtream.imdbRating)) {
         imdb = xtream.imdbRating!.trim();
       }
-      if (PlayerController._seriesMetaUsable(xtream.genre)) genre = xtream.genre!.trim();
+      if (PlayerController._seriesMetaUsable(xtream.genre))
+        genre = xtream.genre!.trim();
       final rd = xtream.releaseDate?.trim();
       if (PlayerController._seriesMetaUsable(rd)) {
         final ym = RegExp(r'\b(19|20)\d{2}\b').firstMatch(rd!);
@@ -2944,7 +2948,8 @@ List<SeriesPlayerCastMember> _castFromMovieModel(MovieModel? m) {
       year: cleaned.$2,
       isSeries: true,
     );
-    if (!PlayerController._seriesMetaUsable(movieMeta.plot) && !PlayerController._seriesMetaUsable(localPlot)) {
+    if (!PlayerController._seriesMetaUsable(movieMeta.plot) &&
+        !PlayerController._seriesMetaUsable(localPlot)) {
       final alt = TurkishTitleUtils.cleanTitleForSearch(displayTitle);
       if (alt.isNotEmpty && alt.toLowerCase() != displayTitle.toLowerCase()) {
         final retry = await ms.getMovieWithFallback(
@@ -2959,21 +2964,26 @@ List<SeriesPlayerCastMember> _castFromMovieModel(MovieModel? m) {
     }
     if (isClosed) return;
 
-    if (PlayerController._seriesMetaUsable(movieMeta.plot)) plot = movieMeta.plot!.trim();
-    if (PlayerController._seriesMetaUsable(movieMeta.poster)) poster = movieMeta.poster!.trim();
+    if (PlayerController._seriesMetaUsable(movieMeta.plot))
+      plot = movieMeta.plot!.trim();
+    if (PlayerController._seriesMetaUsable(movieMeta.poster))
+      poster = movieMeta.poster!.trim();
     if (PlayerController._seriesMetaUsable(movieMeta.imdbRating)) {
       imdb = movieMeta.imdbRating!.trim();
     }
-    if (PlayerController._seriesMetaUsable(movieMeta.genre)) genre = movieMeta.genre!.trim();
-    if (!PlayerController._seriesMetaUsable(year) && PlayerController._seriesMetaUsable(movieMeta.year)) {
+    if (PlayerController._seriesMetaUsable(movieMeta.genre))
+      genre = movieMeta.genre!.trim();
+    if (!PlayerController._seriesMetaUsable(year) &&
+        PlayerController._seriesMetaUsable(movieMeta.year)) {
       final y = movieMeta.year!.trim();
       final ym = RegExp(r'\b(19|20)\d{2}\b').firstMatch(y);
       year = ym?.group(0) ?? y;
     }
 
     final actors = _castFromMovieModel(movieMeta);
-    final runtime =
-        PlayerController._seriesMetaUsable(movieMeta.runtime) ? movieMeta.runtime!.trim() : null;
+    final runtime = PlayerController._seriesMetaUsable(movieMeta.runtime)
+        ? movieMeta.runtime!.trim()
+        : null;
 
     seriesPanelData.value = SeriesPlayerPanelData(
       title: PlayerController._seriesMetaUsable(movieMeta.title)
@@ -2989,7 +2999,7 @@ List<SeriesPlayerCastMember> _castFromMovieModel(MovieModel? m) {
     );
   }
 
-/// Dizi/bölüm değişince UI'ya yeni intro hedef saniyesini yansıt.
+  /// Dizi/bölüm değişince UI'ya yeni intro hedef saniyesini yansıt.
   /// `player_view`'daki overlay bu RxInt'i dinler.
   void refreshIntroDurationForCurrent() {
     if (!_settings.smartStreamCutterEnabled.value) {
@@ -3017,14 +3027,14 @@ List<SeriesPlayerCastMember> _castFromMovieModel(MovieModel? m) {
     }
   }
 
-/// "Jeneriği Atla" butonuna basıldığında çağrılır.
+  /// "Jeneriği Atla" butonuna basıldığında çağrılır.
   void skipIntroNow() {
     final t = introSkipTargetSec.value;
     if (t <= 0) return;
     seekTo(Duration(seconds: t));
   }
 
-/// VOD devam diyaloğu sonrası: [PlayerController.play] yerine doğrudan motor (seek beklenir).
+  /// VOD devam diyaloğu sonrası: [PlayerController.play] yerine doğrudan motor (seek beklenir).
   Future<void> _playEngineAsync() async {
     final mk = _mediaKitPlayer;
     if (mk != null) {
@@ -3037,7 +3047,7 @@ List<SeriesPlayerCastMember> _castFromMovieModel(MovieModel? m) {
     }
   }
 
-Future<void> _seekThenPlayVodResume(Duration position) async {
+  Future<void> _seekThenPlayVodResume(Duration position) async {
     final mk = _mediaKitPlayer;
     if (mk != null) {
       await mk.seek(position).catchError((_, __) {});
@@ -3051,12 +3061,12 @@ Future<void> _seekThenPlayVodResume(Duration position) async {
     }
   }
 
-void _resetOrphanBetterSurfaceRecoveryForZap() {
+  void _resetOrphanBetterSurfaceRecoveryForZap() {
     _orphanBetterBootRev++;
     orphanBetterSurfaceRecoveryAttempts.value = 0;
   }
 
-/// [PlayerView]: Better yüzeyi yok, hata/mesgul yok — kısa gecikmeyle sınırlı [_boot].
+  /// [PlayerView]: Better yüzeyi yok, hata/mesgul yok — kısa gecikmeyle sınırlı [_boot].
   Future<void> ensureOrphanBetterBootRetry() async {
     if (isClosed) return;
     if (isReopeningFromInAppPipPending) return;
@@ -3117,7 +3127,7 @@ void _resetOrphanBetterSurfaceRecoveryForZap() {
     }
   }
 
-/// Aynı native Exo örneği ve [VideoPlayerController] ile yeni URL yüklenirken
+  /// Aynı native Exo örneği ve [VideoPlayerController] ile yeni URL yüklenirken
   /// tampon/decoder yeniden kurulumunu sınırlamak için (Android: stop + clearMediaItems + setMediaSource).
   bool _canReuseBetterForDataSource(BetterPlayerDataSource newDs) {
     final vpc = better?.videoPlayerController;
@@ -3132,8 +3142,9 @@ void _resetOrphanBetterSurfaceRecoveryForZap() {
             n.bufferForPlaybackAfterRebufferMs;
   }
 
-/// Başarı önbelleğindeki taşıma/motor biçimini [_boot] ve [zapTo] için uygular.
-  void _applyStreamSuccessCacheForBoot(String? savedFormat, {required int channelId}) {
+  /// Başarı önbelleğindeki taşıma/motor biçimini [_boot] ve [zapTo] için uygular.
+  void _applyStreamSuccessCacheForBoot(String? savedFormat,
+      {required int channelId}) {
     if (savedFormat == null) return;
     debugPrint(
       'mina_iptv: Using cached format for channel $channelId: $savedFormat',
@@ -3145,7 +3156,8 @@ void _resetOrphanBetterSurfaceRecoveryForZap() {
         mediaKitFallbackSession.value = true;
         betterOsdOverride.value = false;
       }
-      if (AppSettingsService.streamSuccessFormatUsesSoftwareDecode(savedFormat)) {
+      if (AppSettingsService.streamSuccessFormatUsesSoftwareDecode(
+          savedFormat)) {
         _forceSoftwareVideoDecoder = true;
         _mediaKitFallbackForceSoftwareDecode = true;
       }
@@ -3160,7 +3172,7 @@ void _resetOrphanBetterSurfaceRecoveryForZap() {
     }
   }
 
-/// [zapTo] öncesi: motor değişmeyecekse Better örneğini dispose etme.
+  /// [zapTo] öncesi: motor değişmeyecekse Better örneğini dispose etme.
   bool _shouldReuseBetterOnChannelChange(Channel newCh) {
     if (better == null) return false;
 
@@ -3189,7 +3201,7 @@ void _resetOrphanBetterSurfaceRecoveryForZap() {
     return _canReuseBetterForDataSource(nextDs);
   }
 
-/// HLS/M3U8 çoklu varyant: ekran + cihaz sınıfına göre otomatik tavan
+  /// HLS/M3U8 çoklu varyant: ekran + cihaz sınıfına göre otomatik tavan
   /// (kullanıcı ayarı yok; 4K varyant zayıf kutularda kilitlenmesin).
   int? _preferredMaxVideoHeightForAdaptivePlayback() {
     int deviceH;
@@ -3233,7 +3245,7 @@ void _resetOrphanBetterSurfaceRecoveryForZap() {
     return result;
   }
 
-void _applyPreferredMaxHeightToBetter(
+  void _applyPreferredMaxHeightToBetter(
     BetterPlayerController ctrl, {
     required int? preferredMaxHeight,
     required bool disableAsms,
@@ -3255,12 +3267,12 @@ void _applyPreferredMaxHeightToBetter(
     ctrl.setTrack(chosen);
   }
 
-void _cancelLiveZapAbrQualityRamp() {
+  void _cancelLiveZapAbrQualityRamp() {
     _liveZapAbrRampTimer?.cancel();
     _liveZapAbrRampTimer = null;
   }
 
-/// Canlı + çoklu HLS varyant: önce en düşük, ~2s sonra tercih edilen tavan.
+  /// Canlı + çoklu HLS varyant: önce en düşük, ~2s sonra tercih edilen tavan.
   void _scheduleLiveZapAbrRampsExo(
     BetterPlayerController ctrl,
     int expectedGen, {
@@ -3309,7 +3321,7 @@ void _cancelLiveZapAbrQualityRamp() {
     );
   }
 
-Future<void> _runLiveZapAbrRampsExoAsync(
+  Future<void> _runLiveZapAbrRampsExoAsync(
     BetterPlayerController ctrl,
     int expectedGen, {
     required int preferredMaxHeight,
@@ -3356,14 +3368,15 @@ Future<void> _runLiveZapAbrRampsExoAsync(
     });
   }
 
-/// MediaKit çoklu video iz: düşük → 2s sonra tercih tavanı.
+  /// MediaKit çoklu video iz: düşük → 2s sonra tercih tavanı.
   Future<void> _tryLiveZapAbrRampsMediaKit(Player p) async {
     if (!_currentStreamIsLive) return;
     if (Platform.isAndroid) {
       await AndroidPlaybackSocHints.ensureLoaded();
       if (AndroidPlaybackSocHints.weakMpvDevice ||
           AndroidPlaybackSocHints.playbackChallengedTv ||
-          AndroidPlaybackSocHints.playbackSegment == DevicePlaybackSegment.low) {
+          AndroidPlaybackSocHints.playbackSegment ==
+              DevicePlaybackSegment.low) {
         return;
       }
     }
@@ -3389,7 +3402,8 @@ Future<void> _runLiveZapAbrRampsExoAsync(
     }
     final byPixels = List<VideoTrack>.from(vids)
       ..sort(
-        (a, b) => PlayerController._mediaKitTrackPixels(a).compareTo(PlayerController._mediaKitTrackPixels(b)),
+        (a, b) => PlayerController._mediaKitTrackPixels(a)
+            .compareTo(PlayerController._mediaKitTrackPixels(b)),
       );
     if (byPixels.isEmpty) return;
     if (PlayerController._mediaKitTrackPixels(byPixels.first) <
@@ -3421,8 +3435,10 @@ Future<void> _runLiveZapAbrRampsExoAsync(
       }
       best ??= list.isNotEmpty
           ? list.reduce(
-              (a, b) =>
-                  PlayerController._mediaKitTrackPixels(a) >= PlayerController._mediaKitTrackPixels(b) ? a : b,
+              (a, b) => PlayerController._mediaKitTrackPixels(a) >=
+                      PlayerController._mediaKitTrackPixels(b)
+                  ? a
+                  : b,
             )
           : null;
       if (best == null) return;
@@ -3433,7 +3449,7 @@ Future<void> _runLiveZapAbrRampsExoAsync(
     });
   }
 
-/// Eski yayının sesi karartma beklenmeden kesilsin (hızlı kanal değişimi / çıkış).
+  /// Eski yayının sesi karartma beklenmeden kesilsin (hızlı kanal değişimi / çıkış).
   Future<void> _silenceCurrentPlaybackImmediately() async {
     final futures = <Future<void>>[];
     final mk = _mediaKitPlayer;
@@ -3457,7 +3473,7 @@ Future<void> _runLiveZapAbrRampsExoAsync(
     }
   }
 
-/// Tam ekrandan TV ana ekranına dönüş: kurtarma zamanlayıcıları ve native motorları
+  /// Tam ekrandan TV ana ekranına dönüş: kurtarma zamanlayıcıları ve native motorları
   /// route pop'tan önce kes — aksi halde Exo/mpv sesi saniyelerce sürebilir.
   Future<void> _haltPlaybackForRouteExit() async {
     if (_playbackEnginesHaltedForRouteExit) return;
@@ -3511,7 +3527,7 @@ Future<void> _runLiveZapAbrRampsExoAsync(
     _settings.playerScreenActive.value = false;
   }
 
-/// Geçerli kanalın canlı olup olmadığını url'den hızlı kontrol.
+  /// Geçerli kanalın canlı olup olmadığını url'den hızlı kontrol.
   bool get isLiveChannelCurrent {
     if (isMovie || isSeries) return false;
     final u = channel.value.streamUrl.toLowerCase();
@@ -3521,15 +3537,15 @@ Future<void> _runLiveZapAbrRampsExoAsync(
     return IptvPlaybackDefaults.isLikelyLiveStream(norm);
   }
 
-bool get _usesRemoteOsdChrome =>
+  bool get _usesRemoteOsdChrome =>
       _settings.layoutMode.value.usesRemoteNavigationStyle;
 
-void _cancelNetworkAutoResumeTimer() {
+  void _cancelNetworkAutoResumeTimer() {
     _networkAutoResumeTimer?.cancel();
     _networkAutoResumeTimer = null;
   }
 
-void _cancelLiveTransientErrorEmitTimer() {
+  void _cancelLiveTransientErrorEmitTimer() {
     _liveTransientErrorEmitTimer?.cancel();
     _liveTransientErrorEmitTimer = null;
     _betterBufferingRecoveryTimer?.cancel();
@@ -3537,7 +3553,7 @@ void _cancelLiveTransientErrorEmitTimer() {
     _betterBufferingListenerBoundTo = null;
   }
 
-void _cancelBetterBufferingRecoveryTimer() {
+  void _cancelBetterBufferingRecoveryTimer() {
     _betterBufferingRecoveryTimer?.cancel();
     _betterBufferingRecoveryTimer = null;
   }
@@ -3602,14 +3618,14 @@ void _cancelBetterBufferingRecoveryTimer() {
     return true;
   }
 
-void _attachBetterBufferingRecoveryListener(BetterPlayerController ctrl) {
+  void _attachBetterBufferingRecoveryListener(BetterPlayerController ctrl) {
     final id = identityHashCode(ctrl);
     if (_betterBufferingListenerBoundTo == id) return;
     ctrl.addEventsListener(_onBetterBufferingRecoveryEvent);
     _betterBufferingListenerBoundTo = id;
   }
 
-void _onBetterBufferingRecoveryEvent(BetterPlayerEvent event) {
+  void _onBetterBufferingRecoveryEvent(BetterPlayerEvent event) {
     if (effectiveUseMediaKit || better == null) return;
     if (event.betterPlayerEventType == BetterPlayerEventType.bufferingStart) {
       // Canlı HLS/TS: seekTo(0) kısa ağ dalgalanmasında görünür kesinti yaratır;
@@ -3645,29 +3661,22 @@ void _onBetterBufferingRecoveryEvent(BetterPlayerEvent event) {
     }
   }
 
-void _cancelLiveStallWatchdog() {
-    _liveStallWatchdogTimer?.cancel();
-    _liveStallWatchdogTimer = null;
-    _liveTvStallPollTimer?.cancel();
-    _liveTvStallPollTimer = null;
+  void _cancelLiveStallWatchdog() {
     _liveTvBufferingSince = null;
     _liveStallRecoveryStage = 0;
   }
 
-void _cancelLiveTvStartupWatchdog() {
-    _liveTvStartupWatchdog?.cancel();
-    _liveTvStartupWatchdog = null;
+  void _cancelLiveTvStartupWatchdog() {
     _liveStartupWatchdogArmedAt = null;
   }
 
-void _cancelLiveAutoNextWatchdog() {
-    _liveAutoNextPollTimer?.cancel();
-    _liveAutoNextPollTimer = null;
+  void _cancelLiveAutoNextWatchdog() {
+    _liveAutoNextWatchdogActive = false;
     _liveUnhealthySince = null;
     _liveIdleRestartTriggered = false;
   }
 
-/// Gerçek oynatma: kullanıcı duraklatmadıysa `isPlaying` ve bilinen hata yok.
+  /// Gerçek oynatma: kullanıcı duraklatmadıysa `isPlaying` ve bilinen hata yok.
   bool _liveAutoNextPlaybackStrictlyOk() {
     if (!_currentStreamIsLive || isMovie || isSeries || _userPausedLive) {
       return true;
@@ -3685,7 +3694,7 @@ void _cancelLiveAutoNextWatchdog() {
     return v.isPlaying;
   }
 
-void _syncLiveAutoNextWatchdog() {
+  void _syncLiveAutoNextWatchdog() {
     if (isClosed) return;
     if (!_currentStreamIsLive || isMovie || isSeries || _userPausedLive) {
       _cancelLiveAutoNextWatchdog();
@@ -3700,65 +3709,78 @@ void _syncLiveAutoNextWatchdog() {
       return;
     }
     _liveUnhealthySince ??= DateTime.now();
-    _liveAutoNextPollTimer ??= Timer.periodic(PlayerController._liveAutoNextPollInterval, (_) {
-      if (isClosed) {
+
+    if (_liveAutoNextWatchdogActive) return;
+    _liveAutoNextWatchdogActive = true;
+    final gen = _playbackGeneration;
+
+    unawaited(() async {
+      while (!isClosed &&
+          _isPlaybackGenerationCurrent(gen) &&
+          _liveAutoNextWatchdogActive) {
+        await Future<void>.delayed(PlayerController._liveAutoNextPollInterval);
+
+        if (isClosed) {
+          _cancelLiveAutoNextWatchdog();
+          return;
+        }
+        if (!_currentStreamIsLive || _userPausedLive || isBusy.value) {
+          _cancelLiveAutoNextWatchdog();
+          return;
+        }
+        if (_liveAutoNextPlaybackStrictlyOk()) {
+          _cancelLiveAutoNextWatchdog();
+          return;
+        }
+        final since = _liveUnhealthySince;
+        if (since == null) return;
+        final unhealthyFor = DateTime.now().difference(since);
+        if (!_liveIdleRestartTriggered &&
+            unhealthyFor >= PlayerController._liveRestartAfterIdle) {
+          _liveIdleRestartTriggered = true;
+          _handleLiveStreamStopped('live-idle-watchdog');
+          return;
+        }
+        if (unhealthyFor < PlayerController._liveAutoNextAfterUnhealthy) {
+          continue;
+        }
+        debugPrint(
+          'mina_iptv: Canlı ${unhealthyFor.inSeconds}s oynatılamadı → tam yeniden bağlanma',
+        );
         _cancelLiveAutoNextWatchdog();
+        unawaited(restartCurrentStream());
         return;
       }
-      if (!_currentStreamIsLive || _userPausedLive || isBusy.value) {
-        _cancelLiveAutoNextWatchdog();
-        return;
-      }
-      if (_liveAutoNextPlaybackStrictlyOk()) {
-        _cancelLiveAutoNextWatchdog();
-        return;
-      }
-      final since = _liveUnhealthySince;
-      if (since == null) return;
-      final unhealthyFor = DateTime.now().difference(since);
-      if (!_liveIdleRestartTriggered && unhealthyFor >= PlayerController._liveRestartAfterIdle) {
-        _liveIdleRestartTriggered = true;
-        _handleLiveStreamStopped('live-idle-watchdog');
-        return;
-      }
-      if (unhealthyFor < PlayerController._liveAutoNextAfterUnhealthy) {
-        return;
-      }
-      debugPrint(
-        'mina_iptv: Canlı ${unhealthyFor.inSeconds}s oynatılamadı → tam yeniden bağlanma',
-      );
-      _cancelLiveAutoNextWatchdog();
-      unawaited(restartCurrentStream());
-    });
+    }());
   }
 
-void _resetNetworkRecoveryState() {
+  void _resetNetworkRecoveryState() {
     _cancelNetworkAutoResumeTimer();
     _networkResumeAttempt = 0;
   }
 
-bool _isLikelyHlsLivePlaybackUrl([String? url]) {
+  bool _isLikelyHlsLivePlaybackUrl([String? url]) {
     final u = (url ?? _lastPlaybackUrl ?? channel.value.streamUrl).trim();
     if (u.isEmpty) return false;
     return IptvPlaybackDefaults.isLikelyHlsStreamUrl(u);
   }
 
-Duration _liveStartupSwapThresholdForCurrentUrl() {
+  Duration _liveStartupSwapThresholdForCurrentUrl() {
     if (_isLikelyHlsLivePlaybackUrl()) {
       return PlayerController._liveStartupHlsSwapThreshold;
     }
     return PlayerController._liveStartupSwapThreshold;
   }
 
-String? _convertLivePlayUrlToTsIfNeeded(String url) =>
+  String? _convertLivePlayUrlToTsIfNeeded(String url) =>
       IptvPlaybackDefaults.convertLiveUrlToTsIfNeeded(url);
 
-void _detachExoStallEventListener() {
+  void _detachExoStallEventListener() {
     unawaited(_exoStallEventSub?.cancel());
     _exoStallEventSub = null;
   }
 
-void _attachExoStallEventListener(BetterPlayerController ctrl) {
+  void _attachExoStallEventListener(BetterPlayerController ctrl) {
     _detachExoStallEventListener();
     final vpc = ctrl.videoPlayerController;
     if (vpc == null) return;
@@ -3767,7 +3789,7 @@ void _attachExoStallEventListener(BetterPlayerController ctrl) {
       switch (event.eventType) {
         case VideoEventType.playbackEstablished:
           _livePlaybackEstablished = true;
-          if (_liveTvStartupWatchdog != null) {
+          if (_liveStartupWatchdogArmedAt != null) {
             _cancelLiveTvStartupWatchdog();
             debugPrint(
               'mina_iptv: Canlı başlangıç watchdog iptal (playbackEstablished)',
@@ -3777,7 +3799,7 @@ void _attachExoStallEventListener(BetterPlayerController ctrl) {
         case VideoEventType.videoFormat:
           if (_currentStreamIsLive &&
               !effectiveUseMediaKit &&
-              _liveTvStartupWatchdog != null &&
+              _liveStartupWatchdogArmedAt != null &&
               _liveStartupLooksHealthy()) {
             _cancelLiveTvStartupWatchdog();
             debugPrint(
@@ -3801,7 +3823,7 @@ void _attachExoStallEventListener(BetterPlayerController ctrl) {
     });
   }
 
-Future<bool> _tryConservativeLiveRecover() async {
+  Future<bool> _tryConservativeLiveRecover() async {
     if (isClosed || _conservativeRecoverInFlight) return false;
     if (!_currentStreamIsLive || effectiveUseMediaKit) {
       return false;
@@ -3814,15 +3836,15 @@ Future<bool> _tryConservativeLiveRecover() async {
 
     final now = DateTime.now();
     final last = _liveSoftRecoverLastAt;
-    if (last != null &&
-        now.difference(last) < const Duration(seconds: 4)) {
+    if (last != null && now.difference(last) < const Duration(seconds: 4)) {
       return false;
     }
     _liveSoftRecoverLastAt = now;
 
     _conservativeRecoverInFlight = true;
     try {
-      debugPrint('mina_iptv: Canlı muhafazakâr kurtarma (softRecover, seek yok)');
+      debugPrint(
+          'mina_iptv: Canlı muhafazakâr kurtarma (softRecover, seek yok)');
       final ok = await vpc.softRecoverPlayback();
       if (!ok) return false;
       // Motor değişimi / dispose sonrası softRecover hayalet ses üretmesin.
@@ -3861,7 +3883,7 @@ Future<bool> _tryConservativeLiveRecover() async {
     }
   }
 
-Duration _networkResumeDelayForAttempt() {
+  Duration _networkResumeDelayForAttempt() {
     // Exo BUFFERING→READY için en az 10 sn; 1–3 sn’lik öldürme yok.
     const steps = [10, 12, 16, 20, 30];
     final i = _networkResumeAttempt.clamp(0, steps.length - 1);
@@ -3870,7 +3892,7 @@ Duration _networkResumeDelayForAttempt() {
     return d < min ? min : d;
   }
 
-void _scheduleNetworkAutoResumeIfNeeded(String msg) {
+  void _scheduleNetworkAutoResumeIfNeeded(String msg) {
     if (_shouldBlockAutomaticPlayback()) return;
     if (PlayerController._isExoTsExtractorSeekFailure(msg)) return;
     if (PlayerController._isHttpForbiddenOrUnauthorizedError(msg) &&
@@ -3911,7 +3933,7 @@ void _scheduleNetworkAutoResumeIfNeeded(String msg) {
     });
   }
 
-void _emitPlaybackErrorForRecovery(
+  void _emitPlaybackErrorForRecovery(
     String msg, {
     bool suppressNetworkRecoverySchedule = false,
   }) {
@@ -3975,7 +3997,7 @@ void _emitPlaybackErrorForRecovery(
     }
   }
 
-/// Canlı HLS HTTP 403/401: TS'ye düşme; sınırlı aynı-URL retry, sonra MediaKit.
+  /// Canlı HLS HTTP 403/401: TS'ye düşme; sınırlı aynı-URL retry, sonra MediaKit.
   bool _handleLiveHttpForbiddenError(String msg) {
     if (!_currentStreamIsLive) return false;
     if (!PlayerController._isHttpForbiddenOrUnauthorizedError(msg)) {
@@ -4018,7 +4040,7 @@ void _emitPlaybackErrorForRecovery(
     return true;
   }
 
-/// Canlı progressive TS: TsExtractor.seek — yazılım decoder / network loop yok.
+  /// Canlı progressive TS: TsExtractor.seek — yazılım decoder / network loop yok.
   bool _handleLiveTsExtractorSeekFailure(String msg) {
     if (!_currentStreamIsLive || effectiveUseMediaKit) return false;
     final onTs = _isLiveMpegTsPlaybackUrl();
@@ -4122,7 +4144,7 @@ void _emitPlaybackErrorForRecovery(
     return true;
   }
 
-/// mpv / yüzey açılamadığında ExoPlayer (yazılım kod çözücü) ile bir kez dener.
+  /// mpv / yüzey açılamadığında ExoPlayer (yazılım kod çözücü) ile bir kez dener.
   ///
   /// Hem **canlı** hem **VOD** için geçerli: kullanıcı motoru MediaKit seçse
   /// (ya da bir nedenle mpv'ye düşülmüş olsa) bile mpv açamazsa yalnız o yayın
@@ -4199,8 +4221,7 @@ void _emitPlaybackErrorForRecovery(
     return true;
   }
 
-
-/// [UniversalVideoPlayer] VideoController kurulumu başarısız (TCL/Google TV vb.).
+  /// [UniversalVideoPlayer] VideoController kurulumu başarısız (TCL/Google TV vb.).
   Future<void> handleMediaKitSurfaceInitFailed(Object e) async {
     if (isClosed) return;
     await AndroidPlaybackSocHints.ensureLoaded();
@@ -4215,7 +4236,7 @@ void _emitPlaybackErrorForRecovery(
     _emitPlaybackErrorForRecovery(msg);
   }
 
-/// [UniversalVideoPlayer] `player.open` hatası.
+  /// [UniversalVideoPlayer] `player.open` hatası.
   void onMediaKitOpenFailed(Object e) {
     if (isClosed) return;
     final msg = e.toString();
@@ -4442,7 +4463,7 @@ void _emitPlaybackErrorForRecovery(
     });
   }
 
-/// MediaKit/mpv canlı yayını açamadığında, sonraki yeniden deneme buffer'ı
+  /// MediaKit/mpv canlı yayını açamadığında, sonraki yeniden deneme buffer'ı
   /// büyütsün diye kademeyi (0→1→2) bir artırır. Yalnızca canlı + MediaKit
   /// oturumunda; VOD ve Better/Exo yolu etkilenmez.
   void _maybeEscalateMediaKitLiveBuffer() {
@@ -4459,7 +4480,7 @@ void _emitPlaybackErrorForRecovery(
     );
   }
 
-/// Xtream `/movie/.../id.ext` veya `/series/.../id.ext` → `get.php?stream_id=...&output=...`
+  /// Xtream `/movie/.../id.ext` veya `/series/.../id.ext` → `get.php?stream_id=...&output=...`
   ///
   /// Uzantı (ts/mp4/mkv/…) dosya adıyla aynı kalır; m3u8 zorlanmaz.
   /// Bir kez denenir ([_xtreamTriedSeriesMoviePathToGetPhp]).
@@ -4479,7 +4500,7 @@ void _emitPlaybackErrorForRecovery(
     return true;
   }
 
-/// [IptvPlaybackDefaults.normalizeStreamUrl] sonrası tam URL beklenir.
+  /// [IptvPlaybackDefaults.normalizeStreamUrl] sonrası tam URL beklenir.
   String? _tryConvertXtreamVodStylePathToGetPhp(String normalizedUrl) {
     final uri = Uri.tryParse(normalizedUrl);
     if (uri == null) return null;
@@ -4500,7 +4521,7 @@ void _emitPlaybackErrorForRecovery(
     return '$base/get.php?username=${Uri.encodeQueryComponent(user)}&password=${Uri.encodeQueryComponent(pass)}&stream_id=$id&output=$output';
   }
 
-/// `get.php?username=&password=&stream_id=&output=` → `/series|movie/u/p/id.ext`
+  /// `get.php?username=&password=&stream_id=&output=` → `/series|movie/u/p/id.ext`
   String? _tryConvertXtreamGetPhpToVodStylePath(String normalizedUrl) {
     final uri = Uri.tryParse(normalizedUrl);
     if (uri == null) return null;
@@ -4520,7 +4541,7 @@ void _emitPlaybackErrorForRecovery(
     return '$base/$root/${Uri.encodeComponent(user)}/${Uri.encodeComponent(pass)}/$sid.$output';
   }
 
-/// Paneller bazen yalnızca segment yolunu veya yalnızca `get.php` kabul eder; [get.php] hata verince bir kez yol dene.
+  /// Paneller bazen yalnızca segment yolunu veya yalnızca `get.php` kabul eder; [get.php] hata verince bir kez yol dene.
   bool _scheduleXtreamGetPhpToVodPathRetry() {
     if (_xtreamTriedGetPhpToVodPathFallback) return false;
     if (_currentStreamIsLive) return false;
@@ -4541,7 +4562,7 @@ void _emitPlaybackErrorForRecovery(
     return true;
   }
 
-/// `get.php?...&output=mkv` veya `.../id.mkv` → aynı akış `ts` (çoğu panelde VOD MPEG-TS daha sorunsuz).
+  /// `get.php?...&output=mkv` veya `.../id.mkv` → aynı akış `ts` (çoğu panelde VOD MPEG-TS daha sorunsuz).
   String? _swapXtreamVodUrlMkvToTs(String raw) {
     final t = raw.trim();
     if (t.isEmpty) return null;
@@ -4562,7 +4583,7 @@ void _emitPlaybackErrorForRecovery(
     return null;
   }
 
-bool _scheduleXtreamVodMkvToTsRetry() {
+  bool _scheduleXtreamVodMkvToTsRetry() {
     if (_xtreamTriedVodMkvToTsSwap) return false;
     if (_currentStreamIsLive) return false;
     final raw = (_lastPlaybackUrl?.trim().isNotEmpty ?? false)
@@ -4578,7 +4599,7 @@ bool _scheduleXtreamVodMkvToTsRetry() {
     return true;
   }
 
-Future<void> _performNetworkResume() async {
+  Future<void> _performNetworkResume() async {
     if (isClosed) return;
     if (_shouldBlockAutomaticPlayback()) return;
     if (_networkResumeInFlight) {
@@ -4655,18 +4676,29 @@ Future<void> _performNetworkResume() async {
     }
   }
 
-void _armLiveTvStartupWatchdog() {
+  void _armLiveTvStartupWatchdog() {
     if (effectiveUseMediaKit) return;
     final norm = _normalizePlaybackStreamUrl(channel.value.streamUrl);
     if (!IptvPlaybackDefaults.isLikelyLiveStream(norm)) return;
 
-    _liveTvStartupWatchdog?.cancel();
     _liveStartupWatchdogArmedAt = DateTime.now();
     final initial = _liveStartupSwapThresholdForCurrentUrl();
+    final gen = _playbackGeneration;
 
-    void onTick() {
-      _liveTvStartupWatchdog = null;
-      if (isClosed || effectiveUseMediaKit) return;
+    unawaited(_runLiveTvStartupSequence(gen, norm, initial));
+  }
+
+  Future<void> _runLiveTvStartupSequence(
+    int gen,
+    String norm,
+    Duration initialDelay,
+  ) async {
+    await Future<void>.delayed(initialDelay);
+
+    while (!isClosed &&
+        !effectiveUseMediaKit &&
+        _isPlaybackGenerationCurrent(gen) &&
+        _liveStartupWatchdogArmedAt != null) {
       if (_liveStartupLooksHealthy()) {
         debugPrint(
           'mina_iptv: Canlı başlangıç watchdog — initialized/decoder OK, swap yok',
@@ -4675,7 +4707,9 @@ void _armLiveTvStartupWatchdog() {
         return;
       }
 
-      final armedAt = _liveStartupWatchdogArmedAt ?? DateTime.now();
+      final armedAt = _liveStartupWatchdogArmedAt;
+      if (armedAt == null) return;
+
       final elapsed = DateTime.now().difference(armedAt);
       final v = better?.videoPlayerController?.value;
       // HLS tampon doluyorsa sabırsız dispose/swap yok — en az 15 sn.
@@ -4685,7 +4719,7 @@ void _armLiveTvStartupWatchdog() {
           (v.isBuffering || v.initialized || v.isPlaying);
       final deadline = hlsBufferingGrace
           ? PlayerController._liveStartupHlsBufferingDeadline
-          : initial;
+          : initialDelay;
 
       if (elapsed < deadline) {
         final remain = deadline - elapsed;
@@ -4694,13 +4728,12 @@ void _armLiveTvStartupWatchdog() {
           '${elapsed.inMilliseconds}ms/${deadline.inSeconds}s, '
           '+${remain.inMilliseconds}ms bekle',
         );
-        _liveTvStartupWatchdog = Timer(
+        await Future<void>.delayed(
           remain > const Duration(seconds: 1)
               ? const Duration(seconds: 1)
               : remain,
-          onTick,
         );
-        return;
+        continue;
       }
 
       _liveStartupWatchdogArmedAt = null;
@@ -4723,9 +4756,8 @@ void _armLiveTvStartupWatchdog() {
         _networkResumeAttempt = 0;
         unawaited(_performNetworkResume());
       }
+      return;
     }
-
-    _liveTvStartupWatchdog = Timer(initial, onTick);
   }
 
   /// Başlangıç watchdog: Exo decode/yüzey ayağa kalktıysa HLS→TS zorlama.
@@ -4743,7 +4775,7 @@ void _armLiveTvStartupWatchdog() {
     return false;
   }
 
-/// Canlı Better başlangıçta açılmadı ve HLS↔TS swap da çözmedi → MediaKit yedek.
+  /// Canlı Better başlangıçta açılmadı ve HLS↔TS swap da çözmedi → MediaKit yedek.
   /// TV kutusunda yalnızca kod çözücü hatasında MediaKit'e düşülür; tampon/başlangıç
   /// takılması Exo kurtarma yolunda kalır ([_handleLiveTvStallRecovery]).
   bool _maybeFallbackToMediaKitFromLiveStartupStall() {
@@ -4766,13 +4798,12 @@ void _armLiveTvStartupWatchdog() {
     return true;
   }
 
-/// Sessiz takılma (siyah ekran, hata event'i yok) durumunda canlı yayını
+  /// Sessiz takılma (siyah ekran, hata event'i yok) durumunda canlı yayını
   /// diğer taşıma biçimiyle (HLS ↔ MPEG-TS) yeniden açmayı dener. Yalnızca
   /// canlı, MediaKit dışı ve bu oturumda henüz denenmemişken çalışır.
   /// Başarıyla bir swap planlandıysa `true` döner.
   bool _tryLiveTransportFormatSwapRecovery(String normalizedUrl) {
-    if ((effectiveUseMediaKit) ||
-        _decoderTriedTsToM3u8Swap) {
+    if ((effectiveUseMediaKit) || _decoderTriedTsToM3u8Swap) {
       return false;
     }
     if (!_currentStreamIsLive) return false;
@@ -4830,7 +4861,7 @@ void _armLiveTvStartupWatchdog() {
     return true;
   }
 
-/// Canlı yayın hatası (kod çözücü VEYA kaynak) geldiğinde, yazılım kod
+  /// Canlı yayın hatası (kod çözücü VEYA kaynak) geldiğinde, yazılım kod
   /// çözücü / MediaKit yedeğinden ÖNCE bir kez HLS↔TS taşıma biçimi değişimi
   /// dener. Pratikte en güvenilir kurtarma bu: bazı paneller canlıyı HLS
   /// (`.m3u8`) içinde mp2t ile sarıp `MediaCodecVideoRenderer` (video/mp2t)
@@ -4838,8 +4869,7 @@ void _armLiveTvStartupWatchdog() {
   /// (kullanıcı doğruladı). Swap URL'yi gerçekten değiştirmiyorsa (Xtream canlı
   /// kalıbı değil / zaten denenmiş) `false` döner ve normal zincir sürer.
   bool _maybeSwapLiveTransportBeforeDecoderFallback(String msg) {
-    if ((effectiveUseMediaKit) ||
-        _decoderTriedTsToM3u8Swap) {
+    if ((effectiveUseMediaKit) || _decoderTriedTsToM3u8Swap) {
       return false;
     }
     if (!_currentStreamIsLive) return false;
@@ -4852,7 +4882,7 @@ void _armLiveTvStartupWatchdog() {
     return true;
   }
 
-/// Telefon/tablet: yetim Better yüzeyi tüm denemelerde oluşmadıysa
+  /// Telefon/tablet: yetim Better yüzeyi tüm denemelerde oluşmadıysa
   /// («oynatıcı hazır değil») panel büyük olasılıkla bu biçimi (genelde HLS)
   /// hiç sunmuyor demektir. Bir kez HLS↔TS taşıma biçimi değişimi deneyip
   /// yeni biçimle baştan boot eder. Başarılıysa yetim sayaç sıfırlanır.
@@ -4869,7 +4899,7 @@ void _armLiveTvStartupWatchdog() {
     }
   }
 
-Future<void> _handleLiveTvStallRecovery() async {
+  Future<void> _handleLiveTvStallRecovery() async {
     if (isClosed) return;
     if (_shouldBlockAutomaticPlayback()) return;
     if (_settings.layoutMode.value != AppLayoutMode.tv) return;
@@ -4909,14 +4939,14 @@ Future<void> _handleLiveTvStallRecovery() async {
     await _performNetworkResume();
   }
 
-void _startLiveStallWatchdog() {
+  void _startLiveStallWatchdog() {
     if (better == null) return;
     if (effectiveUseMediaKit) return;
     final norm = _normalizePlaybackStreamUrl(channel.value.streamUrl);
     if (!IptvPlaybackDefaults.isLikelyLiveStream(norm)) return;
 
     // Ardışık bufferingStart süreyi sıfırlamasın; kademeli eşikler tek sayaç üzerinden.
-    if (_liveTvStallPollTimer != null) return;
+    if (_liveTvBufferingSince != null) return;
     _liveStallRecoveryStage = 0;
     _liveTvBufferingSince = DateTime.now();
     final isTv = _settings.layoutMode.value == AppLayoutMode.tv;
@@ -4929,10 +4959,14 @@ void _startLiveStallWatchdog() {
     final fullThreshold = isTv
         ? PlayerController._liveTvStallFullRecoveryThreshold
         : PlayerController._liveMobileStallFullRecoveryThreshold;
+    final gen = _playbackGeneration;
 
-    _liveTvStallPollTimer = Timer.periodic(
-      PlayerController._liveTvStallPollInterval,
-      (_) {
+    unawaited(() async {
+      while (!isClosed &&
+          _isPlaybackGenerationCurrent(gen) &&
+          _liveTvBufferingSince != null) {
+        await Future<void>.delayed(PlayerController._liveTvStallPollInterval);
+
         if (isClosed || better == null || effectiveUseMediaKit) {
           _cancelLiveStallWatchdog();
           return;
@@ -4993,11 +5027,11 @@ void _startLiveStallWatchdog() {
           _networkResumeAttempt = 0;
           unawaited(_performNetworkResume());
         }
-      },
-    );
+      }
+    }());
   }
 
-/// Dikey telefon/tablet OSD şeridi: mevcut kanalla aynı kategorideki canlı kanallar.
+  /// Dikey telefon/tablet OSD şeridi: mevcut kanalla aynı kategorideki canlı kanallar.
   /// Film/dizi (VOD) oturumunda boş — yalnızca **canlı** yayında şerit gösterilir.
   List<Channel> liveChannelsInCurrentCategory() {
     if (isMovie || isSeries) {
@@ -5038,7 +5072,7 @@ void _startLiveStallWatchdog() {
     return out;
   }
 
-/// «Arka planda oynat» ayarına göre Better Player yaşam döngüsü / görünürlük
+  /// «Arka planda oynat» ayarına göre Better Player yaşam döngüsü / görünürlük
   /// duraklatmasını günceller. Oynatıcı yeniden kullanılsa bile (kanal zap,
   /// liste değişimi) ayar anında yansır.
   void _applyBackgroundPlaybackPolicy() {
@@ -5094,7 +5128,7 @@ void _startLiveStallWatchdog() {
     }
   }
 
-/// «Arka planda oynat» kapalıyken otomatik oynatma / kurtarma zincirlerini durdur.
+  /// «Arka planda oynat» kapalıyken otomatik oynatma / kurtarma zincirlerini durdur.
   bool _shouldBlockAutomaticPlayback() {
     if (_settings.backgroundPlayback.value) return false;
     if (_nativeActivityBackground) return true;
@@ -5108,7 +5142,7 @@ void _startLiveStallWatchdog() {
         state == AppLifecycleState.hidden;
   }
 
-/// Ayar kapalıyken arka plana geçişte motoru durdurur; bekleyen kurtarma
+  /// Ayar kapalıyken arka plana geçişte motoru durdurur; bekleyen kurtarma
   /// zamanlayıcılarını iptal eder (ağ/buffering recovery ses sızıntısını önler).
   void _pauseForLeavingAppIfBackgroundPlaybackDisabled() {
     if (_settings.backgroundPlayback.value) return;
@@ -5128,7 +5162,7 @@ void _startLiveStallWatchdog() {
     _syncPlaybackWakelock(force: true);
   }
 
-Future<dynamic> _onNativeActivityLifecycleCall(MethodCall call) async {
+  Future<dynamic> _onNativeActivityLifecycleCall(MethodCall call) async {
     if (isClosed) return null;
     switch (call.method) {
       case 'background':
@@ -5159,7 +5193,7 @@ Future<dynamic> _onNativeActivityLifecycleCall(MethodCall call) async {
     }
   }
 
-Future<void> _resumePlaybackAfterBackgroundIfNeeded() async {
+  Future<void> _resumePlaybackAfterBackgroundIfNeeded() async {
     if (!_shouldResumeAfterBackgroundPause()) return;
     try {
       if (effectiveUseMediaKit) {
@@ -5182,14 +5216,14 @@ Future<void> _resumePlaybackAfterBackgroundIfNeeded() async {
     _syncPlaybackWakelock(force: true);
   }
 
-void _cancelMediaKitWakelockSubs() {
+  void _cancelMediaKitWakelockSubs() {
     for (final s in _mediaKitWakelockSubs) {
       unawaited(s.cancel());
     }
     _mediaKitWakelockSubs.clear();
   }
 
-void _syncPlaybackWakelock({bool force = false}) {
+  void _syncPlaybackWakelock({bool force = false}) {
     if (isClosed) return;
     if (!Platform.isAndroid && !Platform.isIOS) return;
 
@@ -5199,7 +5233,7 @@ void _syncPlaybackWakelock({bool force = false}) {
     unawaited(active ? WakelockPlus.enable() : WakelockPlus.disable());
   }
 
-bool _playbackActiveForWakelock() {
+  bool _playbackActiveForWakelock() {
     final keepAliveInBackground =
         _settings.backgroundPlayback.value && _isAppInBackgroundForPlayback();
 
@@ -5224,7 +5258,7 @@ bool _playbackActiveForWakelock() {
     return v.isPlaying;
   }
 
-/// Harici Oynatıcı modunda dahili player'ı tamamen atlayan handoff akışı.
+  /// Harici Oynatıcı modunda dahili player'ı tamamen atlayan handoff akışı.
   ///
   /// * Mevcut kanaldan en doğru stream URL'sini ([effectivePlayUrl]) çıkar.
   /// * [ExternalPlayerService.launch] ile sistemin video viewer'ına gönder.
@@ -5286,7 +5320,7 @@ bool _playbackActiveForWakelock() {
     await _boot();
   }
 
-/// Harici oynatıcıya gönderilecek nihai URL — eğer player_controller başka
+  /// Harici oynatıcıya gönderilecek nihai URL — eğer player_controller başka
   /// bir override (catch-up, ts/m3u8 dönüştürme) hesapladıysa onu kullanır.
   String _externalLaunchUrl() {
     final override = _playUrlOverride?.trim();
@@ -5294,7 +5328,7 @@ bool _playbackActiveForWakelock() {
     return channel.value.streamUrl.trim();
   }
 
-/// Ayarlardan altyazı punto değişince (kayıt + anında uygulama).
+  /// Ayarlardan altyazı punto değişince (kayıt + anında uygulama).
   void applySubtitleFontFromSettings() {
     if (isClosed) return;
     final mk = _mediaKitPlayer;
@@ -5315,7 +5349,7 @@ bool _playbackActiveForWakelock() {
     }
   }
 
-BetterPlayerSubtitlesConfiguration _betterSubtitleConfiguration() {
+  BetterPlayerSubtitlesConfiguration _betterSubtitleConfiguration() {
     return BetterPlayerSubtitlesConfiguration(
       fontSize: _settings.subtitleFontPt.value,
       fontColor: _settings.subtitleFontColor,
@@ -5327,7 +5361,7 @@ BetterPlayerSubtitlesConfiguration _betterSubtitleConfiguration() {
     );
   }
 
-/// Ayar açıkken arka plana geçişte PiP dene; başarılıysa duraklatmayı atla.
+  /// Ayar açıkken arka plana geçişte PiP dene; başarılıysa duraklatmayı atla.
   bool _tryEnterMiniPlayerPipInsteadOfPause() {
     if (!_eligibleForAutoMiniPlayerPip()) return false;
     if (better?.videoPlayerController?.value.isPip == true) return true;
@@ -5339,7 +5373,7 @@ BetterPlayerSubtitlesConfiguration _betterSubtitleConfiguration() {
     return true;
   }
 
-void _resetBootBusyHoldState() {
+  void _resetBootBusyHoldState() {
     _busyHoldTimeout?.cancel();
     _busyHoldTimeout = null;
     final vpl = _busyHoldVideoController;
@@ -5356,7 +5390,7 @@ void _resetBootBusyHoldState() {
     _busyHoldBootGen = null;
   }
 
-void _beginBootBusyHold(int gen, int vodSession) {
+  void _beginBootBusyHold(int gen, int vodSession) {
     _busyHoldTimeout?.cancel();
     final vpl = _busyHoldVideoController;
     final tick = _busyHoldVideoTick;
@@ -5399,7 +5433,7 @@ void _beginBootBusyHold(int gen, int vodSession) {
     });
   }
 
-void _applyBootSuccessSideEffects(int gen, int vodSession) {
+  void _applyBootSuccessSideEffects(int gen, int vodSession) {
     if (!_isPlaybackGenerationCurrent(gen)) return;
     if (_bootSuccessHooksApplied) return;
     _bootSuccessHooksApplied = true;
@@ -5471,7 +5505,7 @@ void _applyBootSuccessSideEffects(int gen, int vodSession) {
     _startVodEndAutoplayMonitor();
   }
 
-void _finishBootBusyHold(int gen, int vodSession) {
+  void _finishBootBusyHold(int gen, int vodSession) {
     if (_busyHoldBootGen != gen) return;
     _busyHoldBootGen = null;
     _busyHoldTimeout?.cancel();
@@ -5498,7 +5532,7 @@ void _finishBootBusyHold(int gen, int vodSession) {
     }
   }
 
-void _startBetterBusyHoldFirstFrame(
+  void _startBetterBusyHoldFirstFrame(
     BetterPlayerController ctrl,
     int gen,
     int vodSession,
@@ -5529,7 +5563,7 @@ void _startBetterBusyHoldFirstFrame(
     tick();
   }
 
-Future<void> _boot({
+  Future<void> _boot({
     int? preferredMaxHeight,
     bool disableAsms = false,
     bool reuseSameBetterPlayer = false,
@@ -5638,10 +5672,6 @@ Future<void> _boot({
         final activeSvc = Get.find<ActivePlaylistService>();
         final source = activeSvc.activeInfo?.source;
         if (source is StalkerSource) {
-          IptvPlaybackDefaults.setStalkerUserAgentOverride(
-            StalkerApi.magUserAgent,
-          );
-          debugPrint('mina_iptv: Resolving Stalker Portal link for command: $playUrl');
           final api = StalkerApi(
             baseUrl: source.baseUrl,
             macAddress: source.macAddress,
@@ -5649,6 +5679,11 @@ Future<void> _boot({
             linkType: source.linkType,
             hwVersionOverride: source.hwVersionOverride,
           );
+          IptvPlaybackDefaults.setStalkerUserAgentOverride(
+            api.magUserAgent,
+          );
+          debugPrint(
+              'mina_iptv: Resolving Stalker Portal link for command: $playUrl');
           try {
             final dio = Dio(
               BaseOptions(
@@ -5681,7 +5716,8 @@ Future<void> _boot({
               );
             }
           } catch (e) {
-            debugPrint('mina_iptv: Stalker link resolution failed with error: $e');
+            debugPrint(
+                'mina_iptv: Stalker link resolution failed with error: $e');
           }
         } else {
           IptvPlaybackDefaults.setStalkerUserAgentOverride(null);
@@ -5766,8 +5802,8 @@ Future<void> _boot({
           (reuseSameBetterPlayer || live);
       if (tryBetterReuse) {
         final canReuseBuffers = _canReuseBetterForDataSource(ds);
-        final softSame = better!.videoPlayerController
-                ?.bufferingConfiguration.preferSoftwareVideoDecoder ==
+        final softSame = better!.videoPlayerController?.bufferingConfiguration
+                .preferSoftwareVideoDecoder ==
             ds.bufferingConfiguration?.preferSoftwareVideoDecoder;
         final reuseSurface = live || canReuseBuffers || softSame;
         if (reuseSurface) {
@@ -6028,7 +6064,7 @@ Future<void> _boot({
     }
   }
 
-Duration? _vodDurationOrNull() {
+  Duration? _vodDurationOrNull() {
     final mk = _mediaKitPlayer;
     if (mk != null) {
       final d = mk.state.duration;
@@ -6042,14 +6078,15 @@ Duration? _vodDurationOrNull() {
     return null;
   }
 
-void _startWatchProgressSaver() {
+  void _startWatchProgressSaver() {
     _watchProgressTimer?.cancel();
     if (_currentStreamIsLive) return;
     _watchProgressTimer = Timer.periodic(
-        PlayerController._watchProgressSaveInterval, (_) => _persistWatchProgressTick());
+        PlayerController._watchProgressSaveInterval,
+        (_) => _persistWatchProgressTick());
   }
 
-/// Şu anki oturum için AI öneri motoruna sinyal — 2dk+ izlemelerde tetiklenir.
+  /// Şu anki oturum için AI öneri motoruna sinyal — 2dk+ izlemelerde tetiklenir.
   String _currentHistorySig() {
     final UserHistoryKind kind = isSeries
         ? UserHistoryKind.series
@@ -6057,7 +6094,7 @@ void _startWatchProgressSaver() {
     return '${kind.index}|${channel.value.id}|${channel.value.streamUrl}';
   }
 
-void _startUserHistoryTracker() {
+  void _startUserHistoryTracker() {
     final sig = _currentHistorySig();
     // Aynı içerik için zaten çalışıyorsa yeniden başlatma; ölçü kaybolmasın.
     if (_userHistorySig == sig && _userHistoryTickTimer != null) return;
@@ -6073,7 +6110,7 @@ void _startUserHistoryTracker() {
     );
   }
 
-/// Tick anında player gerçekten oynatma yapıyor mu — çoğu motor sorgusu
+  /// Tick anında player gerçekten oynatma yapıyor mu — çoğu motor sorgusu
   /// (MediaKit / Better) eşit şekilde kapsanır.
   bool _isCurrentlyPlayingForHistory() {
     final err = (error.value ?? '').trim();
@@ -6089,7 +6126,7 @@ void _startUserHistoryTracker() {
     return v.isPlaying;
   }
 
-void _onUserHistoryTick() {
+  void _onUserHistoryTick() {
     if (isClosed) return;
     // Sadece gerçekten oynatılıyorsa biriktir.
     if (!_isCurrentlyPlayingForHistory()) return;
@@ -6110,7 +6147,7 @@ void _onUserHistoryTick() {
     }
   }
 
-/// Mina Wrapped analytics tick'i — 15 saniyelik izleme penceresi.
+  /// Mina Wrapped analytics tick'i — 15 saniyelik izleme penceresi.
   /// Düşük güçlü cihazlarda yan etki yapmasın diye servis çağrısı
   /// in-memory'de toplanır, 5 saniyede bir tek SharedPreferences yazımıyla
   /// kalıcılaşır.
@@ -6143,7 +6180,7 @@ void _onUserHistoryTick() {
     );
   }
 
-void _writeUserHistoryEntry() {
+  void _writeUserHistoryEntry() {
     if (!Get.isRegistered<UserHistoryService>()) return;
     final UserHistoryKind kind = isSeries
         ? UserHistoryKind.series
@@ -6160,7 +6197,7 @@ void _writeUserHistoryEntry() {
     ));
   }
 
-void _flushUserHistory({bool force = false}) {
+  void _flushUserHistory({bool force = false}) {
     final t = _userHistoryTickTimer;
     if (t == null && !force) return;
     t?.cancel();
@@ -6176,7 +6213,7 @@ void _flushUserHistory({bool force = false}) {
     _userHistorySig = null;
   }
 
-void _persistWatchProgressTick({bool force = false}) {
+  void _persistWatchProgressTick({bool force = false}) {
     if (isClosed && !force) return;
     if (_currentStreamIsLive) return;
     final dur = _vodDurationOrNull();
@@ -6222,7 +6259,7 @@ void _persistWatchProgressTick({bool force = false}) {
     ));
   }
 
-Future<void> _maybeOfferVodResume() async {
+  Future<void> _maybeOfferVodResume() async {
     if (isClosed) return;
 
     /// Decoder yeniden [_boot] ile oturum değişse bile aynı kanalda devam / diyalog sonrası [play] için.
@@ -6307,7 +6344,7 @@ Future<void> _maybeOfferVodResume() async {
     }
   }
 
-Future<bool?> _showVodResumeDialog() async {
+  Future<bool?> _showVodResumeDialog() async {
     vodResumeDialogOpen.value = true;
     try {
       return await Get.dialog<bool>(
@@ -6320,7 +6357,7 @@ Future<bool?> _showVodResumeDialog() async {
     }
   }
 
-/// HLS ses listesi geç geldiğinde veya ilk seçim yanlış olduğunda tekrar dene; riskli codec + çoklu parçada sıradakini dene.
+  /// HLS ses listesi geç geldiğinde veya ilk seçim yanlış olduğunda tekrar dene; riskli codec + çoklu parçada sıradakini dene.
   void _scheduleAndroidVodAudioFix(BetterPlayerController c, int bootGen) {
     bool stillThisPlayback() =>
         _isPlaybackGenerationCurrent(bootGen) && identical(better, c);
@@ -6395,7 +6432,8 @@ Future<bool?> _showVodResumeDialog() async {
       if (!stillThisPlayback()) return;
       var anyRisky = false;
       for (final t in bundle.audio) {
-        if (PlayerController._riskyVodAudioCodecSnippet('${t.label} ${t.language}')) {
+        if (PlayerController._riskyVodAudioCodecSnippet(
+            '${t.label} ${t.language}')) {
           anyRisky = true;
           break;
         }
@@ -6444,17 +6482,17 @@ Future<bool?> _showVodResumeDialog() async {
     unawaited(tryNativeMuxedRiskyAudioFallbackToMediaKit());
   }
 
-void _resetVodAutoplayLatchState() {
+  void _resetVodAutoplayLatchState() {
     _vodNearEndLatched = false;
     _vodAutoplaySuppressChannelId = null;
   }
 
-void _stopVodEndAutoplayMonitor() {
+  void _stopVodEndAutoplayMonitor() {
     _vodEndAutoplayMonitor?.cancel();
     _vodEndAutoplayMonitor = null;
   }
 
-void _startVodEndAutoplayMonitor() {
+  void _startVodEndAutoplayMonitor() {
     _stopVodEndAutoplayMonitor();
     if (!_vodHasNextInBrowseTape()) return;
     if (_currentStreamIsLive) return;
@@ -6474,7 +6512,7 @@ void _startVodEndAutoplayMonitor() {
     });
   }
 
-void _maybeResetVodEndLatchFromSeek() {
+  void _maybeResetVodEndLatchFromSeek() {
     final dur = _vodDurationOrNull();
     if (dur == null || dur.inMilliseconds < 1) return;
     final pos = currentPosition.inMilliseconds;
@@ -6486,7 +6524,7 @@ void _maybeResetVodEndLatchFromSeek() {
     }
   }
 
-void _maybeArmVodEndAutoplay() {
+  void _maybeArmVodEndAutoplay() {
     if (isClosed) return;
     if (_currentStreamIsLive) return;
     if (vodAutoplayCountdown.value != null) return;
@@ -6541,7 +6579,7 @@ void _maybeArmVodEndAutoplay() {
     }
   }
 
-void _startVodAutoplayCountdownUi(Future<void> Function() onComplete) {
+  void _startVodAutoplayCountdownUi(Future<void> Function() onComplete) {
     _vodAutoplayCountdownTimer?.cancel();
     vodAutoplayCountdown.value = 5;
     _vodAutoplayCountdownTimer =
@@ -6569,7 +6607,7 @@ void _startVodAutoplayCountdownUi(Future<void> Function() onComplete) {
     });
   }
 
-void cancelVodAutoplayCountdown({bool cancelledByUser = false}) {
+  void cancelVodAutoplayCountdown({bool cancelledByUser = false}) {
     _vodAutoplayCountdownTimer?.cancel();
     _vodAutoplayCountdownTimer = null;
     vodAutoplayCountdown.value = null;
@@ -6581,7 +6619,7 @@ void cancelVodAutoplayCountdown({bool cancelledByUser = false}) {
     }
   }
 
-Future<void> playVodAutoplayNow() async {
+  Future<void> playVodAutoplayNow() async {
     _vodAutoplayCountdownTimer?.cancel();
     _vodAutoplayCountdownTimer = null;
     vodAutoplayCountdown.value = null;
@@ -6611,7 +6649,7 @@ Future<void> playVodAutoplayNow() async {
     }
   }
 
-/// Ağ / geçici kaynak kopması: tam [_boot] öncesi Exo aynı URL’yi [retryDataSource] ile yeniler.
+  /// Ağ / geçici kaynak kopması: tam [_boot] öncesi Exo aynı URL’yi [retryDataSource] ile yeniler.
   bool _maybeLightweightBetterPlayerRetry(String msg) {
     if (effectiveUseMediaKit || better == null) return false;
     if (PlayerController._isExoTsExtractorSeekFailure(msg)) return false;
@@ -6642,7 +6680,7 @@ Future<void> playVodAutoplayNow() async {
     return true;
   }
 
-void _onBetterPlayerEvent(BetterPlayerEvent event) {
+  void _onBetterPlayerEvent(BetterPlayerEvent event) {
     if (event.betterPlayerEventType == BetterPlayerEventType.exception) {
       final ex = event.parameters?['exception'];
       if (ex != null && ex.toString().isNotEmpty) {
@@ -6719,7 +6757,7 @@ void _onBetterPlayerEvent(BetterPlayerEvent event) {
     }
   }
 
-/// Aynı yayında kısa sürede birden fazla tampon başlangıcı olursa bir alt HLS/DASH varyantına in.
+  /// Aynı yayında kısa sürede birden fazla tampon başlangıcı olursa bir alt HLS/DASH varyantına in.
   void _maybeAutoDowngradeQualityOnBufferingStress() {
     final c = better;
     if (c == null || isBusy.value) return;
@@ -6727,7 +6765,8 @@ void _onBetterPlayerEvent(BetterPlayerEvent event) {
 
     final started = _autoQPlaybackStartedAt;
     if (started == null) return;
-    if (DateTime.now().difference(started) < PlayerController._autoQIgnoreBufferingBefore) {
+    if (DateTime.now().difference(started) <
+        PlayerController._autoQIgnoreBufferingBefore) {
       return;
     }
 
@@ -6758,14 +6797,16 @@ void _onBetterPlayerEvent(BetterPlayerEvent event) {
     if (nextH == null) return;
 
     final now = DateTime.now();
-    _autoQRecentBufferingStarts
-        .removeWhere((t) => now.difference(t) > PlayerController._autoQBufferingWindow);
+    _autoQRecentBufferingStarts.removeWhere(
+        (t) => now.difference(t) > PlayerController._autoQBufferingWindow);
     _autoQRecentBufferingStarts.add(now);
-    if (_autoQRecentBufferingStarts.length < PlayerController._autoQBufferingStartsNeeded) {
+    if (_autoQRecentBufferingStarts.length <
+        PlayerController._autoQBufferingStartsNeeded) {
       return;
     }
     if (_autoQLastDowngradeAt != null &&
-        now.difference(_autoQLastDowngradeAt!) < PlayerController._autoQDowngradeCooldown) {
+        now.difference(_autoQLastDowngradeAt!) <
+            PlayerController._autoQDowngradeCooldown) {
       return;
     }
 
@@ -6788,7 +6829,7 @@ void _onBetterPlayerEvent(BetterPlayerEvent event) {
     update(['osd']);
   }
 
-/// Better/Exo birincil iken hata olunca otomatik MediaKit'e düş.
+  /// Better/Exo birincil iken hata olunca otomatik MediaKit'e düş.
   ///
   /// Kod çözücü/codec hataları hem **canlı** hem **VOD**'da motor değiştirir.
   /// Genel Exo/Source hataları yalnız **VOD**'da — canlıda bunlar çoğunlukla
@@ -6842,7 +6883,7 @@ void _onBetterPlayerEvent(BetterPlayerEvent event) {
     return false;
   }
 
-/// Better/Exo bir kodek/donanım hatasından MediaKit'e düşerken bu oturumda
+  /// Better/Exo bir kodek/donanım hatasından MediaKit'e düşerken bu oturumda
   /// mpv `hwdec=no` (yazılımsal çözüm) zorlansın mı? Rockchip gibi bilinen zayıf
   /// cihaz / zorlu TV box'ta veya hata açıkça kodek/kod çözücü yetersizliğiyse
   /// `true`. Genel ağ/kaynak hatasında `false` (donanım kod çözücü korunur).
@@ -6866,7 +6907,7 @@ void _onBetterPlayerEvent(BetterPlayerEvent event) {
         l.contains('decoder');
   }
 
-/// ExoPlayer’da istisna çıkmadan sessiz kalan VOD sesi (tek riskli parça / muxed riskli iz).
+  /// ExoPlayer’da istisna çıkmadan sessiz kalan VOD sesi (tek riskli parça / muxed riskli iz).
   Future<void> _vodSilentAudioFallbackToMediaKit(String reason) async {
     if (_vodSilentAudioMediaKitFallbackInFlight) return;
     if (isClosed) return;
@@ -6888,7 +6929,7 @@ void _onBetterPlayerEvent(BetterPlayerEvent event) {
     }
   }
 
-Future<void> _performMediaKitFallbackBoot() async {
+  Future<void> _performMediaKitFallbackBoot() async {
     if (isClosed) return;
     // OSD Better→MediaKit: generation + stall listener kesilmezse softRecover
     // gecikmeli playWhenReady ile Exo sesi MediaKit yanında devam eder.
@@ -6935,7 +6976,7 @@ Future<void> _performMediaKitFallbackBoot() async {
     );
   }
 
-/// Qualcomm `c2.qti.avc.decoder` vb. donanım hatasında MediaKit’e düşmeden önce
+  /// Qualcomm `c2.qti.avc.decoder` vb. donanım hatasında MediaKit’e düşmeden önce
   /// bir kez ExoPlayer [MediaCodecSelector.PREFER_SOFTWARE] ile aynı URL’yi dener.
   Future<void> _performBetterSoftwareDecoderRetryBoot() async {
     if (isClosed) return;
@@ -6948,7 +6989,8 @@ Future<void> _performMediaKitFallbackBoot() async {
     _detachExoStallEventListener();
     error.value = null;
     try {
-      await _hardDisposeBetterPlayerBeforeCreate(reason: 'software-decoder-retry');
+      await _hardDisposeBetterPlayerBeforeCreate(
+          reason: 'software-decoder-retry');
     } catch (_) {}
     await _boot(
       preferredMaxHeight: null,
@@ -6958,7 +7000,7 @@ Future<void> _performMediaKitFallbackBoot() async {
     );
   }
 
-/// Geçerli oynatma URL'si canlı MPEG-TS mi? (`/live/*.ts`, `get.php&output=ts`).
+  /// Geçerli oynatma URL'si canlı MPEG-TS mi? (`/live/*.ts`, `get.php&output=ts`).
   bool _isLiveMpegTsPlaybackUrl() {
     final raw = (_lastPlaybackUrl?.trim().isNotEmpty ?? false)
         ? _lastPlaybackUrl!.trim()
@@ -6968,7 +7010,7 @@ Future<void> _performMediaKitFallbackBoot() async {
     return lp.split('?').first.endsWith('.ts') || lp.contains('output=ts');
   }
 
-/// Donanım kod çözücü ile canlı MPEG-TS açılamadığında yazılım kod çözücüye
+  /// Donanım kod çözücü ile canlı MPEG-TS açılamadığında yazılım kod çözücüye
   /// bir kez düşülür (KM2 Plus gibi kutularda donanım sorunsuz; eski kutularda
   /// Exo «Source error» / MediaCodec hatası verebilir).
   bool _shouldRetryBetterSoftwareDecoderForError(String msg) {
@@ -7008,7 +7050,7 @@ Future<void> _performMediaKitFallbackBoot() async {
     return false;
   }
 
-bool _maybeRetryBetterWithSoftwareDecoderBeforeMediaKit(String msg) {
+  bool _maybeRetryBetterWithSoftwareDecoderBeforeMediaKit(String msg) {
     if (!Platform.isAndroid) return false;
     if (effectiveUseMediaKit) return false;
     if (_exoSoftwareDecoderRetryPending) return false;
@@ -7032,13 +7074,14 @@ bool _maybeRetryBetterWithSoftwareDecoderBeforeMediaKit(String msg) {
     return true;
   }
 
-/// [PlatformException] / Source error: tek sefer `output`/yol ts↔m3u8.
+  /// [PlatformException] / Source error: tek sefer `output`/yol ts↔m3u8.
   bool _tryScheduleXtreamOutputFormatSwapRetry(Object err) {
     if (effectiveUseMediaKit || _decoderTriedTsToM3u8Swap) return false;
     final text = err is PlatformException
         ? '${err.code} ${err.message} ${err.details}'
         : err.toString();
-    if (!PlayerController._shouldTryXtreamFormatSwapOnSourceError(text)) return false;
+    if (!PlayerController._shouldTryXtreamFormatSwapOnSourceError(text))
+      return false;
     final basis = (_lastPlaybackUrl?.trim().isNotEmpty ?? false)
         ? _lastPlaybackUrl!.trim()
         : _normalizePlaybackStreamUrl(channel.value.streamUrl);
@@ -7070,13 +7113,13 @@ bool _maybeRetryBetterWithSoftwareDecoderBeforeMediaKit(String msg) {
     return true;
   }
 
-void _cancelLiveChannelPreload() {
+  void _cancelLiveChannelPreload() {
     _livePreloadTimer?.cancel();
     _livePreloadTimer = null;
     _livePreloadScheduledUrl = null;
   }
 
-void _scheduleLiveChannelPreload() {
+  void _scheduleLiveChannelPreload() {
     if (!Platform.isAndroid) return;
     if (!_currentStreamIsLive || effectiveUseMediaKit) return;
     if (better == null) return;
@@ -7088,7 +7131,7 @@ void _scheduleLiveChannelPreload() {
     });
   }
 
-Future<void> _preloadNextLiveChannelInCategory() async {
+  Future<void> _preloadNextLiveChannelInCategory() async {
     final ctrl = better;
     if (ctrl == null) return;
     if (!_currentStreamIsLive || effectiveUseMediaKit) return;
@@ -7130,7 +7173,7 @@ Future<void> _preloadNextLiveChannelInCategory() async {
     }
   }
 
-void _maybePromoteLiveUhdExoBuffer() {
+  void _maybePromoteLiveUhdExoBuffer() {
     if (_liveUhdBufferActive || _liveUhdBufferPromotionInFlight) return;
     if (!_currentStreamIsLive || effectiveUseMediaKit) return;
     if (_preferFastLiveStartBuffer) return;
@@ -7158,17 +7201,19 @@ void _maybePromoteLiveUhdExoBuffer() {
     );
   }
 
-void _onVideoPlayerChanged() {
+  void _onVideoPlayerChanged() {
     try {
       final v = better?.videoPlayerController?.value;
       if (v == null) return;
-      if (v.isPlaying && !v.hasError && v.position > const Duration(seconds: 3)) {
+      if (v.isPlaying &&
+          !v.hasError &&
+          v.position > const Duration(seconds: 3)) {
         _livePlaybackEstablished = true;
       }
       // Decoder/yüzey sinyali → başlangıç HLS↔TS watchdog'unu erken kapat.
       if (_currentStreamIsLive &&
           !effectiveUseMediaKit &&
-          _liveTvStartupWatchdog != null &&
+          _liveStartupWatchdogArmedAt != null &&
           _liveStartupLooksHealthy()) {
         _cancelLiveTvStartupWatchdog();
         debugPrint(
@@ -7241,7 +7286,8 @@ void _onVideoPlayerChanged() {
             return;
           }
         } else {
-          if (_currentStreamIsLive && PlayerController._isLikelyNetworkOrTransientError(msg)) {
+          if (_currentStreamIsLive &&
+              PlayerController._isLikelyNetworkOrTransientError(msg)) {
             _cancelLiveTransientErrorEmitTimer();
             _liveTransientErrorEmitTimer =
                 Timer(const Duration(milliseconds: 500), () {
@@ -7291,7 +7337,7 @@ void _onVideoPlayerChanged() {
     }
   }
 
-/// [_boot] için oynatılacak URL: override, oturumda değiştirilmiş taşıma
+  /// [_boot] için oynatılacak URL: override, oturumda değiştirilmiş taşıma
   /// biçimi ([_decoderTriedTsToM3u8Swap] + [_lastPlaybackUrl]) veya kanal satırı.
   String _resolveBootPlayUrl({
     required String normalizedUrl,
@@ -7313,7 +7359,7 @@ void _onVideoPlayerChanged() {
     return normalizedUrl;
   }
 
-/// Ayarlar > Oynatıcı > "Yayın Formatı" tercihini canlı Xtream URL'sine
+  /// Ayarlar > Oynatıcı > "Yayın Formatı" tercihini canlı Xtream URL'sine
   /// uygular. `ts` → MPEG-TS (`/live/*.ts` veya `get.php&output=ts`),
   /// `hls` → m3u8. URL zaten istenen biçimdeyse veya Xtream canlı kalıbına
   /// uymuyorsa `null` döner (URL değiştirilmez). M3U'dan gelen jenerik `.ts`
@@ -7363,7 +7409,7 @@ void _onVideoPlayerChanged() {
     return null;
   }
 
-/// Xtream: `/live/.../*.ts` ↔ `*.m3u8`; canlı `get.php` için `output=ts` ↔ `m3u8` (tersi).
+  /// Xtream: `/live/.../*.ts` ↔ `*.m3u8`; canlı `get.php` için `output=ts` ↔ `m3u8` (tersi).
   /// VOD `get.php` için çıktı değiştirilmez (film/dizi).
   /// [live]: boş `output` yalnızca canlıda m3u8’e çekilir.
   String? _trySwapLiveTsM3u8Url(String url, {required bool live}) {
@@ -7407,7 +7453,7 @@ void _onVideoPlayerChanged() {
     return null;
   }
 
-/// `get.php?...&output=ts` / `output=m3u8` gibi Xtream URL'lerini
+  /// `get.php?...&output=ts` / `output=m3u8` gibi Xtream URL'lerini
   /// `/live/username/password/stream_id.(ts|m3u8)` formatına çevirir.
   /// Uygun değilse `null` döner.
   String? _tryConvertXtreamGetPhpToLiveUrl(String normalizedUrl) {
@@ -7444,7 +7490,7 @@ void _onVideoPlayerChanged() {
     return '$base/live/${encodePathSegment(username)}/${encodePathSegment(password)}/$streamId.$suffix';
   }
 
-/// `get.php?...&output=ts` -> `get.php?...&output=m3u8` (veya tersine) dönüştürür.
+  /// `get.php?...&output=ts` -> `get.php?...&output=m3u8` (veya tersine) dönüştürür.
   /// `/live/user/pass/id.ts` -> `get.php?...&output=ts` (ters yedek).
   String? _tryConvertXtreamLivePathToGetPhp(String normalizedUrl) {
     final uri = Uri.tryParse(normalizedUrl);
@@ -7467,7 +7513,7 @@ void _onVideoPlayerChanged() {
     return '$base/get.php?username=${Uri.encodeQueryComponent(user)}&password=${Uri.encodeQueryComponent(pass)}&stream_id=$id&output=$output';
   }
 
-String? _tryConvertXtreamGetPhpOutput(String normalizedUrl, String output) {
+  String? _tryConvertXtreamGetPhpOutput(String normalizedUrl, String output) {
     final uri = Uri.tryParse(normalizedUrl);
     if (uri == null) return null;
     if (!uri.path.toLowerCase().endsWith('get.php')) return null;

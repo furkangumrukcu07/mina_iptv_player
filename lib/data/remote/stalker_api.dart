@@ -49,10 +49,12 @@ class StalkerApi {
 
   StalkerMagPreset get activeMagPreset => _activePreset;
 
-  /// MAG kutusu ile uyumlu sabit UA (API + oynatma aynı olmalı).
-  static const magUserAgent =
-      'Mozilla/5.0 (QtEmbedded; U; Linux; C) AppleWebKit/533.3 '
-      '(KHTML, like Gecko) MAG200 stbapp rv:2.7.307 Safari/533.3';
+  /// MAG kutusu ile uyumlu UA (API + oynatma aynı olmalı).
+  String get magUserAgent {
+    final stbType = stalkerMagPresetSpec(_activePreset).stbType;
+    return 'Mozilla/5.0 (QtEmbedded; U; Linux; C) AppleWebKit/533.3 '
+        '(KHTML, like Gecko) $stbType stbapp rv:2.7.307 Safari/533.3';
+  }
 
   /// Kategori bazlı paralel indirme üst sınırı.
   static const int maxParallelCategoryFetches = 4;
@@ -247,12 +249,23 @@ class StalkerApi {
     final referer = loadUrl.contains('/server/')
         ? loadUrl.replaceAll(RegExp(r'/server/load\.php.*$'), '/c/')
         : loadUrl;
+
+    final zero64 = '0000000000000000000000000000000000000000000000000000000000000000';
+    final zero32 = '00000000000000000000000000000000';
+    final finalQuery = <String, dynamic>{
+      'mac': _mac,
+      'sn': zero32,
+      'device_id': zero64,
+      'device_id2': zero64,
+      'signature': zero64,
+      if (_token != null) 'token': _token,
+      ...query,
+      'JsHttpRequest': '1-xml',
+    };
+
     return dio.get(
       loadUrl,
-      queryParameters: {
-        ...query,
-        'JsHttpRequest': '1-xml',
-      },
+      queryParameters: finalQuery,
       options: Options(
         headers: _buildHeaders(referer: referer),
         responseType: ResponseType.plain,

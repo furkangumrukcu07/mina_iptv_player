@@ -25,8 +25,15 @@ abstract class PlaylistRepository {
   /// Ham M3U metnini doğrular ve ayrıştırır (ağ çağrısı yok).
   Future<M3uResult> loadFromM3uContent(String content);
 
+  /// Yerel M3U dosyasını satır akışı ile okur ve ayrıştırır (büyük dosyalar için bellek dostu).
+  Future<M3uResult> loadFromM3uFile(String path);
+
   /// M3U metnini uygulama dizinine yazar, kaynağı işaretler; ayrıştırılmış sonucu döner.
   Future<M3uResult> persistM3uLocalContent(String content);
+
+  /// Yerel M3U dosyasını uygulama dizinine kopyalar, kaynağı işaretler; ayrıştırılmış sonucu döner.
+  Future<M3uResult> persistM3uLocalFile(String path);
+
 
   Future<M3uResult> loadFromStalker({
     required String baseUrl,
@@ -121,6 +128,8 @@ abstract class PlaylistRepository {
 
   /// İkinci yerel M3U dosyasını kaydeder ve ikinci kaynağı işaretler.
   Future<M3uResult> persistM3uLocalContentSecondary(String content);
+
+  Future<M3uResult> persistM3uLocalFileSecondary(String path);
 
   /// Birincil + tüm dolu ek slotları (2..[kPlaylistSlotCount]) sırayla birleştirir.
   ///

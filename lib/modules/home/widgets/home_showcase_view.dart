@@ -3,6 +3,7 @@ import 'dart:math';
 import 'dart:ui' show ImageFilter;
 
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:get/get.dart';
@@ -10,12 +11,15 @@ import 'package:get/get.dart';
 import '../../../core/home/film_dizi_catalog.dart';
 import '../../../core/home/film_dizi_detail_args.dart';
 import '../../../core/home/recommended_films_catalog.dart';
+import '../../../core/home/series_name_grouping.dart';
 import '../../../core/home/trend_catalog.dart';
 import '../../../core/i18n/localized_short_date.dart';
 import '../../../core/home/showcase_player_launch.dart';
 import '../../../core/routes/app_routes.dart';
 import '../../../core/services/app_settings_service.dart';
 import '../../../core/services/auth_service.dart';
+import '../../../core/services/chat_service.dart';
+import '../../../core/services/mina_telemetry_service.dart';
 import '../../../core/services/favorites_service.dart';
 import '../../../core/services/playlist_cache_service.dart';
 import '../../../core/services/playlist_category_hide.dart';
@@ -31,8 +35,12 @@ import '../../../domain/entities/series.dart';
 import '../../../domain/entities/vod.dart';
 import '../home_controller.dart';
 import '../../../data/local/playlist_sqlite_store.dart';
+import '../../../ui/tv_dpad_focus.dart';
+import '../../../ui/iptv_channel_logo.dart';
 import 'ai_recommendations_strip.dart';
 import 'continue_watching_strip.dart';
+import 'showcase_upcoming_epg.dart';
+import 'film_dizi_hero_banner.dart';
 import 'film_dizi_poster_card.dart';
 import 'rotating_settings_icon.dart';
 import 'mixed_live_tv_strip.dart';
@@ -103,6 +111,9 @@ class _HomeShowcaseViewState extends State<HomeShowcaseView> {
 
   /// IMDB yüksek puanlı — tam liste (feed kurulunca hazırlanır).
   List<VodItem> _topRatedAll = const [];
+  List<VodItem> _trendFilms = const [];
+  List<SeriesItem> _trendSeries = const [];
+  List<SeriesItem> _topRatedSeriesAll = const [];
 
   /// Karışık film/dizi havuzları — feed ile birlikte önbelleğe alınır.
   List<VodItem> _mixedFilmsAll = const [];
@@ -151,10 +162,12 @@ class _HomeShowcaseViewState extends State<HomeShowcaseView> {
       unawaited(TrendCatalog.maybeRefresh(data));
     }
 
-    final cacheValid = widget.controller.cachedShowcasePlaylistId.value == data.hashCode &&
-        widget.controller.cachedShowcaseHideRevision.value == _settings.xtreamHideRevision.value &&
-        widget.controller.cachedShowcaseFilms.value != null &&
-        widget.controller.cachedShowcaseSeries.value != null;
+    final cacheValid =
+        widget.controller.cachedShowcasePlaylistId.value == data.hashCode &&
+            widget.controller.cachedShowcaseHideRevision.value ==
+                _settings.xtreamHideRevision.value &&
+            widget.controller.cachedShowcaseFilms.value != null &&
+            widget.controller.cachedShowcaseSeries.value != null;
 
     if (cacheValid) {
       setState(() {
@@ -162,19 +175,29 @@ class _HomeShowcaseViewState extends State<HomeShowcaseView> {
         _cachedShowcaseRows = null;
         _films = widget.controller.cachedShowcaseFilms.value;
         _series = widget.controller.cachedShowcaseSeries.value;
-        _topRatedAll = List<VodItem>.from(widget.controller.cachedShowcaseTopRatedAll.value!);
-        _mixedFilmsAll = List<VodItem>.from(widget.controller.cachedShowcaseMixedFilmsAll.value!);
-        _mixedSeriesAll = List<SeriesItem>.from(widget.controller.cachedShowcaseMixedSeriesAll.value!);
+        _topRatedAll = List<VodItem>.from(
+            widget.controller.cachedShowcaseTopRatedAll.value!);
+        _trendFilms = List<VodItem>.from(widget.controller.cachedShowcaseTrendFilms.value ?? []);
+        _trendSeries = List<SeriesItem>.from(widget.controller.cachedShowcaseTrendSeries.value ?? []);
+        _mixedFilmsAll = List<VodItem>.from(
+            widget.controller.cachedShowcaseMixedFilmsAll.value!)
+          ..shuffle();
+        _mixedSeriesAll = List<SeriesItem>.from(
+            widget.controller.cachedShowcaseMixedSeriesAll.value!)
+          ..shuffle();
 
         _filmCategorySeeAll.clear();
         if (widget.controller.cachedShowcaseFilmCategorySeeAll.value != null) {
-          widget.controller.cachedShowcaseFilmCategorySeeAll.value!.forEach((k, v) {
+          widget.controller.cachedShowcaseFilmCategorySeeAll.value!
+              .forEach((k, v) {
             _filmCategorySeeAll[k] = List<VodItem>.from(v);
           });
         }
         _seriesCategorySeeAll.clear();
-        if (widget.controller.cachedShowcaseSeriesCategorySeeAll.value != null) {
-          widget.controller.cachedShowcaseSeriesCategorySeeAll.value!.forEach((k, v) {
+        if (widget.controller.cachedShowcaseSeriesCategorySeeAll.value !=
+            null) {
+          widget.controller.cachedShowcaseSeriesCategorySeeAll.value!
+              .forEach((k, v) {
             _seriesCategorySeeAll[k] = List<SeriesItem>.from(v);
           });
         }
@@ -199,16 +222,18 @@ class _HomeShowcaseViewState extends State<HomeShowcaseView> {
         ? await FilmDiziCatalog.buildFilmsChunkedFromDb(data, ds)
         : await FilmDiziCatalog.buildFilmsChunked(data);
     if (!mounted || gen != _buildGen || _cache.result.value != data) return;
-    
-    final topRatedAll = RecommendedFilmsCatalog.allItemsForCategory(
+
+    final topRatedAll = await RecommendedFilmsCatalog.allItemsForCategoryAsync(
       data,
       RecommendedFilmsCategory.topRated,
     );
+    final trendFilms = await TrendCatalog.trendFilmsAsync(data);
     final mixedFilmsAll = _mixedFilmsPool(films);
 
     setState(() {
       _films = films;
       _topRatedAll = topRatedAll;
+      _trendFilms = trendFilms;
       _mixedFilmsAll = mixedFilmsAll;
       _filmCategorySeeAll.clear();
       _filmCategorySeeAllComplete.clear();
@@ -223,13 +248,15 @@ class _HomeShowcaseViewState extends State<HomeShowcaseView> {
         ? await FilmDiziCatalog.buildSeriesChunkedFromDb(data, ds)
         : await FilmDiziCatalog.buildSeriesChunked(data);
     if (!mounted || gen != _buildGen || _cache.result.value != data) return;
-    
+
+    final trendSeries = await TrendCatalog.trendSeriesAsync(data);
     final mixedSeriesAll = _mixedSeriesPool(series);
 
     setState(() {
       _feedsLoading = false;
       _cachedShowcaseRows = null;
       _series = series;
+      _trendSeries = trendSeries;
       _mixedSeriesAll = mixedSeriesAll;
       _seriesCategorySeeAll.clear();
       _seriesCategorySeeAllComplete.clear();
@@ -239,11 +266,14 @@ class _HomeShowcaseViewState extends State<HomeShowcaseView> {
 
     // Cache values in HomeController
     widget.controller.cachedShowcasePlaylistId.value = data.hashCode;
-    widget.controller.cachedShowcaseHideRevision.value = _settings.xtreamHideRevision.value;
+    widget.controller.cachedShowcaseHideRevision.value =
+        _settings.xtreamHideRevision.value;
     widget.controller.cachedShowcaseFilms.value = films;
     widget.controller.cachedShowcaseSeries.value = series;
-    widget.controller.cachedShowcaseTopRatedAll.value = topRatedAll;
-    widget.controller.cachedShowcaseMixedFilmsAll.value = mixedFilmsAll;
+    widget.controller.cachedShowcaseTopRatedAll.value = _topRatedAll;
+    widget.controller.cachedShowcaseTrendFilms.value = _trendFilms;
+    widget.controller.cachedShowcaseTrendSeries.value = _trendSeries;
+    widget.controller.cachedShowcaseMixedFilmsAll.value = _mixedFilmsAll;
     widget.controller.cachedShowcaseMixedSeriesAll.value = mixedSeriesAll;
   }
 
@@ -274,7 +304,8 @@ class _HomeShowcaseViewState extends State<HomeShowcaseView> {
         _filmCategorySeeAllComplete[row.categoryId] = false;
       });
       widget.controller.cachedShowcaseFilmCategorySeeAll.value ??= {};
-      widget.controller.cachedShowcaseFilmCategorySeeAll.value![row.categoryId] = items;
+      widget.controller.cachedShowcaseFilmCategorySeeAll
+          .value![row.categoryId] = items;
     }
   }
 
@@ -305,7 +336,8 @@ class _HomeShowcaseViewState extends State<HomeShowcaseView> {
         _seriesCategorySeeAllComplete[row.categoryId] = false;
       });
       widget.controller.cachedShowcaseSeriesCategorySeeAll.value ??= {};
-      widget.controller.cachedShowcaseSeriesCategorySeeAll.value![row.categoryId] = items;
+      widget.controller.cachedShowcaseSeriesCategorySeeAll
+          .value![row.categoryId] = items;
     }
   }
 
@@ -486,7 +518,7 @@ class _HomeShowcaseViewState extends State<HomeShowcaseView> {
     }
     final list = pool.values.toList();
     if (list.isEmpty) return const [];
-    list.shuffle(Random(list.length * 7919 + 13));
+    list.shuffle();
     return list;
   }
 
@@ -503,8 +535,73 @@ class _HomeShowcaseViewState extends State<HomeShowcaseView> {
     }
     final list = pool.values.toList();
     if (list.isEmpty) return const [];
-    list.shuffle(Random(list.length * 6997 + 29));
+    list.shuffle();
     return list;
+  }
+
+  List<FilmDiziHeroSlide> _heroSlides() {
+    final top = _topRatedAll.isNotEmpty
+        ? _topRatedAll
+        : (_films?.recentlyAdded ?? const []);
+    if (top.isEmpty) return const <FilmDiziHeroSlide>[];
+
+    final validTop = top.where((v) {
+      final hasImg = (v.posterUrl?.isNotEmpty ?? false);
+      final isDemo = v.name.toLowerCase().contains('demo') ||
+          v.name.toLowerCase().contains('test');
+      return hasImg && !isDemo;
+    }).toList();
+
+    final daySeed = DateTime.now().millisecondsSinceEpoch ~/ 86400000;
+    final pool = List<VodItem>.from(validTop.isNotEmpty ? validTop : top)
+      ..shuffle(Random(daySeed));
+
+    List<String> extractTags(String rawName) {
+      final tags = <String>[];
+      final upper = rawName.toUpperCase();
+      if (upper.contains('4K') || upper.contains('UHD')) tags.add('4K');
+      if (upper.contains('HDR')) tags.add('HDR');
+      if (upper.contains('1080P') || upper.contains('FHD')) tags.add('FHD');
+      if (upper.contains('TR DUB') || upper.contains('TÜRKÇE DUB')) tags.add('TR Dublaj');
+      if (upper.contains('ALTYAZI') || upper.contains('TR ALT')) tags.add('Altyazılı');
+      if (upper.contains('3D')) tags.add('3D');
+      final yearMatch = RegExp(r'\b(19|20)\d{2}\b').firstMatch(rawName);
+      if (yearMatch != null) tags.add(yearMatch.group(0)!);
+      return tags.take(3).toList(); // Max 3 tags so UI doesn't overflow
+    }
+
+    final poolList = pool.take(20).toList();
+    final slides = <FilmDiziHeroSlide>[];
+    
+    for (final v in poolList) {
+      final (title, _) = RecommendedFilmsCatalog.cleanTitleAndYear(v.name);
+      slides.add(FilmDiziHeroSlide(
+        title: title,
+        posterUrl: v.posterUrl,
+        rating: RecommendedFilmsRatingCache.effectiveRating(v),
+        tags: extractTags(v.name),
+        onPlay: () => _openFilm(v, categoryName: 'home.showcase.topRatedFilms'.tr),
+        onDetail: () => _openFilm(v, categoryName: 'home.showcase.topRatedFilms'.tr),
+      ));
+    }
+
+    if (slides.length > 1) {
+      return List.generate(slides.length, (i) {
+        final current = slides[i];
+        final next = slides[(i + 1) % slides.length];
+        return FilmDiziHeroSlide(
+          title: current.title,
+          posterUrl: current.posterUrl,
+          rating: current.rating,
+          tags: current.tags,
+          onPlay: current.onPlay,
+          onDetail: current.onDetail,
+          nextSlidePreview: next,
+        );
+      });
+    }
+
+    return slides;
   }
 
   @override
@@ -528,23 +625,66 @@ class _HomeShowcaseViewState extends State<HomeShowcaseView> {
       bottom: false,
       child: Stack(
         children: [
+          Obx(() {
+            if (!_settings.showcaseAmbientBackgroundEnabled.value) {
+              return const SizedBox.shrink();
+            }
+            final url = c.showcaseAmbientPoster.value;
+            return Positioned.fill(
+              child: RepaintBoundary(
+                child: AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 600),
+                  child: url == null
+                      ? Container(
+                          key: const ValueKey('empty'), color: Colors.black)
+                      : ImageFiltered(
+                          key: ValueKey(url),
+                          imageFilter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
+                          child: Container(
+                            decoration: BoxDecoration(
+                              image: DecorationImage(
+                                image: CachedNetworkImageProvider(url),
+                                fit: BoxFit.cover,
+                                colorFilter: ColorFilter.mode(
+                                  Colors.black.withValues(alpha: 0.6),
+                                  BlendMode.darken,
+                                ),
+                              ),
+                            ),
+                            child: Container(
+                                color: Colors.black.withValues(alpha: 0.3)),
+                          ),
+                        ),
+                ),
+              ),
+            );
+          }),
           Positioned.fill(
             child: ListView.builder(
               controller: _scroll,
               physics: AppScrollPhysics.list(context: context),
               padding: EdgeInsets.fromLTRB(0, 6, 0, contentBottomPad),
               itemCount: rows.length + 1,
-              // Cihazın dikey kaydırma performansını artırmak için cacheExtent
-              // 600'den 150'ye düşürüldü; böylece ekran dışındaki gereksiz satırlar
-              // GPU/CPU'ya yük bindirmez.
-              cacheExtent: 150,
+              // Cihazın dikey kaydırma performansını artırmak ve takılmaları önlemek için
+              // cacheExtent 1000'e çıkarıldı. Bu sayede ekran dışındaki satırlar hafızada tutulur.
+              cacheExtent: 1000,
               itemBuilder: (context, i) {
                 if (i == 0) {
+                  final slides = _heroSlides();
                   return Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
                       _ShowcaseHeader(controller: c, settings: _settings),
-                      const SizedBox(height: 4),
+                      const SizedBox(height: 12),
+                      if (slides.isNotEmpty)
+                        Padding(
+                          padding: const EdgeInsets.only(bottom: 24),
+                          child:
+                              FilmDiziHeroBanner(slides: slides, isTv: false),
+                        ),
+                      Obx(() => _settings.showcaseUpcomingEpgEnabled.value
+                          ? const ShowcaseUpcomingEpg()
+                          : const SizedBox.shrink()),
                     ],
                   );
                 }
@@ -588,7 +728,8 @@ class _HomeShowcaseViewState extends State<HomeShowcaseView> {
                 lastOnTap = () {
                   Get.toNamed(
                     AppRoutes.player,
-                    arguments: playerArgsForShowcaseHome(channel: safeLastChannel),
+                    arguments:
+                        playerArgsForShowcaseHome(channel: safeLastChannel),
                   );
                 };
               } else if (lastVODEntry != null) {
@@ -682,14 +823,24 @@ class _HomeShowcaseViewState extends State<HomeShowcaseView> {
   }
 
   List<Widget> _buildRows(HomeController c, double posterW) {
-    final rows = <Widget>[];
+    final coreRows = <Widget>[];
+    final filmRows = <Widget>[];
+    final seriesRows = <Widget>[];
+    final categoryRowsWidget = <Widget>[];
+    final bottomRows = <Widget>[];
 
-    // 1) İzlemeye devam et — vitrinde sabit ilk satır (ayar kilitli olduğundan
-    // toggle'a bağlı değil). Yalnızca gerçekten izleme geçmişi varsa gösterilir
-    // ki boş bir cam çerçeve belirmesin.
+    bool prefersSeries = false;
     if (c.data != null) {
       final watch = Get.find<WatchProgressService>();
-      rows.add(
+      final lastWatched = watch.getAbsoluteLastWatched();
+      if (lastWatched?.kind == ContinueWatchingKind.series)
+        prefersSeries = true;
+    }
+
+    // 1) İzlemeye devam et
+    if (c.data != null) {
+      final watch = Get.find<WatchProgressService>();
+      coreRows.add(
         Obx(() {
           c.playlistRevision.value;
           watch.revision.value;
@@ -706,10 +857,9 @@ class _HomeShowcaseViewState extends State<HomeShowcaseView> {
       );
     }
 
-    // 1.5) Mina AI — Senin İçin Önerilenler (vitrinde de kullanılabilir;
-    // ayardan açılıp kapatılır). Şerit boşsa kendini gizler.
+    // 1.5) Mina AI
     if (c.data != null) {
-      rows.add(
+      coreRows.add(
         Obx(() {
           c.playlistRevision.value;
           AiRecommendationsStrip.invalidationTick.value;
@@ -718,8 +868,6 @@ class _HomeShowcaseViewState extends State<HomeShowcaseView> {
           }
           final data = c.data;
           if (data == null) return const SizedBox.shrink();
-          // Diğer vitrin şeritleriyle aynı «liquid glass» çerçeveye sarılır
-          // (eskiden çerçevesiz düz Padding'di).
           return _ShowcaseFrame(
             padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
             child: AiRecommendationsStrip(data: data),
@@ -728,44 +876,125 @@ class _HomeShowcaseViewState extends State<HomeShowcaseView> {
       );
     }
 
-    // 2) Canlı TV — karışık canlı kanal şeridi. Vitrinde standart düzenden
-    // bağımsız ayrı bayrak kullanılır ve **varsayılan kapalıdır**; kullanıcı
-    // ana ekran ayarlarından açabilir.
-    rows.add(
-      Obx(() {
-        if (!_settings.showcaseMixedLiveTvEnabled.value) {
-          return const SizedBox.shrink();
-        }
-        return _ShowcaseFrame(
-          padding: const EdgeInsets.fromLTRB(14, 12, 14, 12),
-          child: MixedLiveTvStrip(
-            showcase: true,
-            onSeeAll: c.openLiveTv,
-          ),
-        );
-      }),
-    );
 
-    // 2.5) Favoriler — Canlı TV'nin hemen altında: Favori Diziler → Favori
-    // Kanallar → Favori Filmler. Tek bir widget üç türü de çözer ve yalnızca
-    // dolu olan türleri (boş çerçeve belirmesin) çerçeveli satır olarak gösterir.
-    // Favori değişimlerine ve liste değişimine reaktif.
+    // 2.5) Favoriler
     if (Get.isRegistered<FavoritesService>()) {
-      rows.add(_ShowcaseFavoritesSection(posterWidth: posterW, controller: c));
+      coreRows
+          .add(_ShowcaseFavoritesSection(posterWidth: posterW, controller: c));
     }
 
-    // 3) IMDB yüksek puanlı filmler — puanlar geldikçe (revision) yeniden sırala.
-    if (!_feedsLoading) {
-      rows.add(
+    // 2.75) İzlediğiniz X için öneriliyor
+    if (!_feedsLoading && c.data != null) {
+      coreRows.add(
         Obx(() {
-          RecommendedFilmsRatingCache.revision.value;
+          c.playlistRevision.value;
+          final watch = Get.find<WatchProgressService>();
+          watch.revision.value;
+          final lastWatched = watch.getAbsoluteLastWatched();
+          if (lastWatched == null) return const SizedBox.shrink();
+
+          final films = _films;
+          final series = _series;
+
+          if (lastWatched.kind == ContinueWatchingKind.series &&
+              series != null) {
+            SeriesItem? s;
+            for (final r in series.categoryRows) {
+              for (final item in r.items) {
+                if (item.id == lastWatched.id) {
+                  s = item;
+                  break;
+                }
+              }
+              if (s != null) break;
+            }
+            if (s != null) {
+              final catItems = series.categoryRows
+                      .firstWhereOrNull((r) => r.categoryId == s!.categoryId)
+                      ?.items ??
+                  [];
+              final recommendations = catItems
+                  .where((x) => x.id != s!.id)
+                  .take(FilmDiziCatalog.rowPreviewLimit)
+                  .toList();
+              if (recommendations.isNotEmpty) {
+                final title = 'home.showcase.becauseYouWatched'.trParams(
+                    {'title': SeriesNameGrouping.displayTitleFromName(s.name)});
+                return _ShowcaseRow(
+                  title: title,
+                  posterWidth: posterW,
+                  itemCount: recommendations.length,
+                  onSeeAll: () => unawaited(
+                      _openSeriesCategorySeeAll(s!.categoryId, title, catItems)),
+                  itemBuilder: (i) => FilmDiziPosterCard.series(
+                    series: recommendations[i],
+                    posterWidth: posterW,
+                    compactLabel: true,
+                    ensureVisibleOnFocus: false,
+                    onTap: () =>
+                        _openSeries(recommendations[i], categoryName: title),
+                  ),
+                );
+              }
+            }
+          } else if (lastWatched.kind == ContinueWatchingKind.vod &&
+              films != null) {
+            VodItem? f;
+            for (final r in films.categoryRows) {
+              for (final item in r.items) {
+                if (item.id == lastWatched.id) {
+                  f = item;
+                  break;
+                }
+              }
+              if (f != null) break;
+            }
+            if (f != null) {
+              final catItems = films.categoryRows
+                      .firstWhereOrNull((r) => r.categoryId == f!.categoryId)
+                      ?.items ??
+                  [];
+              final recommendations = catItems
+                  .where((x) => x.id != f!.id)
+                  .take(FilmDiziCatalog.rowPreviewLimit)
+                  .toList();
+              if (recommendations.isNotEmpty) {
+                final title = 'home.showcase.becauseYouWatched'.trParams({
+                  'title': RecommendedFilmsCatalog.cleanTitleAndYear(f.name)
+                      .$1
+                      .trim()
+                });
+                return _ShowcaseRow(
+                  title: title,
+                  posterWidth: posterW,
+                  itemCount: recommendations.length,
+                  onSeeAll: () => unawaited(
+                      _openFilmCategorySeeAll(f!.categoryId, title, catItems)),
+                  itemBuilder: (i) => FilmDiziPosterCard.film(
+                    vod: recommendations[i],
+                    posterWidth: posterW,
+                    compactLabel: true,
+                    ensureVisibleOnFocus: false,
+                    onTap: () =>
+                        _openFilm(recommendations[i], categoryName: title),
+                  ),
+                );
+              }
+            }
+          }
+          return const SizedBox.shrink();
+        }),
+      );
+    }
+
+    // --- FİLMLER ---
+    if (!_feedsLoading) {
+      filmRows.add(
+        Obx(() {
           final data = _cache.result.value;
           final feed = _films;
           if (data == null || feed == null) return const SizedBox.shrink();
-          final top = RecommendedFilmsCatalog.build(
-            data,
-            limit: FilmDiziCatalog.rowPreviewLimit,
-          ).topRated;
+          final top = RecommendedFilmsCatalog.build(data, limit: 20).topRated;
           if (top.isEmpty) return const SizedBox.shrink();
           final title = 'home.showcase.topRatedFilms'.tr;
           return _ShowcaseRow(
@@ -773,11 +1002,9 @@ class _HomeShowcaseViewState extends State<HomeShowcaseView> {
             posterWidth: posterW,
             itemCount: top.length,
             onSeeAll: () => _seeAllFilms(
-              kFilmDiziTopRatedFilmsCategoryId,
-              title,
-              prefetch: _topRatedAll,
-              prefetchIsComplete: _topRatedAll.isNotEmpty,
-            ),
+                kFilmDiziTopRatedFilmsCategoryId, title,
+                prefetch: _topRatedAll,
+                prefetchIsComplete: _topRatedAll.isNotEmpty),
             itemBuilder: (i) => FilmDiziPosterCard.film(
               vod: top[i],
               posterWidth: posterW,
@@ -788,30 +1015,22 @@ class _HomeShowcaseViewState extends State<HomeShowcaseView> {
           );
         }),
       );
-    }
-
-    // 3.1) Trend Filmler — IMDB 7+ (yalnızca vitrin; ayardan gizlenebilir).
-    if (!_feedsLoading) {
-      rows.add(
+      filmRows.add(
         Obx(() {
-          if (!_settings.trendFilmsEnabled.value) return const SizedBox.shrink();
-          RecommendedFilmsRatingCache.revision.value;
+          if (!_settings.trendFilmsEnabled.value)
+            return const SizedBox.shrink();
           final data = _cache.result.value;
           if (data == null) return const SizedBox.shrink();
-          final trend = TrendCatalog.trendFilms(data);
-          if (trend.isEmpty) return const SizedBox.shrink();
-          final preview = trend.take(FilmDiziCatalog.rowPreviewLimit).toList();
+          final trend = _trendFilms;
+          final preview = trend.take(20).toList();
+          if (preview.isEmpty) return const SizedBox.shrink();
           final title = 'home.showcase.trendFilms'.tr;
           return _ShowcaseRow(
             title: title,
             posterWidth: posterW,
             itemCount: preview.length,
-            onSeeAll: () => _seeAllFilms(
-              kFilmDiziTrendFilmsCategoryId,
-              title,
-              prefetch: trend,
-              prefetchIsComplete: true,
-            ),
+            onSeeAll: () => _seeAllFilms(kFilmDiziTrendFilmsCategoryId, title,
+                prefetch: trend, prefetchIsComplete: true),
             itemBuilder: (i) => FilmDiziPosterCard.film(
               vod: preview[i],
               posterWidth: posterW,
@@ -823,201 +1042,203 @@ class _HomeShowcaseViewState extends State<HomeShowcaseView> {
         }),
       );
     }
-
-    // 3.2) Trend Diziler — IMDB 7+ (yalnızca vitrin; ayardan gizlenebilir).
-    if (!_feedsLoading) {
-      rows.add(
+    if (!_feedsLoading && _films != null) {
+      final preview =
+          _films!.recentlyAdded.take(FilmDiziCatalog.rowPreviewLimit).toList();
+      if (preview.isNotEmpty) {
+        final title = 'recommendedFilms.last50Films'.tr;
+        filmRows.add(
+          _ShowcaseRow(
+            title: title,
+            posterWidth: posterW,
+            itemCount: preview.length,
+            onSeeAll: () => _seeAllFilms(kFilmDiziLast50FilmsCategoryId, title,
+                prefetch: _films!.last50, prefetchIsComplete: true),
+            itemBuilder: (i) => FilmDiziPosterCard.film(
+                vod: preview[i],
+                posterWidth: posterW,
+                compactLabel: true,
+                ensureVisibleOnFocus: false,
+                onTap: () => _openFilm(preview[i], categoryName: title)),
+          ),
+        );
+      }
+      final mixed =
+          _mixedFilmsAll.take(FilmDiziCatalog.rowPreviewLimit).toList();
+      final title = 'home.showcase.mixedFilms'.tr;
+      filmRows.add(
         Obx(() {
-          if (!_settings.trendSeriesEnabled.value) return const SizedBox.shrink();
-          SeriesRatingCache.revision.value;
+          if (!_settings.mixedFilmsEnabled.value)
+            return const SizedBox.shrink();
+          return _ShowcaseRow(
+            title: title,
+            posterWidth: posterW,
+            itemCount: mixed.length,
+            onSeeAll: () => _seeAllFilms(kFilmDiziMixedFilmsCategoryId, title,
+                prefetch: _mixedFilmsAll, prefetchIsComplete: true),
+            itemBuilder: (i) => FilmDiziPosterCard.film(
+                vod: mixed[i],
+                posterWidth: posterW,
+                compactLabel: true,
+                ensureVisibleOnFocus: false,
+                onTap: () => _openFilm(mixed[i], categoryName: title)),
+          );
+        }),
+      );
+    }
+
+    // --- DİZİLER ---
+    if (!_feedsLoading) {
+      seriesRows.add(
+        Obx(() {
           final data = _cache.result.value;
           if (data == null) return const SizedBox.shrink();
-          final trend = TrendCatalog.trendSeries(data);
-          if (trend.isEmpty) return const SizedBox.shrink();
-          final preview = trend.take(FilmDiziCatalog.rowPreviewLimit).toList();
+          final topSeries = TrendCatalog.topRatedSeries(data, limit: 20);
+          if (topSeries.isEmpty) return const SizedBox.shrink();
+          final title = 'home.showcase.topRatedSeries'.tr;
+          return _ShowcaseRow(
+            title: title,
+            posterWidth: posterW,
+            itemCount: topSeries.length,
+            onSeeAll: () => _seeAllSeries(
+                kFilmDiziTopRatedSeriesCategoryId, title,
+                prefetch: topSeries,
+                prefetchIsComplete: topSeries.isNotEmpty),
+            itemBuilder: (i) => FilmDiziPosterCard.series(
+                series: topSeries[i],
+                posterWidth: posterW,
+                compactLabel: true,
+                ensureVisibleOnFocus: false,
+                onTap: () =>
+                    _openSeries(topSeries[i], categoryName: title)),
+          );
+        }),
+      );
+      seriesRows.add(
+        Obx(() {
+          if (!_settings.trendSeriesEnabled.value)
+            return const SizedBox.shrink();
+          final data = _cache.result.value;
+          if (data == null) return const SizedBox.shrink();
+          final trend = _trendSeries;
+          final preview = trend.take(20).toList();
+          if (preview.isEmpty) return const SizedBox.shrink();
           final title = 'home.showcase.trendSeries'.tr;
           return _ShowcaseRow(
             title: title,
             posterWidth: posterW,
             itemCount: preview.length,
-            onSeeAll: () => _seeAllSeries(
-              kFilmDiziTrendSeriesCategoryId,
-              title,
-              prefetch: trend,
-              prefetchIsComplete: true,
-            ),
+            onSeeAll: () => _seeAllSeries(kFilmDiziTrendSeriesCategoryId, title,
+                prefetch: trend, prefetchIsComplete: true),
             itemBuilder: (i) => FilmDiziPosterCard.series(
-              series: preview[i],
-              posterWidth: posterW,
-              compactLabel: true,
-              ensureVisibleOnFocus: false,
-              onTap: () => _openSeries(preview[i], categoryName: title),
-            ),
+                series: preview[i],
+                posterWidth: posterW,
+                compactLabel: true,
+                ensureVisibleOnFocus: false,
+                onTap: () => _openSeries(preview[i], categoryName: title)),
+          );
+        }),
+      );
+    }
+    if (!_feedsLoading && _series != null) {
+      final preview =
+          _series!.recentlyAdded.take(FilmDiziCatalog.rowPreviewLimit).toList();
+      if (preview.isNotEmpty) {
+        final title = 'recommendedFilms.last50Series'.tr;
+        seriesRows.add(
+          _ShowcaseRow(
+            title: title,
+            posterWidth: posterW,
+            itemCount: preview.length,
+            onSeeAll: () => _seeAllSeries(
+                kFilmDiziLast50SeriesCategoryId, title,
+                prefetch: _series!.last50, prefetchIsComplete: true),
+            itemBuilder: (i) => FilmDiziPosterCard.series(
+                series: preview[i],
+                posterWidth: posterW,
+                compactLabel: true,
+                ensureVisibleOnFocus: false,
+                onTap: () => _openSeries(preview[i], categoryName: title)),
+          ),
+        );
+      }
+      final mixed =
+          _mixedSeriesAll.take(FilmDiziCatalog.rowPreviewLimit).toList();
+      final title = 'home.showcase.mixedSeries'.tr;
+      seriesRows.add(
+        Obx(() {
+          if (!_settings.mixedSeriesEnabled.value)
+            return const SizedBox.shrink();
+          return _ShowcaseRow(
+            title: title,
+            posterWidth: posterW,
+            itemCount: mixed.length,
+            onSeeAll: () => _seeAllSeries(kFilmDiziMixedSeriesCategoryId, title,
+                prefetch: _mixedSeriesAll, prefetchIsComplete: true),
+            itemBuilder: (i) => FilmDiziPosterCard.series(
+                series: mixed[i],
+                posterWidth: posterW,
+                compactLabel: true,
+                ensureVisibleOnFocus: false,
+                onTap: () => _openSeries(mixed[i], categoryName: title)),
           );
         }),
       );
     }
 
-    if (_feedsLoading) {
-      for (var i = 0; i < 3; i++) {
-        rows.add(_ShowcaseRowSkeleton(posterWidth: posterW));
-      }
-    }
-
-    final films = _films;
-    final series = _series;
-
-    // 4) Son çıkan 50 film — feed.recentlyAdded önizlemesi; «Tümünü gör» 50'yi açar.
-    if (!_feedsLoading && films != null) {
-      final preview =
-          films.recentlyAdded.take(FilmDiziCatalog.rowPreviewLimit).toList();
-      if (preview.isNotEmpty) {
-        final title = 'recommendedFilms.last50Films'.tr;
-        rows.add(
-          _ShowcaseRow(
-            title: title,
-            posterWidth: posterW,
-            itemCount: preview.length,
-            onSeeAll: () => _seeAllFilms(
-              kFilmDiziLast50FilmsCategoryId,
-              title,
-              prefetch: films.last50,
-              prefetchIsComplete: true,
-            ),
-            itemBuilder: (i) => FilmDiziPosterCard.film(
+    if (!_feedsLoading && _films != null) {
+      for (final row in _films!.categoryRows) {
+        final title = row.name.trim();
+        final preview = _filmCategorySeeAll[row.categoryId] ??
+            row.items.take(FilmDiziCatalog.rowPreviewLimit).toList();
+        if (preview.isEmpty) continue;
+        categoryRowsWidget.add(_ShowcaseRow(
+          title: title,
+          posterWidth: posterW,
+          itemCount: preview.length,
+          onSeeAll: () =>
+              _openFilmCategorySeeAll(row.categoryId, title, preview),
+          itemBuilder: (i) => FilmDiziPosterCard.film(
               vod: preview[i],
               posterWidth: posterW,
               compactLabel: true,
               ensureVisibleOnFocus: false,
-              onTap: () => _openFilm(preview[i], categoryName: title),
-            ),
-          ),
-        );
-      }
-
-      // 5) Karışık filmler (ayardan açılıp kapatılır — yalnızca vitrin).
-      final mixed =
-          _mixedFilmsAll.take(FilmDiziCatalog.rowPreviewLimit).toList();
-      if (mixed.isNotEmpty) {
-        final title = 'home.showcase.mixedFilms'.tr;
-        rows.add(
-          Obx(() {
-            if (!_settings.mixedFilmsEnabled.value) {
-              return const SizedBox.shrink();
-            }
-            return _ShowcaseRow(
-              title: title,
-              posterWidth: posterW,
-              itemCount: mixed.length,
-              onSeeAll: () => _seeAllFilms(
-                kFilmDiziMixedFilmsCategoryId,
-                title,
-                prefetch: _mixedFilmsAll,
-                prefetchIsComplete: true,
-              ),
-              itemBuilder: (i) => FilmDiziPosterCard.film(
-                vod: mixed[i],
-                posterWidth: posterW,
-                compactLabel: true,
-                ensureVisibleOnFocus: false,
-                onTap: () => _openFilm(mixed[i], categoryName: title),
-              ),
-            );
-          }),
-        );
+              onTap: () => _openFilm(preview[i], categoryName: title)),
+        ));
       }
     }
 
-    // 6) Karışık diziler (ayardan açılıp kapatılır — yalnızca vitrin).
-    if (!_feedsLoading && series != null) {
-      final mixed =
-          _mixedSeriesAll.take(FilmDiziCatalog.rowPreviewLimit).toList();
-      if (mixed.isNotEmpty) {
-        final title = 'home.showcase.mixedSeries'.tr;
-        rows.add(
-          Obx(() {
-            if (!_settings.mixedSeriesEnabled.value) {
-              return const SizedBox.shrink();
-            }
-            return _ShowcaseRow(
-              title: title,
-              posterWidth: posterW,
-              itemCount: mixed.length,
-              onSeeAll: () => _seeAllSeries(
-                kFilmDiziMixedSeriesCategoryId,
-                title,
-                prefetch: _mixedSeriesAll,
-                prefetchIsComplete: true,
-              ),
-              itemBuilder: (i) => FilmDiziPosterCard.series(
-                series: mixed[i],
-                posterWidth: posterW,
-                compactLabel: true,
-                ensureVisibleOnFocus: false,
-                onTap: () => _openSeries(mixed[i], categoryName: title),
-              ),
-            );
-          }),
-        );
-      }
-    }
-
-    // 7) M3U film kategorileri (Netflix, Blue TV …) — her biri ayrı satır
-    // olarak eklenir ki ListView.builder ekran dışındakileri sanallaştırsın.
-    if (films != null) {
-      for (final row in films.categoryRows) {
-        if (row.items.isEmpty) continue;
-        rows.add(
-          _ShowcaseRow(
-            title: row.name,
-            posterWidth: posterW,
-            itemCount: row.items.length,
-            onSeeAll: () => unawaited(_openFilmCategorySeeAll(
-              row.categoryId,
-              row.name,
-              row.items,
-            )),
-            itemBuilder: (i) => FilmDiziPosterCard.film(
-              vod: row.items[i],
+    if (!_feedsLoading && _series != null) {
+      for (final row in _series!.categoryRows) {
+        final title = row.name.trim();
+        final preview = _seriesCategorySeeAll[row.categoryId] ??
+            row.items.take(FilmDiziCatalog.rowPreviewLimit).toList();
+        if (preview.isEmpty) continue;
+        categoryRowsWidget.add(_ShowcaseRow(
+          title: title,
+          posterWidth: posterW,
+          itemCount: preview.length,
+          onSeeAll: () =>
+              _openSeriesCategorySeeAll(row.categoryId, title, preview),
+          itemBuilder: (i) => FilmDiziPosterCard.series(
+              series: preview[i],
               posterWidth: posterW,
               compactLabel: true,
               ensureVisibleOnFocus: false,
-              onTap: () => _openFilm(row.items[i], categoryName: row.name),
-            ),
-          ),
-        );
+              onTap: () => _openSeries(preview[i], categoryName: title)),
+        ));
       }
     }
 
-    // 8) M3U dizi kategorileri.
-    if (!_feedsLoading && series != null) {
-      for (final row in series.categoryRows) {
-        if (row.items.isEmpty) continue;
-        rows.add(
-          _ShowcaseRow(
-            title: row.name,
-            posterWidth: posterW,
-            itemCount: row.items.length,
-            onSeeAll: () => unawaited(_openSeriesCategorySeeAll(
-              row.categoryId,
-              row.name,
-              row.items,
-            )),
-            itemBuilder: (i) => FilmDiziPosterCard.series(
-              series: row.items[i],
-              posterWidth: posterW,
-              compactLabel: true,
-              ensureVisibleOnFocus: false,
-              onTap: () => _openSeries(row.items[i], categoryName: row.name),
-            ),
-          ),
-        );
+    if (_feedsLoading) {
+      for (var i = 0; i < 3; i++) {
+        bottomRows.add(_ShowcaseRowSkeleton(posterWidth: posterW));
       }
     }
 
     // 9) Sıradaki Maçlar — vitrinde **her zaman en altta** (ayardan açılıp
     // kapatılır). Şerit boşsa/yüklenemezse kendini gizler.
-    rows.add(
+    bottomRows.add(
       Obx(() {
         if (!_settings.upcomingMatchesEnabled.value) {
           return const SizedBox.shrink();
@@ -1030,7 +1251,13 @@ class _HomeShowcaseViewState extends State<HomeShowcaseView> {
       }),
     );
 
-    return rows;
+    return [
+      ...coreRows,
+      if (prefersSeries) ...seriesRows else ...filmRows,
+      if (prefersSeries) ...filmRows else ...seriesRows,
+      ...categoryRowsWidget,
+      ...bottomRows,
+    ];
   }
 }
 
@@ -1060,6 +1287,7 @@ class _ShowcaseFavoritesSectionState extends State<_ShowcaseFavoritesSection> {
 
   List<SeriesItem> _series = const [];
   List<Channel> _channels = const [];
+  List<VodItem> _topRatedAll = const [];
   List<VodItem> _films = const [];
   List<VodItem> _filmsAll = const [];
   List<SeriesItem> _seriesAll = const [];
@@ -1242,146 +1470,129 @@ class _ShowcaseFavoritesSectionState extends State<_ShowcaseFavoritesSection> {
 
   @override
   Widget build(BuildContext context) {
-    final children = <Widget>[];
     final posterW = widget.posterWidth;
 
-    if (_series.isNotEmpty) {
-      final title = 'home.showcase.favoriteSeries'.tr;
-      children.add(
-        Obx(() {
-          if (!_settings.favoriteSeriesEnabled.value) {
-            return const SizedBox.shrink();
-          }
-          return _ShowcaseRow(
-            title: title,
-            posterWidth: posterW,
-            itemCount: _series.length,
-            onSeeAll: () => _seeAllFavSeries(title),
-            itemBuilder: (i) => FilmDiziPosterCard.series(
-              series: _series[i],
-              posterWidth: posterW,
-              compactLabel: true,
-              ensureVisibleOnFocus: false,
-              onTap: () => _openSeries(_series[i], title),
-            ),
-          );
-        }),
-      );
-    }
+    return Obx(() {
+      final items = <dynamic>[];
 
-    if (_channels.isNotEmpty) {
-      children.add(_buildChannelsRow(context));
-    }
+      // Kanalları favorilerden çıkarma ayarı yok, direkt ekliyoruz.
+      items.addAll(_channels);
 
-    if (_films.isNotEmpty) {
-      final title = 'home.showcase.favoriteFilms'.tr;
-      children.add(
-        Obx(() {
-          if (!_settings.favoriteFilmsEnabled.value) {
-            return const SizedBox.shrink();
-          }
-          return _ShowcaseRow(
-            title: title,
-            posterWidth: posterW,
-            itemCount: _films.length,
-            onSeeAll: () => _seeAllFavFilms(title),
-            itemBuilder: (i) => FilmDiziPosterCard.film(
-              vod: _films[i],
-              posterWidth: posterW,
-              compactLabel: true,
-              ensureVisibleOnFocus: false,
-              onTap: () => _openFilm(_films[i], title),
-            ),
-          );
-        }),
-      );
-    }
+      if (_settings.favoriteSeriesEnabled.value) {
+        items.addAll(_series);
+      }
+      if (_settings.favoriteFilmsEnabled.value) {
+        items.addAll(_films);
+      }
 
-    if (children.isEmpty) return const SizedBox.shrink();
-    return Column(
-      mainAxisSize: MainAxisSize.min,
-      children: children,
-    );
-  }
+      if (items.isEmpty) return const SizedBox.shrink();
 
-  Widget _buildChannelsRow(BuildContext context) {
-    final accent = Theme.of(context).colorScheme.primary;
-    final titleColor = Theme.of(context).colorScheme.onSurface;
-    final title = 'home.showcase.favoriteChannels'.tr;
-    return _ShowcaseFrame(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(14, 0, 6, 10),
-            child: Row(
-              children: [
-                Container(
-                  width: 3,
-                  height: 16,
-                  margin: const EdgeInsets.only(right: 10),
-                  decoration: BoxDecoration(
-                    gradient: LinearGradient(
-                      begin: Alignment.topCenter,
-                      end: Alignment.bottomCenter,
-                      colors: [accent, accent.withValues(alpha: 0.35)],
+      return _ShowcaseRow(
+        title: 'Favoriler',
+        posterWidth: posterW,
+        itemCount: items.length,
+        itemBuilder: (i) {
+          final item = items[i];
+          if (item is Channel) {
+            final posterH = posterW * 1.48;
+            final logoUrl = item.logoUrl?.trim() ?? '';
+            final name = item.name.trim();
+            final initial = name.isNotEmpty ? name[0].toUpperCase() : '—';
+
+            return TvDpadFocus(
+              onActivate: () => _openChannel(item),
+              child: SizedBox(
+                width: posterW,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    SizedBox(
+                      width: posterW,
+                      height: posterH,
+                      child: Container(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(10),
+                          gradient: LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [
+                              Colors.white.withValues(alpha: 0.12),
+                              Colors.white.withValues(alpha: 0.03),
+                            ],
+                          ),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.16),
+                            width: 0.8,
+                          ),
+                        ),
+                        alignment: Alignment.center,
+                        child: logoUrl.isEmpty
+                            ? Text(
+                                initial,
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 32,
+                                  fontWeight: FontWeight.w800,
+                                ),
+                              )
+                            : Padding(
+                                padding: const EdgeInsets.all(12),
+                                child: IptvChannelLogo(
+                                  imageUrl: logoUrl,
+                                  width: posterW - 24,
+                                  height: posterH - 24,
+                                  fit: BoxFit.contain,
+                                  errorWidget: Center(
+                                    child: Text(
+                                      initial,
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 32,
+                                        fontWeight: FontWeight.w800,
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                      ),
                     ),
-                    borderRadius: BorderRadius.circular(2),
-                  ),
-                ),
-                Expanded(
-                  child: Text(
-                    title,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      color: titleColor,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w700,
-                      letterSpacing: 0.2,
+                    const SizedBox(height: 8),
+                    Text(
+                      name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white70,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                      ),
                     ),
-                  ),
+                  ],
                 ),
-                TextButton(
-                  onPressed: widget.controller.openLiveTvFavorites,
-                  style: TextButton.styleFrom(
-                    foregroundColor: accent,
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    minimumSize: Size.zero,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  ),
-                  child: Text(
-                    'recommendedFilms.seeAll'.tr,
-                    style: TextStyle(
-                      color: accent,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 12.5,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          SizedBox(
-            height: 98,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              physics: AppScrollPhysics.horizontal(),
-              padding: const EdgeInsets.symmetric(horizontal: 14),
-              addRepaintBoundaries: true,
-              itemCount: _channels.length,
-              separatorBuilder: (_, __) => const SizedBox(width: 10),
-              itemBuilder: (context, i) => ShowcaseLiveLogoCard(
-                channel: _channels[i],
-                onTap: () => _openChannel(_channels[i]),
               ),
-            ),
-          ),
-        ],
-      ),
-    );
+            );
+          } else if (item is SeriesItem) {
+            return FilmDiziPosterCard.series(
+              series: item,
+              posterWidth: posterW,
+              compactLabel: true,
+              ensureVisibleOnFocus: false,
+              onTap: () => _openSeries(item, 'Favoriler'),
+            );
+          } else if (item is VodItem) {
+            return FilmDiziPosterCard.film(
+              vod: item,
+              posterWidth: posterW,
+              compactLabel: true,
+              ensureVisibleOnFocus: false,
+              onTap: () => _openFilm(item, 'Favoriler'),
+            );
+          }
+          return const SizedBox.shrink();
+        },
+      );
+    });
   }
 }
 
@@ -1538,19 +1749,22 @@ class _ShowcaseRow extends StatelessWidget {
               ],
             ),
           ),
-          SizedBox(
-            height: rowH,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              physics: AppScrollPhysics.horizontal(),
-              padding: const EdgeInsets.symmetric(horizontal: 14),
-              addRepaintBoundaries: true,
-              cacheExtent: posterWidth * 2,
-              itemCount: itemCount,
-              separatorBuilder: (_, __) => const SizedBox(width: 10),
-              itemBuilder: (context, i) => itemBuilder(i),
-            ),
-          ),
+          if (itemCount > 0)
+            SizedBox(
+              height: rowH,
+              child: ListView.separated(
+                scrollDirection: Axis.horizontal,
+                physics: AppScrollPhysics.horizontal(),
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                addRepaintBoundaries: true,
+                cacheExtent: posterWidth * 5, // Daha akıcı yatay kaydırma için 2'den 5'e çıkarıldı
+                itemCount: itemCount,
+                separatorBuilder: (_, __) => const SizedBox(width: 10),
+                itemBuilder: (context, i) => itemBuilder(i),
+              ),
+            )
+          else
+            const SizedBox(height: 10), // Boş satırlar için küçük alt boşluk
         ],
       ),
     );
@@ -1775,11 +1989,45 @@ class _ShowcaseGlassClock extends StatelessWidget {
                 child: Padding(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-                  child: Icon(
-                    Icons.forum_rounded,
-                    color: Colors.white.withValues(alpha: 0.95),
-                    size: 22,
-                    semanticLabel: 'home.chat'.tr,
+                  child: Stack(
+                    clipBehavior: Clip.none,
+                    children: [
+                      Icon(
+                        Icons.forum_rounded,
+                        color: Colors.white.withValues(alpha: 0.95),
+                        size: 22,
+                        semanticLabel: 'home.chat'.tr,
+                      ),
+                      Obx(() {
+                        final unread =
+                            Get.find<ChatService>().unreadMessages.value;
+                        if (unread <= 0) return const SizedBox.shrink();
+                        return Positioned(
+                          right: -2,
+                          top: -2,
+                          child: Container(
+                            padding: const EdgeInsets.all(2),
+                            decoration: const BoxDecoration(
+                              color: Colors.redAccent,
+                              shape: BoxShape.circle,
+                            ),
+                            constraints: const BoxConstraints(
+                                minWidth: 12, minHeight: 12),
+                            child: Center(
+                              child: Text(
+                                unread > 9 ? '9+' : unread.toString(),
+                                style: const TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 8,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                                textAlign: TextAlign.center,
+                              ),
+                            ),
+                          ),
+                        );
+                      }),
+                    ],
                   ),
                 ),
               ),
@@ -1880,8 +2128,62 @@ class _GlassDock extends StatefulWidget {
   State<_GlassDock> createState() => _GlassDockState();
 }
 
-class _GlassDockState extends State<_GlassDock> {
-  static const double _radius = 28;
+class _GlassDockState extends State<_GlassDock> with TickerProviderStateMixin {
+  static const double _radius = 34;
+
+  double? _panX;
+  int? _hoveredIndex;
+  late final AnimationController _bubbleOpacity = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 250),
+  );
+  // Çerçeve etrafında yavaşça dönen ışık shimmer animasyonu
+  late final AnimationController _shimmerController = AnimationController(
+    vsync: this,
+    duration: const Duration(seconds: 10),
+  )..repeat();
+
+  @override
+  void dispose() {
+    _bubbleOpacity.dispose();
+    _shimmerController.dispose();
+    super.dispose();
+  }
+
+  void _updatePan(Offset localPosition, double width) {
+    final x = localPosition.dx.clamp(0.0, width);
+    final segmentWidth = width / _items().length;
+    final index = (x / segmentWidth).floor().clamp(0, _items().length - 1);
+    setState(() {
+      _panX = x;
+      _hoveredIndex = index;
+    });
+    _bubbleOpacity.forward();
+  }
+
+  void _endPan() {
+    // Parmak kalkınca hangi item üzerindeyse onu aç.
+    final idx = _hoveredIndex;
+    setState(() {
+      _hoveredIndex = null;
+      _panX = null;
+    });
+    _bubbleOpacity.reverse();
+    if (idx != null) {
+      final items = _items();
+      if (idx >= 0 && idx < items.length) {
+        items[idx].onTap();
+      }
+    }
+  }
+
+  void _cancelPan() {
+    setState(() {
+      _hoveredIndex = null;
+      _panX = null;
+    });
+    _bubbleOpacity.reverse();
+  }
 
   List<_DockItem> _items() => [
         _DockItem(
@@ -1911,24 +2213,13 @@ class _GlassDockState extends State<_GlassDock> {
       ];
 
   BoxDecoration _glassDecoration() => BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [
-            const Color(0xFF1A1D22).withValues(alpha: 0.82),
-            const Color(0xFF101216).withValues(alpha: 0.88),
-          ],
-        ),
-        border: Border.all(
-          color: Colors.white.withValues(alpha: 0.22),
-          width: 1.0,
-        ),
+        color: const Color(0xFF0C0C0C).withOpacity(0.82),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(alpha: 0.35),
+            color: Colors.black.withOpacity(0.40),
             blurRadius: 24,
-            spreadRadius: -6,
-            offset: const Offset(0, 10),
+            spreadRadius: 0,
+            offset: const Offset(0, 8),
           ),
         ],
       );
@@ -1947,46 +2238,71 @@ class _GlassDockState extends State<_GlassDock> {
         crossAxisAlignment: CrossAxisAlignment.end,
         children: [
           Expanded(
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(_radius),
-              child: Container(
-                height: _GlassDock.height,
-                decoration: _glassDecoration().copyWith(
-                  borderRadius: BorderRadius.circular(_radius),
-                ),
-                child: Stack(
-                  // Sekme butonları çubuğun tam dikey ortasına hizalansın
-                  // (önceden Stack varsayılan topStart ile üste yapışıyordu).
-                  alignment: Alignment.center,
-                  children: [
-                    // Üst kenar ışıltısı — cam «damla» hissi için ince specular.
-                    Positioned(
-                      top: 0,
-                      left: 16,
-                      right: 16,
-                      child: Container(
-                        height: 1,
-                        decoration: BoxDecoration(
-                          gradient: LinearGradient(
-                            colors: [
-                              Colors.white.withValues(alpha: 0.0),
-                              Colors.white.withValues(alpha: 0.55),
-                              Colors.white.withValues(alpha: 0.0),
-                            ],
-                          ),
+            child: AnimatedBuilder(
+              animation: _shimmerController,
+              builder: (context, child) {
+                return CustomPaint(
+                  foregroundPainter: _BorderShimmerPainter(
+                    progress: _shimmerController.value,
+                    radius: _radius,
+                    height: _GlassDock.height,
+                  ),
+                  child: child,
+                );
+              },
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(_radius),
+                child: Container(
+                  height: _GlassDock.height,
+                  decoration: _glassDecoration().copyWith(
+                    borderRadius: BorderRadius.circular(_radius),
+                  ),
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      final width = constraints.maxWidth;
+                      return GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onPanStart: (e) => _updatePan(e.localPosition, width),
+                        onPanUpdate: (e) => _updatePan(e.localPosition, width),
+                        onPanEnd: (e) => _endPan(),
+                        onPanCancel: () => _cancelPan(),
+                        onTapDown: (e) => _updatePan(e.localPosition, width),
+                        onTapUp: (e) => _endPan(),
+                        onTapCancel: () => _cancelPan(),
+                        child: Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            AnimatedBuilder(
+                                animation: _bubbleOpacity,
+                                builder: (context, _) {
+                                  return CustomPaint(
+                                    size: Size(width, _GlassDock.height),
+                                    painter: _WaterDropPainter(
+                                      panX: _panX,
+                                      opacity: _bubbleOpacity.value,
+                                      accent: _hoveredIndex != null
+                                          ? items[_hoveredIndex!].accent
+                                          : Colors.white,
+                                    ),
+                                  );
+                                }),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                              children: [
+                                for (int i = 0; i < items.length; i++)
+                                  Expanded(
+                                    child: _DockButton(
+                                      item: items[i],
+                                      isHovered: i == _hoveredIndex,
+                                    ),
+                                  ),
+                              ],
+                            ),
+                          ],
                         ),
-                      ),
-                    ),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: [
-                        for (int i = 0; i < items.length; i++)
-                          Expanded(
-                            child: _DockButton(item: items[i]),
-                          ),
-                      ],
-                    ),
-                  ],
+                      );
+                    },
+                  ),
                 ),
               ),
             ),
@@ -2013,10 +2329,12 @@ class _GlassDockState extends State<_GlassDock> {
                     logoUrl: widget.lastPosterUrl,
                     onTap: widget.lastOnTap ??
                         widget.controller.openLastWatchedChannel,
-                    accent: const Color(0xFF4CAF50),
+                    accent: Colors.white,
                     size: _GlassDock.height,
-                    decoration:
-                        _glassDecoration().copyWith(shape: BoxShape.circle),
+                    decoration: _glassDecoration().copyWith(
+                      shape: BoxShape.circle,
+                      color: const Color(0xFF0C0C0C).withOpacity(0.82),
+                    ),
                     shouldRotate: false,
                   ),
                 );
@@ -2054,9 +2372,10 @@ class _DockItem {
 /// (scale) + butonun arkasında accent renkli yumuşak bir damlanın açılıp
 /// sönmesi (radial bloom). Material ripple yerine bu özel efekt kullanılır.
 class _DockButton extends StatefulWidget {
-  const _DockButton({required this.item});
+  const _DockButton({required this.item, this.isHovered = false});
 
   final _DockItem item;
+  final bool isHovered;
 
   @override
   State<_DockButton> createState() => _DockButtonState();
@@ -2087,7 +2406,7 @@ class _DockButtonState extends State<_DockButton>
   @override
   Widget build(BuildContext context) {
     final accent = widget.item.accent;
-    final targetScale = _pressed ? 0.84 : 1.0;
+    final targetScale = _pressed ? 0.84 : (widget.isHovered ? 1.25 : 1.0);
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
@@ -2099,8 +2418,8 @@ class _DockButtonState extends State<_DockButton>
         duration: const Duration(milliseconds: 130),
         curve: Curves.easeOut,
         child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 2),
-            child: Stack(
+          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 2),
+          child: Stack(
             alignment: Alignment.center,
             children: [
               // Damla: dokunma anında accent renkli yumuşak radial bloom.
@@ -2112,22 +2431,19 @@ class _DockButtonState extends State<_DockButton>
                       final t = _bloom.value;
                       // Basılıyken sabit hafif parıltı; bırakınca dalga.
                       final pressGlow = _pressed ? 0.32 : 0.0;
-                      final waveOpacity = t == 0 ? 0.0 : (1 - t) * 0.55;
+                      final waveOpacity = t == 0 ? 0.0 : (1 - t) * 0.65;
                       final opacity = pressGlow + waveOpacity;
                       if (opacity <= 0.001) return const SizedBox.shrink();
                       final scale = 0.45 + t * 0.95;
                       return Center(
                         child: Transform.scale(
                           scale: _pressed ? 0.7 : scale,
-                          child: Container(
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              gradient: RadialGradient(
-                                colors: [
-                                  accent.withValues(alpha: opacity),
-                                  accent.withValues(alpha: 0.0),
-                                ],
-                              ),
+                          child: CustomPaint(
+                            painter: _WaterDropRipplePainter(
+                              opacity: opacity,
+                              accent: accent,
+                              strokeWidth: 1.5 + (1 - t) * 2.5,
+                              blurRadius: 16 * t,
                             ),
                           ),
                         ),
@@ -2150,7 +2466,7 @@ class _DockButtonState extends State<_DockButton>
                     style: const TextStyle(
                       color: Colors.white,
                       fontSize: 10,
-                      fontWeight: FontWeight.w600,
+                      fontWeight: FontWeight.w700,
                       height: 1.0,
                     ),
                   ),
@@ -2259,22 +2575,19 @@ class _DockCircleButtonState extends State<_DockCircleButton>
                         builder: (context, _) {
                           final t = _bloom.value;
                           final pressGlow = _pressed ? 0.32 : 0.0;
-                          final waveOpacity = t == 0 ? 0.0 : (1 - t) * 0.55;
+                          final waveOpacity = t == 0 ? 0.0 : (1 - t) * 0.65;
                           final opacity = pressGlow + waveOpacity;
                           if (opacity <= 0.001) return const SizedBox.shrink();
                           final scale = 0.45 + t * 0.95;
                           return Center(
                             child: Transform.scale(
                               scale: _pressed ? 0.7 : scale,
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  shape: BoxShape.circle,
-                                  gradient: RadialGradient(
-                                    colors: [
-                                      accent.withValues(alpha: opacity),
-                                      accent.withValues(alpha: 0.0),
-                                    ],
-                                  ),
+                              child: CustomPaint(
+                                painter: _WaterDropRipplePainter(
+                                  opacity: opacity,
+                                  accent: accent,
+                                  strokeWidth: 1.5 + (1 - t) * 2.5,
+                                  blurRadius: 16 * t,
                                 ),
                               ),
                             ),
@@ -2285,7 +2598,8 @@ class _DockCircleButtonState extends State<_DockCircleButton>
                   ),
                   if (widget.logoUrl != null)
                     RotationTransition(
-                      turns: _rotationController ?? const AlwaysStoppedAnimation(0.0),
+                      turns: _rotationController ??
+                          const AlwaysStoppedAnimation(0.0),
                       child: ClipOval(
                         child: CachedNetworkImage(
                           imageUrl: widget.logoUrl!,
@@ -2294,7 +2608,7 @@ class _DockCircleButtonState extends State<_DockCircleButton>
                           height: double.infinity,
                           errorWidget: (_, __, ___) => Icon(
                             widget.icon ?? Icons.play_circle_rounded,
-                            color: Colors.white,
+                            color: const Color(0xFF1C223A),
                             size: 32,
                           ),
                         ),
@@ -2302,7 +2616,8 @@ class _DockCircleButtonState extends State<_DockCircleButton>
                     )
                   else if (widget.icon != null)
                     RotationTransition(
-                      turns: _rotationController ?? const AlwaysStoppedAnimation(0.0),
+                      turns: _rotationController ??
+                          const AlwaysStoppedAnimation(0.0),
                       child: Icon(widget.icon!, color: Colors.white, size: 32),
                     ),
                 ],
@@ -2339,4 +2654,191 @@ Widget _buildShowcaseSettingsIcon(BuildContext context) {
       key: ValueKey('settings_$showProfile'),
     );
   });
+}
+
+/// Pill \u00e7er\u00e7evesi etraf\u0131nda yava\u015f\u00e7a gezen parlak \u0131\u015f\u0131k noktas\u0131.
+/// Sadece \u00e7er\u00e7eve path'i \u00fczerine \u00e7ok hafif bir paint yapar \u2014 CPU dostu.
+class _BorderShimmerPainter extends CustomPainter {
+  _BorderShimmerPainter({
+    required this.progress,
+    required this.radius,
+    required this.height,
+  });
+
+  final double progress; // 0.0 \u2013 1.0
+  final double radius;
+  final double height;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rect = RRect.fromRectAndRadius(
+      Rect.fromLTWH(0, 0, size.width, height),
+      Radius.circular(radius),
+    );
+
+    // Toplam \u00e7evre tahmini (pill shape): 2*(w-2r) + 2*pi*r
+    final w = size.width;
+    final perimeter = 2 * (w - 2 * radius) + 2 * 3.14159 * radius;
+
+    // progress'i perimeter \u00fczerine e\u015fle (i\u015faretli uzunluk)
+    final targetLen = progress * perimeter;
+
+    // Path metrics ile ger\u00e7ek konum
+    final path = Path()..addRRect(rect);
+    final metrics = path.computeMetrics().first;
+    final totalLen = metrics.length;
+    final pos = (targetLen % totalLen + totalLen) % totalLen;
+    final tangent = metrics.getTangentForOffset(pos);
+    if (tangent == null) return;
+
+    final center = tangent.position;
+
+    // Parlak alan yar\u0131\u00e7ap\u0131
+    const spotRadius = 32.0;
+
+    final paint = Paint()
+      ..shader = RadialGradient(
+        colors: [
+          Colors.white.withOpacity(0.75),
+          Colors.white.withOpacity(0.25),
+          Colors.white.withOpacity(0.0),
+        ],
+        stops: const [0.0, 0.45, 1.0],
+      ).createShader(
+        Rect.fromCircle(center: center, radius: spotRadius),
+      )
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.0;
+
+    // Sadece \u00e7er\u00e7eve path'ini \u00e7iz, g\u00f6r\u00fcn\u00fcr alan k\u00fc\u00e7\u00fclt
+    final clipPath = Path()
+      ..addOval(Rect.fromCircle(center: center, radius: spotRadius));
+    canvas.save();
+    canvas.clipPath(clipPath);
+    canvas.drawPath(path, paint);
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(covariant _BorderShimmerPainter old) =>
+      old.progress != progress;
+}
+
+class _WaterDropPainter extends CustomPainter {
+
+  _WaterDropPainter(
+      {required this.panX, required this.opacity, required this.accent});
+  final double? panX;
+  final double opacity;
+  final Color accent;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (panX == null || opacity <= 0.001) return;
+
+    final center = Offset(panX!, size.height / 2);
+    final radius = 26.0 + (opacity * 4.0);
+
+    final rPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.5
+      ..color = Colors.redAccent.withValues(alpha: opacity * 0.8)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.0);
+
+    final bPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.5
+      ..color = Colors.blueAccent.withValues(alpha: opacity * 0.8)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.0);
+
+    final gPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2.0
+      ..color = Colors.greenAccent.withValues(alpha: opacity * 0.9);
+
+    final fillPaint = Paint()
+      ..color = accent.withValues(alpha: opacity * 0.35)
+      ..style = PaintingStyle.fill;
+
+    final borderPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.5
+      ..color = Colors.white.withValues(alpha: opacity * 0.95);
+
+    canvas.drawCircle(center.translate(-2.0, 0), radius, rPaint);
+    canvas.drawCircle(center.translate(2.0, 0), radius, bPaint);
+    canvas.drawCircle(center, radius, gPaint);
+    canvas.drawCircle(center, radius, fillPaint);
+    canvas.drawCircle(center, radius, borderPaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _WaterDropPainter oldDelegate) {
+    return panX != oldDelegate.panX ||
+        opacity != oldDelegate.opacity ||
+        accent != oldDelegate.accent;
+  }
+}
+
+class _WaterDropRipplePainter extends CustomPainter {
+  _WaterDropRipplePainter({
+    required this.opacity,
+    required this.accent,
+    required this.strokeWidth,
+    required this.blurRadius,
+  });
+  final double opacity;
+  final Color accent;
+  final double strokeWidth;
+  final double blurRadius;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (opacity <= 0.001) return;
+
+    final center = Offset(size.width / 2, size.height / 2);
+    final radius = size.width / 2;
+
+    if (blurRadius > 0) {
+      final shadowPaint = Paint()
+        ..color = accent.withValues(alpha: opacity * 0.6)
+        ..maskFilter = MaskFilter.blur(BlurStyle.normal, blurRadius);
+      canvas.drawCircle(center, radius, shadowPaint);
+    }
+
+    final rPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth + 1.0
+      ..color = Colors.redAccent.withValues(alpha: opacity * 0.8)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.0);
+
+    final bPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth + 1.0
+      ..color = Colors.blueAccent.withValues(alpha: opacity * 0.8)
+      ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 2.0);
+
+    final gPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth
+      ..color = Colors.greenAccent.withValues(alpha: opacity * 0.9);
+
+    final fillPaint = Paint()
+      ..color = accent.withValues(alpha: opacity * 0.25)
+      ..style = PaintingStyle.fill;
+
+    final borderPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth
+      ..color = Colors.white.withValues(alpha: opacity * 0.85);
+
+    canvas.drawCircle(center.translate(-1.5, 0), radius, rPaint);
+    canvas.drawCircle(center.translate(1.5, 0), radius, bPaint);
+    canvas.drawCircle(center, radius, gPaint);
+    canvas.drawCircle(center, radius, fillPaint);
+    canvas.drawCircle(center, radius, borderPaint);
+  }
+
+  @override
+  bool shouldRepaint(covariant _WaterDropRipplePainter oldDelegate) => true;
 }

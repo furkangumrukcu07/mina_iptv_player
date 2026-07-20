@@ -128,9 +128,11 @@ class RecommendedFilmsPosterImage extends StatelessWidget {
     this.url,
     this.memCacheWidth,
     this.renderWidth,
+    this.fit = BoxFit.cover,
   });
 
   final String? url;
+  final BoxFit fit;
 
   /// Bellek önbelleği genişliği (logical px × DPR). Izgarada performans için.
   /// Verilmezse [renderWidth] (afişin logical genişliği) ile hesaplanır.
@@ -173,7 +175,7 @@ class RecommendedFilmsPosterImage extends StatelessWidget {
           key: ValueKey<String>(u),
           imageUrl: u,
           cacheKey: u,
-          fit: BoxFit.cover,
+          fit: fit,
           memCacheWidth: memW,
           memCacheHeight: memH,
           cacheManager: AppImageCacheService.manager,

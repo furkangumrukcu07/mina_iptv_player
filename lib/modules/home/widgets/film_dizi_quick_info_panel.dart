@@ -1,3 +1,5 @@
+import 'dart:ui';
+
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
@@ -56,26 +58,34 @@ class FilmDiziQuickInfoPanel extends StatelessWidget {
     }
     if (rows.isEmpty) return const SizedBox.shrink();
 
-    return Obx(() {
-      final ga = GlassAppearance.fromLabel(
-        Get.find<AppSettingsService>().themeLabel.value,
-      );
-      return Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-        decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(14),
-          color: Colors.white.withValues(alpha: 0.05),
-          border: Border.all(
-            color: ga.sheetBorder.withValues(alpha: 0.55),
-            width: 0.9,
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(14),
+      child: BackdropFilter(
+        filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(14),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                Colors.white.withValues(alpha: 0.12),
+                Colors.white.withValues(alpha: 0.02),
+              ],
+            ),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.15),
+              width: 0.9,
+            ),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: rows,
           ),
         ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: rows,
-        ),
-      );
-    });
+      ),
+    );
   }
 }
 

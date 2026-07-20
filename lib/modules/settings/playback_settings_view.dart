@@ -209,7 +209,7 @@ class PlaybackSettingsView extends StatelessWidget {
                         const SizedBox(height: 10),
                         Obx(
                           () => _PlaybackTile(
-                            tvDpadIndex: 9,
+                            tvDpadIndex: 8,
                             icon: Icons.speed_rounded,
                             title: 'settings.tile.liveBuffer'.tr,
                             subtitle: 'settings.tile.liveBuffer.sub'.trParams({
@@ -226,7 +226,7 @@ class PlaybackSettingsView extends StatelessWidget {
                         const SizedBox(height: 10),
                         Obx(
                           () => _PlaybackTile(
-                            tvDpadIndex: 10,
+                            tvDpadIndex: 9,
                             icon: Icons.volume_up_rounded,
                             title: 'settings.tile.volumeBoost'.tr,
                             subtitle: settings.volumeBoostMaxPercent.value <=
@@ -255,7 +255,7 @@ class PlaybackSettingsView extends StatelessWidget {
                               ? eq.labelKey(eq.preset.value).tr
                               : 'settings.tile.equalizer.off'.tr;
                           return _PlaybackTile(
-                            tvDpadIndex: 11,
+                            tvDpadIndex: 10,
                             icon: Icons.graphic_eq_rounded,
                             title: 'settings.tile.equalizer'.tr,
                             subtitle: on
@@ -274,6 +274,8 @@ class PlaybackSettingsView extends StatelessWidget {
                           );
                         }),
 
+                        const SizedBox(height: 10),
+
                         // ─────────────────────────────────────────
                         // Ana ayarlardan taşınanlar:
                         // OSD gizleme süresi, yayın önizlemesi,
@@ -282,7 +284,7 @@ class PlaybackSettingsView extends StatelessWidget {
                         // ─────────────────────────────────────────
                         Obx(
                           () => _PlaybackTile(
-                            tvDpadIndex: 12,
+                            tvDpadIndex: 11,
                             icon: Icons.timer_outlined,
                             title: 'settings.tile.tvOsdAutoHide'.tr,
                             subtitle:
@@ -304,7 +306,7 @@ class PlaybackSettingsView extends StatelessWidget {
                         // taşındı — OSD süre ayarıyla aynı yerde dursun.
                         Obx(
                           () => _PlaybackTile(
-                            tvDpadIndex: 13,
+                            tvDpadIndex: 12,
                             icon: Icons.opacity_rounded,
                             title: 'settings.tile.osdOpacity'.tr,
                             subtitle: 'settings.tile.osdOpacity.sub'.trParams({

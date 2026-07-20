@@ -309,6 +309,8 @@ class PlaylistController extends GetxController {
 
   String? _m3uLocalRaw;
   String? _m3uSecondaryLocalRaw;
+  String? _m3uLocalFilePath;
+  String? _m3uSecondaryLocalFilePath;
 
   /// TV kumandası: M3U metin alanından sekmelere güvenilir dönüş ([PlaylistView] bağlar).
   VoidCallback? _focusPrimaryM3uTabChip;
@@ -541,14 +543,19 @@ class PlaylistController extends GetxController {
 
   void clearPickedM3uFile() {
     _m3uLocalRaw = null;
+    _m3uLocalFilePath = null;
     m3uLocalFileName.value = null;
     isM3uLoaded.value = false; // M3U temizlendiğinde yükleme durumunu sıfırla
     _updateSubmitState();
   }
 
   void clearPickedM3uSecondaryFile() {
-    _m3uSecondaryLocalRaw = null;
+    m3uLocalFileName.value = null;
     m3uSecondaryLocalFileName.value = null;
+    _m3uLocalFilePath = null;
+    _m3uSecondaryLocalFilePath = null;
+    _m3uLocalFilePath = null;
+    _m3uSecondaryLocalFilePath = null;
     isM3uLoaded.value = false; // M3U temizlendiğinde yükleme durumunu sıfırla
     _updateSubmitState();
   }
@@ -713,11 +720,15 @@ class PlaylistController extends GetxController {
         return;
       }
 
-      late final String content;
       if (f.path != null) {
-        content = await File(f.path!).readAsString(encoding: utf8);
+        await _repo.loadFromM3uFile(f.path!);
+        _m3uLocalFilePath = f.path!;
+        _m3uLocalRaw = null;
       } else if (f.bytes != null) {
-        content = utf8.decode(f.bytes!, allowMalformed: true);
+        final content = utf8.decode(f.bytes!, allowMalformed: true);
+        await _repo.loadFromM3uContent(content);
+        _m3uLocalRaw = content;
+        _m3uLocalFilePath = null;
       } else {
         Get.find<ToastService>().show(
           'playlist.snackbar.readFail'.tr,
@@ -725,8 +736,6 @@ class PlaylistController extends GetxController {
         );
         return;
       }
-      await _repo.loadFromM3uContent(content);
-      _m3uLocalRaw = content;
       m3uLocalFileName.value = f.name;
       m3uUrlController.clear();
       isM3uLoaded.value = true; // M3U listesi yüklendi olarak işaretle
@@ -761,11 +770,15 @@ class PlaylistController extends GetxController {
         return;
       }
 
-      late final String content;
       if (f.path != null) {
-        content = await File(f.path!).readAsString(encoding: utf8);
+        await _repo.loadFromM3uFile(f.path!);
+        _m3uSecondaryLocalFilePath = f.path!;
+        _m3uSecondaryLocalRaw = null;
       } else if (f.bytes != null) {
-        content = utf8.decode(f.bytes!, allowMalformed: true);
+        final content = utf8.decode(f.bytes!, allowMalformed: true);
+        await _repo.loadFromM3uContent(content);
+        _m3uSecondaryLocalRaw = content;
+        _m3uSecondaryLocalFilePath = null;
       } else {
         GlassSnackbar.show(
           'playlist.snackbar.file'.tr,
@@ -774,8 +787,6 @@ class PlaylistController extends GetxController {
         );
         return;
       }
-      await _repo.loadFromM3uContent(content);
-      _m3uSecondaryLocalRaw = content;
       m3uSecondaryLocalFileName.value = f.name;
       m3uSecondaryUrlController.clear();
       isM3uLoaded.value = true; // M3U listesi yüklendi olarak işaretle
@@ -857,7 +868,7 @@ https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.m
       late final M3uResult parsedPrimary;
 
       if (tabIndex.value == 0) {
-        if (_m3uLocalRaw != null) {
+        if (_m3uLocalFilePath != null || _m3uLocalRaw != null) {
           // Local M3U file - no validation needed
         } else {
           // Validate M3U URL before loading
@@ -880,7 +891,10 @@ https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.m
       _openLoadSummaryDialog();
 
       if (tabIndex.value == 0) {
-        if (_m3uLocalRaw != null) {
+        if (_m3uLocalFilePath != null) {
+          parsedPrimary = await _repo.persistM3uLocalFile(_m3uLocalFilePath!);
+          cacheLabel = m3uLocalFileName.value ?? 'playlist.label.localM3u'.tr;
+        } else if (_m3uLocalRaw != null) {
           parsedPrimary = await _repo.persistM3uLocalContent(_m3uLocalRaw!);
           cacheLabel = m3uLocalFileName.value ?? 'playlist.label.localM3u'.tr;
         } else {
@@ -1029,7 +1043,7 @@ https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.m
 
       // Validate secondary inputs before loading
       if (secondaryTabIndex.value == 0) {
-        if (_m3uSecondaryLocalRaw != null) {
+        if (_m3uSecondaryLocalFilePath != null || _m3uSecondaryLocalRaw != null) {
           // Local M3U file - no validation needed
         } else {
           final url = m3uSecondaryUrlController.text.trim();
@@ -1050,7 +1064,9 @@ https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.m
 
       // All validations passed, continue with loading
       if (secondaryTabIndex.value == 0) {
-        if (_m3uSecondaryLocalRaw != null) {
+        if (_m3uSecondaryLocalFilePath != null) {
+          await _repo.persistM3uLocalFileSecondary(_m3uSecondaryLocalFilePath!);
+        } else if (_m3uSecondaryLocalRaw != null) {
           await _repo.persistM3uLocalContentSecondary(_m3uSecondaryLocalRaw!);
         } else {
           final url = m3uSecondaryUrlController.text.trim();

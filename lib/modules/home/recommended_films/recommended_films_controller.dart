@@ -24,6 +24,8 @@ class RecommendedFilmsController extends GetxController {
   final seriesRecentlyWatched = <SeriesItem>[].obs;
   final filmsFavorites = <VodItem>[].obs;
   final seriesFavorites = <SeriesItem>[].obs;
+  final filmsBecauseYouWatched = <VodItem>[].obs;
+  final seriesBecauseYouWatched = <SeriesItem>[].obs;
 
   bool _loadStarted = false;
   int _buildGeneration = 0;
@@ -95,13 +97,15 @@ class RecommendedFilmsController extends GetxController {
     seriesRecentlyWatched.clear();
     filmsFavorites.clear();
     seriesFavorites.clear();
+    filmsBecauseYouWatched.clear();
+    seriesBecauseYouWatched.clear();
 
     await WidgetsBinding.instance.endOfFrame;
     if (isClosed || generation != _buildGeneration) return;
 
     final films = _ds.isDbBacked
-        ? await FilmDiziCatalog.buildFilmsChunkedFromDb(data, _ds)
-        : await FilmDiziCatalog.buildFilmsChunked(data);
+        ? await FilmDiziCatalog.buildFilmsChunkedFromDb(data, _ds, limitCategories: false)
+        : await FilmDiziCatalog.buildFilmsChunked(data, limitCategories: false);
     if (isClosed || generation != _buildGeneration) return;
     if (_cache.result.value != data) return;
     filmsFeed.value = films;
@@ -112,8 +116,8 @@ class RecommendedFilmsController extends GetxController {
     if (isClosed || generation != _buildGeneration) return;
     if (_cache.result.value != data) return;
     final series = _ds.isDbBacked
-        ? await FilmDiziCatalog.buildSeriesChunkedFromDb(data, _ds)
-        : await FilmDiziCatalog.buildSeriesChunked(data);
+        ? await FilmDiziCatalog.buildSeriesChunkedFromDb(data, _ds, limitCategories: false)
+        : await FilmDiziCatalog.buildSeriesChunked(data, limitCategories: false);
     if (isClosed || generation != _buildGeneration) return;
     if (_cache.result.value != data) return;
     seriesFeed.value = series;
@@ -137,6 +141,12 @@ class RecommendedFilmsController extends GetxController {
       );
       filmsFavorites.assignAll(FilmDiziCatalog.favoriteFilms(data));
       seriesFavorites.assignAll(FilmDiziCatalog.favoriteSeries(data));
+      filmsBecauseYouWatched.assignAll(
+        FilmDiziCatalog.becauseYouWatchedFilms(data),
+      );
+      seriesBecauseYouWatched.assignAll(
+        FilmDiziCatalog.becauseYouWatchedSeries(data),
+      );
       return;
     }
 
@@ -180,6 +190,13 @@ class RecommendedFilmsController extends GetxController {
       if (s != null) sf.add(s);
     }
     seriesFavorites.assignAll(sf);
+
+    filmsBecauseYouWatched.assignAll(
+      FilmDiziCatalog.becauseYouWatchedFilms(data),
+    );
+    seriesBecauseYouWatched.assignAll(
+      FilmDiziCatalog.becauseYouWatchedSeries(data),
+    );
   }
 
   Future<void> _enrichFilmRatings() async {

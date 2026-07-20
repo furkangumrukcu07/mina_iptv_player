@@ -22,6 +22,7 @@ abstract final class AppScrollPhysics {
       return const ClampingScrollPhysics();
     }
     return const BouncingScrollPhysics(
+      decelerationRate: ScrollDecelerationRate.fast,
       parent: AlwaysScrollableScrollPhysics(),
     );
   }

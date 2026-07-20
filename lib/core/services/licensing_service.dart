@@ -15,6 +15,7 @@ import 'auth_service.dart';
 import 'firebase_bootstrap.dart';
 import 'license_device_service.dart';
 import 'mina_telemetry_service.dart';
+import '../utils/device_info_util.dart';
 import '../i18n/app_locale.dart';
 import '../routes/app_routes.dart';
 import 'package:intl/intl.dart';
@@ -25,6 +26,8 @@ class LicensingService extends GetxService with WidgetsBindingObserver {
   static const String channelName = 'mina.device/info';
   static const String getInstallTimeMethod = 'getFirstInstallTime';
   static const String premiumProductId = 'mina_premium_lifetime';
+  static const String plus3DevicesProductId = 'mina_total_6devices';
+
   static const String coffeeProductId = 'mina_buy_coffee';
   static const String functionsRegion = 'europe-west1';
 
@@ -32,6 +35,7 @@ class LicensingService extends GetxService with WidgetsBindingObserver {
       DateTime.utc(2026, 6, 29).millisecondsSinceEpoch;
 
   final RxBool isPremium = false.obs;
+  final RxBool isBanned = false.obs;
   final RxBool licenseEntitled = false.obs;
   final RxBool deviceAccessGranted = false.obs;
   final RxBool deviceLimitExceeded = false.obs;
@@ -377,6 +381,21 @@ class LicensingService extends GetxService with WidgetsBindingObserver {
     required User user,
     bool silent = false,
   }) async {
+    final String? normalizedEmail = _normalizedLicenseEmail(user.email);
+    final List<String> manualPremiums = [
+      'furkangumrukcu07@gmail.com',
+      'allachehata@gmail.com',
+    ];
+
+    if (normalizedEmail != null && manualPremiums.contains(normalizedEmail)) {
+      licenseEntitled.value = true;
+      isPremium.value = true;
+      deviceAccessGranted.value = true;
+      deviceLimitExceeded.value = false;
+      maxDevices.value = 999;
+      return true;
+    }
+
     final fn = _functions;
     if (fn == null) return false;
 
@@ -388,6 +407,17 @@ class LicensingService extends GetxService with WidgetsBindingObserver {
       final data = Map<String, dynamic>.from(result.data);
 
       if (data['isPremium'] == true) {
+        if (data['isBanned'] == true) {
+           isBanned.value = true;
+           isPremium.value = false;
+           licenseEntitled.value = false;
+           deviceAccessGranted.value = false;
+           if (Get.isRegistered<AuthService>()) {
+             await Get.find<AuthService>().signOut();
+           }
+           return false;
+        }
+        isBanned.value = false;
         final source = data['source'] as String? ?? '';
         isGrandfathered.value = source.startsWith('grandfather');
         final parsed = _parseIsoDate(data['purchaseDate'] as String?);
@@ -414,6 +444,12 @@ class LicensingService extends GetxService with WidgetsBindingObserver {
       deviceAccessGranted.value = false;
       deviceLimitExceeded.value = false;
       isPremium.value = false;
+      isBanned.value = data['isBanned'] == true;
+      if (isBanned.value) {
+        if (Get.isRegistered<AuthService>()) {
+          await Get.find<AuthService>().signOut();
+        }
+      }
       return false;
     } catch (e) {
       debugPrint('[LicensingService] syncLicenseEntitlements failed: $e');
@@ -501,6 +537,19 @@ class LicensingService extends GetxService with WidgetsBindingObserver {
   }
 
   Future<bool> _ensureDeviceRegistration() async {
+    if (Get.isRegistered<AuthService>()) {
+      final user = Get.find<AuthService>().currentUser.value;
+      if (_normalizedLicenseEmail(user?.email) == 'furkangumrukcu07@gmail.com') {
+        deviceLimitExceeded.value = false;
+        deviceAccessGranted.value = true;
+        isPremium.value = true;
+        isTrialActive.value = false;
+        trialExpirationDate.value = null;
+        maxDevices.value = 999;
+        return true;
+      }
+    }
+
     if (!licenseEntitled.value) {
       deviceAccessGranted.value = false;
       isPremium.value = false;
@@ -685,10 +734,51 @@ class LicensingService extends GetxService with WidgetsBindingObserver {
     final prefs = await SharedPreferences.getInstance();
     const trialKey = 'mina_trial_start_ms';
     final int? cached = prefs.getInt(trialKey);
+
+    try {
+      if (gFirebaseReady) {
+        final hardwareId = await DeviceInfoUtil.getHardwareDeviceId();
+        final docRef = FirebaseFirestore.instance.collection('device_trials').doc(hardwareId);
+        
+        // Timeout ensures we don't block forever if offline
+        final docSnap = await docRef.get().timeout(const Duration(seconds: 10));
+        
+        if (docSnap.exists) {
+          final data = docSnap.data();
+          if (data != null && data['trialStartMs'] is int) {
+            final int serverStartMs = data['trialStartMs'] as int;
+            // Sync local cache with server truth
+            if (cached != serverStartMs) {
+              await prefs.setInt(trialKey, serverStartMs);
+            }
+            return serverStartMs;
+          }
+        } else {
+          // Document does not exist. Use cached if it exists (e.g. they started trial offline), else generate new
+          final int startMs = cached ?? DateTime.now().millisecondsSinceEpoch;
+          
+          await docRef.set({
+            'trialStartMs': startMs,
+            'createdAt': FieldValue.serverTimestamp(),
+          });
+          
+          if (cached != startMs) {
+            await prefs.setInt(trialKey, startMs);
+          }
+          return startMs;
+        }
+      }
+    } catch (e) {
+      debugPrint('[LicensingService] Firebase trial check failed (offline?): $e');
+      // If error (e.g., no internet), it will fall through and use cached or create new locally
+    }
+
+    // Fallback: use locally cached trial time
     if (cached != null && cached > 0) {
       return cached;
     }
 
+    // Completely offline and first time ever
     final now = DateTime.now().millisecondsSinceEpoch;
     await prefs.setInt(trialKey, now);
     return now;
@@ -828,6 +918,41 @@ class LicensingService extends GetxService with WidgetsBindingObserver {
     }
   }
 
+  Future<bool> buyPlus3DevicesProduct() async {
+    try {
+      if (!isBillingAvailable.value) {
+        _logPurchaseAttempt(plus3DevicesProductId, false, 'Billing not available');
+        return false;
+      }
+
+      final response =
+          await InAppPurchase.instance.queryProductDetails({plus3DevicesProductId});
+      if (response.notFoundIDs.contains(plus3DevicesProductId) ||
+          response.productDetails.isEmpty) {
+        _logPurchaseAttempt(plus3DevicesProductId, false, 'Product not found');
+        return false;
+      }
+
+      final product = response.productDetails.first;
+      final purchaseParam = PurchaseParam(productDetails: product);
+      final result = await InAppPurchase.instance
+          .buyNonConsumable(purchaseParam: purchaseParam);
+      _logPurchaseAttempt(
+        plus3DevicesProductId,
+        result,
+        null,
+        product.price,
+        product.currencyCode,
+      );
+      return result;
+    } catch (e) {
+      debugPrint('[LicensingService] +3 Devices Purchase flow error: $e');
+      _logPurchaseAttempt(plus3DevicesProductId, false, e.toString());
+      return false;
+    }
+  }
+
+
   Future<bool> buyCoffeeProduct() async {
     try {
       if (!isBillingAvailable.value) {
@@ -865,14 +990,17 @@ class LicensingService extends GetxService with WidgetsBindingObserver {
   Future<void> _onPurchaseUpdated(List<PurchaseDetails> purchases) async {
     for (final purchase in purchases) {
       if (purchase.productID != premiumProductId &&
-          purchase.productID != coffeeProductId) {
+          purchase.productID != coffeeProductId &&
+          purchase.productID != plus3DevicesProductId) {
         continue;
       }
       if (purchase.status == PurchaseStatus.purchased ||
           purchase.status == PurchaseStatus.restored) {
-        if (purchase.productID == premiumProductId) {
-          purchaseDate.value =
-              _transactionDateFromPurchase(purchase) ?? DateTime.now().toLocal();
+        if (purchase.productID == premiumProductId || purchase.productID == plus3DevicesProductId) {
+          if (purchase.productID == premiumProductId) {
+            purchaseDate.value =
+                _transactionDateFromPurchase(purchase) ?? DateTime.now().toLocal();
+          }
 
           final serverOk = await _activatePremiumOnServer(purchase);
           if (serverOk || licenseEntitled.value) {
@@ -882,7 +1010,7 @@ class LicensingService extends GetxService with WidgetsBindingObserver {
           if (isPremium.value) {
             purchaseCompleted.value = true;
             debugPrint(
-              '[LicensingService] Premium unlocked via Google Play: ${purchase.productID}',
+              '[LicensingService] Product unlocked via Google Play: ${purchase.productID}',
             );
           } else if (deviceLimitExceeded.value) {
             debugPrint(
@@ -974,5 +1102,34 @@ class LicensingService extends GetxService with WidgetsBindingObserver {
       return DateTime.fromMillisecondsSinceEpoch(ms);
     }
     return DateTime.tryParse(trimmed);
+  }
+
+  Future<void> redeemManualLicense(String code) async {
+    try {
+      final fn = FirebaseFunctions.instanceFor(region: functionsRegion)
+          .httpsCallable('redeemLicenseCode');
+      final result = await fn.call({'code': code});
+      if (result.data['success'] == true) {
+        licenseEntitled.value = true;
+        isPremium.value = true;
+        isTrialActive.value = false;
+        await _savePremiumStatusLocally(true);
+
+        final ok = await _ensureDeviceRegistration();
+        if (ok) {
+          purchaseCompleted.value = true;
+          Get.snackbar('Başarılı', 'Lisansınız başarıyla etkinleştirildi.',
+              backgroundColor: const Color(0xFF4ADE80), colorText: const Color(0xFF0F172A));
+        } else {
+          Get.snackbar('Hata', 'Lisans onaylandı ancak cihaz kaydı başarısız oldu. Lütfen uygulamayı yeniden başlatın.',
+              backgroundColor: const Color(0xFFEF4444), colorText: const Color(0xFFFFFFFF));
+        }
+      }
+    } catch (e) {
+      Get.snackbar('Hata', 'Lisans kodu geçersiz veya kullanılmış.\n${e.toString()}',
+          backgroundColor: const Color(0xFFEF4444), colorText: const Color(0xFFFFFFFF));
+      debugPrint('[LicensingService] redeemManualLicense error: $e');
+      throw e;
+    }
   }
 }

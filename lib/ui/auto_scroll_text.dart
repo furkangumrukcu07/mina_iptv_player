@@ -334,6 +334,7 @@ class _AutoScrollVerticalMarqueeState extends State<_AutoScrollVerticalMarquee>
 
   void _configureForCurrentText() {
     _startTimer?.cancel();
+    _controller.removeStatusListener(_onStatus);
     _controller.stop();
     _controller.value = 0;
     _travel =
@@ -343,8 +344,24 @@ class _AutoScrollVerticalMarqueeState extends State<_AutoScrollVerticalMarquee>
     _controller.duration = Duration(milliseconds: ms);
     if (widget.paused) return;
     _startTimer = Timer(widget.startDelay, () {
-      if (mounted) _controller.repeat(reverse: true);
+      if (mounted) {
+        _controller.addStatusListener(_onStatus);
+        _controller.forward();
+      }
     });
+  }
+
+  // Animasyon bitince: kısa bir duraklama ardından başa sıfırlayıp tekrar oynat.
+  void _onStatus(AnimationStatus status) {
+    if (status == AnimationStatus.completed) {
+      _startTimer?.cancel();
+      _startTimer = Timer(const Duration(seconds: 1), () {
+        if (mounted && !widget.paused) {
+          _controller.value = 0;
+          _controller.forward();
+        }
+      });
+    }
   }
 
   @override
@@ -370,6 +387,7 @@ class _AutoScrollVerticalMarqueeState extends State<_AutoScrollVerticalMarquee>
   @override
   void dispose() {
     _startTimer?.cancel();
+    _controller.removeStatusListener(_onStatus);
     _controller.dispose();
     super.dispose();
   }

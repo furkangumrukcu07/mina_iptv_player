@@ -1148,6 +1148,9 @@ class XtreamApi {
         ),
       );
     } on DioException catch (e) {
+      if (e.response?.statusCode == 401 || e.response?.statusCode == 403) {
+        throw const ParseException('xtream.error.invalidCredentials');
+      }
       throw NetworkException(e.message ?? 'Xtream auth network error', e);
     } catch (e) {
       throw NetworkException('Xtream auth error', e);
@@ -1241,6 +1244,9 @@ class XtreamApi {
       if (raw == null || raw.isEmpty) return const [];
       return await compute(_decodeXtreamJsonList, raw);
     } on DioException catch (e) {
+      if (e.response?.statusCode == 401 || e.response?.statusCode == 403) {
+        throw const ParseException('xtream.error.invalidCredentials');
+      }
       throw NetworkException(e.message ?? 'Network error', e);
     } catch (e) {
       throw NetworkException('Network error', e);

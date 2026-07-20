@@ -200,6 +200,7 @@ class _TvShellCategoryPanelState extends State<TvShellCategoryPanel> {
                           )
                         : ListView.builder(
                             controller: _scroll,
+                            itemExtent: 52.0, // Optimize D-pad scrolling smoothness
                             padding: const EdgeInsets.fromLTRB(8, 0, 8, 12),
                             physics: tvShellUsesRemoteNav(context)
                                 ? null

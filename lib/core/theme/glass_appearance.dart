@@ -44,6 +44,10 @@ abstract final class GlassThemeLabels {
   /// 20px köşeler, Tahoe akışkan dalga duvar kağıdı.
   static const macTema = 'Mac Tema';
 
+  /// Tasarım C: Canlı zeminli, MacOS (Apple) tarzı buzlu cam tasarımı.
+  /// İsim: Trabzon. Özellikleri: Yüksek blur, şeffaf kartlar, mesh gradient arka plan.
+  static const trabzon = 'Trabzon';
+
   /// Kurulum sihirbazı ve ayarlarla aynı sıra. TV Lite (sade, blur'suz tema)
   /// ilk sırada — TV box / zayıf cihazlarda önce görünür.
   static const List<String> selectableThemeLabels = [
@@ -60,6 +64,7 @@ abstract final class GlassThemeLabels {
     glassGri,
     ios27,
     macTema,
+    trabzon,
   ];
 
   static bool isDarkFlatFamily(String? themeLabel) =>
@@ -113,6 +118,7 @@ final class GlassAppearance {
     required this.isTvLite,
     required this.isIos27,
     required this.isMacTema,
+    required this.isTrabzon,
   });
 
   static const _semcGreen = Color(0xFF00C989);
@@ -153,6 +159,7 @@ final class GlassAppearance {
   final bool isTvLite;
   final bool isIos27;
   final bool isMacTema;
+  final bool isTrabzon;
 
   /// Buzlu beyaz cam ailesi (Flyme / Glassmorphism / Mina Glass).
   bool get _isFrostedGlass => isGlassmorphism || isMinaGlass || isFlyUi;
@@ -169,6 +176,7 @@ final class GlassAppearance {
   factory GlassAppearance.fromLabel(String themeLabel) {
     final amoled = themeLabel == GlassThemeLabels.amoledBlack;
     final mac = themeLabel == GlassThemeLabels.macTema;
+    final trab = themeLabel == GlassThemeLabels.trabzon;
     return GlassAppearance._(
       // AMOLED, koyu cam ailesini miras alır; ek olarak [isAmoledBlack]
       // override'ları ile saf siyah panellere dönüşür.
@@ -188,6 +196,7 @@ final class GlassAppearance {
       isTvLite: themeLabel == GlassThemeLabels.tvLite,
       isIos27: themeLabel == GlassThemeLabels.ios27,
       isMacTema: mac,
+      isTrabzon: trab,
     );
   }
 
@@ -206,11 +215,13 @@ final class GlassAppearance {
       isTvLite: false,
       isIos27: false,
       isMacTema: false,
+      isTrabzon: false,
     );
   }
 
   /// Ana sayfa kategori kartı köşe yarıçapı.
   double get categoryCardBorderRadius {
+    if (isTrabzon) return 24;
     if (isIos27) return 28;
     if (isMacTema) return 20;
     if (isMinaGlass) return 26;
@@ -223,6 +234,9 @@ final class GlassAppearance {
   bool get useFlatHomeCategoryStyle => isDarkFlatStyle;
 
   Color get popupBorderColor {
+    if (isTrabzon) {
+      return Colors.white.withValues(alpha: 0.30);
+    }
     if (isIos27) {
       return _ios27EdgeColor;
     }
@@ -251,6 +265,12 @@ final class GlassAppearance {
   }
 
   List<Color> get popupGradientColors {
+    if (isTrabzon) {
+      return [
+        Colors.white.withValues(alpha: 0.15),
+        Colors.white.withValues(alpha: 0.05),
+      ];
+    }
     if (isIos27) {
       return const [_ios27GlassHi, _ios27GlassMid, _ios27GlassLo];
     }
@@ -298,6 +318,9 @@ final class GlassAppearance {
   }
 
   Color get popupShadowColor {
+    if (isTrabzon) {
+      return Colors.black.withValues(alpha: 0.25);
+    }
     if (isIos27) {
       return const Color(0xFF030712).withValues(alpha: 0.55);
     }
@@ -322,9 +345,32 @@ final class GlassAppearance {
   BoxDecoration homeHeaderDecoration({double radius = 14}) {
     final effRadius = isIos27
         ? 24.0
-        : isDarkFlatStyle
-            ? 18.0
-            : (isSemc ? 18.0 : (isGlassGri ? 16.0 : (isMacTema ? 20.0 : radius)));
+        : isTrabzon 
+            ? 24.0
+            : isDarkFlatStyle
+                ? 18.0
+                : (isSemc ? 18.0 : (isGlassGri ? 16.0 : (isMacTema ? 20.0 : radius)));
+    if (isTrabzon) {
+      return BoxDecoration(
+        borderRadius: BorderRadius.circular(effRadius),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.25)),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Colors.white.withValues(alpha: 0.20),
+            Colors.white.withValues(alpha: 0.05),
+          ],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.15),
+            blurRadius: 20,
+            offset: const Offset(0, 10),
+          ),
+        ],
+      );
+    }
     if (isMacTema) {
       return BoxDecoration(
         borderRadius: BorderRadius.circular(effRadius),
@@ -492,6 +538,9 @@ final class GlassAppearance {
   /// Buzlu açık paneller ([_isFrostedGlass], [isGlassGri], varsayılan yarı saydam beyaz)
   /// koyu metin gerektirir; koyu paneller ([isDarkGlass], [isDarkFlatStyle], [isSemc]) açık metin.
   Color get homeHeaderOnDecorationForeground {
+    if (isTrabzon) {
+      return Colors.white; // Canlı zemin üzerinde okunabilmesi için
+    }
     if (_isFrostedGlass || isGlassGri) {
       return const Color(0xFF0F172A);
     }
@@ -502,6 +551,9 @@ final class GlassAppearance {
   }
 
   Color get sheetBorder {
+    if (isTrabzon) {
+      return Colors.white.withValues(alpha: 0.35);
+    }
     if (isIos27) {
       return _ios27EdgeColor;
     }
@@ -528,6 +580,12 @@ final class GlassAppearance {
 
   /// Film & Dizi yatay liste çerçeveleri (poster şeritleri).
   List<Color> get filmDiziSectionGradientColors {
+    if (isTrabzon) {
+      return [
+        Colors.white.withValues(alpha: 0.15),
+        Colors.transparent,
+      ];
+    }
     if (isIos27) {
       return [
         const Color(0xFF0E1B33).withValues(alpha: 0.62),
@@ -577,6 +635,12 @@ final class GlassAppearance {
   }
 
   List<Color> get sheetGradientColors {
+    if (isTrabzon) {
+      return [
+        Colors.transparent,
+        Colors.transparent,
+      ];
+    }
     if (_isFrostedGlass) {
       return [
         Colors.transparent,
@@ -605,6 +669,9 @@ final class GlassAppearance {
   }
 
   Color get topBarCapsuleBorder {
+    if (isTrabzon) {
+      return Colors.white.withValues(alpha: 0.25);
+    }
     if (isIos27) {
       return _ios27EdgeColor;
     }
@@ -627,6 +694,12 @@ final class GlassAppearance {
   }
 
   List<Color> get topBarCapsuleGradientColors {
+    if (isTrabzon) {
+      return [
+        Colors.white.withValues(alpha: 0.20),
+        Colors.white.withValues(alpha: 0.05),
+      ];
+    }
     if (isIos27) {
       return const [_ios27GlassHi, _ios27GlassLo];
     }
@@ -664,6 +737,9 @@ final class GlassAppearance {
   }
 
   Color get playerBarBorder {
+    if (isTrabzon) {
+      return Colors.white.withValues(alpha: 0.35);
+    }
     if (isIos27) {
       return _ios27EdgeColor;
     }
@@ -686,6 +762,12 @@ final class GlassAppearance {
   }
 
   List<Color> get playerBarGradientColors {
+    if (isTrabzon) {
+      return [
+        Colors.white.withValues(alpha: 0.25),
+        Colors.white.withValues(alpha: 0.08),
+      ];
+    }
     if (isIos27) {
       return const [Color(0xCC0E1B33), Color(0xA60A1428)];
     }
@@ -789,6 +871,9 @@ final class GlassAppearance {
   }
 
   Color categoryRowBorderIdle() {
+    if (isTrabzon) {
+      return Colors.white.withValues(alpha: 0.15);
+    }
     if (isIos27) {
       return Colors.white.withValues(alpha: 0.18);
     }
@@ -814,6 +899,9 @@ final class GlassAppearance {
   }
 
   Color categoryRowFillStrong() {
+    if (isTrabzon) {
+      return Colors.white.withValues(alpha: 0.25);
+    }
     if (isIos27) {
       return _ios27Blue.withValues(alpha: 0.20);
     }
@@ -836,6 +924,9 @@ final class GlassAppearance {
   }
 
   Color categoryRowFillFocused() {
+    if (isTrabzon) {
+      return Colors.white.withValues(alpha: 0.18);
+    }
     if (isIos27) {
       return _ios27Blue.withValues(alpha: 0.14);
     }
@@ -861,6 +952,9 @@ final class GlassAppearance {
   }
 
   Color categoryRowFillSelected() {
+    if (isTrabzon) {
+      return Colors.white.withValues(alpha: 0.22);
+    }
     if (isIos27) {
       return _ios27Blue.withValues(alpha: 0.26);
     }
@@ -892,6 +986,9 @@ final class GlassAppearance {
   }
 
   Color categoryRowFillIdle() {
+    if (isTrabzon) {
+      return Colors.white.withValues(alpha: 0.08);
+    }
     if (isIos27) {
       return const Color(0xFF0B1730).withValues(alpha: 0.34);
     }
@@ -915,6 +1012,11 @@ final class GlassAppearance {
   }
 
   Color listTileBorder(bool softSelected) {
+    if (isTrabzon) {
+      return softSelected 
+          ? Colors.white.withValues(alpha: 0.60)
+          : Colors.white.withValues(alpha: 0.25);
+    }
     if (isIos27) {
       return softSelected
           ? _ios27Blue.withValues(alpha: 0.60)

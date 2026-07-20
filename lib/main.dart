@@ -1,6 +1,7 @@
 import 'dart:async' show unawaited;
 
 import 'package:firebase_messaging/firebase_messaging.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
@@ -17,9 +18,12 @@ import 'core/services/app_install_source_service.dart';
 import 'core/services/app_settings_service.dart';
 import 'core/services/showcase_in_app_pip_service.dart';
 import 'core/services/firebase_bootstrap.dart';
+import 'core/services/admin_analytics_service.dart';
 import 'core/services/mina_push_service.dart';
+import 'core/services/mina_secure_storage.dart';
 import 'core/services/opensubtitles_service.dart';
 import 'core/services/crash_reporting.dart';
+import 'core/services/firestore_crash_reporter.dart';
 import 'core/services/integrity_service.dart';
 import 'core/services/parental_control_service.dart';
 import 'core/services/system_volume_service.dart';
@@ -40,6 +44,11 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  FirestoreCrashReporter.initGlobalErrorCatchers();
+
+  // EncryptedSharedPreferences + Keystore soğuk init'i arka planda başlat;
+  // UI etkileşiminde ilk containsKey/read ANR üretmesin.
+  final secureStorageWarm = MinaSecureStorage.warmUp();
   MediaKit.ensureInitialized();
 
   Workmanager().initialize(
@@ -79,6 +88,16 @@ Future<void> main() async {
     // Firebase'i korumalı başlat: yapılandırma yoksa sessizce atlanır,
     // uygulama normal akışına devam eder (çökmez).
     await initFirebaseGuarded();
+    if (gFirebaseReady) {
+      AdminAnalyticsService.incrementDailyOpens();
+      try {
+        FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
+        PlatformDispatcher.instance.onError = (error, stack) {
+          FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+          return true;
+        };
+      } catch (_) {}
+    }
 
     // FCM arka plan mesaj handler'ı runApp'ten ÖNCE kaydedilmeli. Firebase
     // hazır değilse atlanır.
@@ -121,6 +140,9 @@ Future<void> main() async {
     );
 
     await settings.syncSystemChromeWithLayout();
+
+    // Keystore ısınması bitmeden playlist/lisans okumaya girme.
+    await secureStorageWarm;
 
     runApp(const MinaIptvApp(initialRoute: AppRoutes.splash));
   });
@@ -243,6 +265,7 @@ void callbackDispatcher() {
   Workmanager().executeTask((task, inputData) async {
     try {
       WidgetsFlutterBinding.ensureInitialized();
+      await MinaSecureStorage.warmUp();
       final prefs = await SharedPreferences.getInstance();
       final activeSlot = prefs.getInt('mina_active_playlist_slot') ?? 1;
 

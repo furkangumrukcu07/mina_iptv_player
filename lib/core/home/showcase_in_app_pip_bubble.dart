@@ -1,11 +1,15 @@
 import 'dart:math' show max;
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:better_player_plus/better_player_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'package:media_kit_video/media_kit_video.dart';
 
+import '../services/app_image_cache_service.dart';
+import '../services/app_settings_service.dart';
 import '../services/showcase_in_app_pip_service.dart';
+import '../theme/app_performance.dart';
 import 'showcase_in_app_pip_layout.dart';
 
 /// Vitrin uygulama içi PiP: dikdörtgen canlı önizleme + dokununca tam oynatıcı.
@@ -153,11 +157,31 @@ class _ShowcaseInAppPipBubbleState extends State<ShowcaseInAppPipBubble>
     final url = svc.posterUrl.value;
     if (url == null || url.isEmpty) return null;
     return Positioned.fill(
-      child: Image.network(
-        url,
-        fit: BoxFit.cover,
-        gaplessPlayback: true,
-        errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final settings = Get.isRegistered<AppSettingsService>()
+              ? Get.find<AppSettingsService>()
+              : null;
+          final dpr = MediaQuery.devicePixelRatioOf(context);
+          final w = constraints.maxWidth > 0 ? constraints.maxWidth : 160.0;
+          final memW = settings == null
+              ? (w * dpr).round().clamp(64, 480)
+              : AppPerformance.posterDecodeWidth(settings, w, dpr);
+          final memH = AppPerformance.posterDecodeHeight(memW);
+          return CachedNetworkImage(
+            imageUrl: url,
+            cacheKey: AppImageCacheService.cacheKeyFor(url),
+            cacheManager: AppImageCacheService.manager,
+            fit: BoxFit.cover,
+            memCacheWidth: memW,
+            memCacheHeight: memH,
+            fadeInDuration: Duration.zero,
+            fadeOutDuration: Duration.zero,
+            filterQuality: FilterQuality.low,
+            errorWidget: (_, __, ___) => const SizedBox.shrink(),
+            placeholder: (_, __) => const SizedBox.shrink(),
+          );
+        },
       ),
     );
   }

@@ -8,6 +8,7 @@ import '../../ui/glass_overlays.dart';
 import '../../ui/settings_glass_panel.dart';
 import '../../ui/themed_settings_background.dart';
 import '../../ui/tv_dpad_focus.dart';
+import '../settings/admin_panel_view.dart';
 import 'chat_controller.dart';
 import 'chat_online_badge.dart';
 import 'chat_support_thread_delete.dart';
@@ -187,13 +188,31 @@ class _RoomListState extends State<_RoomList> {
     final myLang = Get.find<AppSettingsService>().languageCode.value;
     // İlk satır her zaman "Yöneticiye Mesaj Gönder" (admin için gelen kutusu).
     final isAdmin = controller.isAdmin;
+    final extraCount = isAdmin ? 2 : 1;
     return ListView.builder(
       padding: const EdgeInsets.fromLTRB(8, 4, 8, 20),
-      itemCount: rooms.length + 1,
+      itemCount: rooms.length + extraCount,
       itemBuilder: (context, rawIndex) {
-        if (rawIndex == 0) {
+        if (isAdmin && rawIndex == 0) {
           return GlassListTile(
             autofocus: true,
+            leading: const Icon(Icons.admin_panel_settings, color: Colors.deepPurpleAccent, size: 28),
+            title: const Text('Admin Paneli', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+            subtitle: const Text(
+              'Yönetici araçları ve istatistikler',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(color: Colors.white70),
+            ),
+            trailing: const Icon(Icons.chevron_right_rounded, color: Colors.white54),
+            onTap: () => Get.to(() => const AdminPanelView()),
+          );
+        }
+
+        final supportIndex = isAdmin ? 1 : 0;
+        if (rawIndex == supportIndex) {
+          return GlassListTile(
+            autofocus: !isAdmin, // If not admin, autofocus this
             leading: const _SupportLeading(),
             title: Text(
               isAdmin
@@ -210,9 +229,8 @@ class _RoomListState extends State<_RoomList> {
             trailing: const Icon(Icons.chevron_right_rounded,
                 color: Colors.white54),
             onTap: controller.openSupport,
-            // Admin için ilk satır gelen kutusudur (tek bir thread değil),
-            // bu yüzden silme yalnızca normal kullanıcının kendi konuşmasına
-            // uygulanır.
+            // Admin için gelen kutusudur (tek bir thread değil),
+            // bu yüzden silme yalnızca normal kullanıcının kendi konuşmasına uygulanır.
             onLongPress: isAdmin
                 ? null
                 : () {
@@ -222,7 +240,7 @@ class _RoomListState extends State<_RoomList> {
                   },
           );
         }
-        final index = rawIndex - 1;
+        final index = rawIndex - extraCount;
         final room = rooms[index];
         final mine = room.langCode == myLang;
         return Obx(() {

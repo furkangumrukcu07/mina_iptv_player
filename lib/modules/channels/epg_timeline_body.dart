@@ -21,6 +21,7 @@ import '../../domain/entities/channel.dart';
 import '../../domain/entities/epg_entities.dart';
 import '../player/player_controller.dart';
 import 'channels_controller.dart';
+import 'widgets/epg_day_selector.dart';
 import '../../ui/iptv_channel_logo.dart';
 
 const double _kPxPerMinute = 4.0;
@@ -421,8 +422,14 @@ class _ChannelsEpgTimelineBodyState extends State<ChannelsEpgTimelineBody> {
   }
 
   DateTime _windowStart(DateTime now) {
-    final s = now.subtract(const Duration(hours: 1));
-    return DateTime(s.year, s.month, s.day, s.hour, s.minute - (s.minute % 30), 0);
+    final offset = widget.controller.archiveDayOffset.value;
+    if (offset == 0) {
+      final s = now.subtract(const Duration(hours: 1));
+      return DateTime(s.year, s.month, s.day, s.hour, s.minute - (s.minute % 30), 0);
+    } else {
+      final target = now.add(Duration(days: offset));
+      return DateTime(target.year, target.month, target.day, 0, 0, 0);
+    }
   }
 
   String _fmtHm(DateTime d) {
@@ -444,6 +451,10 @@ class _ChannelsEpgTimelineBodyState extends State<ChannelsEpgTimelineBody> {
   }
 
   void _selectProgramme(Channel ch, EpgProgramme p) {
+    if (p.end.isBefore(DateTime.now())) {
+      widget.controller.playCatchUp(ch, p);
+      return;
+    }
     setState(() {
       _pickChannelId = ch.id;
       _pickProgStart = p.start;
@@ -485,9 +496,11 @@ class _ChannelsEpgTimelineBodyState extends State<ChannelsEpgTimelineBody> {
       epg.loadGeneration.value;
       epg.isLoading.value;
 
+      final offset = widget.controller.archiveDayOffset.value;
       final now = DateTime.now();
       final w0 = _windowStart(now);
-      final w1 = w0.add(Duration(hours: _kWindowHours));
+      final activeWindowHours = offset == 0 ? _kWindowHours : 24;
+      final w1 = w0.add(Duration(hours: activeWindowHours));
       final gridW = w1.difference(w0).inMinutes * _kPxPerMinute;
 
       final raw = widget.controller.filteredChannels;
@@ -572,6 +585,8 @@ class _ChannelsEpgTimelineBodyState extends State<ChannelsEpgTimelineBody> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
+                      EpgDaySelector(controller: widget.controller),
+                      const SizedBox(height: 8),
                       SizedBox(
                         height: heroH,
                         child: Padding(
@@ -617,36 +632,39 @@ class _ChannelsEpgTimelineBodyState extends State<ChannelsEpgTimelineBody> {
                                         Padding(
                                           padding:
                                               const EdgeInsets.only(bottom: 6),
-                                          child: _EpgTimelineStripGlass(
-                                            windowStart: w0,
-                                            windowEnd: w1,
-                                            gridWidth: gridW,
-                                            nameColWidth: nameCol,
-                                            stripHeight: _kTimelineStripH,
-                                            xAt: xAt,
-                                            now: now,
+                                          child: ValueListenableBuilder<int>(
+                                            valueListenable: _tickValue,
+                                            builder: (context, tick, child) {
+                                              return _EpgTimelineStripGlass(
+                                                windowStart: w0,
+                                                windowEnd: w1,
+                                                gridWidth: gridW,
+                                                nameColWidth: nameCol,
+                                                stripHeight: _kTimelineStripH,
+                                                xAt: xAt,
+                                                now: DateTime.now(),
+                                              );
+                                            },
                                           ),
                                         ),
                                         Expanded(
                                           child: Scrollbar(
                                             controller: _vScroll,
                                             thumbVisibility: true,
-                                            child: ValueListenableBuilder<int>(
-                                              valueListenable: _tickValue,
-                                              builder: (context, tick, child) {
-                                                return ListView.builder(
-                                                  controller: _vScroll,
-                                                  primary: false,
-                                                  physics:
-                                                      AppScrollPhysics.list(),
-                                                  padding:
-                                                      const EdgeInsets.only(
-                                                    right: 4,
-                                                    bottom: 8,
-                                                  ),
-                                                  itemCount: channels.length,
-                                                  itemBuilder:
-                                                      (context, index) {
+                                            child: ListView.builder(
+                                              controller: _vScroll,
+                                              primary: false,
+                                              physics:
+                                                  AppScrollPhysics.list(),
+                                              padding:
+                                                  const EdgeInsets.only(
+                                                right: 4,
+                                                bottom: 8,
+                                              ),
+                                              itemExtent: rowH,
+                                              itemCount: channels.length,
+                                              itemBuilder:
+                                                  (context, index) {
                                                     final ch =
                                                         channels[index];
                                                     final windowProgrammes =
@@ -689,38 +707,37 @@ class _ChannelsEpgTimelineBodyState extends State<ChannelsEpgTimelineBody> {
                                                           ),
                                                           SizedBox(
                                                             width: gridW,
-                                                            child:
-                                                                _EpgProgrammeRowGlass(
-                                                              channel: ch,
-                                                              programmes:
-                                                                  windowProgrammes,
-                                                              gridWidth: gridW,
-                                                              xAt: xAt,
-                                                              now: now,
-                                                              isPicked:
-                                                                  _isPicked,
-                                                              onPick:
-                                                                  _selectProgramme,
+                                                            child: ValueListenableBuilder<int>(
+                                                              valueListenable: _tickValue,
+                                                              builder: (context, tick, child) {
+                                                                return _EpgProgrammeRowGlass(
+                                                                  channel: ch,
+                                                                  programmes: windowProgrammes,
+                                                                  gridWidth: gridW,
+                                                                  xAt: xAt,
+                                                                  now: DateTime.now(),
+                                                                  isPicked: _isPicked,
+                                                                  onPick: _selectProgramme,
+                                                                );
+                                                              },
                                                             ),
                                                           ),
                                                         ],
                                                       ),
                                                     );
                                                   },
-                                                );
-                                              },
+                                                ),
+                                              ),
                                             ),
-                                          ),
+                                          ],
                                         ),
-                                      ],
+                                      ),
                                     ),
-                                  ),
-                                ),
-                              );
-                            },
+                                  );
+                                },
+                              ),
+                            ),
                           ),
-                        ),
-                      ),
                     ],
                   ),
                 );
@@ -795,6 +812,10 @@ class _PlayerSingleChannelEpgPanelState extends State<PlayerSingleChannelEpgPane
   }
 
   void _selectProgramme(Channel ch, EpgProgramme p) {
+    if (p.end.isBefore(DateTime.now())) {
+      Get.find<ChannelsController>().playCatchUp(ch, p);
+      return;
+    }
     setState(() {
       _pickChannelId = ch.id;
       _pickProgStart = p.start;
@@ -857,9 +878,11 @@ class _PlayerSingleChannelEpgPanelState extends State<PlayerSingleChannelEpgPane
           epg.loadGeneration.value;
           epg.isLoading.value;
 
+          final offset = Get.find<ChannelsController>().archiveDayOffset.value;
           final now = DateTime.now();
       final w0 = _windowStart(now);
-      final w1 = w0.add(Duration(hours: _kWindowHours));
+      final activeWindowHours = offset == 0 ? _kWindowHours : 24;
+      final w1 = w0.add(Duration(hours: activeWindowHours));
       final gridW = w1.difference(w0).inMinutes * _kPxPerMinute;
 
       final ch = _resolvedChannel();
@@ -966,36 +989,39 @@ class _PlayerSingleChannelEpgPanelState extends State<PlayerSingleChannelEpgPane
                                         Padding(
                                           padding:
                                               const EdgeInsets.only(bottom: 6),
-                                          child: _EpgTimelineStripGlass(
-                                            windowStart: w0,
-                                            windowEnd: w1,
-                                            gridWidth: gridW,
-                                            nameColWidth: nameCol,
-                                            stripHeight: _kTimelineStripH,
-                                            xAt: xAt,
-                                            now: now,
+                                          child: ValueListenableBuilder<int>(
+                                            valueListenable: _tickValue,
+                                            builder: (context, tick, child) {
+                                              return _EpgTimelineStripGlass(
+                                                windowStart: w0,
+                                                windowEnd: w1,
+                                                gridWidth: gridW,
+                                                nameColWidth: nameCol,
+                                                stripHeight: _kTimelineStripH,
+                                                xAt: xAt,
+                                                now: DateTime.now(),
+                                              );
+                                            },
                                           ),
                                         ),
                                         Expanded(
                                           child: Scrollbar(
                                             controller: _vScroll,
                                             thumbVisibility: true,
-                                            child: ValueListenableBuilder<int>(
-                                              valueListenable: _tickValue,
-                                              builder: (context, tick, _) {
-                                                return ListView.builder(
-                                                  controller: _vScroll,
-                                                  primary: false,
-                                                  physics:
-                                                      AppScrollPhysics.list(),
-                                                  padding:
-                                                      const EdgeInsets.only(
-                                                    right: 4,
-                                                    bottom: 8,
-                                                  ),
-                                                  itemCount: channels.length,
-                                                  itemBuilder:
-                                                      (context, index) {
+                                            child: ListView.builder(
+                                              controller: _vScroll,
+                                              primary: false,
+                                              physics:
+                                                  AppScrollPhysics.list(),
+                                              padding:
+                                                  const EdgeInsets.only(
+                                                right: 4,
+                                                bottom: 8,
+                                              ),
+                                              itemExtent: rowH,
+                                              itemCount: channels.length,
+                                              itemBuilder:
+                                                  (context, index) {
                                                     final rowCh =
                                                         channels[index];
                                                     return SizedBox(
@@ -1034,27 +1060,26 @@ class _PlayerSingleChannelEpgPanelState extends State<PlayerSingleChannelEpgPane
                                                           ),
                                                           SizedBox(
                                                             width: gridW,
-                                                            child:
-                                                                _EpgProgrammeRowGlass(
-                                                              channel: rowCh,
-                                                              programmes:
-                                                                  windowProgrammes,
-                                                              gridWidth: gridW,
-                                                              xAt: xAt,
-                                                              now: now,
-                                                              isPicked:
-                                                                  _isPicked,
-                                                              onPick:
-                                                                  _selectProgramme,
+                                                            child: ValueListenableBuilder<int>(
+                                                              valueListenable: _tickValue,
+                                                              builder: (context, tick, child) {
+                                                                return _EpgProgrammeRowGlass(
+                                                                  channel: rowCh,
+                                                                  programmes: windowProgrammes,
+                                                                  gridWidth: gridW,
+                                                                  xAt: xAt,
+                                                                  now: DateTime.now(),
+                                                                  isPicked: _isPicked,
+                                                                  onPick: _selectProgramme,
+                                                                );
+                                                              },
                                                             ),
                                                           ),
                                                         ],
                                                       ),
                                                     );
                                                   },
-                                                );
-                                              },
-                                            ),
+                                                ),
                                           ),
                                         ),
                                       ],
@@ -2191,17 +2216,31 @@ class _EpgProgrammeFocusCell extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    Text(
-                      p.title.trim(),
-                      maxLines: titleLines,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        color: Colors.white.withValues(alpha: 0.96),
-                        fontSize: titleFs,
-                        height: 1.12,
-                        fontWeight: live ? FontWeight.w800 : FontWeight.w600,
-                        letterSpacing: 0.05,
-                      ),
+                    Row(
+                      children: [
+                        if (p.end.isBefore(DateTime.now())) ...[
+                          Icon(
+                            Icons.history,
+                            size: titleFs,
+                            color: Colors.white.withValues(alpha: 0.5),
+                          ),
+                          const SizedBox(width: 4),
+                        ],
+                        Expanded(
+                          child: Text(
+                            p.title.trim(),
+                            maxLines: titleLines,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              color: Colors.white.withValues(alpha: 0.96),
+                              fontSize: titleFs,
+                              height: 1.12,
+                              fontWeight: live ? FontWeight.w800 : FontWeight.w600,
+                              letterSpacing: 0.05,
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                     if (showTime)
                       Text(
@@ -2246,7 +2285,6 @@ class _EpgProgrammeRowGlass extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final list = programmes.where(_epgProgrammeHasContent).toList();
     final nowX = xAt(now);
     final timeFmt =
         DateFormat('HH:mm', Localizations.localeOf(context).toString());
@@ -2257,39 +2295,43 @@ class _EpgProgrammeRowGlass extends StatelessWidget {
     final prim = Theme.of(context).colorScheme.primary;
     final rowH = _epgRowH(context);
 
-    final children = <Widget>[
-      ...list.map((p) {
-        final left = xAt(p.start);
-        final right = xAt(p.end);
-        final w = (right - left).clamp(0.0, gridWidth);
-        if (w < 14) return const SizedBox.shrink();
-        final picked = isPicked(channel, p);
-        final live = p.isLive;
-        final fill = live
-            ? (landscape
-                ? [
-                    prim.withValues(alpha: 0.16),
-                    prim.withValues(alpha: 0.06),
-                  ]
-                : [
-                    Colors.tealAccent.withValues(alpha: 0.14),
-                    Colors.tealAccent.withValues(alpha: 0.06),
-                  ])
-            : [
-                Colors.white.withValues(alpha: picked ? 0.12 : 0.06),
-                Colors.white.withValues(alpha: picked ? 0.06 : 0.03),
-              ];
-        final borderC = picked
-            ? (landscape
-                ? prim.withValues(alpha: 0.72)
-                : Colors.white.withValues(alpha: 0.42))
-            : (live
-                ? (landscape
-                    ? prim.withValues(alpha: 0.52)
-                    : Colors.tealAccent.withValues(alpha: 0.45))
-                : ga.popupBorderColor.withValues(alpha: 0.9));
+    final children = <Widget>[];
+    for (final p in programmes) {
+      if (!_epgProgrammeHasContent(p)) continue;
+      
+      final left = xAt(p.start);
+      final right = xAt(p.end);
+      final w = (right - left).clamp(0.0, gridWidth);
+      if (w < 14) continue;
+      
+      final picked = isPicked(channel, p);
+      final live = p.isLive;
+      final fill = live
+          ? (landscape
+              ? [
+                  prim.withValues(alpha: 0.16),
+                  prim.withValues(alpha: 0.06),
+                ]
+              : [
+                  Colors.tealAccent.withValues(alpha: 0.14),
+                  Colors.tealAccent.withValues(alpha: 0.06),
+                ])
+          : [
+              Colors.white.withValues(alpha: picked ? 0.12 : 0.06),
+              Colors.white.withValues(alpha: picked ? 0.06 : 0.03),
+            ];
+      final borderC = picked
+          ? (landscape
+              ? prim.withValues(alpha: 0.72)
+              : Colors.white.withValues(alpha: 0.42))
+          : (live
+              ? (landscape
+                  ? prim.withValues(alpha: 0.52)
+                  : Colors.tealAccent.withValues(alpha: 0.45))
+              : ga.popupBorderColor.withValues(alpha: 0.9));
 
-        return Positioned(
+      children.add(
+        Positioned(
           left: left,
           top: 4,
           height: rowH - 8,
@@ -2306,9 +2348,12 @@ class _EpgProgrammeRowGlass extends StatelessWidget {
             onPick: onPick,
             landscapeBlueAccent: landscape,
           ),
-        );
-      }),
-      if (nowX >= 0 && nowX <= gridWidth)
+        ),
+      );
+    }
+    
+    if (nowX >= 0 && nowX <= gridWidth) {
+      children.add(
         Positioned(
           left: nowX,
           top: 0,
@@ -2324,7 +2369,8 @@ class _EpgProgrammeRowGlass extends StatelessWidget {
             ),
           ),
         ),
-    ];
+      );
+    }
 
     return Stack(
       clipBehavior: Clip.hardEdge,

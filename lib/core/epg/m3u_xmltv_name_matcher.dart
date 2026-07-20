@@ -4,26 +4,40 @@ import 'dart:math' as math;
 abstract final class M3uXmltvNameMatcher {
   static const double minAcceptScore = 0.35;
 
+  // ANR Düzeltme: Her norm() çağrısında yeni RegExp nesnesi oluşturulursa
+  // Dart bytecode yorumlayıcısı defalarca çalıştırılır. Binlerce kanal × XML
+  // girişi için bu CPU-yoğun ANR'a yol açar. Tüm RegExp'ler static final
+  // olarak önbelleğe alınır — yalnızca bir kez derlenir.
+  static final _reCountryPrefix = RegExp(r'^[a-z]{2,3}\s?[:\-|]\s?');
+  static final _reTechWords = RegExp(
+    r'\b(hd|fhd|uhd|4k|sd|hevc|h265|h264|raw|vip|premium|back|alternate|multi|mono|stereo|aac|ac3|dts)\b',
+  );
+  static final _reBracket = RegExp(r'\[[^\]]*\]');
+  static final _reParen = RegExp(r'\([^)]*\)');
+  static final _reChannelWords = RegExp(r'\b(tv|iptv|channel|stream|official|live)\b');
+  static final _reSpecialChars = RegExp(r'[^a-zA-Z0-9ğüşöçıİâîûâ\s]');
+  static final _reMultiSpace = RegExp(r'\s+');
+
   static String norm(String raw) {
     var s = raw.toLowerCase().trim();
-    
+
     // Ülke öneklerini temizle (örn: "TR:", "TR |", "DE -")
-    s = s.replaceFirst(RegExp(r'^[a-z]{2,3}\s?[:\-|]\s?'), ' ');
-    
+    s = s.replaceFirst(_reCountryPrefix, ' ');
+
     // Teknik kalite ve format ibarelerini temizle
-    s = s.replaceAll(RegExp(r'\b(hd|fhd|uhd|4k|sd|hevc|h265|h264|raw|vip|premium|back|alternate|multi|mono|stereo|aac|ac3|dts)\b'), ' ');
-    
+    s = s.replaceAll(_reTechWords, ' ');
+
     // Parantez içi ve köşeli parantez içi (örn: "[TR]", "(SD)")
-    s = s.replaceAll(RegExp(r'\[[^\]]*\]'), ' ');
-    s = s.replaceAll(RegExp(r'\([^)]*\)'), ' ');
-    
+    s = s.replaceAll(_reBracket, ' ');
+    s = s.replaceAll(_reParen, ' ');
+
     // Sayısal olmayan ancak isim bozucu ibareler
-    s = s.replaceAll(RegExp(r'\b(tv|iptv|channel|stream|official|live)\b'), ' ');
-    
+    s = s.replaceAll(_reChannelWords, ' ');
+
     // Gereksiz boşluklar ve özel karakterler
-    s = s.replaceAll(RegExp(r'[^a-zA-Z0-9ğüşöçıİâîûâ\s]'), ' ');
-    s = s.replaceAll(RegExp(r'\s+'), ' ');
-    
+    s = s.replaceAll(_reSpecialChars, ' ');
+    s = s.replaceAll(_reMultiSpace, ' ');
+
     return _foldTr(s.trim());
   }
 

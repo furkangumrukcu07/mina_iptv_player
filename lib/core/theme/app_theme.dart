@@ -91,6 +91,10 @@ abstract final class AppTheme {
   static const _macLandscapeAsset = '$_bgDir/mac_landscape.jpg';
   static const _macPortraitAsset = '$_bgDir/mac_portrait.jpg';
 
+  /// [GlassThemeLabels.trabzon]: Canlı zemin (mesh gradient) Trabzon teması (yatay / dikey).
+  static const _trabzonLandscapeAsset = '$_bgDir/trabzon_landscape.jpg';
+  static const _trabzonPortraitAsset = '$_bgDir/trabzon_portrait.jpg';
+
   /// [themeLabel]: [AppSettingsService.themeLabel] (örn. `GlassThemeLabels.koyuCam`).
   static String homeBackgroundAsset(
     BuildContext context, {
@@ -144,6 +148,11 @@ abstract final class AppTheme {
           ? _macPortraitAsset
           : _macLandscapeAsset;
     }
+    if (themeLabel == GlassThemeLabels.trabzon) {
+      return MediaQuery.orientationOf(context) == Orientation.portrait
+          ? _trabzonPortraitAsset
+          : _trabzonLandscapeAsset;
+    }
     if (themeLabel == GlassThemeLabels.semcTheme) {
       return MediaQuery.orientationOf(context) == Orientation.portrait
           ? _semcPortraitAsset
@@ -196,6 +205,7 @@ abstract final class AppTheme {
         themeLabel == GlassThemeLabels.tvLite ||
         themeLabel == GlassThemeLabels.ios27 ||
         themeLabel == GlassThemeLabels.macTema ||
+        themeLabel == GlassThemeLabels.trabzon ||
         themeLabel == GlassThemeLabels.flyUi) {
       return (
         zoom: 1.0,

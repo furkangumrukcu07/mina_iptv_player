@@ -150,37 +150,47 @@ class _GlobalSearchDialogState extends State<GlobalSearchDialog> {
       ),
     );
 
-    return Dialog(
-      backgroundColor: Colors.transparent,
-      insetPadding: EdgeInsets.zero,
-      child: Stack(
-        children: [
-          // Panel DIŞINDAKİ alana dokununca diyaloğu kapat (bariyer dokunuşu
-          // Dialog'un dolu yüzeyi tarafından yutulduğundan açıkça ekliyoruz).
-          Positioned.fill(
-            child: GestureDetector(
-              behavior: HitTestBehavior.opaque,
-              onTap: () => Navigator.of(context).maybePop(),
+    return PopScope(
+      canPop: true,
+      onPopInvokedWithResult: (didPop, _) {
+        // TV'de geri tuşu: klavyeyi kapat, dialog kapansın
+        if (didPop) {
+          _inputFocus.unfocus();
+          FocusManager.instance.primaryFocus?.unfocus();
+        }
+      },
+      child: Dialog(
+        backgroundColor: Colors.transparent,
+        insetPadding: EdgeInsets.zero,
+        child: Stack(
+          children: [
+            Positioned.fill(
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () {
+                  _inputFocus.unfocus();
+                  Navigator.of(context).maybePop();
+                },
+              ),
             ),
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
-            child: Center(
-              child: ConstrainedBox(
-                constraints: BoxConstraints(
-                  maxWidth: width.clamp(320.0, 720.0),
-                  maxHeight: maxHeight,
-                ),
-                // Panel üzerindeki dokunuşlar arka kapatma alanına sızmasın.
-                child: GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () {},
-                  child: panel,
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 24),
+              child: Center(
+                child: ConstrainedBox(
+                  constraints: BoxConstraints(
+                    maxWidth: width.clamp(320.0, 720.0),
+                    maxHeight: maxHeight,
+                  ),
+                  child: GestureDetector(
+                    behavior: HitTestBehavior.opaque,
+                    onTap: () {},
+                    child: panel,
+                  ),
                 ),
               ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -221,8 +231,7 @@ class _GlobalSearchDialogState extends State<GlobalSearchDialog> {
       decoration: InputDecoration(
         hintText: '',
         hintStyle: TextStyle(color: Colors.white.withValues(alpha: 0.5)),
-        prefixIcon:
-            const Icon(Icons.search_rounded, color: Colors.white70),
+        prefixIcon: const Icon(Icons.search_rounded, color: Colors.white70),
         filled: true,
         fillColor: Colors.white.withValues(alpha: 0.1),
         border: OutlineInputBorder(
@@ -234,10 +243,17 @@ class _GlobalSearchDialogState extends State<GlobalSearchDialog> {
       ),
       textInputAction: TextInputAction.search,
       onSubmitted: (_) {
-        FocusScope.of(context).requestFocus(FocusNode());
-        Future.delayed(const Duration(milliseconds: 100), () {
-          if (mounted) _inputFocus.requestFocus();
-        });
+        // TV modunda Enter/OK tuşu sonrası klavyeyi kapat,
+        // sonra arama alanından sonuçlara geç (focus aşağı al).
+        _inputFocus.unfocus();
+        if (_tvRemote) {
+          // Sonuçlar varsa ilk sonuca odaklan
+          if (_resultFocusNodes.isNotEmpty) {
+            Future.delayed(const Duration(milliseconds: 100), () {
+              if (mounted) _resultFocusNodes.first.requestFocus();
+            });
+          }
+        }
       },
     );
   }
@@ -252,37 +268,39 @@ class _GlobalSearchDialogState extends State<GlobalSearchDialog> {
     }
 
     _syncResultFocusNodes(total);
-    var row = 0;
 
-    return ListView(
+    final items = <Object>[];
+    if (buckets.channels.isNotEmpty) {
+      items.add('home.live'.tr);
+      items.addAll(buckets.channels);
+    }
+    if (buckets.vods.isNotEmpty) {
+      items.add('home.films'.tr);
+      items.addAll(buckets.vods);
+    }
+    if (buckets.series.isNotEmpty) {
+      items.add('home.series'.tr);
+      items.addAll(buckets.series);
+    }
+
+    return ListView.builder(
       controller: _scrollController,
       padding: const EdgeInsets.fromLTRB(8, 0, 8, 16),
-      children: [
-        if (buckets.channels.isNotEmpty) ...[
-          _buildHeader('home.live'.tr),
-          ...buckets.channels.map((ch) {
-            final tile = _buildChannelTile(ch, row);
-            row++;
-            return tile;
-          }),
-        ],
-        if (buckets.vods.isNotEmpty) ...[
-          _buildHeader('home.films'.tr),
-          ...buckets.vods.map((v) {
-            final tile = _buildVodTile(v, row);
-            row++;
-            return tile;
-          }),
-        ],
-        if (buckets.series.isNotEmpty) ...[
-          _buildHeader('home.series'.tr),
-          ...buckets.series.map((s) {
-            final tile = _buildSeriesTile(s, row);
-            row++;
-            return tile;
-          }),
-        ],
-      ],
+      itemCount: items.length,
+      itemBuilder: (context, index) {
+        final item = items[index];
+        if (item is String) return _buildHeader(item);
+
+        int row = 0;
+        for (int i = 0; i < index; i++) {
+          if (items[i] is! String) row++;
+        }
+
+        if (item is Channel) return _buildChannelTile(item, row);
+        if (item is VodItem) return _buildVodTile(item, row);
+        if (item is SeriesItem) return _buildSeriesTile(item, row);
+        return const SizedBox.shrink();
+      },
     );
   }
 
@@ -307,8 +325,7 @@ class _GlobalSearchDialogState extends State<GlobalSearchDialog> {
       subtitle: Text(widget.controller.getChannelCategoryName(ch.categoryId)),
       leading: _buildLogo(ch.logoUrl),
       focusNode: _tvRemote ? _resultFocusNodes[rowIndex] : null,
-      focusOnArrowUp:
-          _tvRemote && rowIndex == 0 ? _inputFocus : null,
+      focusOnArrowUp: _tvRemote && rowIndex == 0 ? _inputFocus : null,
       onTap: () {
         _recordCurrentQuery();
         Navigator.of(context).pop();
@@ -323,8 +340,7 @@ class _GlobalSearchDialogState extends State<GlobalSearchDialog> {
       subtitle: Text(widget.controller.getVodCategoryName(v.categoryId)),
       leading: _buildLogo(v.posterUrl),
       focusNode: _tvRemote ? _resultFocusNodes[rowIndex] : null,
-      focusOnArrowUp:
-          _tvRemote && rowIndex == 0 ? _inputFocus : null,
+      focusOnArrowUp: _tvRemote && rowIndex == 0 ? _inputFocus : null,
       onTap: () {
         _recordCurrentQuery();
         Navigator.of(context).pop();
@@ -339,8 +355,7 @@ class _GlobalSearchDialogState extends State<GlobalSearchDialog> {
       subtitle: Text(widget.controller.getSeriesCategoryName(s.categoryId)),
       leading: _buildLogo(s.posterUrl),
       focusNode: _tvRemote ? _resultFocusNodes[rowIndex] : null,
-      focusOnArrowUp:
-          _tvRemote && rowIndex == 0 ? _inputFocus : null,
+      focusOnArrowUp: _tvRemote && rowIndex == 0 ? _inputFocus : null,
       onTap: () {
         _recordCurrentQuery();
         Navigator.of(context).pop();
@@ -428,6 +443,11 @@ class _GlassListTileState extends State<GlassListTile> {
             k == LogicalKeyboardKey.select ||
             k == LogicalKeyboardKey.numpadEnter) {
           widget.onTap();
+          return KeyEventResult.handled;
+        }
+        // Geri tuşu: dialog'u kapat (ana ekrana dön)
+        if (k == LogicalKeyboardKey.escape || k == LogicalKeyboardKey.goBack) {
+          Navigator.of(context).maybePop();
           return KeyEventResult.handled;
         }
         return KeyEventResult.ignored;

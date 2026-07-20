@@ -1,4 +1,4 @@
-import 'dart:async' show scheduleMicrotask;
+import 'dart:async' show Timer, scheduleMicrotask;
 import 'dart:math';
 
 import 'package:flutter/material.dart';
@@ -288,9 +288,43 @@ class _UpcomingMatchChipState extends State<_UpcomingMatchChip> {
   late final FocusNode _internalFocus = FocusNode();
   FocusNode get _focus => widget.focusNode ?? _internalFocus;
   var _focused = false;
+  Timer? _timer;
+  String _countdownText = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _updateCountdown();
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) => _updateCountdown());
+  }
+
+  void _updateCountdown() {
+    if (!mounted) return;
+    final now = DateTime.now();
+    final start = widget.entry.programme.start.toLocal();
+    final diff = start.difference(now);
+
+    if (diff.isNegative) {
+      const newText = 'Canlı';
+      if (_countdownText != newText) {
+        setState(() => _countdownText = newText);
+      }
+      return;
+    }
+
+    final h = diff.inHours;
+    final m = (diff.inMinutes % 60).toString().padLeft(2, '0');
+    final s = (diff.inSeconds % 60).toString().padLeft(2, '0');
+
+    final newText = h > 0 ? 'Başlıyor: $h:$m:$s' : 'Başlıyor: $m:$s';
+    if (_countdownText != newText) {
+      setState(() => _countdownText = newText);
+    }
+  }
 
   @override
   void dispose() {
+    _timer?.cancel();
     if (widget.focusNode == null) {
       _internalFocus.dispose();
     }
@@ -321,9 +355,8 @@ class _UpcomingMatchChipState extends State<_UpcomingMatchChip> {
     final title = p.title.trim().isEmpty
         ? widget.entry.channel.name.trim()
         : p.title.trim();
-    final start = widget.timeFmt.format(p.start.toLocal());
     final channel = widget.entry.channel.name.trim();
-    final secondary = channel.isEmpty ? start : '$start · $channel';
+    final secondary = channel.isEmpty ? _countdownText : '$_countdownText · $channel';
 
     Widget chip = HomeGlassStripChip(
       primaryText: title.isEmpty ? '—' : title,

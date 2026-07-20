@@ -29,8 +29,8 @@ abstract final class AppPerformance {
   /// yüksek tutulur (aşırı düşük adet kaydırmayı bozardı).
   static const int _imageCacheBytesTv = 55 * 1024 * 1024;
 
-  /// Düşük donanım: ~45 MB ile sınırla (OOM riskini azaltır).
-  static const int _imageCacheBytesLowEnd = 45 * 1024 * 1024;
+  /// Düşük donanım: ~30 MB ile sınırla (OOM riskini ekstra azaltır).
+  static const int _imageCacheBytesLowEnd = 30 * 1024 * 1024;
 
   /// Normal cihazda eşzamanlı tutulan decode'lu görsel adedi (Flutter varsayılanı 1000).
   static const int _imageCacheCountNormal = 1000;
@@ -39,7 +39,7 @@ abstract final class AppPerformance {
   static const int _imageCacheCountTv = 400;
 
   /// Düşük donanımda görsel adedi sınırı.
-  static const int _imageCacheCountLowEnd = 300;
+  static const int _imageCacheCountLowEnd = 150;
 
   /// Açılışta ön-yüklenen poster/logo decode boyutunu küçültmek için çarpan
   /// (1.0 = orijinal). Düşük donanımda ~%65.

@@ -185,24 +185,26 @@ class OtherToolsView extends StatelessWidget {
                               ),
                             ),
                           ),
-                        const SizedBox(height: 10),
-                        Obx(
-                          () => _ToolTile(
-                            tvDpadIndex: _dpadLowEnd,
-                            icon: Icons.memory_rounded,
-                            title: 'settings.lowEndMode.title'.tr,
-                            subtitle: Text(
-                              app.lowEndDeviceMode.value
-                                  ? 'settings.lowEndMode.subOn'.tr
-                                  : 'settings.lowEndMode.subOff'.tr,
-                              style: _subtitleStyle,
-                            ),
-                            primary: primary,
-                            onTap: () => app.setLowEndDeviceMode(
-                              !app.lowEndDeviceMode.value,
+                        if (app.layoutMode.value != AppLayoutMode.mobile) ...[
+                          const SizedBox(height: 10),
+                          Obx(
+                            () => _ToolTile(
+                              tvDpadIndex: _dpadLowEnd,
+                              icon: Icons.memory_rounded,
+                              title: 'settings.lowEndMode.title'.tr,
+                              subtitle: Text(
+                                app.lowEndDeviceMode.value
+                                    ? 'settings.lowEndMode.subOn'.tr
+                                    : 'settings.lowEndMode.subOff'.tr,
+                                style: _subtitleStyle,
+                              ),
+                              primary: primary,
+                              onTap: () => app.setLowEndDeviceMode(
+                                !app.lowEndDeviceMode.value,
+                              ),
                             ),
                           ),
-                        ),
+                        ],
                         if (Platform.isAndroid) ...[
                           const SizedBox(height: 10),
                           _ToolTile(

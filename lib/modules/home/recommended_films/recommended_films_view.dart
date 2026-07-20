@@ -260,9 +260,7 @@ class RecommendedFilmsView extends GetView<RecommendedFilmsController> {
                       ? (constraints.maxWidth >= 1500
                           ? 1600.0
                           : constraints.maxWidth)
-                      : (constraints.maxWidth >= 900
-                          ? 920.0
-                          : constraints.maxWidth);
+                      : constraints.maxWidth;
                   return Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [

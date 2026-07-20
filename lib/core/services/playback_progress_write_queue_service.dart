@@ -14,6 +14,7 @@ class PlaybackProgressWriteTask {
     this.seriesId,
     this.seriesTitle,
     this.seriesCoverUrl,
+    this.episodeStreamId,
   }) : clearOnly = false;
 
   const PlaybackProgressWriteTask.clear({
@@ -25,7 +26,8 @@ class PlaybackProgressWriteTask {
         positionMs = 0,
         durationMs = 0,
         seriesTitle = null,
-        seriesCoverUrl = null;
+        seriesCoverUrl = null,
+        episodeStreamId = null;
 
   final int vodId;
   final bool clearOnly;
@@ -38,6 +40,7 @@ class PlaybackProgressWriteTask {
   final int? seriesId;
   final String? seriesTitle;
   final String? seriesCoverUrl;
+  final int? episodeStreamId;
 }
 
 /// Watch progress yazımlarını tek kuyruğa toplar.
@@ -57,6 +60,7 @@ class PlaybackProgressWriteQueueService extends GetxService {
     int? seriesId,
     String? seriesTitle,
     String? seriesCoverUrl,
+    int? episodeStreamId,
     bool flushNow = false,
   }) {
     _pendingByVodId[vodId] = PlaybackProgressWriteTask.save(
@@ -68,6 +72,7 @@ class PlaybackProgressWriteQueueService extends GetxService {
       seriesId: seriesId,
       seriesTitle: seriesTitle,
       seriesCoverUrl: seriesCoverUrl,
+      episodeStreamId: episodeStreamId,
     );
     if (flushNow) {
       return flushPendingAndWait();
@@ -141,6 +146,7 @@ class PlaybackProgressWriteQueueService extends GetxService {
           coverUrl: task.seriesCoverUrl ?? task.coverUrl,
           positionMs: task.positionMs,
           durationMs: task.durationMs,
+          episodeStreamId: task.episodeStreamId ?? task.vodId,
         );
       }
     }

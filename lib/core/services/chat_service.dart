@@ -1,11 +1,21 @@
 import 'dart:async';
+import 'dart:ui';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/widgets.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/material.dart';
 import 'package:get/get.dart';
+import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import 'package:translator/translator.dart';
 
 import 'auth_service.dart';
 import 'firebase_bootstrap.dart';
+import '../routes/app_routes.dart';
+import 'licensing_service.dart';
 
 /// Tek bir sohbet odası (uygulamanın desteklediği bir yerelleştirme dili).
 @immutable
@@ -126,6 +136,7 @@ class SupportThread {
     this.lastMessage,
     this.lastTimestamp,
     this.lastSenderId,
+    this.status,
   });
 
   /// Konuşma sahibi kullanıcının UID'si (thread doküman kimliği).
@@ -134,6 +145,7 @@ class SupportThread {
   final String? userPhotoUrl;
   final String? lastMessage;
   final DateTime? lastTimestamp;
+  final String? status; // 'unread', 'resolved', 'pending'
 
   /// Son mesajı kim yazdı (admin yanıtı mı kullanıcı mı ayırt etmek için).
   final String? lastSenderId;
@@ -151,6 +163,7 @@ class SupportThread {
       lastMessage: _str(data['lastMessage']),
       lastTimestamp: ts is Timestamp ? ts.toDate() : null,
       lastSenderId: _str(data['lastSenderId']),
+      status: _str(data['status']),
     );
   }
 }
@@ -203,6 +216,11 @@ class ChatService extends GetxService with WidgetsBindingObserver {
 
   final AuthService? _authOverride;
   Worker? _authPresenceWorker;
+  StreamSubscription? _unreadSub;
+  StreamSubscription? _announcementSub;
+
+  /// Kullanıcının okunmamış destek mesajı sayısı.
+  final RxInt unreadMessages = 0.obs;
 
   /// `chats/rooms/{lang}` — her dil kodu, mesaj dökümanlarını tutan bir
   /// koleksiyondur. (Kullanıcının istediği `chats/rooms/{lang}/messages`
@@ -396,6 +414,88 @@ class ChatService extends GetxService with WidgetsBindingObserver {
     return _supportThreadsRef().doc(userUid).collection(_supportMessagesSub);
   }
 
+  /// Admin'in belirli bir kullanıcıya özel destek mesajı atmasını sağlar.
+  Future<void> sendAdminMessageToUser(String targetUid, String text) async {
+    final senderId = currentUserId;
+    if (senderId == null) return;
+
+    final trimmed = text.trim();
+    if (trimmed.isEmpty) return;
+
+    final batch = FirebaseFirestore.instance.batch();
+    final threadRef = _supportThreadsRef().doc(targetUid);
+    final msgRef = _supportMessagesRef(targetUid).doc();
+    final now = FieldValue.serverTimestamp();
+
+    final msgData = <String, dynamic>{
+      'senderId': senderId,
+      'senderName': currentUserName.isEmpty ? 'Admin' : currentUserName,
+      'messageText': trimmed,
+      'timestamp': now,
+      'senderRole': 'admin',
+    };
+    final photo = currentUserPhotoUrl;
+    if (photo != null) msgData['senderPhotoUrl'] = photo;
+
+    final metaData = <String, dynamic>{
+      'userId': targetUid,
+      'lastMessageText': trimmed,
+      'lastMessageTime': now,
+      'unreadCountUser': FieldValue.increment(1),
+    };
+
+    batch.set(msgRef, msgData);
+    batch.set(threadRef, metaData, SetOptions(merge: true));
+
+    await batch.commit();
+  }
+
+  /// Admin'in birden fazla kullanıcıya tek seferde mesaj atmasını sağlar.
+  Future<void> sendBulkAdminMessage(List<String> targetUids, String text) async {
+    final senderId = currentUserId;
+    if (senderId == null || text.trim().isEmpty) return;
+
+    final trimmed = text.trim();
+    final db = FirebaseFirestore.instance;
+    WriteBatch batch = db.batch();
+    int opCount = 0;
+
+    for (final uid in targetUids) {
+      if (opCount >= 490) { // Firestore batch limit is 500
+        await batch.commit();
+        batch = db.batch();
+        opCount = 0;
+      }
+
+      final threadRef = _supportThreadsRef().doc(uid);
+      final msgRef = _supportMessagesRef(uid).doc();
+      final now = FieldValue.serverTimestamp();
+
+      final msgData = <String, dynamic>{
+        'senderId': senderId,
+        'senderName': 'Admin',
+        'messageText': trimmed,
+        'timestamp': now,
+        'senderRole': 'admin',
+      };
+
+      final metaData = <String, dynamic>{
+        'userId': uid,
+        'lastMessageText': trimmed,
+        'lastMessageTime': now,
+        'unreadCountUser': FieldValue.increment(1),
+      };
+
+      batch.set(msgRef, msgData);
+      batch.set(threadRef, metaData, SetOptions(merge: true));
+      opCount += 2;
+    }
+
+    if (opCount > 0) {
+      await batch.commit();
+    }
+  }
+
   /// Belirli bir kullanıcının admin ile konuşmasının son [_messageLimit]
   /// mesajını canlı dinler (en yeni en altta).
   Stream<List<ChatMessage>> supportMessagesStream(String userUid) {
@@ -428,6 +528,8 @@ class ChatService extends GetxService with WidgetsBindingObserver {
     String userUid,
     String text, {
     ChatMessage? replyTo,
+    String? targetUserName,
+    String? targetUserPhotoUrl,
   }) async {
     final trimmed = text.trim();
     if (trimmed.isEmpty) return false;
@@ -467,6 +569,16 @@ class ChatService extends GetxService with WidgetsBindingObserver {
       if (!sentByAdmin && uid == userUid) {
         meta['userName'] = currentUserName;
         if (photo != null) meta['userPhotoUrl'] = photo;
+        meta['status'] = 'unread'; // Sadece kullanıcı yazarsa unread yap, admin yanıtlarsa değil
+      } else {
+        // Admin yazarken hedefin ismi/resmi varsa (örneğin çevrimiçi listesinden geliyorsa)
+        // isim/resim eksikse diye meta dokümanına kaydedelim:
+        if (targetUserName != null && targetUserName.isNotEmpty) {
+          meta['userName'] = targetUserName;
+        }
+        if (targetUserPhotoUrl != null && targetUserPhotoUrl.isNotEmpty) {
+          meta['userPhotoUrl'] = targetUserPhotoUrl;
+        }
       }
       await _supportThreadsRef()
           .doc(userUid)
@@ -474,6 +586,20 @@ class ChatService extends GetxService with WidgetsBindingObserver {
       return true;
     } catch (e) {
       debugPrint('[ChatService] sendSupportMessage error: $e');
+      return false;
+    }
+  }
+
+  /// Thread durumunu günceller (unread, resolved, pending)
+  Future<bool> markThreadStatus(String userUid, String status) async {
+    if (!isReady || currentUserId == null) return false;
+    try {
+      await _supportThreadsRef()
+          .doc(userUid)
+          .set({'status': status}, SetOptions(merge: true));
+      return true;
+    } catch (e) {
+      debugPrint('[ChatService] markThreadStatus error: $e');
       return false;
     }
   }
@@ -560,8 +686,325 @@ class ChatService extends GetxService with WidgetsBindingObserver {
     unawaited(Future<void>.delayed(const Duration(seconds: 2), () {
       if (isClosed) return;
       syncAppPresence();
+      _listenToAnnouncements();
     }));
     syncAppPresence();
+    _listenToAnnouncements();
+    _checkSmartTrialAnnouncement();
+  }
+
+  void _listenToAnnouncements() {
+    _announcementSub?.cancel();
+    if (!gFirebaseReady) return;
+    _announcementSub = FirebaseFirestore.instance
+        .collection('admin_announcements')
+        .orderBy('createdAt', descending: true)
+        .limit(5)
+        .snapshots()
+        .listen((snap) async {
+      if (snap.docs.isEmpty) return;
+      
+      // Bulunan 5 duyuru içerisinden scheduledFor (Zamanlanan vakit) şu andan küçük olan İLK duyuruyu bul:
+      QueryDocumentSnapshot<Map<String, dynamic>>? targetDoc;
+      final now = DateTime.now();
+      for (final doc in snap.docs) {
+        final data = doc.data();
+        if (data['scheduledFor'] != null) {
+          final scheduledDate = (data['scheduledFor'] as Timestamp).toDate();
+          if (scheduledDate.isBefore(now) || scheduledDate.isAtSameMomentAs(now)) {
+            targetDoc = doc;
+            break;
+          }
+        }
+      }
+
+      if (targetDoc == null) return; // Geçerli duyuru yok
+      
+      final data = targetDoc.data();
+      final id = targetDoc.id;
+      String? title = data['title'] as String?;
+      String? message = data['message'] as String?;
+      final url = data['url'] as String?;
+      
+      if (title == null || message == null) return;
+
+      // Kullanıcının dili Türkçe değilse, metinleri çevir
+      final localeCode = Get.locale?.languageCode ?? 'en';
+      if (localeCode != 'tr') {
+        try {
+          final translator = GoogleTranslator();
+          final translatedTitle = await translator.translate(title, from: 'tr', to: localeCode);
+          final translatedMsg = await translator.translate(message, from: 'tr', to: localeCode);
+          title = translatedTitle.text;
+          message = translatedMsg.text;
+        } catch (e) {
+          debugPrint('Translation error: $e');
+        }
+      }
+
+      // Sıçrama (Splash) ekranı veya henüz hazır değilse bekle.
+      // Bu sayede splash ekranı kapanırken pop-up'ın da kapanmasını engelliyoruz.
+      while (Get.currentRoute == '/' || Get.currentRoute.isEmpty) {
+        await Future.delayed(const Duration(milliseconds: 500));
+      }
+      
+      // Navigasyon geçişinin (animasyonunun) tamamen bitmesi için ekstra bekleme süresi:
+      // Aksi halde Get.offAll işlemi sırasında dialog da kaybolabiliyor.
+      await Future.delayed(const Duration(seconds: 2));
+
+      final prefs = await SharedPreferences.getInstance();
+      
+      // Uygulamanın bu sürüme güncellendiği/kurulduğu zamanı kontrol et:
+      int? installTime = prefs.getInt('mina_app_install_time');
+      if (installTime == null) {
+        // Yeni kurulum veya bu özelliğin eklendiği yeni güncelleme.
+        installTime = DateTime.now().millisecondsSinceEpoch;
+        await prefs.setInt('mina_app_install_time', installTime);
+        // Eski (şu anki en son) duyuruyu gösterimden gizlemek için id'sini kaydedip çıkıyoruz.
+        await prefs.setString('last_admin_announcement_id', id);
+        return;
+      }
+
+      // Duyurunun zamanı, uygulamanın kurulduğu zamandan daha eskiyse (önceyse), gösterme!
+      final scheduledTimestamp = data['scheduledFor'] as Timestamp?;
+      if (scheduledTimestamp != null) {
+        if (scheduledTimestamp.millisecondsSinceEpoch < installTime) {
+          final lastShownCheck = prefs.getString('last_admin_announcement_id');
+          if (lastShownCheck != id) {
+            await prefs.setString('last_admin_announcement_id', id);
+          }
+          return;
+        }
+      }
+
+      final lastShown = prefs.getString('last_admin_announcement_id');
+      if (lastShown != id) {
+        await prefs.setString('last_admin_announcement_id', id);
+        if (Get.isDialogOpen ?? false) {
+          Get.back();
+        }
+        Get.dialog<void>(
+          Dialog(
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(24),
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 20, sigmaY: 20),
+                child: Container(
+                  padding: const EdgeInsets.all(28),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.4),
+                    borderRadius: BorderRadius.circular(24),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.15),
+                      width: 1.5,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: 0.5),
+                        blurRadius: 30,
+                        offset: const Offset(0, 15),
+                      )
+                    ],
+                  ),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.amberAccent.withValues(alpha: 0.15),
+                          shape: BoxShape.circle,
+                        ),
+                        child: const Icon(Icons.campaign_rounded, size: 48, color: Colors.amberAccent),
+                      ),
+                      const SizedBox(height: 20),
+                      Text(
+                        title!,
+                        style: const TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                          color: Colors.white,
+                          letterSpacing: 0.5,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        message!,
+                        style: TextStyle(
+                          fontSize: 16,
+                          color: Colors.white.withValues(alpha: 0.8),
+                          height: 1.5,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 32),
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Expanded(
+                            child: ElevatedButton(
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: Colors.white.withValues(alpha: 0.1),
+                                foregroundColor: Colors.white,
+                                elevation: 0,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                padding: const EdgeInsets.symmetric(vertical: 14),
+                              ),
+                              onPressed: () => Get.back(),
+                              child: Text(localeCode == 'tr' ? 'Kapat' : 'Close', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                            ),
+                          ),
+                          if (url != null && url.isNotEmpty) ...[
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: ElevatedButton(
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: Colors.amberAccent,
+                                  foregroundColor: Colors.black87,
+                                  elevation: 0,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                                  padding: const EdgeInsets.symmetric(vertical: 14),
+                                ),
+                                onPressed: () async {
+                                  final uri = Uri.tryParse(url);
+                                  if (uri != null && await canLaunchUrl(uri)) {
+                                    await launchUrl(uri, mode: LaunchMode.externalApplication);
+                                  }
+                                  Get.back();
+                                },
+                                child: Text(localeCode == 'tr' ? 'Detaylar' : 'Details', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+          barrierDismissible: false,
+        );
+      }
+    }, onError: (e) {
+      debugPrint('[ChatService] Announcements stream error: $e');
+    });
+  }
+
+  Future<void> _checkSmartTrialAnnouncement() async {
+    if (!gFirebaseReady) return;
+    
+    try {
+      // Yalnızca admin ayarını kontrol et
+      final docSnap = await FirebaseFirestore.instance.collection('admin_settings').doc('smart_announcements').get();
+      if (!docSnap.exists) return;
+      final data = docSnap.data();
+      if (data == null || data['trialExpiryEnabled'] != true) return;
+
+      if (!Get.isRegistered<LicensingService>()) return;
+      final licensing = Get.find<LicensingService>();
+      if (licensing.isPremium.value) return;
+
+      final expire = licensing.trialExpirationDate.value;
+      if (expire == null) return;
+
+      final remainingHours = expire.difference(DateTime.now()).inHours;
+      if (remainingHours < 0 || remainingHours >= 24) return;
+
+      // Günlük kontrol (Günde 1 kez)
+      final prefs = await SharedPreferences.getInstance();
+      final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
+      final lastShown = prefs.getString('last_smart_trial_day');
+      if (lastShown == today) return;
+
+      // Çeviri
+      String title = "Ömür Boyu Ücretsiz Kullanım";
+      String message = "Bize şans verip ömür boyu ücretsiz kullanmak için şimdi ödeme yapabilirsiniz.";
+      String btnText = "Hemen Satın Al";
+      String closeText = "Kapat";
+      
+      final localeCode = Get.locale?.languageCode ?? 'en';
+      if (localeCode != 'tr') {
+        try {
+          final translator = GoogleTranslator();
+          title = (await translator.translate(title, from: 'tr', to: localeCode)).text;
+          message = (await translator.translate(message, from: 'tr', to: localeCode)).text;
+          btnText = (await translator.translate(btnText, from: 'tr', to: localeCode)).text;
+          closeText = (await translator.translate(closeText, from: 'tr', to: localeCode)).text;
+        } catch (e) {
+          debugPrint('Smart Trial Translation error: $e');
+        }
+      }
+
+      // Splash beklemesi
+      while (Get.currentRoute == '/' || Get.currentRoute.isEmpty) {
+        await Future.delayed(const Duration(milliseconds: 500));
+      }
+      await Future.delayed(const Duration(seconds: 4)); // Splash sonrası bekleme
+      
+      // Tekrar premium oldu mu kontrol et
+      if (licensing.isPremium.value) return;
+
+      await prefs.setString('last_smart_trial_day', today);
+
+      if (Get.isDialogOpen ?? false) {
+        Get.back();
+      }
+
+      Get.dialog<void>(
+        Dialog(
+          backgroundColor: Colors.transparent,
+          child: Container(
+            padding: const EdgeInsets.all(24),
+            decoration: BoxDecoration(
+              color: const Color(0xFF1E293B),
+              borderRadius: BorderRadius.circular(24),
+              border: Border.all(color: Colors.amberAccent.withValues(alpha: 0.3)),
+              boxShadow: [
+                BoxShadow(color: Colors.amberAccent.withValues(alpha: 0.1), blurRadius: 20, spreadRadius: 2),
+              ],
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Icon(Icons.stars_rounded, color: Colors.amberAccent, size: 48),
+                const SizedBox(height: 16),
+                Text(title, style: const TextStyle(color: Colors.white, fontSize: 20, fontWeight: FontWeight.bold), textAlign: TextAlign.center),
+                const SizedBox(height: 12),
+                Text(message, style: const TextStyle(color: Colors.white70, fontSize: 16), textAlign: TextAlign.center),
+                const SizedBox(height: 24),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.amberAccent,
+                    foregroundColor: Colors.black,
+                    padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 16),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+                  ),
+                  onPressed: () {
+                    Get.back(); // Kapat
+                    Get.toNamed(AppRoutes.paywall);
+                  },
+                  child: Text(btnText, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                ),
+                const SizedBox(height: 12),
+                TextButton(
+                  onPressed: () => Get.back(),
+                  child: Text(closeText, style: const TextStyle(color: Colors.white54)),
+                ),
+              ],
+            ),
+          ),
+        ),
+        barrierDismissible: true,
+      );
+    } catch (e) {
+      debugPrint('[ChatService] Smart Trial Announcement Error: $e');
+    }
   }
 
   @override
@@ -630,7 +1073,114 @@ class ChatService extends GetxService with WidgetsBindingObserver {
     _presenceActive = true;
     unawaited(_beat());
     _presenceTimer?.cancel();
-    _presenceTimer = Timer.periodic(_presenceHeartbeat, (_) => _beat());
+    _presenceTimer = Timer.periodic(_presenceHeartbeat, (_) {
+      _beat();
+    });
+    _listenToUnreadMessages();
+  }
+
+  void _listenToUnreadMessages() {
+    _unreadSub?.cancel();
+    _unreadSub = null;
+    final uid = currentUserId;
+    if (gFirebaseReady && uid != null) {
+      _unreadSub = _supportThreadsRef().doc(uid).snapshots().listen((snap) {
+        if (snap.exists) {
+          final data = snap.data();
+          if (data != null) {
+            final oldUnread = unreadMessages.value;
+            final newUnread = (data['unreadCountUser'] as num?)?.toInt() ?? 0;
+            unreadMessages.value = newUnread;
+            
+            if (newUnread > oldUnread && !isCurrentUserAdmin) {
+               final lastSenderId = data['lastSenderId'] as String?;
+               final lastMessage = data['lastMessage'] as String?;
+               if (lastSenderId != null && lastSenderId != uid && lastMessage != null && lastMessage.isNotEmpty) {
+                  _showAdminMessagePopup(lastMessage);
+               }
+            }
+          }
+        } else {
+          unreadMessages.value = 0;
+        }
+      }, onError: (e) {
+        debugPrint('[ChatService] Unread messages stream error: $e');
+        unreadMessages.value = 0;
+      });
+    } else {
+      unreadMessages.value = 0;
+    }
+  }
+
+  void _showAdminMessagePopup(String originalMessage) async {
+    if (Get.isSnackbarOpen) {
+       Get.closeAllSnackbars();
+    }
+    if (Get.currentRoute == AppRoutes.chatRoom) {
+       return;
+    }
+
+    String title = 'Yöneticiden Mesajınız Var';
+    String message = originalMessage;
+    String btnReply = 'Cevap Ver';
+    String btnClose = 'Kapat';
+
+    final localeCode = Get.locale?.languageCode ?? 'en';
+    if (localeCode != 'tr') {
+      try {
+        final t = GoogleTranslator();
+        title = (await t.translate(title, from: 'tr', to: localeCode)).text;
+        message = (await t.translate(message, from: 'tr', to: localeCode)).text;
+        btnReply = (await t.translate(btnReply, from: 'tr', to: localeCode)).text;
+        btnClose = (await t.translate(btnClose, from: 'tr', to: localeCode)).text;
+      } catch (_) {}
+    }
+
+    Get.defaultDialog<void>(
+      title: title,
+      content: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 8.0),
+        child: Text(
+          message,
+          textAlign: TextAlign.center,
+          style: const TextStyle(fontSize: 16, color: Colors.white),
+        ),
+      ),
+      backgroundColor: const Color(0xFF1E293B).withValues(alpha: 0.95),
+      titleStyle: const TextStyle(color: Colors.blueAccent, fontWeight: FontWeight.bold),
+      textConfirm: btnReply,
+      textCancel: btnClose,
+      confirmTextColor: Colors.white,
+      cancelTextColor: Colors.white70,
+      buttonColor: Colors.blueAccent,
+      onConfirm: () {
+        Get.back(); // close dialog
+        final uid = currentUserId;
+        if (uid != null) {
+          Get.toNamed<void>(
+            AppRoutes.chatRoom,
+            arguments: ChatSupportTarget(
+              threadUid: uid,
+              title: 'chat.support.adminName'.tr,
+            ),
+          );
+        }
+      },
+      onCancel: () {},
+    );
+  }
+
+  /// Okunmamış mesaj sayacını sıfırlar.
+  Future<void> markSupportMessagesRead() async {
+    final uid = currentUserId;
+    if (uid == null || !gFirebaseReady) return;
+    try {
+      await _supportThreadsRef().doc(uid).set(
+        <String, dynamic>{'unreadCountUser': 0},
+        SetOptions(merge: true),
+      );
+      unreadMessages.value = 0;
+    } catch (_) {}
   }
 
   void _stopPresence({required bool removeDoc}) {
@@ -651,10 +1201,15 @@ class ChatService extends GetxService with WidgetsBindingObserver {
     if (uid == null) return;
     final epoch = _presenceEpoch;
     try {
-      await _presenceRef().doc(uid).set(<String, dynamic>{
+      final user = FirebaseAuth.instance.currentUser;
+      final data = <String, dynamic>{
         'lastSeen': FieldValue.serverTimestamp(),
         'name': currentUserName,
-      }, SetOptions(merge: true));
+      };
+      if (user?.email != null) data['email'] = user!.email;
+      if (user?.photoURL != null) data['photoUrl'] = user!.photoURL;
+
+      await _presenceRef().doc(uid).set(data, SetOptions(merge: true));
     } catch (e) {
       debugPrint('[ChatService] presence beat error: $e');
     }
@@ -712,9 +1267,12 @@ class ChatService extends GetxService with WidgetsBindingObserver {
   @override
   void onClose() {
     _authPresenceWorker?.dispose();
-    WidgetsBinding.instance.removeObserver(this);
+    _presenceTimer?.cancel();
+    _unreadSub?.cancel();
+    _announcementSub?.cancel();
     _onlineCountTimer?.cancel();
     _onlineCountTimer = null;
+    WidgetsBinding.instance.removeObserver(this);
     _stopPresence(removeDoc: true);
     super.onClose();
   }

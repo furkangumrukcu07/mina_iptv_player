@@ -140,9 +140,8 @@ class DataUsageService extends GetxService {
     _baselineRx = stats.rxBytes;
     _baselineTx = stats.txBytes;
 
-    // Mevcut bağlantı bilinmiyorsa son anlık bağlantıyı tekrar yokla.
     if (lastConnectivity.value == null) {
-      await _refreshConnectivity();
+      return;
     }
     final conn = lastConnectivity.value;
     final isWifi = conn == ConnectivityResult.wifi ||

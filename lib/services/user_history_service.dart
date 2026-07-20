@@ -4,6 +4,8 @@ import 'dart:convert';
 import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../core/services/debounced_prefs_writer.dart';
+
 /// İçerik türü — AI öneri motoru için kullanıcı izleme alışkanlığı kategorisi.
 enum UserHistoryKind { live, vod, series }
 
@@ -111,6 +113,11 @@ class UserHistoryService extends GetxService {
   List<UserHistoryEntry>? _cache;
   bool _loaded = false;
 
+  late final DebouncedPrefsWriter _prefsWriter = DebouncedPrefsWriter(
+    getPrefs: SharedPreferences.getInstance,
+    delay: const Duration(seconds: 2),
+  );
+
   /// **Rx tetikleyici** — her [record] / [clear] çağrısında 1 artar.
   ///
   /// `Obx` içeren widget'lar bu sayacı dinleyerek (`.value` okuyarak)
@@ -147,11 +154,11 @@ class UserHistoryService extends GetxService {
 
   Future<void> _persist() async {
     try {
-      final p = await SharedPreferences.getInstance();
       final list = (_cache ?? const <UserHistoryEntry>[])
           .map((e) => e.toJson())
           .toList(growable: false);
-      await p.setString(_kKey, jsonEncode(list));
+      // jsonEncode ana isolate'te kısa; disk yazımı debounce ile (ANR).
+      _prefsWriter.scheduleString(_kKey, jsonEncode(list));
     } catch (_) {}
   }
 
@@ -223,8 +230,8 @@ class UserHistoryService extends GetxService {
     _cache = <UserHistoryEntry>[];
     _loaded = true;
     try {
-      final p = await SharedPreferences.getInstance();
-      await p.remove(_kKey);
+      _prefsWriter.scheduleRemove(_kKey);
+      await _prefsWriter.flush();
     } catch (_) {}
     revision.value++;
   }
@@ -233,5 +240,12 @@ class UserHistoryService extends GetxService {
   void onInit() {
     super.onInit();
     unawaited(_ensureLoaded());
+  }
+
+  @override
+  void onClose() {
+    unawaited(_prefsWriter.flush());
+    _prefsWriter.dispose();
+    super.onClose();
   }
 }

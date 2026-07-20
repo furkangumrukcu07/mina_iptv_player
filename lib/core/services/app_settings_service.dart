@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
@@ -167,6 +168,7 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
   static const String streamSuccessFormatTs = 'ts';
   static const String streamSuccessFormatSoftware = 'software';
   static const String streamSuccessFormatMediaKit = 'mediakit';
+
   /// MediaKit + mpv yazılım kod çözücü (`hwdec=no`) ile başarılı açılış.
   static const String streamSuccessFormatMediaKitSoftware = 'mediakit-sw';
 
@@ -191,6 +193,7 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
   static const _kUseMediaKit = 'mina_settings_use_media_kit';
   static const _kLiveUseMediaKit = 'mina_settings_live_use_media_kit';
   static const _kLivePlaybackEngine = 'mina_settings_live_playback_engine_v1';
+
   /// Better başarısız → MediaKit sonrası kanal id hafızası (varsayılan kapalı).
   static const _kSmartPlayerSelection =
       'mina_settings_smart_player_selection_v1';
@@ -231,10 +234,12 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
   static const _kShowcaseMixedFilms = 'mina_settings_showcase_mixed_films';
   static const _kShowcaseMixedSeries = 'mina_settings_showcase_mixed_series';
   static const _kShowcaseMixedLiveTv = 'mina_settings_showcase_mixed_live_tv';
+  static const _kShowcaseUpcomingEpg = 'mina_settings_showcase_upcoming_epg';
   static const _kAiRecommendations = 'mina_settings_ai_recommendations';
   static const _kShowcaseLastWatchedButton =
       'mina_settings_showcase_last_watched_button';
   static const _kShowcaseInAppPip = 'mina_settings_showcase_in_app_pip_v1';
+  static const _kOsdSizeTier = 'mina_settings_osd_size_tier_v1';
 
   /// Bir kerelik TV varsayılanları migration'ı. Bayrak yazılı değilse
   /// `ensureLoaded()` veya TV layout'una geçişte ana ekran şeritleri
@@ -327,7 +332,8 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
 
   /// Sayfa geçiş efekti (ios / fadeScale). Ayarlar > Ana Ekran > Geçiş
   /// Efekti ekranından seçilir. TV layout'unda bu seçenek gösterilmez.
-  static const _kPageTransitionEffect = 'mina_settings_page_transition_effect_v1';
+  static const _kPageTransitionEffect =
+      'mina_settings_page_transition_effect_v2';
 
   /// Ana ekran kartlarına uygulanacak dış çerçeve stili (classic /
   /// neonGlow / embossed / boldOutline). Ayarlar > Ana Ekran > Çerçeve
@@ -565,6 +571,12 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
   /// Kullanıcı motoru bilinçli seçti mi? [ensureLoaded]'da yüklenir.
   bool _engineUserChosen = false;
 
+  /// Vitrin: Sinematik Arkaplan Etkinleştirme
+  final showcaseCinematicBackgroundEnabled = false.obs;
+
+  /// Vitrin: Afiş Derinlik Efekti (Parallax)
+  final showcaseParallaxEnabled = true.obs;
+
   /// Kullanıcı film/dizi (veya canlı) oynatma motorunu ayarlardan **bilinçli**
   /// seçti mi? `true` ise codec'e dayalı proaktif MediaKit yönlendirmesi
   /// uygulanmaz (kullanıcı tercihi korunur; yalnızca reaktif fallback çalışır).
@@ -772,6 +784,7 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
   /// Yalnızca **Vitrin** düzeninde «Trend Filmler» (IMDB 7+) şeridi; varsayılan
   /// açık. Diğer düzenlerde kullanılmaz.
   final trendFilmsEnabled = true.obs;
+  final showcaseUpcomingEpgEnabled = true.obs;
 
   /// Yalnızca **Vitrin** düzeninde «Trend Diziler» (IMDB 7+) şeridi; varsayılan
   /// açık. Diğer düzenlerde kullanılmaz.
@@ -796,6 +809,7 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
   /// Yalnızca **Vitrin** düzeninde «Karışık Canlı TV» şeridi; varsayılan
   /// **kapalı**. Vitrinde standart düzenden bağımsız ayrı bir bayrak kullanılır
   /// (standart/TV düzeni `mixedLiveTvEnabled` ile açık gelmeye devam eder).
+  final showcaseAmbientBackgroundEnabled = false.obs;
   final showcaseMixedLiveTvEnabled = false.obs;
 
   /// Ana ekranda «Mina AI: Senin İçin Önerilenler» şeridi; varsayılan açık.
@@ -991,6 +1005,10 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
 
   final tvOsdAutoHideDuration = defaultTvOsdAutoHideSeconds.obs;
 
+  /// OSD Panel Büyüklüğü (0: Küçük, 1: Normal, 2: Büyük, 3: Çok Büyük).
+  /// Normal (1) modunda ekran boyutuna göre otomatik oran uygulanır.
+  final osdSizeTier = 1.obs;
+
   /// Yatay (landscape) modda OSD kapsülünün arka plan saydamlığı (0–100).
   /// 100 → tam opak (varsayılan), 0 → tamamen şeffaf. Butonlar / ikonlar /
   /// metinler bu ayardan etkilenmez; sadece cam kapsülün arkası, kenarlığı
@@ -1123,7 +1141,6 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
 
   /// Canlı / film / dizi liste detayında küçük önizleme (TV ve telefonda tercihe bağlı).
   bool get streamPreviewActive => streamPreviewEnabled.value;
-
 
   bool _loaded = false;
   int _layoutCoercePostFrameTries = 0;
@@ -1290,6 +1307,9 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
       await p.remove('mina_settings_low_performance_mode');
     }
     lowEndDeviceMode.value = p.getBool(_kLowEndDeviceMode) ?? false;
+    if (layoutMode.value == AppLayoutMode.mobile) {
+      lowEndDeviceMode.value = false;
+    }
     lowEndUserChoseOff.value = p.getBool(_kLowEndUserChoseOff) ?? false;
     lowEndSuggestionDismissed.value =
         p.getBool(_kLowEndSuggestDismissed) ?? false;
@@ -1329,7 +1349,8 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
     }
     if (!isTvLayoutForLite &&
         tvLite.value &&
-        !lowEndDeviceMode.value) {
+        !lowEndDeviceMode.value &&
+        layoutMode.value != AppLayoutMode.mobile) {
       lowEndDeviceMode.value = true;
       unawaited(p.setBool(_kLowEndDeviceMode, true));
     } else if (lowEndDeviceMode.value && !tvLite.value) {
@@ -1458,24 +1479,28 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
 
     var liveEngineRaw = p.getString(_kLivePlaybackEngine);
     if (liveEngineRaw == null) {
-      liveEngineRaw =
-          liveUseMediaKit.value ? PlaybackEngineKind.mediaKit.storageValue : PlaybackEngineKind.better.storageValue;
+      liveEngineRaw = liveUseMediaKit.value
+          ? PlaybackEngineKind.mediaKit.storageValue
+          : PlaybackEngineKind.better.storageValue;
       await p.setString(_kLivePlaybackEngine, liveEngineRaw);
     }
     livePlaybackEngine.value = PlaybackEngineKind.fromStorage(liveEngineRaw);
     if (livePlaybackEngine.value.storageValue != liveEngineRaw) {
-      await p.setString(_kLivePlaybackEngine, livePlaybackEngine.value.storageValue);
+      await p.setString(
+          _kLivePlaybackEngine, livePlaybackEngine.value.storageValue);
     }
 
     var vodEngineRaw = p.getString(_kVodPlaybackEngine);
     if (vodEngineRaw == null) {
-      vodEngineRaw =
-          useMediaKit.value ? PlaybackEngineKind.mediaKit.storageValue : PlaybackEngineKind.better.storageValue;
+      vodEngineRaw = useMediaKit.value
+          ? PlaybackEngineKind.mediaKit.storageValue
+          : PlaybackEngineKind.better.storageValue;
       await p.setString(_kVodPlaybackEngine, vodEngineRaw);
     }
     vodPlaybackEngine.value = PlaybackEngineKind.fromStorage(vodEngineRaw);
     if (vodPlaybackEngine.value.storageValue != vodEngineRaw) {
-      await p.setString(_kVodPlaybackEngine, vodPlaybackEngine.value.storageValue);
+      await p.setString(
+          _kVodPlaybackEngine, vodPlaybackEngine.value.storageValue);
     }
     _syncLegacyEngineBoolsFromKind();
 
@@ -1485,6 +1510,8 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
 
     tvOsdAutoHideDuration.value =
         normalizeTvOsdAutoHideSeconds(p.getInt(_kTvOsdAutoHideDuration));
+
+    osdSizeTier.value = p.getInt(_kOsdSizeTier) ?? 1;
 
     osdLandscapeBackgroundOpacity.value = normalizeOsdBackgroundOpacity(
       p.getInt(_kOsdLandscapeBackgroundOpacity),
@@ -1509,24 +1536,31 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
     upcomingMatchesEnabled.value = p.getBool(_kUpcomingMatches) ?? true;
     mixedLiveTvEnabled.value = p.getBool(_kMixedLiveTv) ?? true;
     trendFilmsEnabled.value = p.getBool(_kTrendFilms) ?? true;
+    showcaseUpcomingEpgEnabled.value = p.getBool(_kShowcaseUpcomingEpg) ?? true;
     trendSeriesEnabled.value = p.getBool(_kTrendSeries) ?? true;
     favoriteFilmsEnabled.value = p.getBool(_kShowcaseFavoriteFilms) ?? true;
     favoriteSeriesEnabled.value = p.getBool(_kShowcaseFavoriteSeries) ?? true;
     mixedFilmsEnabled.value = p.getBool(_kShowcaseMixedFilms) ?? true;
     mixedSeriesEnabled.value = p.getBool(_kShowcaseMixedSeries) ?? true;
+    showcaseAmbientBackgroundEnabled.value =
+        p.getBool('showcaseAmbientBackgroundEnabled') ?? false;
     showcaseMixedLiveTvEnabled.value =
         p.getBool(_kShowcaseMixedLiveTv) ?? false;
+
+    showcaseCinematicBackgroundEnabled.value =
+        p.getBool('showcaseCinematicBackgroundEnabled') ?? false;
+    showcaseParallaxEnabled.value =
+        p.getBool('showcaseParallaxEnabled') ?? true;
+
     final rawScale = p.getDouble(_kHomeCardScale) ?? homeCardScaleDefault;
     // 2.10.27 öncesinde varsayılan 0.95 idi; slider'a hiç dokunmadan eski
-    // varsayılana takılı kalmış kullanıcıları yeni varsayılana (%110) taşı.
-    // Kullanıcı manuel olarak farklı bir değer seçtiyse (0.94 veya tam 1.0
-    // dahil) o değer korunur — yalnızca tam 0.95 eşiği migrate edilir.
+    // varsayılan'a takılı kalmış kullanıcıları yeni varsayılan'a (%110) taşı.
     final migratedScale =
         (rawScale - 0.95).abs() < 0.001 ? homeCardScaleDefault : rawScale;
     homeCardScale.value =
         migratedScale.clamp(homeCardScaleMin, homeCardScaleMax).toDouble();
     if (migratedScale != rawScale) {
-      // Sessizce yeni varsayılana yaz; sonraki açılışlarda da %100 olur.
+      // Sessizce yeni varsayılan'a yaz; sonraki açılışlarda da %100 olur.
       unawaited(p.setDouble(_kHomeCardScale, homeCardScaleDefault));
     }
     // Film & Dizi modu — storage'da değer yoksa **cihaz tipine göre**
@@ -1542,20 +1576,31 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
     }
     final rawLayoutStyle = p.getString(_kHomeLayoutStyle);
     if (rawLayoutStyle == null) {
-      final defaultStyle =
-          HomeLayoutStyle.defaultFor(layoutMode.value);
+      final defaultStyle = HomeLayoutStyle.defaultFor(layoutMode.value);
       homeLayoutStyle.value = defaultStyle;
       await p.setString(_kHomeLayoutStyle, defaultStyle.storageKey);
     } else {
       homeLayoutStyle.value = HomeLayoutStyle.fromStorageKey(rawLayoutStyle);
+    }
+
+    // Mobil ve tablet kullanıcıları için bu güncellemede vitrin modunu (showcase) 
+    // varsayılan yapıyoruz. Buluttan veri çekildiğinde ise buluttaki eski tercihi (card vb.) 
+    // bunun üzerine yazarak kullanıcıya dönecektir.
+    final migratedShowcase = p.getBool('mina_settings_showcase_migration_v2') ?? false;
+    if (!migratedShowcase) {
+      await p.setBool('mina_settings_showcase_migration_v2', true);
+      if (layoutMode.value != AppLayoutMode.tv) {
+        homeLayoutStyle.value = HomeLayoutStyle.showcase;
+        await p.setString(_kHomeLayoutStyle, HomeLayoutStyle.showcase.storageKey);
+      }
     }
     tvHomeLayoutMode.value = TvHomeLayoutMode.fromStorageKey(
       p.getString(_kTvHomeLayoutMode),
     );
     homeCardSwipeEffect.value =
         HomeCardSwipeEffect.fromStorageKey(p.getString(_kHomeCardSwipeEffect));
-    pageTransitionEffect.value =
-        PageTransitionEffect.fromStorageKey(p.getString(_kPageTransitionEffect));
+    pageTransitionEffect.value = PageTransitionEffect.fromStorageKey(
+        p.getString(_kPageTransitionEffect));
     homeCardFrameStyle.value =
         HomeCardFrameStyle.fromStorageKey(p.getString(_kHomeCardFrameStyle));
     isAiRecommendationEnabled.value = p.getBool(_kAiRecommendations) ?? true;
@@ -1563,8 +1608,7 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
     continueWatchingEnabled.value = p.getBool(_kContinueWatching) ?? true;
     showcaseLastWatchedButtonEnabled.value =
         p.getBool(_kShowcaseLastWatchedButton) ?? true;
-    showcaseInAppPipEnabled.value =
-        p.getBool(_kShowcaseInAppPip) ?? true;
+    showcaseInAppPipEnabled.value = p.getBool(_kShowcaseInAppPip) ?? true;
     // Mina Wrapped artık kullanıcı tarafından kapatılamaz — her zaman açık.
     // Eskiden kapatmış kullanıcılarda da zorla açık gelir.
     minaWrappedEnabled.value = true;
@@ -1712,7 +1756,86 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
     await enforceAndroidTvShellLayoutLock();
 
     _loaded = true;
+    _listenToAdminGlobalOverrides();
     rescheduleSleepTimer();
+  }
+
+  StreamSubscription? _globalOverridesSub;
+
+  void _listenToAdminGlobalOverrides() {
+    try {
+      _globalOverridesSub?.cancel();
+      _globalOverridesSub = FirebaseFirestore.instance
+          .collection('admin_settings')
+          .doc('global_overrides')
+          .snapshots()
+          .listen((snap) async {
+        if (!snap.exists) return;
+        final data = snap.data();
+        if (data == null) return;
+
+        final newForceId = data['forceUpdateId'] as int? ?? 0;
+        if (newForceId == 0) return;
+
+        final p = await _getPrefs();
+        final lastSeen = p.getInt('last_seen_global_force_id') ?? 0;
+
+        if (newForceId > lastSeen) {
+          // Yeni bir dayatma geldi
+          await p.setInt('last_seen_global_force_id', newForceId);
+
+          final liveEngine = data['livePlaybackEngine'] as String?;
+          if (liveEngine == 'better') {
+            await setLivePlaybackEngine(PlaybackEngineKind.better);
+          } else if (liveEngine == 'mediaKit') {
+            await setLivePlaybackEngine(PlaybackEngineKind.mediaKit);
+          }
+
+          final vodEngine = data['vodPlaybackEngine'] as String?;
+          if (vodEngine == 'better') {
+            await setVodPlaybackEngine(PlaybackEngineKind.better);
+          } else if (vodEngine == 'mediaKit') {
+            await setVodPlaybackEngine(PlaybackEngineKind.mediaKit);
+          }
+
+          final epg = data['epgEnabled'] as bool?;
+          if (epg != null) {
+            epgEnabled.value = epg;
+            await p.setBool(_kEpgEnabled, epg);
+          }
+
+          final tvMode = data['tvHomeLayoutMode'] as String?;
+          if (tvMode == 'shell') {
+            await setTvHomeLayoutMode(TvHomeLayoutMode.shell);
+          } else if (tvMode == 'classic') {
+            await setTvHomeLayoutMode(TvHomeLayoutMode.classic);
+          }
+
+          final buffer = data['liveBufferSeconds'] as int?;
+          if (buffer != null) {
+            liveBufferSeconds.value = buffer;
+            await p.setInt(_kBuffer, buffer);
+          }
+
+          final appLayout = data['appLayoutMode'] as String?;
+          if (appLayout != null) {
+            final parsed = AppLayoutMode.tryParseName(appLayout);
+            if (parsed != null) {
+              layoutMode.value = parsed;
+              await p.setString(_kLayout, parsed.name);
+              await _applyLayoutMode(parsed);
+            }
+          }
+
+          debugPrint(
+              '[AppSettings] Global overrides applied (ID: $newForceId)');
+        }
+      }, onError: (e) {
+        debugPrint('[AppSettings] Stream error: $e');
+      });
+    } catch (e) {
+      debugPrint('[AppSettings] Error listening to global overrides: $e');
+    }
   }
 
   /// [XtreamSource] için kalıcı tercih anahtarı (MD5).
@@ -2196,6 +2319,12 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
     await p.setString(_kAppFontFamily, next);
   }
 
+  Future<void> setVodSubtitleAutoEnabled(bool enabled) async {
+    vodSubtitleAutoEnabled.value = enabled;
+    final p = await _getPrefs();
+    await p.setBool(_kVodSubtitleAutoEnabled, enabled);
+  }
+
   Future<void> setVodPreferredSubtitleToken(String? token) async {
     final normalized = (token ?? '').trim().toLowerCase();
     vodPreferredSubtitleToken.value = normalized;
@@ -2583,7 +2712,7 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
   }
 
   /// Görüntü sığdırma modunu **tür bazında** kalıcı yaz. [live] = canlı yayın,
-  /// aksi halde VOD (film/dizi). Oynatıcı bir sonraki açılışta ilgili türde bu
+  /// aksi halde VOD (film/dizi). Oynatıcı bir sonraki açılışında ilgili türde bu
   /// modu uygular.
   Future<void> setVideoFitForKind(BoxFit fit, {required bool live}) async {
     if (live) {
@@ -3148,6 +3277,8 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
   /// uygulanır; blur/gölge reaktif olarak ilgili widget'larda yeniden çizilir.
   /// Eski TV Lite bayrağı aynı değere senkronize edilir (tek kullanıcı seçeneği).
   Future<void> setLowEndDeviceMode(bool v) async {
+    if (layoutMode.value == AppLayoutMode.mobile && v)
+      return; // Prevent enabling on mobile
     lowEndDeviceMode.value = v;
     tvLite.value = v;
     // Açıkça kapatıldıysa zayıf donanım otomatik zorlamasın.
@@ -3322,6 +3453,12 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
     await p.setBool(_kTrendFilms, v);
   }
 
+  Future<void> setShowcaseUpcomingEpgEnabled(bool v) async {
+    showcaseUpcomingEpgEnabled.value = v;
+    final p = await _getPrefs();
+    await p.setBool(_kShowcaseUpcomingEpg, v);
+  }
+
   Future<void> setTrendSeriesEnabled(bool v) async {
     trendSeriesEnabled.value = v;
     final p = await _getPrefs();
@@ -3350,6 +3487,11 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
     mixedSeriesEnabled.value = v;
     final p = await _getPrefs();
     await p.setBool(_kShowcaseMixedSeries, v);
+  }
+
+  Future<void> setShowcaseAmbientBackgroundEnabled(bool v) async {
+    showcaseAmbientBackgroundEnabled.value = v;
+    await _prefs?.setBool('showcaseAmbientBackgroundEnabled', v);
   }
 
   Future<void> setShowcaseMixedLiveTvEnabled(bool v) async {
@@ -3383,6 +3525,12 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
     showcaseLastWatchedButtonEnabled.value = v;
     final p = await _getPrefs();
     await p.setBool(_kShowcaseLastWatchedButton, v);
+  }
+
+  Future<void> setShowcaseParallaxEnabled(bool v) async {
+    showcaseParallaxEnabled.value = v;
+    final p = await _getPrefs();
+    await p.setBool('showcaseParallaxEnabled', v);
   }
 
   /// Vitrin modunda uygulama içi PiP (dock mini oynatıcı).
@@ -3605,10 +3753,9 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
     return d.year * 10000 + d.month * 100 + d.day;
   }
 
-  /// Play Store’dan yükleyen, henüz puanlamayan kullanıcıya günde en fazla bir kez.
-  bool shouldShowPlayStoreRatePrompt() {
-    if (playStoreRateUserRated) return false;
-    return playStoreRateLastPromptDay < playStoreRateDayYmd();
+  /// Play Store’dan yükleyen, henüz puanlamayan kullanıcıya bir kez güncelleme yaptığında gösterir.
+  bool shouldShowPlayStoreRatePrompt(int currentBuild) {
+    return false; // Geçici olarak kapatıldı
   }
 
   Future<void> setPlayStoreRatePromptShownToday() async {
@@ -3758,14 +3905,17 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
     }
     useMediaKit.value = preferMediaKit;
     liveUseMediaKit.value = preferMediaKit;
-    vodPlaybackEngine.value =
-        preferMediaKit ? PlaybackEngineKind.mediaKit : PlaybackEngineKind.better;
-    livePlaybackEngine.value =
-        preferMediaKit ? PlaybackEngineKind.mediaKit : PlaybackEngineKind.better;
+    vodPlaybackEngine.value = preferMediaKit
+        ? PlaybackEngineKind.mediaKit
+        : PlaybackEngineKind.better;
+    livePlaybackEngine.value = preferMediaKit
+        ? PlaybackEngineKind.mediaKit
+        : PlaybackEngineKind.better;
     final p = await _getPrefs();
     await p.setBool(_kUseMediaKit, preferMediaKit);
     await p.setBool(_kLiveUseMediaKit, preferMediaKit);
-    await p.setString(_kVodPlaybackEngine, vodPlaybackEngine.value.storageValue);
+    await p.setString(
+        _kVodPlaybackEngine, vodPlaybackEngine.value.storageValue);
     await p.setString(
         _kLivePlaybackEngine, livePlaybackEngine.value.storageValue);
     // Not: _kEngineUserChosen yazılmaz — bu uzaktan varsayılan, kullanıcı
@@ -3898,6 +4048,13 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
     await p.setInt(_kTvOsdAutoHideDuration, v);
   }
 
+  Future<void> setOsdSizeTier(int tier) async {
+    if (tier < 0 || tier > 3) return;
+    osdSizeTier.value = tier;
+    final p = await _getPrefs();
+    await p.setInt(_kOsdSizeTier, tier);
+  }
+
   /// Yatay OSD arka plan saydamlığını kaydet (0–100, 100 = opak).
   Future<void> setOsdLandscapeBackgroundOpacity(int value) async {
     final v = normalizeOsdBackgroundOpacity(value);
@@ -3919,7 +4076,7 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
   }) {
     // Amlogic/challenged TV: doğrudan mediacodec.
     if (amlogicLike || playbackChallengedTv) return 'mediacodec';
-    
+
     // Respect user's selected configuration directly. By default, this resolves to
     // 'mediacodec-copy' (Balanced mode) which resolves the initial gray screen and color distortion
     // on devices like Xiaomi Mi Lite. If they experience delay, they can toggle to Low Power ('mediacodec').
@@ -4011,11 +4168,13 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
     upcomingMatchesEnabled.value = true;
     mixedLiveTvEnabled.value = true;
     trendFilmsEnabled.value = true;
+    showcaseUpcomingEpgEnabled.value = true;
     trendSeriesEnabled.value = true;
     favoriteFilmsEnabled.value = true;
     favoriteSeriesEnabled.value = true;
     mixedFilmsEnabled.value = true;
     mixedSeriesEnabled.value = true;
+    showcaseAmbientBackgroundEnabled.value = false;
     showcaseMixedLiveTvEnabled.value = false;
     isAiRecommendationEnabled.value = true;
     dailyQuoteEnabled.value = true;
@@ -4112,6 +4271,7 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
     // TV dâhil tüm layout'larda AI önerileri + karışık canlı TV açık gelir.
     await p.setBool(_kMixedLiveTv, true);
     await p.setBool(_kTrendFilms, true);
+    await p.setBool(_kShowcaseUpcomingEpg, true);
     await p.setBool(_kTrendSeries, true);
     await p.setBool(_kShowcaseFavoriteFilms, true);
     await p.setBool(_kShowcaseFavoriteSeries, true);
@@ -4122,11 +4282,13 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
     isAiRecommendationEnabled.value = true;
     mixedLiveTvEnabled.value = true;
     trendFilmsEnabled.value = true;
+    showcaseUpcomingEpgEnabled.value = true;
     trendSeriesEnabled.value = true;
     favoriteFilmsEnabled.value = true;
     favoriteSeriesEnabled.value = true;
     mixedFilmsEnabled.value = true;
     mixedSeriesEnabled.value = true;
+    showcaseAmbientBackgroundEnabled.value = false;
     showcaseMixedLiveTvEnabled.value = false;
     if (layoutMode.value != AppLayoutMode.tv) {
       await p.setString(_kHomeLayoutStyle, HomeLayoutStyle.showcase.storageKey);

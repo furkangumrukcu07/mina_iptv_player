@@ -44,6 +44,16 @@ final class TvShellPalette {
 
   /// Sol menü / yan panel zemin + kenar.
   BoxDecoration sidePanelDecoration({bool trailingBorder = true}) {
+    if (ga.isTrabzon) {
+      return BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.15),
+        border: trailingBorder
+            ? Border(
+                right: BorderSide(color: Colors.white.withValues(alpha: 0.35)),
+              )
+            : null,
+      );
+    }
     if (TvShellPerf.lite) {
       return BoxDecoration(
         color: ga.filmDiziSectionGradientColors.first.withValues(alpha: 0.75),
@@ -81,6 +91,13 @@ final class TvShellPalette {
     double radius = 12,
   }) {
     if (selected) {
+      if (ga.isTrabzon) {
+        return BoxDecoration(
+          borderRadius: BorderRadius.circular(radius),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.40), width: 1.5),
+          color: Colors.white.withValues(alpha: 0.25),
+        );
+      }
       if (TvShellPerf.lite) {
         return BoxDecoration(
           borderRadius: BorderRadius.circular(radius),
@@ -107,6 +124,13 @@ final class TvShellPalette {
         ),
       );
     }
+    if (ga.isTrabzon) {
+      return BoxDecoration(
+        borderRadius: BorderRadius.circular(radius),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.15)),
+        color: Colors.white.withValues(alpha: 0.05),
+      );
+    }
     return BoxDecoration(
       borderRadius: BorderRadius.circular(radius),
       border: Border.all(color: ga.categoryRowBorderIdle()),
@@ -129,6 +153,13 @@ final class TvShellPalette {
       return const BoxDecoration(color: Colors.transparent);
     }
     if (selected) {
+      if (ga.isTrabzon) {
+        return BoxDecoration(
+          border: Border(
+            left: BorderSide(color: Colors.white.withValues(alpha: 0.60), width: 2),
+          ),
+        );
+      }
       return BoxDecoration(
         border: Border(
           left: BorderSide(color: accent.withValues(alpha: 0.42), width: 2),
@@ -146,6 +177,19 @@ final class TvShellPalette {
   }) {
     if (muted) {
       return const BoxDecoration(color: Colors.transparent);
+    }
+    if (ga.isTrabzon) {
+      return BoxDecoration(
+        color: highlighted
+            ? Colors.white.withValues(alpha: 0.25)
+            : Colors.white.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: highlighted
+              ? Colors.white.withValues(alpha: 0.50)
+              : Colors.white.withValues(alpha: 0.15),
+        ),
+      );
     }
     return BoxDecoration(
       color: highlighted

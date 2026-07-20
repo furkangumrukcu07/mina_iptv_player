@@ -1,5 +1,7 @@
 import 'dart:math';
 
+import 'package:collection/collection.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -105,16 +107,16 @@ abstract final class RecommendedFilmsLanguageMatcher {
     return Get.locale?.languageCode.toLowerCase() ?? 'en';
   }
 
-  static bool isNativeDub(VodItem v, String categoryName) {
-    final lang = _appLanguageCode();
+  static bool isNativeDub(VodItem v, String categoryName, {String? forceLang}) {
+    final lang = forceLang ?? _appLanguageCode();
     final blob = '${v.name} $categoryName'.toLowerCase();
     if (_matchesAny(blob, _dubPatterns(lang))) return true;
     return _categoryImpliesDub(categoryName.toLowerCase(), lang);
   }
 
-  static bool isNativeSub(VodItem v, String categoryName) {
-    if (isNativeDub(v, categoryName)) return false;
-    final lang = _appLanguageCode();
+  static bool isNativeSub(VodItem v, String categoryName, {String? forceLang}) {
+    if (isNativeDub(v, categoryName, forceLang: forceLang)) return false;
+    final lang = forceLang ?? _appLanguageCode();
     final blob = '${v.name} $categoryName'.toLowerCase();
     if (_matchesAny(blob, _subPatterns(lang))) return true;
     return _categoryImpliesSub(categoryName.toLowerCase(), lang);
@@ -263,6 +265,8 @@ abstract final class RecommendedFilmsRatingCache {
       revision.value = revision.value + 1;
     });
   }
+
+  static Map<int, double> getMemoryCopy() => Map<int, double>.from(_memory);
 
   static double effectiveRating(VodItem v) {
     final cached = _memory[v.id];
@@ -447,6 +451,35 @@ abstract final class RecommendedFilmsCatalog {
     );
   }
 
+  static Future<RecommendedFilmsBuckets> buildAsync(M3uResult data, {int? limit}) async {
+    final items = visibleVods(data);
+    if (items.isEmpty) {
+      return const RecommendedFilmsBuckets(
+        topRated: [],
+        recentlyAdded: [],
+        uhd4k: [],
+        nativeDub: [],
+        nativeSub: [],
+      );
+    }
+    
+    final catMap = <int, String>{};
+    for (final c in data.vodCategories) {
+      catMap[c.id] = c.name;
+    }
+    
+    final payload = {
+      'items': items,
+      'catMap': catMap,
+      'ratingMemory': RecommendedFilmsRatingCache.getMemoryCopy(),
+      'limit': limit ?? rowLimit,
+      'appLang': RecommendedFilmsLanguageMatcher._appLanguageCode(),
+    };
+    
+    final full = await compute(_buildSortedBucketsIsolate, payload);
+    return full;
+  }
+
   /// «Tümünü gör» — satır limiti olmadan tam liste.
   static List<VodItem> allItemsForCategory(
     M3uResult data,
@@ -454,6 +487,14 @@ abstract final class RecommendedFilmsCatalog {
   ) {
     final full = _buildSortedBuckets(data);
     if (full == null) return const [];
+    return full.forCategory(cat);
+  }
+
+  static Future<List<VodItem>> allItemsForCategoryAsync(
+    M3uResult data,
+    RecommendedFilmsCategory cat,
+  ) async {
+    final full = await buildAsync(data, limit: 999999);
     return full.forCategory(cat);
   }
 
@@ -545,4 +586,56 @@ abstract final class RecommendedFilmsCatalog {
     final take = pool.length > 12 ? 12 : pool.length;
     return pool[Random().nextInt(take)];
   }
+}
+
+RecommendedFilmsBuckets _buildSortedBucketsIsolate(Map<String, dynamic> payload) {
+  final items = payload['items'] as List<VodItem>;
+  final catMap = payload['catMap'] as Map<int, String>;
+  final memory = payload['ratingMemory'] as Map<int, double>;
+  final limit = payload['limit'] as int;
+  final appLang = payload['appLang'] as String?;
+
+  double effectiveRating(VodItem v) {
+    final cached = memory[v.id];
+    if (cached != null && cached > 0) return cached;
+    if (v.rating == null || v.rating!.trim().isEmpty) return 0;
+    final s = v.rating!.trim().replaceAll(',', '.');
+    return double.tryParse(s) ?? 0;
+  }
+
+  final topRated = List<VodItem>.from(items)
+    ..sort((a, b) => effectiveRating(b).compareTo(effectiveRating(a)));
+
+  final recentlyAdded = List<VodItem>.from(items)
+    ..sort((a, b) {
+      final au = a.addedUnix ?? 0;
+      final bu = b.addedUnix ?? 0;
+      if (bu != au) return bu.compareTo(au);
+      return a.name.compareTo(b.name);
+    });
+
+  final uhd4k = <VodItem>[];
+  final nativeDub = <VodItem>[];
+  final nativeSub = <VodItem>[];
+  for (final v in items) {
+    final cat = catMap[v.categoryId] ?? '';
+    if (RecommendedFilmsUhdMatcher.isUhd(v, cat)) {
+      uhd4k.add(v);
+    }
+    if (RecommendedFilmsLanguageMatcher.isNativeDub(v, cat, forceLang: appLang)) {
+      nativeDub.add(v);
+    } else if (RecommendedFilmsLanguageMatcher.isNativeSub(v, cat, forceLang: appLang)) {
+      nativeSub.add(v);
+    }
+  }
+
+  uhd4k.sort((a, b) => effectiveRating(b).compareTo(effectiveRating(a)));
+
+  return RecommendedFilmsBuckets(
+    topRated: topRated.take(limit).toList(),
+    recentlyAdded: recentlyAdded.take(limit).toList(),
+    uhd4k: uhd4k.take(limit).toList(),
+    nativeDub: nativeDub.take(limit).toList(),
+    nativeSub: nativeSub.take(limit).toList(),
+  );
 }

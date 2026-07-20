@@ -278,6 +278,29 @@ abstract final class FilmDiziVodMetaLabels {
   ) =>
       FilmDiziMediaPills.techPills(vod, xtreamFields: xtream);
 
+  static String? audioSubtitleLabel(
+    MovieModel? meta,
+    Map<String, String>? xtream,
+  ) {
+    final lang = meta?.language?.trim();
+    if (_usable(lang)) {
+      final parts = lang!
+          .split(RegExp(r'[,;/]'))
+          .map((e) => e.trim())
+          .where((e) => e.isNotEmpty);
+      if (parts.isNotEmpty) return parts.take(2).join(', ');
+    }
+    final xAudio = xtream?['stream_audio_langs']?.trim();
+    if (_usable(xAudio) && !xAudio!.startsWith('{') && !xAudio.startsWith('[')) {
+        final parts = xAudio
+          .split(RegExp(r'[,;/]'))
+          .map((e) => e.trim())
+          .where((e) => e.isNotEmpty);
+      if (parts.isNotEmpty) return parts.take(2).join(', ');
+    }
+    return null;
+  }
+
   static List<CastMember> castMembers(
     MovieModel? meta,
     Map<String, String>? xtream, {

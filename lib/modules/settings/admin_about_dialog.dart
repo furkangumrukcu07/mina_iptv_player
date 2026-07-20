@@ -20,9 +20,8 @@ class AdminAboutDialog {
       Get.find<AppSettingsService>().themeLabel.value,
     );
 
-    showDialog<void>(
-      context: context,
-      builder: (dialogContext) => GlassAlertDialog(
+    Get.dialog<void>(
+      GlassAlertDialog(
         title: Row(
           children: [
             Container(
@@ -66,7 +65,7 @@ class AdminAboutDialog {
           GlassDialogActionButton(
             label: 'common.close'.tr,
             primary: true,
-            onPressed: () => Navigator.pop(dialogContext),
+            onPressed: () => Get.back<void>(),
           ),
         ],
       ),

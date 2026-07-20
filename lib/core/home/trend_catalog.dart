@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:get/get.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -27,53 +28,65 @@ abstract final class TrendCatalog {
   static const double kTrendMinRating = 7.0;
   static const int kTrendMaxItems = 50;
 
-  /// Nadir tazeleme aralığı — en çok 24 saatte bir arka plan zenginleştirme.
-  static const Duration _refreshCooldown = Duration(hours: 24);
+  /// Nadir tazeleme aralığı — en çok 4 saatte bir arka plan zenginleştirme.
+  static const Duration _refreshCooldown = Duration(hours: 4);
 
   /// Her tazelemede en çok bu kadar film + dizi için OMDb puanı çekilir
   /// (kalanlar sonraki tazelemelerde, disk önbelleği birikerek tamamlanır).
-  static const int _enrichBatchFilms = 40;
-  static const int _enrichBatchSeries = 40;
+  static const int _enrichBatchFilms = 50;
+  static const int _enrichBatchSeries = 50;
 
   static const String _kLastEnrichMs = 'mina_trend_last_enrich_ms';
 
   static bool _refreshScheduled = false;
 
   /// IMDB 7+ filmler (puana göre azalan, en çok 50).
+  /// Eğer 7+ puanlı yeterli film yoksa (henüz çekilmemişse) son eklenen filmlerle doldurulur.
   static List<VodItem> trendFilms(M3uResult data) {
     final items = RecommendedFilmsCatalog.visibleVods(data);
-    if (items.isEmpty) return const [];
-    final rated = <VodItem>[];
-    for (final v in items) {
-      if (RecommendedFilmsRatingCache.effectiveRating(v) >= kTrendMinRating) {
-        rated.add(v);
-      }
-    }
-    rated.sort(
-      (a, b) => RecommendedFilmsRatingCache.effectiveRating(b)
-          .compareTo(RecommendedFilmsRatingCache.effectiveRating(a)),
-    );
-    if (rated.length <= kTrendMaxItems) return rated;
-    return rated.sublist(0, kTrendMaxItems);
+    return _trendFilmsSync(items, RecommendedFilmsRatingCache.getMemoryCopy());
   }
 
-  /// IMDB 7+ diziler (puana göre azalan, en çok 50).
-  static List<SeriesItem> trendSeries(M3uResult data) {
+  static Future<List<VodItem>> trendFilmsAsync(M3uResult data) async {
+    final items = RecommendedFilmsCatalog.visibleVods(data);
+    if (items.isEmpty) return const [];
+    final payload = {
+      'items': items,
+      'memory': RecommendedFilmsRatingCache.getMemoryCopy(),
+    };
+    return compute(_trendFilmsIsolate, payload);
+  }
+
+  /// Tüm dizileri puana göre sıralar (en yüksekten en düşüğe).
+  static List<SeriesItem> topRatedSeries(M3uResult data, {int limit = 50}) {
     final items = FilmDiziCatalog.visibleSeries(data);
     if (items.isEmpty) return const [];
-    final rated = <SeriesItem>[];
-    for (final s in items) {
-      if (SeriesRatingCache.effectiveRating(s) >= kTrendMinRating) {
-        rated.add(s);
-      }
-    }
+    final rated = List<SeriesItem>.from(items);
     rated.sort(
       (a, b) => SeriesRatingCache.effectiveRating(b)
           .compareTo(SeriesRatingCache.effectiveRating(a)),
     );
-    if (rated.length <= kTrendMaxItems) return rated;
-    return rated.sublist(0, kTrendMaxItems);
+    if (rated.length <= limit) return rated;
+    return rated.sublist(0, limit);
   }
+
+  /// IMDB 7+ diziler (puana göre azalan, en çok 50).
+  /// Eğer 7+ puanlı yeterli dizi yoksa son eklenen dizilerle doldurulur.
+  static List<SeriesItem> trendSeries(M3uResult data) {
+    final items = FilmDiziCatalog.visibleSeries(data);
+    return _trendSeriesSync(items, SeriesRatingCache.getMemoryCopy());
+  }
+
+  static Future<List<SeriesItem>> trendSeriesAsync(M3uResult data) async {
+    final items = FilmDiziCatalog.visibleSeries(data);
+    if (items.isEmpty) return const [];
+    final payload = {
+      'items': items,
+      'memory': SeriesRatingCache.getMemoryCopy(),
+    };
+    return compute(_trendSeriesIsolate, payload);
+  }
+
 
   /// Nadir aralıklarla (en çok 24 saatte bir) arka planda puan zenginleştirme
   /// tetikler. Süre dolmadıysa hiçbir şey yapmaz. Çağıran tarafın `await`
@@ -134,6 +147,8 @@ abstract final class SeriesRatingCache {
     });
   }
 
+  static Map<int, double> getMemoryCopy() => Map<int, double>.from(_memory);
+
   static double effectiveRating(SeriesItem s) => _memory[s.id] ?? 0;
 
   static double _parseRating(String? raw) {
@@ -170,7 +185,6 @@ abstract final class SeriesRatingCache {
     } catch (_) {}
   }
 
-  /// En fazla [limit] dizi için OMDb (`type=series`) puanı çeker (sırayla).
   static Future<void> enrichRatings(
     List<SeriesItem> candidates, {
     int limit = 32,
@@ -206,4 +220,80 @@ abstract final class SeriesRatingCache {
     }
     if (changed) _scheduleRevisionBump();
   }
+}
+
+List<VodItem> _trendFilmsSync(List<VodItem> items, Map<int, double> memory) {
+  if (items.isEmpty) return const [];
+  final rated = <VodItem>[];
+  final ratedIds = <int>{};
+  for (final v in items) {
+    final cached = memory[v.id];
+    var rating = (cached != null && cached > 0) ? cached : 0.0;
+    if (rating == 0 && v.rating != null && v.rating!.trim().isNotEmpty) {
+       final s = v.rating!.trim().replaceAll(',', '.');
+       rating = double.tryParse(s) ?? 0.0;
+    }
+    if (rating >= TrendCatalog.kTrendMinRating) {
+      rated.add(v);
+      ratedIds.add(v.id);
+    }
+  }
+  rated.sort((a, b) {
+    final cachedB = memory[b.id] ?? (double.tryParse(b.rating?.trim().replaceAll(',', '.') ?? '') ?? 0.0);
+    final cachedA = memory[a.id] ?? (double.tryParse(a.rating?.trim().replaceAll(',', '.') ?? '') ?? 0.0);
+    return cachedB.compareTo(cachedA);
+  });
+  
+  if (rated.length < TrendCatalog.kTrendMaxItems) {
+    for (final v in items) {
+      if (!ratedIds.contains(v.id)) {
+        rated.add(v);
+        if (rated.length >= TrendCatalog.kTrendMaxItems) break;
+      }
+    }
+  }
+  if (rated.length <= TrendCatalog.kTrendMaxItems) return rated;
+  return rated.sublist(0, TrendCatalog.kTrendMaxItems);
+}
+
+List<SeriesItem> _trendSeriesSync(List<SeriesItem> items, Map<int, double> memory) {
+  if (items.isEmpty) return const [];
+  final rated = <SeriesItem>[];
+  final ratedIds = <int>{};
+  for (final s in items) {
+    final cached = memory[s.id];
+    var rating = (cached != null && cached > 0) ? cached : 0.0;
+    if (rating >= TrendCatalog.kTrendMinRating) {
+      rated.add(s);
+      ratedIds.add(s.id);
+    }
+  }
+  rated.sort((a, b) {
+    final cachedB = memory[b.id] ?? 0.0;
+    final cachedA = memory[a.id] ?? 0.0;
+    return cachedB.compareTo(cachedA);
+  });
+
+  if (rated.length < TrendCatalog.kTrendMaxItems) {
+    for (final s in items) {
+      if (!ratedIds.contains(s.id)) {
+        rated.add(s);
+        if (rated.length >= TrendCatalog.kTrendMaxItems) break;
+      }
+    }
+  }
+  if (rated.length <= TrendCatalog.kTrendMaxItems) return rated;
+  return rated.sublist(0, TrendCatalog.kTrendMaxItems);
+}
+
+List<VodItem> _trendFilmsIsolate(Map<String, dynamic> payload) {
+  final items = payload['items'] as List<VodItem>;
+  final memory = payload['memory'] as Map<int, double>;
+  return _trendFilmsSync(items, memory);
+}
+
+List<SeriesItem> _trendSeriesIsolate(Map<String, dynamic> payload) {
+  final items = payload['items'] as List<SeriesItem>;
+  final memory = payload['memory'] as Map<int, double>;
+  return _trendSeriesSync(items, memory);
 }

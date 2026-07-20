@@ -10,6 +10,7 @@ import '../player/playback_engine_kind.dart';
 import 'app_settings_service.dart';
 import 'auth_service.dart';
 import 'firebase_bootstrap.dart';
+import 'device_memory_service.dart';
 
 /// **Firebase Analytics** tabanlı ürün telemetrisi.
 ///
@@ -37,6 +38,15 @@ class MinaTelemetryService extends GetxService {
   Future<MinaTelemetryService> init() async {
     if (!gFirebaseReady) return this;
     try {
+      // ANR Düzeltme: Uygulama açılışında Firebase Analytics başlatılırken
+      // Google Play Services üzerinden Binder IPC kuyruğu doluyor ve ana
+      // thread kilitleniyordu (ANR). Bu işlemi UI yüklendikten sonraya alıyoruz.
+      // Düşük RAM'li (1-2GB) cihazlarda bu süre çok daha uzundur (15 saniye).
+      final delayMs = Get.isRegistered<DeviceMemoryService>() 
+          ? Get.find<DeviceMemoryService>().recommendedStartupDelayMs 
+          : 3500;
+      await Future<void>.delayed(Duration(milliseconds: delayMs));
+      
       _analytics = _analyticsOverride ?? FirebaseAnalytics.instance;
       await _analytics!.setAnalyticsCollectionEnabled(true);
       await _loadDeviceModel();

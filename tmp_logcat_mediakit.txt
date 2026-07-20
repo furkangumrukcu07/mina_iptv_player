@@ -1,0 +1,818 @@
+07-07 22:52:02.938 I/flutter (16707): mina_iptv: Using cached format for channel 69: ts
+07-07 22:52:02.938 I/flutter (16707): mina_iptv: Using cached format for channel 69: ts
+07-07 22:52:02.938 I/flutter (16707): mina_iptv: Playing stream: http://s36.g57s75.com/live/d98t21c29s51/736832/69.m3u8 (Step: 0, XtreamAlt: true)
+07-07 22:52:02.977 I/flutter (16707): mina_iptv: MediaKit mpv segment=high hwdec=mediacodec-copy framedrop=vo threads=8 ram=7.3GiB cores=8 weak=false aml=false challengedTv=false capableTv=false budgetSoc=false swPurpleFix=false model=M2101K9AG
+07-07 22:52:05.643 D/CCodec  (16707): allocate(c2.qti.avc.decoder)
+07-07 22:52:05.649 I/CCodec  (16707): Created component [c2.qti.avc.decoder] for [c2.qti.avc.decoder]
+07-07 22:52:05.653 D/ReflectedParamUpdater(16707): extent() != 1 for single value type: output.buffers.pool-ids.values
+07-07 22:52:05.655 D/CCodecConfig(16707):   c2::u32 input.buffers.max-size.value = 13271040
+07-07 22:52:05.658 D/CCodec  (16707): [c2.qti.avc.decoder] buffers are bound to CCodec for this session
+07-07 22:52:05.658 D/CCodec  (16707): Client requested ByteBuffer mode decoder w/o color format set: using default planar color format
+07-07 22:52:05.659 D/CCodec  (16707):   Buffer hdr-static-info = {
+07-07 22:52:05.669 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#71] Query input allocators returned 0 params => BAD_INDEX (6)
+07-07 22:52:05.670 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#71] Created input block pool with allocatorID 16 => poolID 57 - OK (0)
+07-07 22:52:05.670 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#71] Query output allocators returned 0 params => BAD_INDEX (6)
+07-07 22:52:05.670 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#71] Configured output block pool ids 1 => OK
+07-07 22:52:05.673 D/BufferPoolAccessor2.0(16707): bufferpool2 0xb400007200de7e28 : 0(0 size) total buffers - 0(0 size) used buffers - 14/19 (recycle/alloc) - 5/11 (fetch/transfer)
+07-07 22:52:05.673 D/BufferPoolAccessor2.0(16707): Destruction - bufferpool2 0xb400007200de7e28 cached: 0/0M, 0/0% in use; allocs: 19, 74% recycled; transfers: 11, 55% unfetched
+07-07 22:52:05.673 D/BufferPoolAccessor2.0(16707): bufferpool2 0xb4000070fd922828 : 0(0 size) total buffers - 0(0 size) used buffers - 84/89 (recycle/alloc) - 5/74 (fetch/transfer)
+07-07 22:52:05.673 D/BufferPoolAccessor2.0(16707): Destruction - bufferpool2 0xb4000070fd922828 cached: 0/0M, 0/0% in use; allocs: 89, 94% recycled; transfers: 74, 93% unfetched
+07-07 22:52:05.673 D/BufferPoolAccessor2.0(16707): bufferpool2 0xb400007200f54228 : 0(0 size) total buffers - 0(0 size) used buffers - 13/18 (recycle/alloc) - 5/12 (fetch/transfer)
+07-07 22:52:05.673 D/BufferPoolAccessor2.0(16707): Destruction - bufferpool2 0xb400007200f54228 cached: 0/0M, 0/0% in use; allocs: 18, 72% recycled; transfers: 12, 58% unfetched
+07-07 22:52:05.673 D/BufferPoolAccessor2.0(16707): bufferpool2 0xb4000070fdaa1028 : 0(0 size) total buffers - 0(0 size) used buffers - 202/207 (recycle/alloc) - 5/191 (fetch/transfer)
+07-07 22:52:05.673 D/BufferPoolAccessor2.0(16707): Destruction - bufferpool2 0xb4000070fdaa1028 cached: 0/0M, 0/0% in use; allocs: 207, 98% recycled; transfers: 191, 97% unfetched
+07-07 22:52:05.677 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#71] Ignoring stale input buffer done callback: last flush index = 0, frameIndex = 0
+07-07 22:52:05.678 D/Codec2-OutputBufferQueue(16707): set max dequeue count 25 from update
+07-07 22:52:05.741 D/CCodecBuffers(16707): [c2.qti.avc.decoder#71:2D-BB-Output] popFromStashAndRegister: at 72000us, output format changed to AMessage(what = 0x00000000) = {
+07-07 22:52:05.741 D/CCodecBuffers(16707):   int32_t android._color-format = 2135033992
+07-07 22:52:05.741 D/CCodecBuffers(16707):   int32_t android._video-scaling = 1
+07-07 22:52:05.741 D/CCodecBuffers(16707):   int32_t android._dataspace = 260
+07-07 22:52:05.741 D/CCodecBuffers(16707):   int32_t color-standard = 1
+07-07 22:52:05.741 D/CCodecBuffers(16707):   int32_t color-range = 2
+07-07 22:52:05.741 D/CCodecBuffers(16707):   int32_t color-transfer = 3
+07-07 22:52:05.741 D/CCodecBuffers(16707):   int32_t sar-height = 1
+07-07 22:52:05.741 D/CCodecBuffers(16707):   int32_t rotation-degrees = 0
+07-07 22:52:05.741 D/CCodecBuffers(16707):   Buffer hdr-static-info = {
+07-07 22:52:05.741 D/CCodecBuffers(16707):     00000000:  00 50 c3 50 c3 50 c3 50  c3 50 c3 50 c3 50 c3 50  .P.P.P.P.P.P.P.P
+07-07 22:52:05.741 D/CCodecBuffers(16707):     00000010:  c3 01 00 10 27 01 00 01  00                       ....'....
+07-07 22:52:05.741 D/CCodecBuffers(16707):   }
+07-07 22:52:05.741 D/CCodecBuffers(16707):   int32_t sar-width = 1
+07-07 22:52:05.741 D/CCodecBuffers(16707):   Rect crop(0, 0, 1919, 1079)
+07-07 22:52:05.741 D/CCodecBuffers(16707):   int32_t width = 1920
+07-07 22:52:05.741 D/CCodecBuffers(16707):   int32_t feature-secure-playback = 0
+07-07 22:52:05.741 D/CCodecBuffers(16707):   int32_t frame-rate = 30
+07-07 22:52:05.741 D/CCodecBuffers(16707):   int32_t height = 1080
+07-07 22:52:05.741 D/CCodecBuffers(16707):   int32_t max-height = 2160
+07-07 22:52:05.741 D/CCodecBuffers(16707):   int32_t max-width = 4096
+07-07 22:52:05.741 D/CCodecBuffers(16707):   string mime = "video/raw"
+07-07 22:52:05.741 D/CCodecBuffers(16707):   int32_t priority = 1
+07-07 22:52:05.741 D/CCodecBuffers(16707):   int32_t color-format = 19
+07-07 22:52:05.741 D/CCodecBuffers(16707): }
+07-07 22:52:05.743 D/CCodecBuffers(16707): [c2.qti.avc.decoder#71:2D-BB-Output] updating image-data
+07-07 22:52:05.743 D/CCodecBuffers(16707): [c2.qti.avc.decoder#71:2D-BB-Output] updating stride = 1920, width: 1920, height: 1080
+07-07 22:52:05.743 D/CCodecBuffers(16707): [c2.qti.avc.decoder#71:2D-BB-Output] updating vstride = 1080
+07-07 22:52:05.776 E/libOpenSLES(16707): Configuration error: unknown key
+07-07 22:52:05.798 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#71] flushed work; ignored.
+07-07 22:52:05.798 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#71] Discard frames from previous generation.
+07-07 22:52:05.798 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#71] MediaCodec discarded an unknown buffer
+07-07 22:52:05.801 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#71] MediaCodec discarded an unknown buffer
+07-07 22:52:05.801 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#71] MediaCodec discarded an unknown buffer
+07-07 22:52:05.801 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#71] MediaCodec discarded an unknown buffer
+07-07 22:52:05.801 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#71] MediaCodec discarded an unknown buffer
+07-07 22:52:05.834 D/CCodec  (16707): allocate(c2.qti.avc.decoder)
+07-07 22:52:05.838 I/CCodec  (16707): Created component [c2.qti.avc.decoder] for [c2.qti.avc.decoder]
+07-07 22:52:05.841 D/ReflectedParamUpdater(16707): extent() != 1 for single value type: output.buffers.pool-ids.values
+07-07 22:52:05.842 D/CCodecConfig(16707):   c2::u32 input.buffers.max-size.value = 13271040
+07-07 22:52:05.844 D/CCodec  (16707): [c2.qti.avc.decoder] buffers are bound to CCodec for this session
+07-07 22:52:05.845 D/CCodec  (16707): Client requested ByteBuffer mode decoder w/o color format set: using default planar color format
+07-07 22:52:05.846 D/CCodec  (16707):   Buffer hdr-static-info = {
+07-07 22:52:05.854 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#910] Query input allocators returned 0 params => BAD_INDEX (6)
+07-07 22:52:05.854 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#910] Created input block pool with allocatorID 16 => poolID 58 - OK (0)
+07-07 22:52:05.854 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#910] Query output allocators returned 0 params => BAD_INDEX (6)
+07-07 22:52:05.854 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#910] Configured output block pool ids 1 => OK
+07-07 22:52:05.860 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#910] Ignoring stale input buffer done callback: last flush index = 0, frameIndex = 0
+07-07 22:52:05.901 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#910] Ignoring stale input buffer done callback: last flush index = 2, frameIndex = 2
+07-07 22:52:05.986 D/CCodecBuffers(16707): [c2.qti.avc.decoder#910:2D-BB-Output] popFromStashAndRegister: at 992000us, output format changed to AMessage(what = 0x00000000) = {
+07-07 22:52:05.986 D/CCodecBuffers(16707):   int32_t android._color-format = 2135033992
+07-07 22:52:05.986 D/CCodecBuffers(16707):   int32_t android._video-scaling = 1
+07-07 22:52:05.986 D/CCodecBuffers(16707):   int32_t android._dataspace = 260
+07-07 22:52:05.986 D/CCodecBuffers(16707):   int32_t color-standard = 1
+07-07 22:52:05.986 D/CCodecBuffers(16707):   int32_t color-range = 2
+07-07 22:52:05.986 D/CCodecBuffers(16707):   int32_t color-transfer = 3
+07-07 22:52:05.986 D/CCodecBuffers(16707):   int32_t sar-height = 1
+07-07 22:52:05.986 D/CCodecBuffers(16707):   int32_t rotation-degrees = 0
+07-07 22:52:05.986 D/CCodecBuffers(16707):   Buffer hdr-static-info = {
+07-07 22:52:05.986 D/CCodecBuffers(16707):     00000000:  00 50 c3 50 c3 50 c3 50  c3 50 c3 50 c3 50 c3 50  .P.P.P.P.P.P.P.P
+07-07 22:52:05.986 D/CCodecBuffers(16707):     00000010:  c3 01 00 10 27 01 00 01  00                       ....'....
+07-07 22:52:05.986 D/CCodecBuffers(16707):   }
+07-07 22:52:05.986 D/CCodecBuffers(16707):   int32_t sar-width = 1
+07-07 22:52:05.986 D/CCodecBuffers(16707):   Rect crop(0, 0, 1919, 1079)
+07-07 22:52:05.986 D/CCodecBuffers(16707):   int32_t width = 1920
+07-07 22:52:05.986 D/CCodecBuffers(16707):   int32_t feature-secure-playback = 0
+07-07 22:52:05.986 D/CCodecBuffers(16707):   int32_t frame-rate = 30
+07-07 22:52:05.986 D/CCodecBuffers(16707):   int32_t height = 1080
+07-07 22:52:05.986 D/CCodecBuffers(16707):   int32_t max-height = 2160
+07-07 22:52:05.986 D/CCodecBuffers(16707):   int32_t max-width = 4096
+07-07 22:52:05.986 D/CCodecBuffers(16707):   string mime = "video/raw"
+07-07 22:52:05.986 D/CCodecBuffers(16707):   int32_t priority = 1
+07-07 22:52:05.986 D/CCodecBuffers(16707):   int32_t color-format = 19
+07-07 22:52:05.986 D/CCodecBuffers(16707): }
+07-07 22:52:05.987 D/CCodecBuffers(16707): [c2.qti.avc.decoder#910:2D-BB-Output] updating image-data
+07-07 22:52:05.987 D/CCodecBuffers(16707): [c2.qti.avc.decoder#910:2D-BB-Output] updating stride = 1920, width: 1920, height: 1080
+07-07 22:52:05.987 D/CCodecBuffers(16707): [c2.qti.avc.decoder#910:2D-BB-Output] updating vstride = 1080
+07-07 22:52:10.671 D/BufferPoolAccessor2.0(16707): bufferpool2 0xb400007201043e28 : 0(0 size) total buffers - 0(0 size) used buffers - 14/19 (recycle/alloc) - 5/11 (fetch/transfer)
+07-07 22:52:10.671 D/BufferPoolAccessor2.0(16707): evictor expired: 1, evicted: 1
+07-07 22:52:11.393 D/BufferPoolAccessor2.0(16707): bufferpool2 0xb4000070fdaa1028 : 5(66355200 size) total buffers - 4(53084160 size) used buffers - 145/150 (recycle/alloc) - 5/139 (fetch/transfer)
+07-07 22:52:11.671 D/BufferPoolAccessor2.0(16707): evictor expired: 4, evicted: 0
+07-07 22:52:11.721 I/flutter (16707): mina_iptv: Using cached format for channel 70: ts
+07-07 22:52:11.721 I/flutter (16707): mina_iptv: Using cached format for channel 70: ts
+07-07 22:52:11.721 I/flutter (16707): mina_iptv: Playing stream: http://s36.g57s75.com/live/d98t21c29s51/736832/70.m3u8 (Step: 0, XtreamAlt: true)
+07-07 22:52:11.751 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#910] MediaCodec discarded an unknown buffer
+07-07 22:52:11.751 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#910] MediaCodec discarded an unknown buffer
+07-07 22:52:11.751 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#910] MediaCodec discarded an unknown buffer
+07-07 22:52:11.751 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#910] MediaCodec discarded an unknown buffer
+07-07 22:52:11.793 I/flutter (16707): mina_iptv: MediaKit mpv segment=high hwdec=mediacodec-copy framedrop=vo threads=8 ram=7.3GiB cores=8 weak=false aml=false challengedTv=false capableTv=false budgetSoc=false swPurpleFix=false model=M2101K9AG
+07-07 22:52:13.480 D/CCodec  (16707): allocate(c2.qti.avc.decoder)
+07-07 22:52:13.488 I/CCodec  (16707): Created component [c2.qti.avc.decoder] for [c2.qti.avc.decoder]
+07-07 22:52:13.491 D/ReflectedParamUpdater(16707): extent() != 1 for single value type: output.buffers.pool-ids.values
+07-07 22:52:13.493 D/CCodecConfig(16707):   c2::u32 input.buffers.max-size.value = 13271040
+07-07 22:52:13.495 D/CCodec  (16707): [c2.qti.avc.decoder] buffers are bound to CCodec for this session
+07-07 22:52:13.495 D/CCodec  (16707): Client requested ByteBuffer mode decoder w/o color format set: using default planar color format
+07-07 22:52:13.496 D/CCodec  (16707):   Buffer hdr-static-info = {
+07-07 22:52:13.507 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#798] Query input allocators returned 0 params => BAD_INDEX (6)
+07-07 22:52:13.507 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#798] Created input block pool with allocatorID 16 => poolID 59 - OK (0)
+07-07 22:52:13.507 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#798] Query output allocators returned 0 params => BAD_INDEX (6)
+07-07 22:52:13.507 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#798] Configured output block pool ids 1 => OK
+07-07 22:52:13.510 D/BufferPoolAccessor2.0(16707): Destruction - bufferpool2 0xb400007201043e28 cached: 0/0M, 0/0% in use; allocs: 19, 74% recycled; transfers: 11, 55% unfetched
+07-07 22:52:13.515 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#798] Ignoring stale input buffer done callback: last flush index = 0, frameIndex = 0
+07-07 22:52:13.584 D/CCodecBuffers(16707): [c2.qti.avc.decoder#798:2D-BB-Output] popFromStashAndRegister: at 60000us, output format changed to AMessage(what = 0x00000000) = {
+07-07 22:52:13.584 D/CCodecBuffers(16707):   int32_t android._color-format = 2135033992
+07-07 22:52:13.584 D/CCodecBuffers(16707):   int32_t android._video-scaling = 1
+07-07 22:52:13.584 D/CCodecBuffers(16707):   int32_t android._dataspace = 260
+07-07 22:52:13.584 D/CCodecBuffers(16707):   int32_t color-standard = 1
+07-07 22:52:13.584 D/CCodecBuffers(16707):   int32_t color-range = 2
+07-07 22:52:13.584 D/CCodecBuffers(16707):   int32_t color-transfer = 3
+07-07 22:52:13.584 D/CCodecBuffers(16707):   int32_t sar-height = 1
+07-07 22:52:13.584 D/CCodecBuffers(16707):   int32_t rotation-degrees = 0
+07-07 22:52:13.584 D/CCodecBuffers(16707):   Buffer hdr-static-info = {
+07-07 22:52:13.584 D/CCodecBuffers(16707):     00000000:  00 50 c3 50 c3 50 c3 50  c3 50 c3 50 c3 50 c3 50  .P.P.P.P.P.P.P.P
+07-07 22:52:13.584 D/CCodecBuffers(16707):     00000010:  c3 01 00 10 27 01 00 01  00                       ....'....
+07-07 22:52:13.584 D/CCodecBuffers(16707):   }
+07-07 22:52:13.584 D/CCodecBuffers(16707):   int32_t sar-width = 1
+07-07 22:52:13.584 D/CCodecBuffers(16707):   Rect crop(0, 0, 1919, 1079)
+07-07 22:52:13.584 D/CCodecBuffers(16707):   int32_t width = 1920
+07-07 22:52:13.584 D/CCodecBuffers(16707):   int32_t feature-secure-playback = 0
+07-07 22:52:13.584 D/CCodecBuffers(16707):   int32_t frame-rate = 30
+07-07 22:52:13.584 D/CCodecBuffers(16707):   int32_t height = 1080
+07-07 22:52:13.584 D/CCodecBuffers(16707):   int32_t max-height = 2160
+07-07 22:52:13.584 D/CCodecBuffers(16707):   int32_t max-width = 4096
+07-07 22:52:13.584 D/CCodecBuffers(16707):   string mime = "video/raw"
+07-07 22:52:13.584 D/CCodecBuffers(16707):   int32_t priority = 1
+07-07 22:52:13.584 D/CCodecBuffers(16707):   int32_t color-format = 19
+07-07 22:52:13.584 D/CCodecBuffers(16707): }
+07-07 22:52:13.585 D/CCodecBuffers(16707): [c2.qti.avc.decoder#798:2D-BB-Output] updating image-data
+07-07 22:52:13.585 D/CCodecBuffers(16707): [c2.qti.avc.decoder#798:2D-BB-Output] updating stride = 1920, width: 1920, height: 1080
+07-07 22:52:13.585 D/CCodecBuffers(16707): [c2.qti.avc.decoder#798:2D-BB-Output] updating vstride = 1080
+07-07 22:52:13.618 E/libOpenSLES(16707): Configuration error: unknown key
+07-07 22:52:13.682 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#798] flushed work; ignored.
+07-07 22:52:13.682 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#798] Discard frames from previous generation.
+07-07 22:52:13.682 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#798] MediaCodec discarded an unknown buffer
+07-07 22:52:13.683 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#798] MediaCodec discarded an unknown buffer
+07-07 22:52:13.683 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#798] MediaCodec discarded an unknown buffer
+07-07 22:52:13.683 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#798] MediaCodec discarded an unknown buffer
+07-07 22:52:13.737 D/CCodec  (16707): allocate(c2.qti.avc.decoder)
+07-07 22:52:13.740 I/CCodec  (16707): Created component [c2.qti.avc.decoder] for [c2.qti.avc.decoder]
+07-07 22:52:13.744 D/ReflectedParamUpdater(16707): extent() != 1 for single value type: output.buffers.pool-ids.values
+07-07 22:52:13.746 D/CCodecConfig(16707):   c2::u32 input.buffers.max-size.value = 13271040
+07-07 22:52:13.749 D/CCodec  (16707): [c2.qti.avc.decoder] buffers are bound to CCodec for this session
+07-07 22:52:13.749 D/CCodec  (16707): Client requested ByteBuffer mode decoder w/o color format set: using default planar color format
+07-07 22:52:13.750 D/CCodec  (16707):   Buffer hdr-static-info = {
+07-07 22:52:13.759 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#818] Query input allocators returned 0 params => BAD_INDEX (6)
+07-07 22:52:13.760 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#818] Created input block pool with allocatorID 16 => poolID 60 - OK (0)
+07-07 22:52:13.760 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#818] Query output allocators returned 0 params => BAD_INDEX (6)
+07-07 22:52:13.760 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#818] Configured output block pool ids 1 => OK
+07-07 22:52:13.766 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#818] Ignoring stale input buffer done callback: last flush index = 0, frameIndex = 0
+07-07 22:52:13.785 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#818] MediaCodec discarded an unknown buffer
+07-07 22:52:13.802 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#818] Ignoring stale input buffer done callback: last flush index = 2, frameIndex = 2
+07-07 22:52:13.827 D/CCodecBuffers(16707): [c2.qti.avc.decoder#818:2D-BB-Output] popFromStashAndRegister: at 1700000us, output format changed to AMessage(what = 0x00000000) = {
+07-07 22:52:13.827 D/CCodecBuffers(16707):   int32_t android._color-format = 2135033992
+07-07 22:52:13.827 D/CCodecBuffers(16707):   int32_t android._video-scaling = 1
+07-07 22:52:13.827 D/CCodecBuffers(16707):   int32_t android._dataspace = 260
+07-07 22:52:13.827 D/CCodecBuffers(16707):   int32_t color-standard = 1
+07-07 22:52:13.827 D/CCodecBuffers(16707):   int32_t color-range = 2
+07-07 22:52:13.827 D/CCodecBuffers(16707):   int32_t color-transfer = 3
+07-07 22:52:13.827 D/CCodecBuffers(16707):   int32_t sar-height = 1
+07-07 22:52:13.827 D/CCodecBuffers(16707):   int32_t rotation-degrees = 0
+07-07 22:52:13.827 D/CCodecBuffers(16707):   Buffer hdr-static-info = {
+07-07 22:52:13.827 D/CCodecBuffers(16707):     00000000:  00 50 c3 50 c3 50 c3 50  c3 50 c3 50 c3 50 c3 50  .P.P.P.P.P.P.P.P
+07-07 22:52:13.827 D/CCodecBuffers(16707):     00000010:  c3 01 00 10 27 01 00 01  00                       ....'....
+07-07 22:52:13.827 D/CCodecBuffers(16707):   }
+07-07 22:52:13.827 D/CCodecBuffers(16707):   int32_t sar-width = 1
+07-07 22:52:13.827 D/CCodecBuffers(16707):   Rect crop(0, 0, 1919, 1079)
+07-07 22:52:13.827 D/CCodecBuffers(16707):   int32_t width = 1920
+07-07 22:52:13.827 D/CCodecBuffers(16707):   int32_t feature-secure-playback = 0
+07-07 22:52:13.827 D/CCodecBuffers(16707):   int32_t frame-rate = 30
+07-07 22:52:13.827 D/CCodecBuffers(16707):   int32_t height = 1080
+07-07 22:52:13.827 D/CCodecBuffers(16707):   int32_t max-height = 2160
+07-07 22:52:13.827 D/CCodecBuffers(16707):   int32_t max-width = 4096
+07-07 22:52:13.827 D/CCodecBuffers(16707):   string mime = "video/raw"
+07-07 22:52:13.827 D/CCodecBuffers(16707):   int32_t priority = 1
+07-07 22:52:13.827 D/CCodecBuffers(16707):   int32_t color-format = 19
+07-07 22:52:13.827 D/CCodecBuffers(16707): }
+07-07 22:52:13.828 D/CCodecBuffers(16707): [c2.qti.avc.decoder#818:2D-BB-Output] updating image-data
+07-07 22:52:13.828 D/CCodecBuffers(16707): [c2.qti.avc.decoder#818:2D-BB-Output] updating stride = 1920, width: 1920, height: 1080
+07-07 22:52:13.828 D/CCodecBuffers(16707): [c2.qti.avc.decoder#818:2D-BB-Output] updating vstride = 1080
+07-07 22:52:16.672 D/BufferPoolAccessor2.0(16707): bufferpool2 0xb4000070fdaa1028 : 0(0 size) total buffers - 0(0 size) used buffers - 161/166 (recycle/alloc) - 5/150 (fetch/transfer)
+07-07 22:52:16.672 D/BufferPoolAccessor2.0(16707): evictor expired: 1, evicted: 1
+07-07 22:52:18.672 D/BufferPoolAccessor2.0(16707): bufferpool2 0xb4000070fd876a28 : 0(0 size) total buffers - 0(0 size) used buffers - 17/22 (recycle/alloc) - 5/14 (fetch/transfer)
+07-07 22:52:18.672 D/BufferPoolAccessor2.0(16707): evictor expired: 2, evicted: 1
+07-07 22:52:18.998 D/BufferPoolAccessor2.0(16707): bufferpool2 0xb4000070fdaf4828 : 5(66355200 size) total buffers - 4(53084160 size) used buffers - 139/144 (recycle/alloc) - 5/133 (fetch/transfer)
+07-07 22:52:19.404 I/flutter (16707): mina_iptv: Using cached format for channel 71: hls
+07-07 22:52:19.404 I/flutter (16707): mina_iptv: Using cached format for channel 71: hls
+07-07 22:52:19.404 I/flutter (16707): mina_iptv: Playing stream: http://s36.g57s75.com/live/d98t21c29s51/736832/71.m3u8 (Step: 0, XtreamAlt: false)
+07-07 22:52:19.409 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#818] MediaCodec discarded an unknown buffer
+07-07 22:52:19.410 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#818] MediaCodec discarded an unknown buffer
+07-07 22:52:19.410 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#818] MediaCodec discarded an unknown buffer
+07-07 22:52:19.410 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#818] MediaCodec discarded an unknown buffer
+07-07 22:52:19.460 I/flutter (16707): mina_iptv: MediaKit mpv segment=high hwdec=mediacodec-copy framedrop=vo threads=8 ram=7.3GiB cores=8 weak=false aml=false challengedTv=false capableTv=false budgetSoc=false swPurpleFix=false model=M2101K9AG
+07-07 22:52:21.626 D/CCodec  (16707): allocate(c2.qti.avc.decoder)
+07-07 22:52:21.629 I/CCodec  (16707): Created component [c2.qti.avc.decoder] for [c2.qti.avc.decoder]
+07-07 22:52:21.632 D/ReflectedParamUpdater(16707): extent() != 1 for single value type: output.buffers.pool-ids.values
+07-07 22:52:21.634 D/CCodecConfig(16707):   c2::u32 input.buffers.max-size.value = 13271040
+07-07 22:52:21.636 D/CCodec  (16707): [c2.qti.avc.decoder] buffers are bound to CCodec for this session
+07-07 22:52:21.637 D/CCodec  (16707): Client requested ByteBuffer mode decoder w/o color format set: using default planar color format
+07-07 22:52:21.638 D/CCodec  (16707):   Buffer hdr-static-info = {
+07-07 22:52:21.648 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#171] Query input allocators returned 0 params => BAD_INDEX (6)
+07-07 22:52:21.649 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#171] Created input block pool with allocatorID 16 => poolID 61 - OK (0)
+07-07 22:52:21.649 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#171] Query output allocators returned 0 params => BAD_INDEX (6)
+07-07 22:52:21.649 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#171] Configured output block pool ids 1 => OK
+07-07 22:52:21.651 D/BufferPoolAccessor2.0(16707): Destruction - bufferpool2 0xb4000070fdaa1028 cached: 0/0M, 0/0% in use; allocs: 166, 97% recycled; transfers: 150, 97% unfetched
+07-07 22:52:21.651 D/BufferPoolAccessor2.0(16707): Destruction - bufferpool2 0xb4000070fd876a28 cached: 0/0M, 0/0% in use; allocs: 22, 77% recycled; transfers: 14, 64% unfetched
+07-07 22:52:21.655 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#171] Ignoring stale input buffer done callback: last flush index = 0, frameIndex = 0
+07-07 22:52:21.717 D/CCodecBuffers(16707): [c2.qti.avc.decoder#171:2D-BB-Output] popFromStashAndRegister: at 70667us, output format changed to AMessage(what = 0x00000000) = {
+07-07 22:52:21.717 D/CCodecBuffers(16707):   int32_t android._color-format = 2135033992
+07-07 22:52:21.717 D/CCodecBuffers(16707):   int32_t android._video-scaling = 1
+07-07 22:52:21.717 D/CCodecBuffers(16707):   int32_t android._dataspace = 260
+07-07 22:52:21.717 D/CCodecBuffers(16707):   int32_t color-standard = 1
+07-07 22:52:21.717 D/CCodecBuffers(16707):   int32_t color-range = 2
+07-07 22:52:21.717 D/CCodecBuffers(16707):   int32_t color-transfer = 3
+07-07 22:52:21.717 D/CCodecBuffers(16707):   int32_t sar-height = 1
+07-07 22:52:21.717 D/CCodecBuffers(16707):   int32_t rotation-degrees = 0
+07-07 22:52:21.717 D/CCodecBuffers(16707):   Buffer hdr-static-info = {
+07-07 22:52:21.717 D/CCodecBuffers(16707):     00000000:  00 50 c3 50 c3 50 c3 50  c3 50 c3 50 c3 50 c3 50  .P.P.P.P.P.P.P.P
+07-07 22:52:21.717 D/CCodecBuffers(16707):     00000010:  c3 01 00 10 27 01 00 01  00                       ....'....
+07-07 22:52:21.717 D/CCodecBuffers(16707):   }
+07-07 22:52:21.717 D/CCodecBuffers(16707):   int32_t sar-width = 1
+07-07 22:52:21.717 D/CCodecBuffers(16707):   Rect crop(0, 0, 1919, 1079)
+07-07 22:52:21.717 D/CCodecBuffers(16707):   int32_t width = 1920
+07-07 22:52:21.717 D/CCodecBuffers(16707):   int32_t feature-secure-playback = 0
+07-07 22:52:21.717 D/CCodecBuffers(16707):   int32_t frame-rate = 30
+07-07 22:52:21.717 D/CCodecBuffers(16707):   int32_t height = 1080
+07-07 22:52:21.717 D/CCodecBuffers(16707):   int32_t max-height = 2160
+07-07 22:52:21.717 D/CCodecBuffers(16707):   int32_t max-width = 4096
+07-07 22:52:21.717 D/CCodecBuffers(16707):   string mime = "video/raw"
+07-07 22:52:21.717 D/CCodecBuffers(16707):   int32_t priority = 1
+07-07 22:52:21.717 D/CCodecBuffers(16707):   int32_t color-format = 19
+07-07 22:52:21.717 D/CCodecBuffers(16707): }
+07-07 22:52:21.719 D/CCodecBuffers(16707): [c2.qti.avc.decoder#171:2D-BB-Output] updating image-data
+07-07 22:52:21.719 D/CCodecBuffers(16707): [c2.qti.avc.decoder#171:2D-BB-Output] updating stride = 1920, width: 1920, height: 1080
+07-07 22:52:21.719 D/CCodecBuffers(16707): [c2.qti.avc.decoder#171:2D-BB-Output] updating vstride = 1080
+07-07 22:52:21.754 E/libOpenSLES(16707): Configuration error: unknown key
+07-07 22:52:21.777 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#171] Ignoring stale input buffer done callback: last flush index = 12, frameIndex = 11
+07-07 22:52:21.777 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#171] MediaCodec discarded an unknown buffer
+07-07 22:52:21.777 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#171] MediaCodec discarded an unknown buffer
+07-07 22:52:21.777 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#171] MediaCodec discarded an unknown buffer
+07-07 22:52:21.777 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#171] MediaCodec discarded an unknown buffer
+07-07 22:52:21.797 D/CCodec  (16707): allocate(c2.qti.avc.decoder)
+07-07 22:52:21.800 I/CCodec  (16707): Created component [c2.qti.avc.decoder] for [c2.qti.avc.decoder]
+07-07 22:52:21.803 D/ReflectedParamUpdater(16707): extent() != 1 for single value type: output.buffers.pool-ids.values
+07-07 22:52:21.805 D/CCodecConfig(16707):   c2::u32 input.buffers.max-size.value = 13271040
+07-07 22:52:21.807 D/CCodec  (16707): [c2.qti.avc.decoder] buffers are bound to CCodec for this session
+07-07 22:52:21.807 D/CCodec  (16707): Client requested ByteBuffer mode decoder w/o color format set: using default planar color format
+07-07 22:52:21.808 D/CCodec  (16707):   Buffer hdr-static-info = {
+07-07 22:52:21.818 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#35] Query input allocators returned 0 params => BAD_INDEX (6)
+07-07 22:52:21.818 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#35] Created input block pool with allocatorID 16 => poolID 62 - OK (0)
+07-07 22:52:21.819 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#35] Query output allocators returned 0 params => BAD_INDEX (6)
+07-07 22:52:21.819 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#35] Configured output block pool ids 1 => OK
+07-07 22:52:21.827 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#35] Ignoring stale input buffer done callback: last flush index = 0, frameIndex = 0
+07-07 22:52:21.940 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#35] Ignoring stale input buffer done callback: last flush index = 2, frameIndex = 2
+07-07 22:52:21.989 D/CCodecBuffers(16707): [c2.qti.avc.decoder#35:2D-BB-Output] popFromStashAndRegister: at 1190667us, output format changed to AMessage(what = 0x00000000) = {
+07-07 22:52:21.989 D/CCodecBuffers(16707):   int32_t android._color-format = 2135033992
+07-07 22:52:21.989 D/CCodecBuffers(16707):   int32_t android._video-scaling = 1
+07-07 22:52:21.989 D/CCodecBuffers(16707):   int32_t android._dataspace = 260
+07-07 22:52:21.989 D/CCodecBuffers(16707):   int32_t color-standard = 1
+07-07 22:52:21.989 D/CCodecBuffers(16707):   int32_t color-range = 2
+07-07 22:52:21.989 D/CCodecBuffers(16707):   int32_t color-transfer = 3
+07-07 22:52:21.989 D/CCodecBuffers(16707):   int32_t sar-height = 1
+07-07 22:52:21.989 D/CCodecBuffers(16707):   int32_t rotation-degrees = 0
+07-07 22:52:21.989 D/CCodecBuffers(16707):   Buffer hdr-static-info = {
+07-07 22:52:21.989 D/CCodecBuffers(16707):     00000000:  00 50 c3 50 c3 50 c3 50  c3 50 c3 50 c3 50 c3 50  .P.P.P.P.P.P.P.P
+07-07 22:52:21.989 D/CCodecBuffers(16707):     00000010:  c3 01 00 10 27 01 00 01  00                       ....'....
+07-07 22:52:21.989 D/CCodecBuffers(16707):   }
+07-07 22:52:21.989 D/CCodecBuffers(16707):   int32_t sar-width = 1
+07-07 22:52:21.989 D/CCodecBuffers(16707):   Rect crop(0, 0, 1919, 1079)
+07-07 22:52:21.989 D/CCodecBuffers(16707):   int32_t width = 1920
+07-07 22:52:21.989 D/CCodecBuffers(16707):   int32_t feature-secure-playback = 0
+07-07 22:52:21.989 D/CCodecBuffers(16707):   int32_t frame-rate = 30
+07-07 22:52:21.989 D/CCodecBuffers(16707):   int32_t height = 1080
+07-07 22:52:21.989 D/CCodecBuffers(16707):   int32_t max-height = 2160
+07-07 22:52:21.989 D/CCodecBuffers(16707):   int32_t max-width = 4096
+07-07 22:52:21.989 D/CCodecBuffers(16707):   string mime = "video/raw"
+07-07 22:52:21.989 D/CCodecBuffers(16707):   int32_t priority = 1
+07-07 22:52:21.989 D/CCodecBuffers(16707):   int32_t color-format = 19
+07-07 22:52:21.989 D/CCodecBuffers(16707): }
+07-07 22:52:21.992 D/CCodecBuffers(16707): [c2.qti.avc.decoder#35:2D-BB-Output] updating image-data
+07-07 22:52:21.992 D/CCodecBuffers(16707): [c2.qti.avc.decoder#35:2D-BB-Output] updating stride = 1920, width: 1920, height: 1080
+07-07 22:52:21.992 D/CCodecBuffers(16707): [c2.qti.avc.decoder#35:2D-BB-Output] updating vstride = 1080
+07-07 22:52:24.673 D/BufferPoolAccessor2.0(16707): bufferpool2 0xb4000070fdaf4828 : 0(0 size) total buffers - 0(0 size) used buffers - 155/160 (recycle/alloc) - 5/144 (fetch/transfer)
+07-07 22:52:24.673 D/BufferPoolAccessor2.0(16707): evictor expired: 1, evicted: 1
+07-07 22:52:25.292 I/flutter (16707): mina_iptv: Using cached format for channel 72: hls
+07-07 22:52:25.293 I/flutter (16707): mina_iptv: Using cached format for channel 72: hls
+07-07 22:52:25.293 I/flutter (16707): mina_iptv: Playing stream: http://s36.g57s75.com/live/d98t21c29s51/736832/72.m3u8 (Step: 0, XtreamAlt: false)
+07-07 22:52:25.299 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#35] MediaCodec discarded an unknown buffer
+07-07 22:52:25.299 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#35] MediaCodec discarded an unknown buffer
+07-07 22:52:25.300 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#35] MediaCodec discarded an unknown buffer
+07-07 22:52:25.300 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#35] MediaCodec discarded an unknown buffer
+07-07 22:52:25.339 I/flutter (16707): mina_iptv: MediaKit mpv segment=high hwdec=mediacodec-copy framedrop=vo threads=8 ram=7.3GiB cores=8 weak=false aml=false challengedTv=false capableTv=false budgetSoc=false swPurpleFix=false model=M2101K9AG
+07-07 22:52:26.674 D/BufferPoolAccessor2.0(16707): bufferpool2 0xb4000070fd89ea28 : 0(0 size) total buffers - 0(0 size) used buffers - 14/19 (recycle/alloc) - 5/12 (fetch/transfer)
+07-07 22:52:26.674 D/BufferPoolAccessor2.0(16707): evictor expired: 3, evicted: 1
+07-07 22:52:27.116 D/CCodec  (16707): allocate(c2.qti.avc.decoder)
+07-07 22:52:27.123 I/CCodec  (16707): Created component [c2.qti.avc.decoder] for [c2.qti.avc.decoder]
+07-07 22:52:27.126 D/ReflectedParamUpdater(16707): extent() != 1 for single value type: output.buffers.pool-ids.values
+07-07 22:52:27.130 D/CCodecConfig(16707):   c2::u32 input.buffers.max-size.value = 13271040
+07-07 22:52:27.134 D/CCodec  (16707): [c2.qti.avc.decoder] buffers are bound to CCodec for this session
+07-07 22:52:27.134 D/CCodec  (16707): Client requested ByteBuffer mode decoder w/o color format set: using default planar color format
+07-07 22:52:27.135 D/CCodec  (16707):   Buffer hdr-static-info = {
+07-07 22:52:27.148 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#401] Query input allocators returned 0 params => BAD_INDEX (6)
+07-07 22:52:27.148 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#401] Created input block pool with allocatorID 16 => poolID 63 - OK (0)
+07-07 22:52:27.148 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#401] Query output allocators returned 0 params => BAD_INDEX (6)
+07-07 22:52:27.148 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#401] Configured output block pool ids 1 => OK
+07-07 22:52:27.151 D/BufferPoolAccessor2.0(16707): Destruction - bufferpool2 0xb4000070fdaf4828 cached: 0/0M, 0/0% in use; allocs: 160, 97% recycled; transfers: 144, 97% unfetched
+07-07 22:52:27.152 D/BufferPoolAccessor2.0(16707): Destruction - bufferpool2 0xb4000070fd89ea28 cached: 0/0M, 0/0% in use; allocs: 19, 74% recycled; transfers: 12, 58% unfetched
+07-07 22:52:27.159 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#401] Ignoring stale input buffer done callback: last flush index = 0, frameIndex = 0
+07-07 22:52:27.229 D/CCodecBuffers(16707): [c2.qti.avc.decoder#401:2D-BB-Output] popFromStashAndRegister: at 61333us, output format changed to AMessage(what = 0x00000000) = {
+07-07 22:52:27.229 D/CCodecBuffers(16707):   int32_t android._color-format = 2135033992
+07-07 22:52:27.229 D/CCodecBuffers(16707):   int32_t android._video-scaling = 1
+07-07 22:52:27.229 D/CCodecBuffers(16707):   int32_t android._dataspace = 260
+07-07 22:52:27.229 D/CCodecBuffers(16707):   int32_t color-standard = 1
+07-07 22:52:27.229 D/CCodecBuffers(16707):   int32_t color-range = 2
+07-07 22:52:27.229 D/CCodecBuffers(16707):   int32_t color-transfer = 3
+07-07 22:52:27.229 D/CCodecBuffers(16707):   int32_t sar-height = 1
+07-07 22:52:27.229 D/CCodecBuffers(16707):   int32_t rotation-degrees = 0
+07-07 22:52:27.229 D/CCodecBuffers(16707):   Buffer hdr-static-info = {
+07-07 22:52:27.229 D/CCodecBuffers(16707):     00000000:  00 50 c3 50 c3 50 c3 50  c3 50 c3 50 c3 50 c3 50  .P.P.P.P.P.P.P.P
+07-07 22:52:27.229 D/CCodecBuffers(16707):     00000010:  c3 01 00 10 27 01 00 01  00                       ....'....
+07-07 22:52:27.229 D/CCodecBuffers(16707):   }
+07-07 22:52:27.229 D/CCodecBuffers(16707):   int32_t sar-width = 1
+07-07 22:52:27.229 D/CCodecBuffers(16707):   Rect crop(0, 0, 1919, 1079)
+07-07 22:52:27.229 D/CCodecBuffers(16707):   int32_t width = 1920
+07-07 22:52:27.229 D/CCodecBuffers(16707):   int32_t feature-secure-playback = 0
+07-07 22:52:27.229 D/CCodecBuffers(16707):   int32_t frame-rate = 30
+07-07 22:52:27.229 D/CCodecBuffers(16707):   int32_t height = 1080
+07-07 22:52:27.229 D/CCodecBuffers(16707):   int32_t max-height = 2160
+07-07 22:52:27.229 D/CCodecBuffers(16707):   int32_t max-width = 4096
+07-07 22:52:27.229 D/CCodecBuffers(16707):   string mime = "video/raw"
+07-07 22:52:27.229 D/CCodecBuffers(16707):   int32_t priority = 1
+07-07 22:52:27.229 D/CCodecBuffers(16707):   int32_t color-format = 19
+07-07 22:52:27.229 D/CCodecBuffers(16707): }
+07-07 22:52:27.231 D/CCodecBuffers(16707): [c2.qti.avc.decoder#401:2D-BB-Output] updating image-data
+07-07 22:52:27.231 D/CCodecBuffers(16707): [c2.qti.avc.decoder#401:2D-BB-Output] updating stride = 1920, width: 1920, height: 1080
+07-07 22:52:27.231 D/CCodecBuffers(16707): [c2.qti.avc.decoder#401:2D-BB-Output] updating vstride = 1080
+07-07 22:52:27.273 E/libOpenSLES(16707): Configuration error: unknown key
+07-07 22:52:27.297 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#401] MediaCodec discarded an unknown buffer
+07-07 22:52:27.297 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#401] MediaCodec discarded an unknown buffer
+07-07 22:52:27.297 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#401] MediaCodec discarded an unknown buffer
+07-07 22:52:27.298 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#401] MediaCodec discarded an unknown buffer
+07-07 22:52:27.340 D/CCodec  (16707): allocate(c2.qti.avc.decoder)
+07-07 22:52:27.345 I/CCodec  (16707): Created component [c2.qti.avc.decoder] for [c2.qti.avc.decoder]
+07-07 22:52:27.348 D/ReflectedParamUpdater(16707): extent() != 1 for single value type: output.buffers.pool-ids.values
+07-07 22:52:27.349 D/CCodecConfig(16707):   c2::u32 input.buffers.max-size.value = 13271040
+07-07 22:52:27.352 D/CCodec  (16707): [c2.qti.avc.decoder] buffers are bound to CCodec for this session
+07-07 22:52:27.352 D/CCodec  (16707): Client requested ByteBuffer mode decoder w/o color format set: using default planar color format
+07-07 22:52:27.354 D/CCodec  (16707):   Buffer hdr-static-info = {
+07-07 22:52:27.363 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#448] Query input allocators returned 0 params => BAD_INDEX (6)
+07-07 22:52:27.363 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#448] Created input block pool with allocatorID 16 => poolID 64 - OK (0)
+07-07 22:52:27.363 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#448] Query output allocators returned 0 params => BAD_INDEX (6)
+07-07 22:52:27.363 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#448] Configured output block pool ids 1 => OK
+07-07 22:52:27.369 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#448] Ignoring stale input buffer done callback: last flush index = 0, frameIndex = 0
+07-07 22:52:27.432 D/CCodecBuffers(16707): [c2.qti.avc.decoder#448:2D-BB-Output] popFromStashAndRegister: at 2061333us, output format changed to AMessage(what = 0x00000000) = {
+07-07 22:52:27.432 D/CCodecBuffers(16707):   int32_t android._color-format = 2135033992
+07-07 22:52:27.432 D/CCodecBuffers(16707):   int32_t android._video-scaling = 1
+07-07 22:52:27.432 D/CCodecBuffers(16707):   int32_t android._dataspace = 260
+07-07 22:52:27.432 D/CCodecBuffers(16707):   int32_t color-standard = 1
+07-07 22:52:27.432 D/CCodecBuffers(16707):   int32_t color-range = 2
+07-07 22:52:27.432 D/CCodecBuffers(16707):   int32_t color-transfer = 3
+07-07 22:52:27.432 D/CCodecBuffers(16707):   int32_t sar-height = 1
+07-07 22:52:27.432 D/CCodecBuffers(16707):   int32_t rotation-degrees = 0
+07-07 22:52:27.432 D/CCodecBuffers(16707):   Buffer hdr-static-info = {
+07-07 22:52:27.432 D/CCodecBuffers(16707):     00000000:  00 50 c3 50 c3 50 c3 50  c3 50 c3 50 c3 50 c3 50  .P.P.P.P.P.P.P.P
+07-07 22:52:27.432 D/CCodecBuffers(16707):     00000010:  c3 01 00 10 27 01 00 01  00                       ....'....
+07-07 22:52:27.432 D/CCodecBuffers(16707):   }
+07-07 22:52:27.432 D/CCodecBuffers(16707):   int32_t sar-width = 1
+07-07 22:52:27.432 D/CCodecBuffers(16707):   Rect crop(0, 0, 1919, 1079)
+07-07 22:52:27.432 D/CCodecBuffers(16707):   int32_t width = 1920
+07-07 22:52:27.432 D/CCodecBuffers(16707):   int32_t feature-secure-playback = 0
+07-07 22:52:27.432 D/CCodecBuffers(16707):   int32_t frame-rate = 30
+07-07 22:52:27.432 D/CCodecBuffers(16707):   int32_t height = 1080
+07-07 22:52:27.432 D/CCodecBuffers(16707):   int32_t max-height = 2160
+07-07 22:52:27.432 D/CCodecBuffers(16707):   int32_t max-width = 4096
+07-07 22:52:27.432 D/CCodecBuffers(16707):   string mime = "video/raw"
+07-07 22:52:27.432 D/CCodecBuffers(16707):   int32_t priority = 1
+07-07 22:52:27.432 D/CCodecBuffers(16707):   int32_t color-format = 19
+07-07 22:52:27.432 D/CCodecBuffers(16707): }
+07-07 22:52:27.434 D/CCodecBuffers(16707): [c2.qti.avc.decoder#448:2D-BB-Output] updating image-data
+07-07 22:52:27.434 D/CCodecBuffers(16707): [c2.qti.avc.decoder#448:2D-BB-Output] updating stride = 1920, width: 1920, height: 1080
+07-07 22:52:27.434 D/CCodecBuffers(16707): [c2.qti.avc.decoder#448:2D-BB-Output] updating vstride = 1080
+07-07 22:52:27.486 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#448] Ignoring stale input buffer done callback: last flush index = 12, frameIndex = 12
+07-07 22:52:30.674 D/BufferPoolAccessor2.0(16707): bufferpool2 0xb4000070fdb23428 : 0(0 size) total buffers - 0(0 size) used buffers - 94/99 (recycle/alloc) - 5/83 (fetch/transfer)
+07-07 22:52:30.674 D/BufferPoolAccessor2.0(16707): evictor expired: 1, evicted: 1
+07-07 22:52:32.364 D/BufferPoolAccessor2.0(16707): bufferpool2 0xb4000070fdba1c28 : 5(66355200 size) total buffers - 4(53084160 size) used buffers - 139/144 (recycle/alloc) - 5/135 (fetch/transfer)
+07-07 22:52:32.675 D/BufferPoolAccessor2.0(16707): bufferpool2 0xb4000070fd95ca28 : 0(0 size) total buffers - 0(0 size) used buffers - 14/19 (recycle/alloc) - 5/11 (fetch/transfer)
+07-07 22:52:32.675 D/BufferPoolAccessor2.0(16707): evictor expired: 3, evicted: 1
+07-07 22:52:32.742 I/flutter (16707): mina_iptv: Using cached format for channel 74: hls
+07-07 22:52:32.742 I/flutter (16707): mina_iptv: Using cached format for channel 74: hls
+07-07 22:52:32.742 I/flutter (16707): mina_iptv: Playing stream: http://s36.g57s75.com/live/d98t21c29s51/736832/74.m3u8 (Step: 0, XtreamAlt: false)
+07-07 22:52:32.749 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#448] MediaCodec discarded an unknown buffer
+07-07 22:52:32.749 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#448] MediaCodec discarded an unknown buffer
+07-07 22:52:32.750 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#448] MediaCodec discarded an unknown buffer
+07-07 22:52:32.750 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#448] MediaCodec discarded an unknown buffer
+07-07 22:52:32.771 E/BufferQueueProducer(16707): [ImageReader-1920x1080f22m7-16707-26](id:41430000002e,api:1,p:16707,c:16707) queueBuffer: BufferQueue has been abandoned
+07-07 22:52:32.771 E/Surface (16707): [ImageReader-1920x1080f22m7-16707-26](id:41430000002e) queueBuffer: error queuing buffer, -19
+07-07 22:52:32.771 I/Adreno  (16707): QueueBuffer: queueBuffer failed
+07-07 22:52:32.790 I/flutter (16707): mina_iptv: MediaKit mpv segment=high hwdec=mediacodec-copy framedrop=vo threads=8 ram=7.3GiB cores=8 weak=false aml=false challengedTv=false capableTv=false budgetSoc=false swPurpleFix=false model=M2101K9AG
+07-07 22:52:34.312 D/CCodec  (16707): allocate(c2.qti.avc.decoder)
+07-07 22:52:34.317 I/CCodec  (16707): Created component [c2.qti.avc.decoder] for [c2.qti.avc.decoder]
+07-07 22:52:34.323 D/ReflectedParamUpdater(16707): extent() != 1 for single value type: output.buffers.pool-ids.values
+07-07 22:52:34.330 D/CCodecConfig(16707):   c2::u32 input.buffers.max-size.value = 13271040
+07-07 22:52:34.332 D/CCodec  (16707): [c2.qti.avc.decoder] buffers are bound to CCodec for this session
+07-07 22:52:34.333 D/CCodec  (16707): Client requested ByteBuffer mode decoder w/o color format set: using default planar color format
+07-07 22:52:34.334 D/CCodec  (16707):   Buffer hdr-static-info = {
+07-07 22:52:34.344 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#192] Query input allocators returned 0 params => BAD_INDEX (6)
+07-07 22:52:34.345 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#192] Created input block pool with allocatorID 16 => poolID 65 - OK (0)
+07-07 22:52:34.345 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#192] Query output allocators returned 0 params => BAD_INDEX (6)
+07-07 22:52:34.345 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#192] Configured output block pool ids 1 => OK
+07-07 22:52:34.347 D/BufferPoolAccessor2.0(16707): Destruction - bufferpool2 0xb4000070fdb23428 cached: 0/0M, 0/0% in use; allocs: 99, 95% recycled; transfers: 83, 94% unfetched
+07-07 22:52:34.347 D/BufferPoolAccessor2.0(16707): Destruction - bufferpool2 0xb4000070fd95ca28 cached: 0/0M, 0/0% in use; allocs: 19, 74% recycled; transfers: 11, 55% unfetched
+07-07 22:52:34.353 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#192] Ignoring stale input buffer done callback: last flush index = 0, frameIndex = 0
+07-07 22:52:34.354 D/Codec2-OutputBufferQueue(16707): set max dequeue count 25 from update
+07-07 22:52:34.410 D/CCodecBuffers(16707): [c2.qti.avc.decoder#192:2D-BB-Output] popFromStashAndRegister: at 70667us, output format changed to AMessage(what = 0x00000000) = {
+07-07 22:52:34.410 D/CCodecBuffers(16707):   int32_t android._color-format = 2135033992
+07-07 22:52:34.410 D/CCodecBuffers(16707):   int32_t android._video-scaling = 1
+07-07 22:52:34.410 D/CCodecBuffers(16707):   int32_t android._dataspace = 260
+07-07 22:52:34.410 D/CCodecBuffers(16707):   int32_t color-standard = 1
+07-07 22:52:34.410 D/CCodecBuffers(16707):   int32_t color-range = 2
+07-07 22:52:34.410 D/CCodecBuffers(16707):   int32_t color-transfer = 3
+07-07 22:52:34.410 D/CCodecBuffers(16707):   int32_t sar-height = 1
+07-07 22:52:34.410 D/CCodecBuffers(16707):   int32_t rotation-degrees = 0
+07-07 22:52:34.410 D/CCodecBuffers(16707):   Buffer hdr-static-info = {
+07-07 22:52:34.410 D/CCodecBuffers(16707):     00000000:  00 50 c3 50 c3 50 c3 50  c3 50 c3 50 c3 50 c3 50  .P.P.P.P.P.P.P.P
+07-07 22:52:34.410 D/CCodecBuffers(16707):     00000010:  c3 01 00 10 27 01 00 01  00                       ....'....
+07-07 22:52:34.410 D/CCodecBuffers(16707):   }
+07-07 22:52:34.410 D/CCodecBuffers(16707):   int32_t sar-width = 1
+07-07 22:52:34.410 D/CCodecBuffers(16707):   Rect crop(0, 0, 1919, 1079)
+07-07 22:52:34.410 D/CCodecBuffers(16707):   int32_t width = 1920
+07-07 22:52:34.410 D/CCodecBuffers(16707):   int32_t feature-secure-playback = 0
+07-07 22:52:34.410 D/CCodecBuffers(16707):   int32_t frame-rate = 30
+07-07 22:52:34.410 D/CCodecBuffers(16707):   int32_t height = 1080
+07-07 22:52:34.410 D/CCodecBuffers(16707):   int32_t max-height = 2160
+07-07 22:52:34.410 D/CCodecBuffers(16707):   int32_t max-width = 4096
+07-07 22:52:34.410 D/CCodecBuffers(16707):   string mime = "video/raw"
+07-07 22:52:34.410 D/CCodecBuffers(16707):   int32_t priority = 1
+07-07 22:52:34.410 D/CCodecBuffers(16707):   int32_t color-format = 19
+07-07 22:52:34.410 D/CCodecBuffers(16707): }
+07-07 22:52:34.412 D/CCodecBuffers(16707): [c2.qti.avc.decoder#192:2D-BB-Output] updating image-data
+07-07 22:52:34.412 D/CCodecBuffers(16707): [c2.qti.avc.decoder#192:2D-BB-Output] updating stride = 1920, width: 1920, height: 1080
+07-07 22:52:34.412 D/CCodecBuffers(16707): [c2.qti.avc.decoder#192:2D-BB-Output] updating vstride = 1080
+07-07 22:52:34.446 E/libOpenSLES(16707): Configuration error: unknown key
+07-07 22:52:34.473 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#192] flushed work; ignored.
+07-07 22:52:34.473 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#192] Discard frames from previous generation.
+07-07 22:52:34.474 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#192] MediaCodec discarded an unknown buffer
+07-07 22:52:34.474 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#192] MediaCodec discarded an unknown buffer
+07-07 22:52:34.474 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#192] MediaCodec discarded an unknown buffer
+07-07 22:52:34.475 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#192] MediaCodec discarded an unknown buffer
+07-07 22:52:34.485 D/CCodec  (16707): allocate(c2.qti.avc.decoder)
+07-07 22:52:34.490 I/CCodec  (16707): Created component [c2.qti.avc.decoder] for [c2.qti.avc.decoder]
+07-07 22:52:34.494 D/ReflectedParamUpdater(16707): extent() != 1 for single value type: output.buffers.pool-ids.values
+07-07 22:52:34.498 D/CCodecConfig(16707):   c2::u32 input.buffers.max-size.value = 13271040
+07-07 22:52:34.500 D/CCodec  (16707): [c2.qti.avc.decoder] buffers are bound to CCodec for this session
+07-07 22:52:34.501 D/CCodec  (16707): Client requested ByteBuffer mode decoder w/o color format set: using default planar color format
+07-07 22:52:34.502 D/CCodec  (16707):   Buffer hdr-static-info = {
+07-07 22:52:34.511 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#92] Query input allocators returned 0 params => BAD_INDEX (6)
+07-07 22:52:34.511 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#92] Created input block pool with allocatorID 16 => poolID 66 - OK (0)
+07-07 22:52:34.512 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#92] Query output allocators returned 0 params => BAD_INDEX (6)
+07-07 22:52:34.512 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#92] Configured output block pool ids 1 => OK
+07-07 22:52:34.519 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#92] Ignoring stale input buffer done callback: last flush index = 0, frameIndex = 0
+07-07 22:52:34.641 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#92] Ignoring stale input buffer done callback: last flush index = 2, frameIndex = 2
+07-07 22:52:34.671 D/CCodecBuffers(16707): [c2.qti.avc.decoder#92:2D-BB-Output] popFromStashAndRegister: at 1790667us, output format changed to AMessage(what = 0x00000000) = {
+07-07 22:52:34.671 D/CCodecBuffers(16707):   int32_t android._color-format = 2135033992
+07-07 22:52:34.671 D/CCodecBuffers(16707):   int32_t android._video-scaling = 1
+07-07 22:52:34.671 D/CCodecBuffers(16707):   int32_t android._dataspace = 260
+07-07 22:52:34.671 D/CCodecBuffers(16707):   int32_t color-standard = 1
+07-07 22:52:34.671 D/CCodecBuffers(16707):   int32_t color-range = 2
+07-07 22:52:34.671 D/CCodecBuffers(16707):   int32_t color-transfer = 3
+07-07 22:52:34.671 D/CCodecBuffers(16707):   int32_t sar-height = 1
+07-07 22:52:34.671 D/CCodecBuffers(16707):   int32_t rotation-degrees = 0
+07-07 22:52:34.671 D/CCodecBuffers(16707):   Buffer hdr-static-info = {
+07-07 22:52:34.671 D/CCodecBuffers(16707):     00000000:  00 50 c3 50 c3 50 c3 50  c3 50 c3 50 c3 50 c3 50  .P.P.P.P.P.P.P.P
+07-07 22:52:34.671 D/CCodecBuffers(16707):     00000010:  c3 01 00 10 27 01 00 01  00                       ....'....
+07-07 22:52:34.671 D/CCodecBuffers(16707):   }
+07-07 22:52:34.671 D/CCodecBuffers(16707):   int32_t sar-width = 1
+07-07 22:52:34.671 D/CCodecBuffers(16707):   Rect crop(0, 0, 1919, 1079)
+07-07 22:52:34.671 D/CCodecBuffers(16707):   int32_t width = 1920
+07-07 22:52:34.671 D/CCodecBuffers(16707):   int32_t feature-secure-playback = 0
+07-07 22:52:34.671 D/CCodecBuffers(16707):   int32_t frame-rate = 30
+07-07 22:52:34.671 D/CCodecBuffers(16707):   int32_t height = 1080
+07-07 22:52:34.671 D/CCodecBuffers(16707):   int32_t max-height = 2160
+07-07 22:52:34.671 D/CCodecBuffers(16707):   int32_t max-width = 4096
+07-07 22:52:34.671 D/CCodecBuffers(16707):   string mime = "video/raw"
+07-07 22:52:34.671 D/CCodecBuffers(16707):   int32_t priority = 1
+07-07 22:52:34.671 D/CCodecBuffers(16707):   int32_t color-format = 19
+07-07 22:52:34.671 D/CCodecBuffers(16707): }
+07-07 22:52:34.672 D/CCodecBuffers(16707): [c2.qti.avc.decoder#92:2D-BB-Output] updating image-data
+07-07 22:52:34.672 D/CCodecBuffers(16707): [c2.qti.avc.decoder#92:2D-BB-Output] updating stride = 1920, width: 1920, height: 1080
+07-07 22:52:34.672 D/CCodecBuffers(16707): [c2.qti.avc.decoder#92:2D-BB-Output] updating vstride = 1080
+07-07 22:52:37.676 D/BufferPoolAccessor2.0(16707): bufferpool2 0xb4000070fdba1c28 : 0(0 size) total buffers - 0(0 size) used buffers - 154/159 (recycle/alloc) - 5/145 (fetch/transfer)
+07-07 22:52:37.676 D/BufferPoolAccessor2.0(16707): evictor expired: 1, evicted: 1
+07-07 22:52:38.475 I/flutter (16707): mina_iptv: Using cached format for channel 75: hls
+07-07 22:52:38.475 I/flutter (16707): mina_iptv: Using cached format for channel 75: hls
+07-07 22:52:38.475 I/flutter (16707): mina_iptv: Playing stream: http://s36.g57s75.com/live/d98t21c29s51/736832/75.m3u8 (Step: 0, XtreamAlt: false)
+07-07 22:52:38.484 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#92] MediaCodec discarded an unknown buffer
+07-07 22:52:38.484 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#92] MediaCodec discarded an unknown buffer
+07-07 22:52:38.484 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#92] MediaCodec discarded an unknown buffer
+07-07 22:52:38.484 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#92] MediaCodec discarded an unknown buffer
+07-07 22:52:38.524 I/flutter (16707): mina_iptv: MediaKit mpv segment=high hwdec=mediacodec-copy framedrop=vo threads=8 ram=7.3GiB cores=8 weak=false aml=false challengedTv=false capableTv=false budgetSoc=false swPurpleFix=false model=M2101K9AG
+07-07 22:52:39.676 D/BufferPoolAccessor2.0(16707): bufferpool2 0xb40000720f1ee028 : 0(0 size) total buffers - 0(0 size) used buffers - 13/18 (recycle/alloc) - 5/11 (fetch/transfer)
+07-07 22:52:39.676 D/BufferPoolAccessor2.0(16707): evictor expired: 3, evicted: 1
+07-07 22:52:40.144 D/CCodec  (16707): allocate(c2.qti.avc.decoder)
+07-07 22:52:40.154 I/CCodec  (16707): Created component [c2.qti.avc.decoder] for [c2.qti.avc.decoder]
+07-07 22:52:40.156 D/ReflectedParamUpdater(16707): extent() != 1 for single value type: output.buffers.pool-ids.values
+07-07 22:52:40.158 D/CCodecConfig(16707):   c2::u32 input.buffers.max-size.value = 13271040
+07-07 22:52:40.163 D/CCodec  (16707): [c2.qti.avc.decoder] buffers are bound to CCodec for this session
+07-07 22:52:40.163 D/CCodec  (16707): Client requested ByteBuffer mode decoder w/o color format set: using default planar color format
+07-07 22:52:40.164 D/CCodec  (16707):   Buffer hdr-static-info = {
+07-07 22:52:40.174 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#967] Query input allocators returned 0 params => BAD_INDEX (6)
+07-07 22:52:40.175 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#967] Created input block pool with allocatorID 16 => poolID 67 - OK (0)
+07-07 22:52:40.175 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#967] Query output allocators returned 0 params => BAD_INDEX (6)
+07-07 22:52:40.175 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#967] Configured output block pool ids 1 => OK
+07-07 22:52:40.178 D/BufferPoolAccessor2.0(16707): Destruction - bufferpool2 0xb4000070fdba1c28 cached: 0/0M, 0/0% in use; allocs: 159, 97% recycled; transfers: 145, 97% unfetched
+07-07 22:52:40.178 D/BufferPoolAccessor2.0(16707): Destruction - bufferpool2 0xb40000720f1ee028 cached: 0/0M, 0/0% in use; allocs: 18, 72% recycled; transfers: 11, 55% unfetched
+07-07 22:52:40.185 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#967] Ignoring stale input buffer done callback: last flush index = 0, frameIndex = 0
+07-07 22:52:40.186 D/Codec2-OutputBufferQueue(16707): set max dequeue count 25 from update
+07-07 22:52:40.240 D/CCodecBuffers(16707): [c2.qti.avc.decoder#967:2D-BB-Output] popFromStashAndRegister: at 72000us, output format changed to AMessage(what = 0x00000000) = {
+07-07 22:52:40.240 D/CCodecBuffers(16707):   int32_t android._color-format = 2135033992
+07-07 22:52:40.240 D/CCodecBuffers(16707):   int32_t android._video-scaling = 1
+07-07 22:52:40.240 D/CCodecBuffers(16707):   int32_t android._dataspace = 260
+07-07 22:52:40.240 D/CCodecBuffers(16707):   int32_t color-standard = 1
+07-07 22:52:40.240 D/CCodecBuffers(16707):   int32_t color-range = 2
+07-07 22:52:40.240 D/CCodecBuffers(16707):   int32_t color-transfer = 3
+07-07 22:52:40.240 D/CCodecBuffers(16707):   int32_t sar-height = 1
+07-07 22:52:40.240 D/CCodecBuffers(16707):   int32_t rotation-degrees = 0
+07-07 22:52:40.240 D/CCodecBuffers(16707):   Buffer hdr-static-info = {
+07-07 22:52:40.240 D/CCodecBuffers(16707):     00000000:  00 50 c3 50 c3 50 c3 50  c3 50 c3 50 c3 50 c3 50  .P.P.P.P.P.P.P.P
+07-07 22:52:40.240 D/CCodecBuffers(16707):     00000010:  c3 01 00 10 27 01 00 01  00                       ....'....
+07-07 22:52:40.240 D/CCodecBuffers(16707):   }
+07-07 22:52:40.240 D/CCodecBuffers(16707):   int32_t sar-width = 1
+07-07 22:52:40.240 D/CCodecBuffers(16707):   Rect crop(0, 0, 1919, 1079)
+07-07 22:52:40.240 D/CCodecBuffers(16707):   int32_t width = 1920
+07-07 22:52:40.240 D/CCodecBuffers(16707):   int32_t feature-secure-playback = 0
+07-07 22:52:40.240 D/CCodecBuffers(16707):   int32_t frame-rate = 30
+07-07 22:52:40.240 D/CCodecBuffers(16707):   int32_t height = 1080
+07-07 22:52:40.240 D/CCodecBuffers(16707):   int32_t max-height = 2160
+07-07 22:52:40.240 D/CCodecBuffers(16707):   int32_t max-width = 4096
+07-07 22:52:40.240 D/CCodecBuffers(16707):   string mime = "video/raw"
+07-07 22:52:40.240 D/CCodecBuffers(16707):   int32_t priority = 1
+07-07 22:52:40.240 D/CCodecBuffers(16707):   int32_t color-format = 19
+07-07 22:52:40.240 D/CCodecBuffers(16707): }
+07-07 22:52:40.241 D/CCodecBuffers(16707): [c2.qti.avc.decoder#967:2D-BB-Output] updating image-data
+07-07 22:52:40.241 D/CCodecBuffers(16707): [c2.qti.avc.decoder#967:2D-BB-Output] updating stride = 1920, width: 1920, height: 1080
+07-07 22:52:40.241 D/CCodecBuffers(16707): [c2.qti.avc.decoder#967:2D-BB-Output] updating vstride = 1080
+07-07 22:52:40.270 E/libOpenSLES(16707): Configuration error: unknown key
+07-07 22:52:40.289 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#967] flushed work; ignored.
+07-07 22:52:40.289 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#967] Discard frames from previous generation.
+07-07 22:52:40.291 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#967] MediaCodec discarded an unknown buffer
+07-07 22:52:40.291 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#967] MediaCodec discarded an unknown buffer
+07-07 22:52:40.291 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#967] MediaCodec discarded an unknown buffer
+07-07 22:52:40.291 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#967] MediaCodec discarded an unknown buffer
+07-07 22:52:40.309 D/CCodec  (16707): allocate(c2.qti.avc.decoder)
+07-07 22:52:40.313 I/CCodec  (16707): Created component [c2.qti.avc.decoder] for [c2.qti.avc.decoder]
+07-07 22:52:40.315 D/ReflectedParamUpdater(16707): extent() != 1 for single value type: output.buffers.pool-ids.values
+07-07 22:52:40.317 D/CCodecConfig(16707):   c2::u32 input.buffers.max-size.value = 13271040
+07-07 22:52:40.319 D/CCodec  (16707): [c2.qti.avc.decoder] buffers are bound to CCodec for this session
+07-07 22:52:40.319 D/CCodec  (16707): Client requested ByteBuffer mode decoder w/o color format set: using default planar color format
+07-07 22:52:40.320 D/CCodec  (16707):   Buffer hdr-static-info = {
+07-07 22:52:40.329 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#303] Query input allocators returned 0 params => BAD_INDEX (6)
+07-07 22:52:40.329 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#303] Created input block pool with allocatorID 16 => poolID 68 - OK (0)
+07-07 22:52:40.330 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#303] Query output allocators returned 0 params => BAD_INDEX (6)
+07-07 22:52:40.330 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#303] Configured output block pool ids 1 => OK
+07-07 22:52:40.337 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#303] Ignoring stale input buffer done callback: last flush index = 0, frameIndex = 0
+07-07 22:52:40.387 D/CCodecBuffers(16707): [c2.qti.avc.decoder#303:2D-BB-Output] popFromStashAndRegister: at 2272000us, output format changed to AMessage(what = 0x00000000) = {
+07-07 22:52:40.387 D/CCodecBuffers(16707):   int32_t android._color-format = 2135033992
+07-07 22:52:40.387 D/CCodecBuffers(16707):   int32_t android._video-scaling = 1
+07-07 22:52:40.387 D/CCodecBuffers(16707):   int32_t android._dataspace = 260
+07-07 22:52:40.387 D/CCodecBuffers(16707):   int32_t color-standard = 1
+07-07 22:52:40.387 D/CCodecBuffers(16707):   int32_t color-range = 2
+07-07 22:52:40.387 D/CCodecBuffers(16707):   int32_t color-transfer = 3
+07-07 22:52:40.387 D/CCodecBuffers(16707):   int32_t sar-height = 1
+07-07 22:52:40.387 D/CCodecBuffers(16707):   int32_t rotation-degrees = 0
+07-07 22:52:40.387 D/CCodecBuffers(16707):   Buffer hdr-static-info = {
+07-07 22:52:40.387 D/CCodecBuffers(16707):     00000000:  00 50 c3 50 c3 50 c3 50  c3 50 c3 50 c3 50 c3 50  .P.P.P.P.P.P.P.P
+07-07 22:52:40.387 D/CCodecBuffers(16707):     00000010:  c3 01 00 10 27 01 00 01  00                       ....'....
+07-07 22:52:40.387 D/CCodecBuffers(16707):   }
+07-07 22:52:40.387 D/CCodecBuffers(16707):   int32_t sar-width = 1
+07-07 22:52:40.387 D/CCodecBuffers(16707):   Rect crop(0, 0, 1919, 1079)
+07-07 22:52:40.387 D/CCodecBuffers(16707):   int32_t width = 1920
+07-07 22:52:40.387 D/CCodecBuffers(16707):   int32_t feature-secure-playback = 0
+07-07 22:52:40.387 D/CCodecBuffers(16707):   int32_t frame-rate = 30
+07-07 22:52:40.387 D/CCodecBuffers(16707):   int32_t height = 1080
+07-07 22:52:40.387 D/CCodecBuffers(16707):   int32_t max-height = 2160
+07-07 22:52:40.387 D/CCodecBuffers(16707):   int32_t max-width = 4096
+07-07 22:52:40.387 D/CCodecBuffers(16707):   string mime = "video/raw"
+07-07 22:52:40.387 D/CCodecBuffers(16707):   int32_t priority = 1
+07-07 22:52:40.387 D/CCodecBuffers(16707):   int32_t color-format = 19
+07-07 22:52:40.387 D/CCodecBuffers(16707): }
+07-07 22:52:40.388 D/CCodecBuffers(16707): [c2.qti.avc.decoder#303:2D-BB-Output] updating image-data
+07-07 22:52:40.388 D/CCodecBuffers(16707): [c2.qti.avc.decoder#303:2D-BB-Output] updating stride = 1920, width: 1920, height: 1080
+07-07 22:52:40.388 D/CCodecBuffers(16707): [c2.qti.avc.decoder#303:2D-BB-Output] updating vstride = 1080
+07-07 22:52:40.425 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#303] Ignoring stale input buffer done callback: last flush index = 14, frameIndex = 12
+07-07 22:52:40.425 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#303] flushed work; ignored.
+07-07 22:52:40.425 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#303] Discard frames from previous generation.
+07-07 22:52:40.425 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#303] flushed work; ignored.
+07-07 22:52:40.425 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#303] Discard frames from previous generation.
+07-07 22:52:40.425 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#303] flushed work; ignored.
+07-07 22:52:40.425 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#303] Discard frames from previous generation.
+07-07 22:52:40.425 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#303] flushed work; ignored.
+07-07 22:52:40.425 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#303] Discard frames from previous generation.
+07-07 22:52:40.425 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#303] flushed work; ignored.
+07-07 22:52:40.425 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#303] Discard frames from previous generation.
+07-07 22:52:40.485 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#303] Ignoring stale input buffer done callback: last flush index = 14, frameIndex = 14
+07-07 22:52:41.221 I/flutter (16707): mina_iptv: Using cached format for channel 76: hls
+07-07 22:52:41.227 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#303] MediaCodec discarded an unknown buffer
+07-07 22:52:41.227 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#303] MediaCodec discarded an unknown buffer
+07-07 22:52:41.227 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#303] MediaCodec discarded an unknown buffer
+07-07 22:52:41.227 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#303] MediaCodec discarded an unknown buffer
+07-07 22:52:41.280 I/flutter (16707): mina_iptv: MediaKit mpv segment=high hwdec=mediacodec-copy framedrop=vo threads=8 ram=7.3GiB cores=8 weak=false aml=false challengedTv=false capableTv=false budgetSoc=false swPurpleFix=false model=M2101K9AG
+07-07 22:52:41.472 I/flutter (16707): mina_iptv: Using cached format for channel 76: hls
+07-07 22:52:41.472 I/flutter (16707): mina_iptv: Playing stream: http://s36.g57s75.com/live/d98t21c29s51/736832/76.m3u8 (Step: 0, XtreamAlt: false)
+07-07 22:52:42.677 D/BufferPoolAccessor2.0(16707): bufferpool2 0xb4000070fdba1628 : 0(0 size) total buffers - 0(0 size) used buffers - 112/117 (recycle/alloc) - 5/101 (fetch/transfer)
+07-07 22:52:42.677 D/BufferPoolAccessor2.0(16707): evictor expired: 1, evicted: 1
+07-07 22:52:42.883 D/CCodec  (16707): allocate(c2.qti.avc.decoder)
+07-07 22:52:42.888 I/CCodec  (16707): Created component [c2.qti.avc.decoder] for [c2.qti.avc.decoder]
+07-07 22:52:42.891 D/ReflectedParamUpdater(16707): extent() != 1 for single value type: output.buffers.pool-ids.values
+07-07 22:52:42.893 D/CCodecConfig(16707):   c2::u32 input.buffers.max-size.value = 13271040
+07-07 22:52:42.895 D/CCodec  (16707): [c2.qti.avc.decoder] buffers are bound to CCodec for this session
+07-07 22:52:42.895 D/CCodec  (16707): Client requested ByteBuffer mode decoder w/o color format set: using default planar color format
+07-07 22:52:42.897 D/CCodec  (16707):   Buffer hdr-static-info = {
+07-07 22:52:42.907 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#541] Query input allocators returned 0 params => BAD_INDEX (6)
+07-07 22:52:42.907 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#541] Created input block pool with allocatorID 16 => poolID 69 - OK (0)
+07-07 22:52:42.907 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#541] Query output allocators returned 0 params => BAD_INDEX (6)
+07-07 22:52:42.907 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#541] Configured output block pool ids 1 => OK
+07-07 22:52:42.916 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#541] Ignoring stale input buffer done callback: last flush index = 0, frameIndex = 0
+07-07 22:52:42.963 D/CCodecBuffers(16707): [c2.qti.avc.decoder#541:2D-BB-Output] popFromStashAndRegister: at 73333us, output format changed to AMessage(what = 0x00000000) = {
+07-07 22:52:42.963 D/CCodecBuffers(16707):   int32_t android._color-format = 2135033992
+07-07 22:52:42.963 D/CCodecBuffers(16707):   int32_t android._video-scaling = 1
+07-07 22:52:42.963 D/CCodecBuffers(16707):   int32_t android._dataspace = 260
+07-07 22:52:42.963 D/CCodecBuffers(16707):   int32_t color-standard = 1
+07-07 22:52:42.963 D/CCodecBuffers(16707):   int32_t color-range = 2
+07-07 22:52:42.963 D/CCodecBuffers(16707):   int32_t color-transfer = 3
+07-07 22:52:42.963 D/CCodecBuffers(16707):   int32_t sar-height = 1
+07-07 22:52:42.963 D/CCodecBuffers(16707):   int32_t rotation-degrees = 0
+07-07 22:52:42.963 D/CCodecBuffers(16707):   Buffer hdr-static-info = {
+07-07 22:52:42.963 D/CCodecBuffers(16707):     00000000:  00 50 c3 50 c3 50 c3 50  c3 50 c3 50 c3 50 c3 50  .P.P.P.P.P.P.P.P
+07-07 22:52:42.963 D/CCodecBuffers(16707):     00000010:  c3 01 00 10 27 01 00 01  00                       ....'....
+07-07 22:52:42.963 D/CCodecBuffers(16707):   }
+07-07 22:52:42.963 D/CCodecBuffers(16707):   int32_t sar-width = 1
+07-07 22:52:42.963 D/CCodecBuffers(16707):   Rect crop(0, 0, 1919, 1079)
+07-07 22:52:42.963 D/CCodecBuffers(16707):   int32_t width = 1920
+07-07 22:52:42.963 D/CCodecBuffers(16707):   int32_t feature-secure-playback = 0
+07-07 22:52:42.963 D/CCodecBuffers(16707):   int32_t frame-rate = 30
+07-07 22:52:42.963 D/CCodecBuffers(16707):   int32_t height = 1080
+07-07 22:52:42.963 D/CCodecBuffers(16707):   int32_t max-height = 2160
+07-07 22:52:42.963 D/CCodecBuffers(16707):   int32_t max-width = 4096
+07-07 22:52:42.963 D/CCodecBuffers(16707):   string mime = "video/raw"
+07-07 22:52:42.963 D/CCodecBuffers(16707):   int32_t priority = 1
+07-07 22:52:42.963 D/CCodecBuffers(16707):   int32_t color-format = 19
+07-07 22:52:42.963 D/CCodecBuffers(16707): }
+07-07 22:52:42.965 D/CCodecBuffers(16707): [c2.qti.avc.decoder#541:2D-BB-Output] updating image-data
+07-07 22:52:42.965 D/CCodecBuffers(16707): [c2.qti.avc.decoder#541:2D-BB-Output] updating stride = 1920, width: 1920, height: 1080
+07-07 22:52:42.965 D/CCodecBuffers(16707): [c2.qti.avc.decoder#541:2D-BB-Output] updating vstride = 1080
+07-07 22:52:42.994 E/libOpenSLES(16707): Configuration error: unknown key
+07-07 22:52:43.009 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#541] MediaCodec discarded an unknown buffer
+07-07 22:52:43.009 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#541] MediaCodec discarded an unknown buffer
+07-07 22:52:43.009 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#541] MediaCodec discarded an unknown buffer
+07-07 22:52:43.009 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#541] MediaCodec discarded an unknown buffer
+07-07 22:52:43.029 D/CCodec  (16707): allocate(c2.qti.avc.decoder)
+07-07 22:52:43.033 I/CCodec  (16707): Created component [c2.qti.avc.decoder] for [c2.qti.avc.decoder]
+07-07 22:52:43.036 D/ReflectedParamUpdater(16707): extent() != 1 for single value type: output.buffers.pool-ids.values
+07-07 22:52:43.038 D/CCodecConfig(16707):   c2::u32 input.buffers.max-size.value = 13271040
+07-07 22:52:43.041 D/CCodec  (16707): [c2.qti.avc.decoder] buffers are bound to CCodec for this session
+07-07 22:52:43.041 D/CCodec  (16707): Client requested ByteBuffer mode decoder w/o color format set: using default planar color format
+07-07 22:52:43.043 D/CCodec  (16707):   Buffer hdr-static-info = {
+07-07 22:52:43.051 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#361] Query input allocators returned 0 params => BAD_INDEX (6)
+07-07 22:52:43.051 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#361] Created input block pool with allocatorID 16 => poolID 70 - OK (0)
+07-07 22:52:43.051 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#361] Query output allocators returned 0 params => BAD_INDEX (6)
+07-07 22:52:43.051 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#361] Configured output block pool ids 1 => OK
+07-07 22:52:43.061 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#361] Ignoring stale input buffer done callback: last flush index = 0, frameIndex = 0
+07-07 22:52:43.061 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#361] Discard frames from previous generation.
+07-07 22:52:43.061 D/Codec2-OutputBufferQueue(16707): set max dequeue count 25 from update
+07-07 22:52:43.061 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#361] Discard frames from previous generation.
+07-07 22:52:43.158 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#361] Ignoring stale input buffer done callback: last flush index = 2, frameIndex = 2
+07-07 22:52:43.186 D/CCodecBuffers(16707): [c2.qti.avc.decoder#361:2D-BB-Output] popFromStashAndRegister: at 1673333us, output format changed to AMessage(what = 0x00000000) = {
+07-07 22:52:43.186 D/CCodecBuffers(16707):   int32_t android._color-format = 2135033992
+07-07 22:52:43.186 D/CCodecBuffers(16707):   int32_t android._video-scaling = 1
+07-07 22:52:43.186 D/CCodecBuffers(16707):   int32_t android._dataspace = 260
+07-07 22:52:43.186 D/CCodecBuffers(16707):   int32_t color-standard = 1
+07-07 22:52:43.186 D/CCodecBuffers(16707):   int32_t color-range = 2
+07-07 22:52:43.186 D/CCodecBuffers(16707):   int32_t color-transfer = 3
+07-07 22:52:43.186 D/CCodecBuffers(16707):   int32_t sar-height = 1
+07-07 22:52:43.186 D/CCodecBuffers(16707):   int32_t rotation-degrees = 0
+07-07 22:52:43.186 D/CCodecBuffers(16707):   Buffer hdr-static-info = {
+07-07 22:52:43.186 D/CCodecBuffers(16707):     00000000:  00 50 c3 50 c3 50 c3 50  c3 50 c3 50 c3 50 c3 50  .P.P.P.P.P.P.P.P
+07-07 22:52:43.186 D/CCodecBuffers(16707):     00000010:  c3 01 00 10 27 01 00 01  00                       ....'....
+07-07 22:52:43.186 D/CCodecBuffers(16707):   }
+07-07 22:52:43.186 D/CCodecBuffers(16707):   int32_t sar-width = 1
+07-07 22:52:43.186 D/CCodecBuffers(16707):   Rect crop(0, 0, 1919, 1079)
+07-07 22:52:43.186 D/CCodecBuffers(16707):   int32_t width = 1920
+07-07 22:52:43.186 D/CCodecBuffers(16707):   int32_t feature-secure-playback = 0
+07-07 22:52:43.186 D/CCodecBuffers(16707):   int32_t frame-rate = 30
+07-07 22:52:43.186 D/CCodecBuffers(16707):   int32_t height = 1080
+07-07 22:52:43.186 D/CCodecBuffers(16707):   int32_t max-height = 2160
+07-07 22:52:43.186 D/CCodecBuffers(16707):   int32_t max-width = 4096
+07-07 22:52:43.186 D/CCodecBuffers(16707):   string mime = "video/raw"
+07-07 22:52:43.186 D/CCodecBuffers(16707):   int32_t priority = 1
+07-07 22:52:43.186 D/CCodecBuffers(16707):   int32_t color-format = 19
+07-07 22:52:43.186 D/CCodecBuffers(16707): }
+07-07 22:52:43.187 D/CCodecBuffers(16707): [c2.qti.avc.decoder#361:2D-BB-Output] updating image-data
+07-07 22:52:43.187 D/CCodecBuffers(16707): [c2.qti.avc.decoder#361:2D-BB-Output] updating stride = 1920, width: 1920, height: 1080
+07-07 22:52:43.187 D/CCodecBuffers(16707): [c2.qti.avc.decoder#361:2D-BB-Output] updating vstride = 1080
+07-07 22:52:45.308 I/flutter (16707): mina_iptv: Using cached format for channel 77: software
+07-07 22:52:45.308 I/flutter (16707): mina_iptv: Using cached format for channel 77: software
+07-07 22:52:45.308 I/flutter (16707): mina_iptv: Playing stream: http://s36.g57s75.com/live/d98t21c29s51/736832/77.m3u8 (Step: 0, XtreamAlt: false)
+07-07 22:52:45.344 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#361] flushed work; ignored.
+07-07 22:52:45.344 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#361] Discard frames from previous generation.
+07-07 22:52:45.346 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#361] MediaCodec discarded an unknown buffer
+07-07 22:52:45.346 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#361] MediaCodec discarded an unknown buffer
+07-07 22:52:45.347 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#361] MediaCodec discarded an unknown buffer
+07-07 22:52:45.347 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#361] MediaCodec discarded an unknown buffer
+07-07 22:52:45.380 I/flutter (16707): mina_iptv: MediaKit mpv segment=high hwdec=mediacodec-copy framedrop=vo threads=8 ram=7.3GiB cores=8 weak=false aml=false challengedTv=false capableTv=false budgetSoc=false swPurpleFix=false model=M2101K9AG
+07-07 22:52:45.677 D/BufferPoolAccessor2.0(16707): bufferpool2 0xb4000070fd93b428 : 0(0 size) total buffers - 0(0 size) used buffers - 14/19 (recycle/alloc) - 5/11 (fetch/transfer)
+07-07 22:52:45.677 D/BufferPoolAccessor2.0(16707): bufferpool2 0xb4000070fdb23628 : 0(0 size) total buffers - 0(0 size) used buffers - 45/50 (recycle/alloc) - 5/38 (fetch/transfer)
+07-07 22:52:45.677 D/BufferPoolAccessor2.0(16707): evictor expired: 4, evicted: 2
+07-07 22:52:46.820 D/CCodec  (16707): allocate(c2.qti.avc.decoder)
+07-07 22:52:46.823 I/CCodec  (16707): Created component [c2.qti.avc.decoder] for [c2.qti.avc.decoder]
+07-07 22:52:46.826 D/ReflectedParamUpdater(16707): extent() != 1 for single value type: output.buffers.pool-ids.values
+07-07 22:52:46.827 D/CCodecConfig(16707):   c2::u32 input.buffers.max-size.value = 13271040
+07-07 22:52:46.831 D/CCodec  (16707): [c2.qti.avc.decoder] buffers are bound to CCodec for this session
+07-07 22:52:46.832 D/CCodec  (16707): Client requested ByteBuffer mode decoder w/o color format set: using default planar color format
+07-07 22:52:46.833 D/CCodec  (16707):   Buffer hdr-static-info = {
+07-07 22:52:46.841 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#127] Query input allocators returned 0 params => BAD_INDEX (6)
+07-07 22:52:46.842 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#127] Created input block pool with allocatorID 16 => poolID 71 - OK (0)
+07-07 22:52:46.842 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#127] Query output allocators returned 0 params => BAD_INDEX (6)
+07-07 22:52:46.842 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#127] Configured output block pool ids 1 => OK
+07-07 22:52:46.845 D/BufferPoolAccessor2.0(16707): Destruction - bufferpool2 0xb4000070fdba1628 cached: 0/0M, 0/0% in use; allocs: 117, 96% recycled; transfers: 101, 95% unfetched
+07-07 22:52:46.845 D/BufferPoolAccessor2.0(16707): Destruction - bufferpool2 0xb4000070fd93b428 cached: 0/0M, 0/0% in use; allocs: 19, 74% recycled; transfers: 11, 55% unfetched
+07-07 22:52:46.845 D/BufferPoolAccessor2.0(16707): Destruction - bufferpool2 0xb4000070fdb23628 cached: 0/0M, 0/0% in use; allocs: 50, 90% recycled; transfers: 38, 87% unfetched
+07-07 22:52:46.848 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#127] Ignoring stale input buffer done callback: last flush index = 0, frameIndex = 0
+07-07 22:52:46.852 W/MediaCodec(16707): Log queueInputBuffer error: 1
+07-07 22:52:46.853 W/MediaCodec(16707): Log queueInputBuffer error: 1
+07-07 22:52:46.854 W/MediaCodec(16707): Log queueInputBuffer error: 1
+07-07 22:52:46.855 E/MediaCodec(16707): Codec reported err 0x80000000/UNKNOWN_ERROR, actionCode 0, while in state 7/FLUSHING
+07-07 22:52:46.954 E/libOpenSLES(16707): Configuration error: unknown key
+07-07 22:52:46.980 D/CCodec  (16707): allocate(c2.qti.avc.decoder)
+07-07 22:52:46.984 I/CCodec  (16707): Created component [c2.qti.avc.decoder] for [c2.qti.avc.decoder]
+07-07 22:52:46.987 D/ReflectedParamUpdater(16707): extent() != 1 for single value type: output.buffers.pool-ids.values
+07-07 22:52:46.989 D/CCodecConfig(16707):   c2::u32 input.buffers.max-size.value = 13271040
+07-07 22:52:46.992 D/CCodec  (16707): [c2.qti.avc.decoder] buffers are bound to CCodec for this session
+07-07 22:52:46.992 D/CCodec  (16707): Client requested ByteBuffer mode decoder w/o color format set: using default planar color format
+07-07 22:52:46.993 D/CCodec  (16707):   Buffer hdr-static-info = {
+07-07 22:52:47.001 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#338] Query input allocators returned 0 params => BAD_INDEX (6)
+07-07 22:52:47.001 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#338] Created input block pool with allocatorID 16 => poolID 72 - OK (0)
+07-07 22:52:47.001 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#338] Query output allocators returned 0 params => BAD_INDEX (6)
+07-07 22:52:47.001 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#338] Configured output block pool ids 1 => OK
+07-07 22:52:47.013 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#338] Ignoring stale input buffer done callback: last flush index = 2, frameIndex = 0
+07-07 22:52:47.014 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#338] Discard frames from previous generation.
+07-07 22:52:47.014 D/CCodecBufferChannel(16707): [c2.qti.avc.decoder#338] Discard frames from previous generation.
+07-07 22:52:47.027 W/MediaCodec(16707): Log queueInputBuffer error: 1
+07-07 22:52:48.677 D/BufferPoolAccessor2.0(16707): bufferpool2 0xb4000070fd60c228 : 0(0 size) total buffers - 0(0 size) used buffers - 13/18 (recycle/alloc) - 5/12 (fetch/transfer)
+07-07 22:52:48.677 D/BufferPoolAccessor2.0(16707): evictor expired: 1, evicted: 1
+07-07 22:52:50.678 D/BufferPoolAccessor2.0(16707): bufferpool2 0xb4000070fdee0e28 : 0(0 size) total buffers - 0(0 size) used buffers - 70/75 (recycle/alloc) - 5/61 (fetch/transfer)
+07-07 22:52:50.678 D/BufferPoolAccessor2.0(16707): evictor expired: 1, evicted: 1
+07-07 22:52:51.753 I/flutter (16707): mina_iptv: Using cached format for channel 78: hls
+07-07 22:52:51.753 I/flutter (16707): mina_iptv: Using cached format for channel 78: hls
+07-07 22:52:51.753 I/flutter (16707): mina_iptv: Playing stream: http://s36.g57s75.com/live/d98t21c29s51/736832/78.m3u8 (Step: 0, XtreamAlt: false)
+07-07 22:52:52.678 D/BufferPoolAccessor2.0(16707): bufferpool2 0xb4000070fda9f628 : 4(53084160 size) total buffers - 4(53084160 size) used buffers - 8/12 (recycle/alloc) - 4/6 (fetch/transfer)
+07-07 22:52:52.678 D/BufferPoolAccessor2.0(16707): bufferpool2 0xb4000070fd46cc28 : 0(0 size) total buffers - 0(0 size) used buffers - 1/6 (recycle/alloc) - 5/6 (fetch/transfer)
+07-07 22:52:52.678 D/BufferPoolAccessor2.0(16707): evictor expired: 5, evicted: 2
+07-07 22:52:57.918 I/flutter (16707): mina_iptv: Using cached format for channel 82: hls
+07-07 22:52:57.918 I/flutter (16707): mina_iptv: Using cached format for channel 82: hls
+07-07 22:52:57.918 I/flutter (16707): mina_iptv: Playing stream: http://s36.g57s75.com/live/d98t21c29s51/736832/82.m3u8 (Step: 0, XtreamAlt: false)
+07-07 22:53:02.912 I/flutter (16707): mina_iptv: Using cached format for channel 79: software
+07-07 22:53:02.912 I/flutter (16707): mina_iptv: Using cached format for channel 79: software
+07-07 22:53:02.912 I/flutter (16707): mina_iptv: Playing stream: http://s36.g57s75.com/live/d98t21c29s51/736832/79.m3u8 (Step: 0, XtreamAlt: false)
+07-07 22:53:14.491 I/flutter (16707): mina_iptv: Playing stream: http://s36.g57s75.com/live/d98t21c29s51/736832/28438.m3u8 (Step: 0, XtreamAlt: false)
+07-07 22:53:59.492 I/flutter (16707): mina_iptv: boot busy hold timeout (gen 19)
+07-07 22:54:08.840 I/flutter (16707): mina_iptv: Playing stream: http://s36.g57s75.com/live/d98t21c29s51/736832/94.m3u8 (Step: 0, XtreamAlt: false)
+07-07 22:54:19.213 I/flutter (16707): mina_iptv: Playing stream: http://s36.g57s75.com/live/d98t21c29s51/736832/86.m3u8 (Step: 0, XtreamAlt: false)
+07-07 22:54:31.596 I/flutter (16707): mina_iptv: Playing stream: http://s36.g57s75.com/live/d98t21c29s51/736832/268.m3u8 (Step: 0, XtreamAlt: false)
+07-07 22:54:37.124 I/flutter (16707): mina_iptv: Playing stream: http://s36.g57s75.com/live/d98t21c29s51/736832/257.m3u8 (Step: 0, XtreamAlt: false)
+07-07 22:54:42.551 I/flutter (16707): mina_iptv: Playing stream: http://s36.g57s75.com/live/d98t21c29s51/736832/259.m3u8 (Step: 0, XtreamAlt: false)
+07-07 22:55:27.552 I/flutter (16707): mina_iptv: boot busy hold timeout (gen 24)
+07-07 22:55:47.803 V/NativeCrypto(16707): Read error: ssl=0xb400007205fffe88: I/O error during system call, Software caused connection abort
+07-07 22:55:47.805 V/NativeCrypto(16707): Write error: ssl=0xb400007205fffe88: I/O error during system call, Broken pipe
+07-07 22:55:47.806 V/NativeCrypto(16707): SSL shutdown failed: ssl=0xb400007205fffe88: I/O error during system call, Success
+07-07 22:56:06.558 I/flutter (16707): mina_iptv: Canlı 39s oynatılamadı → tam yeniden bağlanma
+07-07 22:56:06.559 I/flutter (16707): mina_iptv: Using cached format for channel 259: mediakit
+07-07 22:56:06.559 I/flutter (16707): mina_iptv: Playing stream: http://s36.g57s75.com/live/d98t21c29s51/736832/259.m3u8 (Step: 0, XtreamAlt: false)
+07-07 22:56:24.464 I/ImeTracker(16707): com.mina.iptv.mina_iptv_player:57b4ba31: onCancelled at PHASE_CLIENT_ALREADY_HIDDEN
+07-07 22:56:37.204 I/ImeTracker(16707): com.mina.iptv.mina_iptv_player:65741aa5: onCancelled at PHASE_CLIENT_ALREADY_HIDDEN
+07-07 22:57:42.167 V/NativeCrypto(16707): Read error: ssl=0xb4000072281a89c8: I/O error during system call, Software caused connection abort
+07-07 22:57:42.172 V/NativeCrypto(16707): Write error: ssl=0xb4000072281a89c8: I/O error during system call, Broken pipe
+07-07 22:57:42.173 V/NativeCrypto(16707): SSL shutdown failed: ssl=0xb4000072281a89c8: I/O error during system call, Success
+07-07 22:58:02.400 I/ImeTracker(16707): com.mina.iptv.mina_iptv_player:48c8a95c: onCancelled at PHASE_CLIENT_ALREADY_HIDDEN
+07-07 22:58:50.667 D/BufferPoolAccessor2.0(16707): bufferpool2 0xb400007206182428 : 0(0 size) total buffers - 0(0 size) used buffers - 176/181 (recycle/alloc) - 5/176 (fetch/transfer)
+07-07 22:58:50.667 D/BufferPoolAccessor2.0(16707): Destruction - bufferpool2 0xb400007206182428 cached: 0/0M, 0/0% in use; allocs: 181, 97% recycled; transfers: 176, 97% unfetched
+07-07 22:58:50.668 D/BufferPoolAccessor2.0(16707): bufferpool2 0xb400007200f71028 : 0(0 size) total buffers - 0(0 size) used buffers - 170/175 (recycle/alloc) - 5/170 (fetch/transfer)
+07-07 22:58:50.668 D/BufferPoolAccessor2.0(16707): Destruction - bufferpool2 0xb400007200f71028 cached: 0/0M, 0/0% in use; allocs: 175, 97% recycled; transfers: 170, 97% unfetched
+07-07 22:58:50.668 D/BufferPoolAccessor2.0(16707): bufferpool2 0xb400007201039a28 : 0(0 size) total buffers - 0(0 size) used buffers - 599/604 (recycle/alloc) - 5/599 (fetch/transfer)
+07-07 22:58:50.668 D/BufferPoolAccessor2.0(16707): Destruction - bufferpool2 0xb400007201039a28 cached: 0/0M, 0/0% in use; allocs: 604, 99% recycled; transfers: 599, 99% unfetched
+07-07 22:58:55.668 D/BufferPoolAccessor2.0(16707): evictor expired: 2, evicted: 0
+07-07 22:58:56.668 D/BufferPoolAccessor2.0(16707): evictor expired: 1, evicted: 0

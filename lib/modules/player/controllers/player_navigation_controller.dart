@@ -292,6 +292,7 @@ Future<void> zapTo(Channel newChannel) async {
           coverUrl: series.posterUrl,
           positionMs: 0,
           durationMs: 1,
+          episodeStreamId: newChannel.id,
         ));
       } else {
         unawaited(wp.saveProgress(
@@ -444,20 +445,37 @@ int _episodeTapeIndexOfCurrent() {
   }
 
 bool _vodHasNextInBrowseTape() {
+    final ch = channel.value;
+    final epKey = _episodeBrowseTape;
+    final mvKey = _movieBrowseCategoryTapes ?? _movieBrowseTape;
+    if (_vodHasNextCache != null &&
+        _vodHasNextCacheChannelId == ch.id &&
+        identical(_vodHasNextCacheEpKey, epKey) &&
+        identical(_vodHasNextCacheMvKey, mvKey)) {
+      return _vodHasNextCache!;
+    }
+
+    var hasNext = false;
     final ep = _episodeBrowseTape;
     if (ep != null && ep.length > 1) {
       final idx = _episodeTapeIndexOfCurrent();
-      if (idx >= 0 && idx < ep.length - 1) return true;
+      if (idx >= 0 && idx < ep.length - 1) hasNext = true;
     }
-    final mv = _flatMovieTapeForZap();
-    if (mv.length > 1) {
-      var idx = mv.indexWhere((c) => c.id == channel.value.id);
-      if (idx < 0) {
-        idx = mv.indexWhere((c) => c.streamUrl == channel.value.streamUrl);
+    if (!hasNext) {
+      final mv = _flatMovieTapeForZap();
+      if (mv.length > 1) {
+        var idx = mv.indexWhere((c) => c.id == ch.id);
+        if (idx < 0) {
+          idx = mv.indexWhere((c) => c.streamUrl == ch.streamUrl);
+        }
+        if (idx >= 0 && idx < mv.length - 1) hasNext = true;
       }
-      if (idx >= 0 && idx < mv.length - 1) return true;
     }
-    return false;
+    _vodHasNextCache = hasNext;
+    _vodHasNextCacheChannelId = ch.id;
+    _vodHasNextCacheEpKey = epKey;
+    _vodHasNextCacheMvKey = mvKey;
+    return hasNext;
   }
 
 void handleBack() {

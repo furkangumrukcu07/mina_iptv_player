@@ -78,7 +78,7 @@ CREATE TABLE m3u_epg_mapping (
       }
       await chBatch.commit(noResult: true);
 
-      const chunk = 320;
+      const chunk = 150;
       Batch progBatch = txn.batch();
       var n = 0;
       for (final e in programmes.entries) {

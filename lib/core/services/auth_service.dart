@@ -3,12 +3,15 @@ import 'dart:convert';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
+import 'admin_analytics_service.dart';
 import 'package:google_api_availability/google_api_availability.dart';
 import 'package:google_sign_in/google_sign_in.dart';
 
 import 'app_settings_service.dart';
+import '../../domain/repositories/playlist_repository.dart';
 import 'backup_service.dart';
 import 'firebase_bootstrap.dart';
 import 'mina_telemetry_service.dart';
@@ -16,6 +19,7 @@ import '../platform/android_playback_soc_hints.dart';
 import 'profiles_service.dart';
 import 'licensing_service.dart';
 import 'toast_service.dart';
+import '../utils/device_info_util.dart';
 
 /// Google ile giriş akışının sonucu.
 enum GoogleSignInOutcome { success, cancelled, notConfigured, failed }
@@ -168,12 +172,19 @@ class AuthService extends GetxService {
     if (!gFirebaseReady) return;
     try {
       currentUser.value = FirebaseAuth.instance.currentUser;
+      if (currentUser.value == null) {
+        unawaited(signInAnonymously());
+      }
       _authSub = FirebaseAuth.instance.authStateChanges().listen((u) {
         currentUser.value = u;
         if (u != null) {
+          try {
+            FirebaseCrashlytics.instance.setUserIdentifier(u.email ?? u.uid);
+          } catch (_) {}
           // Birincil profilin isim + fotoğrafını Google hesabından eşitle.
           _syncPrimaryProfile(u);
           _syncLicenseAfterGoogleSignIn();
+          unawaited(_recordActivityLog(u));
           // Oturum hazır → zamanı geldiyse sessiz otomatik yedek (kısa gecikme
           // ile, açılış yükünü engellememek için).
           Future<void>.delayed(const Duration(seconds: 5), () {
@@ -191,6 +202,21 @@ class AuthService extends GetxService {
   void onClose() {
     _authSub?.cancel();
     super.onClose();
+  }
+
+  Future<void> _recordActivityLog(User u) async {
+    try {
+      final doc = FirebaseFirestore.instance.collection(_usersCollection).doc(u.uid);
+      final os = DeviceInfoUtil.getDeviceOS();
+      final name = await DeviceInfoUtil.getDeviceName();
+      await doc.set({
+        'lastLoginAt': FieldValue.serverTimestamp(),
+        'lastDeviceOS': os,
+        'lastDeviceName': name,
+      }, SetOptions(merge: true));
+    } catch (e) {
+      debugPrint('[AuthService] _recordActivityLog failed: $e');
+    }
   }
 
   /// Firebase Console'daki Web istemci kimliği (google-services.json →
@@ -240,19 +266,20 @@ class AuthService extends GetxService {
     }
     try {
       await FirebaseAuth.instance.signInAnonymously();
+      AdminAnalyticsService.incrementNewUsers();
       debugPrint('[AuthService] Anonymous sign-in successful');
     } catch (e) {
       debugPrint('[AuthService] Anonymous sign-in failed: $e');
-      rethrow;
     }
   }
 
   /// Google hesabı ile Firebase Auth oturumu açar.
   ///
-  /// Android: önce native (Credential Manager); başarısız / zaman aşımı /
-  /// GMS yoksa [signInWithGoogleViaBrowser] (Custom Tab / tarayıcı OAuth).
-  /// Meizu vb. cihazlarda native sessizce takılsa bile tarayıcı yedeği devreye
-  /// girer; kullanıcı "hiçbir tepki yok" görmez.
+  /// Android:
+  /// - GMS varsa → yalnızca native (Credential Manager); başarısız olsa bile
+  ///   tarayıcı açılmaz, hata döndürülür.
+  /// - GMS yoksa (Fire TV / Amazon Appstore / GMS'siz cihazlar) →
+  ///   [signInWithGoogleViaBrowser] (Custom Tab / tarayıcı OAuth) devreye girer.
   Future<GoogleSignInResult> signInWithGoogle() async {
     if (!gFirebaseReady) {
       return const GoogleSignInResult.notConfigured();
@@ -263,24 +290,24 @@ class AuthService extends GetxService {
       await refreshPlayServicesAvailability();
       await _ensureGoogleInitialized();
 
-      // Android TV / kutularda native girişi kullan (hesap seçici gösterir)
-      // Tarayıcı yedeği sadece native başarısız olursa devreye girsin.
-      final canNative = playServicesAvailable.value &&
-          GoogleSignIn.instance.supportsAuthenticate();
-
-      if (canNative) {
-        final native = await _signInWithGoogleNative();
-        if (native.isSuccess ||
-            native.outcome == GoogleSignInOutcome.cancelled) {
-          return native;
-        }
+      // GMS yoksa tarayıcı OAuth tek seçenektir.
+      if (!playServicesAvailable.value) {
         debugPrint(
-          '[AuthService] native sign-in failed (${native.error}), '
-          'trying browser OAuth',
+          '[AuthService] Play Services unavailable, falling back to browser OAuth.',
         );
         return signInWithGoogleViaBrowser();
       }
-      return signInWithGoogleViaBrowser();
+
+      // GMS mevcut: sadece native dene.
+      // Native başarısız olsa bile tarayıcı açılmaz; hata doğrudan döner.
+      if (!GoogleSignIn.instance.supportsAuthenticate()) {
+        debugPrint(
+          '[AuthService] supportsAuthenticate() = false, cannot sign in natively.',
+        );
+        return const GoogleSignInResult.failed('platform-unsupported');
+      }
+
+      return _signInWithGoogleNative();
     }
 
     return _signInWithGoogleNative();
@@ -605,6 +632,35 @@ class AuthService extends GetxService {
     }
   }
 
+  /// Hesabı ve bulut verisini tamamen siler.
+  Future<bool> deleteAccount() async {
+    if (!gFirebaseReady) return false;
+    final user = currentUser.value;
+    if (user == null) return false;
+
+    try {
+      // 1. Önce bulut verisini sil
+      await deleteCloudData();
+
+      // 2. Firebase Auth hesabını sil
+      await user.delete();
+
+      // 3. Yerel oturumu kapat
+      await signOut();
+
+      return true;
+    } on FirebaseAuthException catch (e) {
+      if (e.code == 'requires-recent-login') {
+        throw Exception('requires-recent-login');
+      }
+      debugPrint('[AuthService] deleteAccount error: $e');
+      return false;
+    } catch (e) {
+      debugPrint('[AuthService] deleteAccount error: $e');
+      return false;
+    }
+  }
+
   /// Firestore'dan kullanıcının yedek JSON'ını çeker. Veri yoksa `null` döner.
   Future<Map<String, dynamic>?> loadUserSettingsFromCloud() async {
     if (!gFirebaseReady) return null;
@@ -635,6 +691,20 @@ class AuthService extends GetxService {
     if (!Get.isRegistered<AppSettingsService>()) return;
     final app = Get.find<AppSettingsService>();
     if (!app.shouldAutoBackupCloud()) return;
+
+    // Kiritik Düzeltme: Eğer cihazda hiç playlist yoksa (yeni kurulum) otomatik
+    // yedeklemeyi başlatma. Aksi halde buluttaki dolu yedeğin üzerine 0 playlist
+    // olarak yazar ve kullanıcının verilerini kaybeder.
+    if (Get.isRegistered<PlaylistRepository>()) {
+      try {
+        final sources = await Get.find<PlaylistRepository>().readAllSources();
+        if (sources.isEmpty) {
+          debugPrint('[AuthService] maybeAutoBackup aborted: Local device has 0 playlists. Preventing cloud overwrite.');
+          return;
+        }
+      } catch (_) {}
+    }
+
     _autoBackupRunning = true;
     try {
       await saveUserSettingsToCloud().timeout(

@@ -1,4 +1,5 @@
 import 'dart:convert' show utf8;
+import 'dart:isolate';
 import 'package:flutter/foundation.dart';
 import 'package:xml/xml.dart';
 import 'package:archive/archive.dart' show GZipDecoder;
@@ -24,6 +25,36 @@ Map<String, dynamic> parseXmlTvBytesIsolate(Map<String, dynamic> args) {
 
   final xmlContent = utf8.decode(xmlBytes, allowMalformed: true);
   return XmlTvParser.instance.parse(xmlContent);
+}
+
+void parseXmlTvChunkedIsolate(Map<String, dynamic> args) {
+  final sendPort = args['sendPort'] as SendPort;
+  try {
+    final String xmlContent = args['xmlString'] as String;
+    final result = XmlTvParser.instance.parse(xmlContent);
+    final channels = result['channels'] as Map<String, EpgChannel>;
+    final programmes = result['programmes'] as Map<String, List<EpgProgramme>>;
+
+    sendPort.send({'type': 'channels', 'data': channels});
+
+    var chunk = <String, List<EpgProgramme>>{};
+    var count = 0;
+    for (final entry in programmes.entries) {
+      chunk[entry.key] = entry.value;
+      count += entry.value.length;
+      if (count >= 2000) {
+        sendPort.send({'type': 'programmes', 'data': chunk});
+        chunk = <String, List<EpgProgramme>>{};
+        count = 0;
+      }
+    }
+    if (count > 0) {
+      sendPort.send({'type': 'programmes', 'data': chunk});
+    }
+    sendPort.send({'type': 'done'});
+  } catch (e, st) {
+    sendPort.send({'type': 'error', 'error': e.toString(), 'stack': st.toString()});
+  }
 }
 
 class XmlTvParser {

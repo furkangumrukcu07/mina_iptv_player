@@ -72,6 +72,8 @@ class _HomeUnifiedSearchDialogState extends State<_HomeUnifiedSearchDialog> {
   String _lastSearchQuery = '';
   int _searchGen = 0;
 
+  Timer? _debounceTimer;
+
   /// Kullanıcı bir sonuca tıkladığında o anki sorguyu geçmişe iter — sadece
   /// gerçek bir seçim yapıldığında yazılır (boş çıkıp kapatma kaydedilmez).
   void _recordQuery() {
@@ -93,8 +95,14 @@ class _HomeUnifiedSearchDialogState extends State<_HomeUnifiedSearchDialog> {
   }
 
   void _onQueryChanged(String _) {
-    setState(() {});
-    unawaited(_runSearch(_queryCtrl.text));
+    setState(() {
+      _searching = true;
+    });
+    
+    if (_debounceTimer?.isActive ?? false) _debounceTimer!.cancel();
+    _debounceTimer = Timer(const Duration(milliseconds: 500), () {
+      unawaited(_runSearch(_queryCtrl.text));
+    });
   }
 
   Future<void> _runSearch(String raw) async {
@@ -145,6 +153,7 @@ class _HomeUnifiedSearchDialogState extends State<_HomeUnifiedSearchDialog> {
 
   @override
   void dispose() {
+    _debounceTimer?.cancel();
     _queryCtrl.dispose();
     _queryFocus.dispose();
     _closeFocus.dispose();

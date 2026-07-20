@@ -1,11 +1,14 @@
+import 'dart:io';
 import 'dart:math';
 
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:device_info_plus/device_info_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'firebase_bootstrap.dart';
+import 'mina_secure_storage.dart';
 
 class LicenseDeviceEntry {
   const LicenseDeviceEntry({
@@ -36,9 +39,7 @@ class LicenseDeviceService {
   static const _storageKey = 'mina_license_device_id_v1';
   static const _functionsRegion = 'europe-west1';
 
-  static final FlutterSecureStorage _secureStorage = const FlutterSecureStorage(
-    aOptions: AndroidOptions(encryptedSharedPreferences: true),
-  );
+  static FlutterSecureStorage get _secureStorage => MinaSecureStorage.instance;
 
   static FirebaseFunctions? _functions() {
     if (!gFirebaseReady) return null;
@@ -46,29 +47,82 @@ class LicenseDeviceService {
   }
 
   static Future<String> getOrCreateDeviceId() async {
+    await MinaSecureStorage.ensureReady();
+    final prefs = await SharedPreferences.getInstance();
+
+    String? secureId;
     try {
-      final existing = await _secureStorage.read(key: _storageKey);
-      if (existing != null && existing.length >= 8) {
-        return existing;
-      }
+      secureId = await _secureStorage.read(key: _storageKey);
     } catch (e) {
       debugPrint('[LicenseDeviceService] secure read failed: $e');
     }
 
-    final generated = _generateDeviceId();
+    final prefsId = prefs.getString(_storageKey);
+
+    // 1. Durum: Secure Storage'da ID var.
+    if (secureId != null && secureId.length >= 8) {
+      if (prefsId != secureId) {
+        // Yedeklemeyi (SharedPreferences) de senkronize et
+        await prefs.setString(_storageKey, secureId);
+      }
+      return secureId;
+    }
+
+    // 2. Durum: Secure Storage silinmiş ama SharedPreferences'te duruyor (Yedekten dön!)
+    if (prefsId != null && prefsId.length >= 8) {
+      try {
+        await _secureStorage.write(key: _storageKey, value: prefsId);
+      } catch (e) {
+        debugPrint('[LicenseDeviceService] secure restore failed: $e');
+      }
+      return prefsId;
+    }
+
+    // 3. Durum: Cihaz tamamen ilk kez açılıyor (veya tüm veriler silinmiş), yeni ID üret.
+    // Artık rastgele ID üretmek yerine kalıcı donanım kimliğini (Android ID) kullanıyoruz.
+    // Böylece silip yüklemelerde aynı cihaz 3 lisans slotu kaplamayacak!
+    final generated = await _generatePersistentHardwareId();
     try {
       await _secureStorage.write(key: _storageKey, value: generated);
     } catch (e) {
       debugPrint('[LicenseDeviceService] secure write failed: $e');
     }
+    await prefs.setString(_storageKey, generated);
+
     return generated;
   }
 
-  static String _generateDeviceId() {
+  static Future<String> _generatePersistentHardwareId() async {
+    try {
+      final plugin = DeviceInfoPlugin();
+      if (Platform.isAndroid) {
+        final info = await plugin.androidInfo;
+        final id = info.id.trim();
+        if (id.isNotEmpty && id != 'unknown') return 'mina_$id';
+      } else if (Platform.isIOS) {
+        final info = await plugin.iosInfo;
+        final id = info.identifierForVendor?.trim() ?? '';
+        if (id.isNotEmpty && id != 'unknown') return 'mina_$id';
+      } else if (Platform.isMacOS) {
+        final info = await plugin.macOsInfo;
+        final id = info.systemGUID?.trim() ?? '';
+        if (id.isNotEmpty && id != 'unknown') return 'mina_$id';
+      } else if (Platform.isWindows) {
+        final info = await plugin.windowsInfo;
+        final id = info.deviceId.trim();
+        if (id.isNotEmpty && id != 'unknown') return 'mina_$id';
+      }
+    } catch (e) {
+      debugPrint('[LicenseDeviceService] error fetching hardware ID: $e');
+    }
+    return _generateRandomDeviceId();
+  }
+
+  static String _generateRandomDeviceId() {
     final rand = Random.secure();
     final bytes = List<int>.generate(16, (_) => rand.nextInt(256));
     final hex = bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
-    return 'mina_$hex';
+    return 'mina_r_$hex'; // r indicates it was randomly generated due to missing hardware id
   }
 
   static Future<String> deviceLabel() async {

@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
@@ -7,6 +8,7 @@ import 'package:get/get.dart';
 import '../../../core/layout/app_layout_mode.dart' show filmDiziRemoteNavEnabled;
 import '../../../core/services/app_settings_service.dart';
 import '../../../ui/tv_dpad_focus.dart';
+import '../home_controller.dart';
 import 'recommended_films_poster_grid.dart';
 
 /// Hero banner'da gösterilecek tek bir slayt verisi — VOD ve dizi için ortak.
@@ -17,6 +19,8 @@ class FilmDiziHeroSlide {
     required this.rating,
     required this.onPlay,
     required this.onDetail,
+    this.tags = const [],
+    this.nextSlidePreview,
   });
 
   final String title;
@@ -26,6 +30,12 @@ class FilmDiziHeroSlide {
   final double rating;
   final VoidCallback onPlay;
   final VoidCallback onDetail;
+
+  /// Film başlığından ayıklanan rozet etiketleri (Örn: "4K", "HDR", "2024").
+  final List<String> tags;
+
+  /// Bir sonraki slaytın önizleme modeli. Null ise önizleme gösterilmez.
+  final FilmDiziHeroSlide? nextSlidePreview;
 }
 
 /// Tam genişlikte, kayan «kahraman afiş» carousel'i.
@@ -58,7 +68,11 @@ class _FilmDiziHeroBannerState extends State<FilmDiziHeroBanner> {
   @override
   void initState() {
     super.initState();
-    _ctrl = PageController(viewportFraction: 1.0);
+    _ctrl = PageController(viewportFraction: widget.isTv ? 0.90 : 0.92);
+    if (widget.slides.isNotEmpty && Get.isRegistered<HomeController>()) {
+      Get.find<HomeController>().showcaseAmbientPoster.value =
+          widget.slides.first.posterUrl;
+    }
     _startAutoplay();
   }
 
@@ -163,7 +177,13 @@ class _FilmDiziHeroBannerState extends State<FilmDiziHeroBanner> {
             child: PageView.builder(
               controller: _ctrl,
               itemCount: widget.slides.length,
-              onPageChanged: (i) => setState(() => _idx = i),
+              onPageChanged: (i) {
+                setState(() => _idx = i);
+                if (Get.isRegistered<HomeController>()) {
+                  Get.find<HomeController>().showcaseAmbientPoster.value =
+                      widget.slides[i].posterUrl;
+                }
+              },
               itemBuilder: (context, i) => _HeroSlideView(
                 slide: widget.slides[i],
                 onHoverChanged: _setHovered,
@@ -203,28 +223,30 @@ class _HeroSlideView extends StatefulWidget {
   State<_HeroSlideView> createState() => _HeroSlideViewState();
 }
 
-class _HeroSlideViewState extends State<_HeroSlideView> {
+class _HeroSlideViewState extends State<_HeroSlideView> with SingleTickerProviderStateMixin {
   final FocusNode _playFocus = FocusNode(debugLabel: 'heroPlay');
-  final FocusNode _detailFocus = FocusNode(debugLabel: 'heroDetail');
+  late final AnimationController _kenBurnsCtrl;
 
   @override
   void initState() {
     super.initState();
     _playFocus.addListener(_onAnyFocus);
-    _detailFocus.addListener(_onAnyFocus);
+    _kenBurnsCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(seconds: 20),
+    )..forward();
   }
 
   @override
   void dispose() {
     _playFocus.removeListener(_onAnyFocus);
-    _detailFocus.removeListener(_onAnyFocus);
     _playFocus.dispose();
-    _detailFocus.dispose();
+    _kenBurnsCtrl.dispose();
     super.dispose();
   }
 
   void _onAnyFocus() {
-    final hasFocus = _playFocus.hasFocus || _detailFocus.hasFocus;
+    final hasFocus = _playFocus.hasFocus;
     widget.onHoverChanged(hasFocus);
   }
 
@@ -252,9 +274,8 @@ class _HeroSlideViewState extends State<_HeroSlideView> {
     final accent = theme.colorScheme.primary;
     final title = widget.slide.title;
     final rating = widget.slide.rating;
-    final remote = filmDiziRemoteNavEnabled(
-      Get.find<AppSettingsService>().layoutMode.value,
-    );
+    final settings = Get.find<AppSettingsService>();
+    final remote = filmDiziRemoteNavEnabled(settings.layoutMode.value);
     final isTv = widget.isTv;
 
     Widget playBtn = ElevatedButton.icon(
@@ -279,50 +300,18 @@ class _HeroSlideViewState extends State<_HeroSlideView> {
       ),
     );
 
-    Widget detailBtn = OutlinedButton(
-      onPressed: widget.slide.onDetail,
-      style: OutlinedButton.styleFrom(
-        foregroundColor: Colors.white,
-        side: BorderSide(
-          color: Colors.white.withValues(alpha: 0.65),
-          width: isTv ? 1.6 : 1.0,
-        ),
-        padding: EdgeInsets.symmetric(
-          horizontal: isTv ? 22 : 14,
-          vertical: isTv ? 12 : 8,
-        ),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(12),
-        ),
-        textStyle: TextStyle(
-          fontSize: isTv ? 16 : 13,
-          fontWeight: FontWeight.w800,
-        ),
-      ),
-      child: Text('filmDizi.detail'.tr),
-    );
-
     if (remote) {
       playBtn = TvDpadFocus(
         focusNode: _playFocus,
         onActivate: widget.slide.onPlay,
-        arrowRight: _detailFocus,
         borderRadius: 12,
         scaleOnFocus: isTv ? 1.08 : 1.05,
         child: playBtn,
       );
-      detailBtn = TvDpadFocus(
-        focusNode: _detailFocus,
-        onActivate: widget.slide.onDetail,
-        arrowLeft: _playFocus,
-        borderRadius: 12,
-        scaleOnFocus: isTv ? 1.08 : 1.05,
-        child: detailBtn,
-      );
     }
 
     Widget body = Padding(
-        padding: EdgeInsets.symmetric(horizontal: isTv ? 24 : 16),
+        padding: EdgeInsets.symmetric(horizontal: isTv ? 12 : 8),
         child: ClipRRect(
           borderRadius: BorderRadius.circular(isTv ? 22 : 16),
           child: Stack(
@@ -331,18 +320,30 @@ class _HeroSlideViewState extends State<_HeroSlideView> {
               // Arkaplan — afişi 16:9 alanı kapsayacak ve kayarken parallax yapacak şekilde çiz.
               Positioned.fill(
                 child: ClipRect(
-                  child: Flow(
-                    delegate: ParallaxFlowDelegate(
-                      scrollable: Scrollable.maybeOf(context),
-                      listItemContext: context,
-                    ),
-                    children: [
-                      RepaintBoundary(
-                        child: RecommendedFilmsPosterImage(
-                          url: widget.slide.posterUrl,
-                        ),
-                      ),
-                    ],
+                  child: ScaleTransition(
+                    scale: Tween<double>(begin: 1.0, end: 1.15).animate(_kenBurnsCtrl),
+                    child: Obx(() {
+                      final p = settings.showcaseParallaxEnabled.value;
+                      return p
+                          ? Flow(
+                              delegate: ParallaxFlowDelegate(
+                                scrollable: _findVerticalScrollable(context),
+                                listItemContext: context,
+                              ),
+                              children: [
+                                RepaintBoundary(
+                                  child: RecommendedFilmsPosterImage(
+                                    url: widget.slide.posterUrl,
+                                  ),
+                                ),
+                              ],
+                            )
+                          : RepaintBoundary(
+                              child: RecommendedFilmsPosterImage(
+                                url: widget.slide.posterUrl,
+                              ),
+                            );
+                    }),
                   ),
                 ),
               ),
@@ -397,20 +398,45 @@ class _HeroSlideViewState extends State<_HeroSlideView> {
                       ),
                       SizedBox(height: isTv ? 8 : 4),
                     ],
+                    if (widget.slide.tags.isNotEmpty) ...[
+                      Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: widget.slide.tags.map((t) => Container(
+                          margin: const EdgeInsets.only(right: 6),
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withValues(alpha: 0.15),
+                            border: Border.all(color: Colors.white.withValues(alpha: 0.3)),
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            t,
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: isTv ? 12 : 10,
+                              fontWeight: FontWeight.w800,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                        )).toList(),
+                      ),
+                      SizedBox(height: isTv ? 8 : 4),
+                    ],
                     Text(
                       title,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                       style: TextStyle(
                         color: Colors.white,
-                        fontSize: isTv ? 30 : 20,
-                        fontWeight: FontWeight.w800,
-                        height: 1.15,
+                        fontSize: isTv ? 34 : 24,
+                        fontWeight: FontWeight.w900,
+                        height: 0.95,
+                        letterSpacing: -1.0,
                         shadows: const [
                           Shadow(
-                            color: Colors.black54,
-                            offset: Offset(0, 1),
-                            blurRadius: 4,
+                            color: Colors.black87,
+                            offset: Offset(0, 2),
+                            blurRadius: 8,
                           ),
                         ],
                       ),
@@ -419,9 +445,9 @@ class _HeroSlideViewState extends State<_HeroSlideView> {
                     Row(
                       children: [
                         playBtn,
-                        SizedBox(width: isTv ? 12 : 8),
-                        detailBtn,
                         const Spacer(),
+                        if (widget.slide.nextSlidePreview != null)
+                           _NextSlideHint(slide: widget.slide.nextSlidePreview!, isTv: isTv),
                         // Hafif tema vurgusu (köşede)
                         Container(
                           width: isTv ? 6 : 4,
@@ -463,32 +489,92 @@ class _HeroSlideViewState extends State<_HeroSlideView> {
 
 class _Dots extends StatelessWidget {
   const _Dots({required this.count, required this.index});
-
   final int count;
   final int index;
 
   @override
   Widget build(BuildContext context) {
     if (count <= 1) return const SizedBox.shrink();
-    return Center(
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: List.generate(count, (i) {
+        final active = i == index;
+        return AnimatedContainer(
+          duration: const Duration(milliseconds: 300),
+          margin: const EdgeInsets.symmetric(horizontal: 4),
+          height: 6,
+          width: active ? 18 : 6,
+          decoration: BoxDecoration(
+            color: active
+                ? Theme.of(context).colorScheme.primary
+                : Colors.white.withValues(alpha: 0.35),
+            borderRadius: BorderRadius.circular(3),
+          ),
+        );
+      }),
+    );
+  }
+}
+
+class _NextSlideHint extends StatelessWidget {
+  const _NextSlideHint({required this.slide, required this.isTv});
+  final FilmDiziHeroSlide slide;
+  final bool isTv;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      margin: const EdgeInsets.only(right: 12),
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.3),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.white.withValues(alpha: 0.15)),
+      ),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
         mainAxisSize: MainAxisSize.min,
         children: [
-          for (var i = 0; i < count; i++)
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 220),
-              curve: Curves.easeOut,
-              width: i == index ? 18 : 6,
-              height: 6,
-              margin: const EdgeInsets.symmetric(horizontal: 3),
-              decoration: BoxDecoration(
-                color: i == index
-                    ? Colors.white.withValues(alpha: 0.9)
-                    : Colors.white.withValues(alpha: 0.35),
-                borderRadius: BorderRadius.circular(3),
+          if (slide.posterUrl != null)
+            ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: CachedNetworkImage(
+                imageUrl: slide.posterUrl!,
+                width: isTv ? 32 : 24,
+                height: isTv ? 48 : 36,
+                fit: BoxFit.cover,
+                errorWidget: (_, __, ___) => const SizedBox.shrink(),
               ),
             ),
+          SizedBox(width: isTv ? 8 : 6),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(
+                'Sıradaki',
+                style: TextStyle(
+                  color: Colors.white70,
+                  fontSize: isTv ? 11 : 9,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+              const SizedBox(height: 2),
+              SizedBox(
+                width: isTv ? 100 : 70,
+                child: Text(
+                  slide.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontSize: isTv ? 13 : 11,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          SizedBox(width: isTv ? 4 : 2),
         ],
       ),
     );
@@ -547,3 +633,19 @@ class ParallaxFlowDelegate extends FlowDelegate {
         listItemContext != oldDelegate.listItemContext;
   }
 }
+
+ScrollableState? _findVerticalScrollable(BuildContext context) {
+  ScrollableState? result;
+  context.visitAncestorElements((element) {
+    if (element is StatefulElement && element.state is ScrollableState) {
+      final state = element.state as ScrollableState;
+      if (state.axisDirection == AxisDirection.up || state.axisDirection == AxisDirection.down) {
+        result = state;
+        return false;
+      }
+    }
+    return true;
+  });
+  return result;
+}
+

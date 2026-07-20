@@ -1278,7 +1278,9 @@ void _schedulePreview(Channel channel) {
       return;
     }
     _previewDebounce?.cancel();
-    if (!_previewEnabled) {
+    final isPlayerActive = Get.isRegistered<AppSettingsService>() && 
+                           Get.find<AppSettingsService>().playerScreenActive.value;
+    if (!_previewEnabled || isPlayerActive) {
       clearStreamPreview();
       return;
     }
@@ -1424,13 +1426,15 @@ Future<void> _startPreview(Channel channel) async {
       return;
     }
 
-    if (!_previewEnabled) {
+    final isPlayerActive = Get.isRegistered<AppSettingsService>() && 
+                           Get.find<AppSettingsService>().playerScreenActive.value;
+    if (!_previewEnabled || isPlayerActive) {
       clearStreamPreview();
       return;
     }
     final gen = ++_previewLoadGeneration;
-    // Sessiz önizleme — tam ekran oynatıcıyla çift ses riskini önler.
-    const audible = false;
+    // Önizleme sesli — tam ekran açılınca preview zaten durdurulur.
+    const audible = true;
 
     try {
       final old = previewController;

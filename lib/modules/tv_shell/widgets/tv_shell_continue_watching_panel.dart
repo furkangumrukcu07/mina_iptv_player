@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
+import '../../channels/channels_controller.dart';
 
 import '../../../core/home/film_dizi_detail_args.dart';
 import '../../../core/routes/app_routes.dart';
@@ -447,6 +448,9 @@ class _TvShellContinueWatchingPanelState
           }
         }
         if (targetVod != null) {
+          if (Get.isRegistered<ChannelsController>()) {
+            Get.find<ChannelsController>().clearStreamPreview();
+          }
           final args = PlayerScreenArgs(
             channel: Channel(
               id: targetVod.id,

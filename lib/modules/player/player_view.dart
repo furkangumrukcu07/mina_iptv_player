@@ -1053,14 +1053,16 @@ class _PlayerViewState extends State<PlayerView> with WidgetsBindingObserver {
                               );
                             }
 
-                            final player = UniversalVideoPlayer(
-                              key: _videoSurfaceKey,
-                              url: controller.surfaceStreamUrl,
-                              engine: activeEngine,
-                              betterPlayerController: bp,
-                              fit: fit,
-                              onMediaKitPlayerChanged:
-                                  controller.attachMediaKitPlayer,
+                            final player = RepaintBoundary(
+                              child: UniversalVideoPlayer(
+                                key: _videoSurfaceKey,
+                                url: controller.surfaceStreamUrl,
+                                engine: activeEngine,
+                                betterPlayerController: bp,
+                                fit: fit,
+                                onMediaKitPlayerChanged:
+                                    controller.attachMediaKitPlayer,
+                              ),
                             );
 
                             final mkOsd = useEmbeddedEngineOsd && !isPortrait
@@ -1992,10 +1994,29 @@ class _PortraitOsdPanelState extends State<_PortraitOsdPanel> {
             widget.controller.mediaKitAttachEpoch.value;
           }
 
+          final double screenWidth = Get.width;
+          double osdScale = 1.0;
+          final osdTier = settings.osdSizeTier.value;
+          if (osdTier == 0) {
+            osdScale = 0.85;
+          } else if (osdTier == 2) {
+            osdScale = 1.25;
+          } else if (osdTier == 3) {
+            osdScale = 1.45;
+          } else {
+            if (useTvOsdStyle) {
+              if (screenWidth > 900) {
+                osdScale = 1.35;
+              } else if (screenWidth > 600) {
+                osdScale = 1.15;
+              }
+            }
+          }
+
           // Dikey modda yayın açılmasa bile OSD paneli görünür kalsın.
           // Böylece kullanıcı "akış açılıyor" durumunda paneli kaybetmez.
           // Dikey mod: OSD cam şeridine maksimum genişlik (yatay tam ekran OSD’ye dokunulmaz).
-          return Listener(
+          Widget osdContent = Listener(
             behavior: HitTestBehavior.deferToChild,
             onPointerDown: (_) => widget.controller.scheduleTvOsdAutoHide(),
             child: Padding(
@@ -2554,6 +2575,12 @@ class _PortraitOsdPanelState extends State<_PortraitOsdPanel> {
               ),
             ),
           );
+
+          return Transform.scale(
+            scale: osdScale,
+            alignment: Alignment.bottomCenter,
+            child: osdContent,
+          );
         });
       },
     );
@@ -2904,23 +2931,7 @@ class _PortraitOsdPanelState extends State<_PortraitOsdPanel> {
   /// için** değiştiren buton. Mobil (Android/iOS) için; TV'de gizli.
   /// Geçiş kalıcı ayarı değiştirmez — kanal/içerik değişince varsayılana döner.
   Widget _engineToggleAction({required bool tv}) {
-    if (!(Platform.isAndroid || Platform.isIOS)) {
-      return const SizedBox.shrink();
-    }
-    if (Get.find<AppSettingsService>().layoutMode.value == AppLayoutMode.tv) {
-      return const SizedBox.shrink();
-    }
-    final mk = widget.controller.effectiveUseMediaKit;
-    return Tooltip(
-      message: mk ? 'player.engine.toExo'.tr : 'player.engine.toMediaKit'.tr,
-      child: _osdAction(
-        // Aktif motoru gösterir: MediaKit (mpv) → bellek ikonu, Better/Exo →
-        // şimşek (donanım hızlandırmalı) ikonu. Dokununca diğerine geçer.
-        icon: mk ? Icons.memory_rounded : Icons.bolt_rounded,
-        onTap: () => unawaited(_togglePlaybackEngine(mk)),
-        tv: tv,
-      ),
-    );
+    return const SizedBox.shrink();
   }
 
   Future<void> _togglePlaybackEngine(bool currentlyMediaKit) async {
@@ -4320,7 +4331,8 @@ class _PortraitVodPanelState extends State<_PortraitVodPanel> {
       if (Get.isRegistered<PlaylistCacheService>()) {
         Get.find<PlaylistCacheService>().result.value;
       }
-      if (Get.isRegistered<UserHistoryService>()) {
+      if (_selectedCategoryId == _kVodPanelRecentlyWatchedCategoryId &&
+          Get.isRegistered<UserHistoryService>()) {
         Get.find<UserHistoryService>().revision.value;
       }
       // Aktif içerik değişimini izle ki "şu an oynayan" rozeti yenilensin.
@@ -4891,9 +4903,10 @@ class _PortraitLiveTvPanelState extends State<_PortraitLiveTvPanel> {
       // Favori RxList değişimi sanal "Favoriler" kanal listesini ve normal
       // listedeki kalp ikonlarını anında tazelesin.
       Get.find<FavoritesService>().channelIds.length;
-      // UserHistory revision: Son İzlenenler seçili iken yeni izleme kaydı
-      // eklendiğinde liste anında güncellensin.
-      if (Get.isRegistered<UserHistoryService>()) {
+      // UserHistory: yalnız Son İzlenenler seçiliyken dinle (oynatma sırasında
+      // history tick → tüm kanal listesi Obx rebuild olmasın).
+      if (_selectedCategoryId == kRecentlyWatchedVirtualCategoryId &&
+          Get.isRegistered<UserHistoryService>()) {
         Get.find<UserHistoryService>().revision.value;
       }
       final tapes = widget.controller.liveChannelStripCategoryTapes();

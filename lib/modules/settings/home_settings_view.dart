@@ -120,22 +120,7 @@ class HomeSettingsView extends StatelessWidget {
                             ],
                           );
                         }),
-                        // Karışık Canlı TV — standart düzende global
-                        // bayrak (`mixedLiveTvEnabled`). Vitrinde gizlenir;
-                        // vitrine özgü ayrı bayrak aşağıdaki vitrin bölümünde.
-                        _LockableSection(
-                          lockOnShowcase: false,
-                          hideOnShowcase: true,
-                          child: _ToggleSection(
-                            icon: Icons.shuffle_rounded,
-                            title: 'homeSettings.mixedLive.title'.tr,
-                            subtitle: 'homeSettings.mixedLive.sub'.tr,
-                            value: settings.mixedLiveTvEnabled,
-                            onChanged: settings.setMixedLiveTvEnabled,
-                            preview: const _MixedLivePreview(),
-                          ),
-                        ),
-                        const SizedBox(height: 14),
+
                         // Trend Filmler / Trend Diziler / Favori & Karışık
                         // şeritler / Karışık Canlı TV — yalnızca vitrin
                         // düzeninde görünür ve düzenlenebilir.
@@ -143,16 +128,18 @@ class HomeSettingsView extends StatelessWidget {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.stretch,
                             children: [
+
                               _ToggleSection(
-                                icon: Icons.shuffle_rounded,
-                                title: 'homeSettings.mixedLive.title'.tr,
-                                subtitle: 'homeSettings.mixedLive.sub'.tr,
-                                value: settings.showcaseMixedLiveTvEnabled,
+                                icon: Icons.schedule_rounded,
+                                title: 'homeSettings.upcomingEpg.title'.tr,
+                                subtitle: 'homeSettings.upcomingEpg.sub'.tr,
+                                value: settings.showcaseUpcomingEpgEnabled,
                                 onChanged:
-                                    settings.setShowcaseMixedLiveTvEnabled,
-                                preview: const _MixedLivePreview(),
+                                    settings.setShowcaseUpcomingEpgEnabled,
+                                preview: const _UpcomingEpgPreview(),
                               ),
                               const SizedBox(height: 14),
+
                               _ToggleSection(
                                 icon: Icons.local_fire_department_rounded,
                                 title: 'homeSettings.trendFilms.title'.tr,
@@ -207,15 +194,39 @@ class HomeSettingsView extends StatelessWidget {
                                 preview: const _MixedPosterPreview(),
                               ),
                               const SizedBox(height: 14),
-                              _ToggleSection(
-                                icon: Icons.play_circle_rounded,
-                                title: 'homeSettings.lastWatchedButton.title'.tr,
-                                subtitle: 'homeSettings.lastWatchedButton.sub'.tr,
-                                value: settings.showcaseLastWatchedButtonEnabled,
-                                onChanged: settings.setShowcaseLastWatchedButtonEnabled,
-                                preview: const SizedBox.shrink(),
-                              ),
-                              const SizedBox(height: 14),
+                              Obx(() {
+                                if (settings.homeLayoutStyle.value != HomeLayoutStyle.showcase) {
+                                  return const SizedBox.shrink();
+                                }
+                                return Column(
+                                  children: [
+                                    _ToggleSection(
+                                      icon: Icons.play_circle_rounded,
+                                      title: 'homeSettings.lastWatchedButton.title'.tr,
+                                      subtitle: 'homeSettings.lastWatchedButton.sub'.tr,
+                                      value: settings.showcaseLastWatchedButtonEnabled,
+                                      onChanged: settings.setShowcaseLastWatchedButtonEnabled,
+                                    ),
+                                    const SizedBox(height: 14),
+                                    _ToggleSection(
+                                      icon: Icons.wallpaper_rounded,
+                                      title: 'Sinematik Arkaplan',
+                                      subtitle: 'Vitrin afişi değiştikçe arkaplan bulanık ve karanlık olarak o afişle değişir.',
+                                      value: settings.showcaseAmbientBackgroundEnabled,
+                                      onChanged: settings.setShowcaseAmbientBackgroundEnabled,
+                                    ),
+                                    const SizedBox(height: 14),
+                                    _ToggleSection(
+                                      icon: Icons.layers_outlined,
+                                      title: 'Afiş Derinlik Efekti (Parallax)',
+                                      subtitle: 'Sayfa kaydırılırken üst afiş ekranla farklı hızda kayarak 3D derinlik yaratır.',
+                                      value: settings.showcaseParallaxEnabled,
+                                      onChanged: settings.setShowcaseParallaxEnabled,
+                                    ),
+                                    const SizedBox(height: 14),
+                                  ],
+                                );
+                              }),
                             ],
                           ),
                         ),
@@ -389,7 +400,7 @@ class _SectionShell extends StatelessWidget {
     required this.title,
     required this.subtitle,
     required this.trailing,
-    required this.preview,
+    this.preview,
     this.onTap,
   });
 
@@ -397,7 +408,7 @@ class _SectionShell extends StatelessWidget {
   final String title;
   final String subtitle;
   final Widget trailing;
-  final Widget preview;
+  final Widget? preview;
   final VoidCallback? onTap;
 
   @override
@@ -474,14 +485,16 @@ class _SectionShell extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           material,
-          const SizedBox(height: 10),
-          ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: SizedBox(
-              height: 92,
-              child: preview,
+          if (preview != null) ...[
+            const SizedBox(height: 10),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(12),
+              child: SizedBox(
+                height: 92,
+                child: preview,
+              ),
             ),
-          ),
+          ],
         ],
       ),
     );
@@ -502,7 +515,7 @@ class _ToggleSection extends StatelessWidget {
     required this.subtitle,
     required this.value,
     required this.onChanged,
-    required this.preview,
+    this.preview,
   });
 
   final IconData icon;
@@ -510,7 +523,7 @@ class _ToggleSection extends StatelessWidget {
   final String subtitle;
   final RxBool value;
   final Future<void> Function(bool) onChanged;
-  final Widget preview;
+  final Widget? preview;
 
   @override
   Widget build(BuildContext context) {
@@ -525,11 +538,13 @@ class _ToggleSection extends StatelessWidget {
           value: v,
           onChanged: (nv) => onChanged(nv),
         ),
-        preview: AnimatedOpacity(
-          duration: const Duration(milliseconds: 200),
-          opacity: v ? 1.0 : 0.35,
-          child: preview,
-        ),
+        preview: preview != null
+            ? AnimatedOpacity(
+                duration: const Duration(milliseconds: 200),
+                opacity: v ? 1.0 : 0.35,
+                child: preview,
+              )
+            : null,
       );
     });
   }
@@ -540,14 +555,14 @@ class _NavSection extends StatelessWidget {
     required this.icon,
     required this.title,
     required this.subtitle,
-    required this.preview,
+    this.preview,
     required this.onTap,
   });
 
   final IconData icon;
   final String title;
   final String subtitle;
-  final Widget preview;
+  final Widget? preview;
   final VoidCallback onTap;
 
   @override
@@ -2235,6 +2250,94 @@ class _MixedLivePreview extends StatelessWidget {
               ),
             ),
             if (i != colors.length - 1) const SizedBox(width: 6),
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+/// «Sıradaki Yayınlar (EPG)» önizlemesi — kanal kartları ve saat/geri sayım bilgisi.
+class _UpcomingEpgPreview extends StatelessWidget {
+  const _UpcomingEpgPreview();
+
+  @override
+  Widget build(BuildContext context) {
+    const channels = [
+      ('TRT 1', '21:00', '45d'),
+      ('Star', '22:30', '2s'),
+      ('Show', '20:00', '15d'),
+      ('atv', '23:00', '1s'),
+    ];
+    return _previewBackground(
+      child: Row(
+        children: [
+          for (var i = 0; i < channels.length; i++) ...[
+            Expanded(
+              child: Container(
+                margin: EdgeInsets.only(right: i < channels.length - 1 ? 6 : 0),
+                height: 60,
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(10),
+                  gradient: LinearGradient(
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
+                    colors: [
+                      Colors.blueAccent.withValues(alpha: 0.35),
+                      Colors.purple.withValues(alpha: 0.20),
+                    ],
+                  ),
+                  border: Border.all(
+                    color: Colors.white.withValues(alpha: 0.18),
+                  ),
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(
+                      Icons.live_tv_rounded,
+                      color: Colors.white,
+                      size: 14,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      channels[i].$1,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 9,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 1),
+                    Text(
+                      channels[i].$2,
+                      style: TextStyle(
+                        color: Colors.white.withValues(alpha: 0.8),
+                        fontSize: 8,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    Container(
+                      margin: const EdgeInsets.only(top: 2),
+                      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                      decoration: BoxDecoration(
+                        color: Colors.blueAccent.withValues(alpha: 0.5),
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        channels[i].$3,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 7,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           ],
         ],
       ),

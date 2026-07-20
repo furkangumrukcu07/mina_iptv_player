@@ -8,21 +8,26 @@ import 'package:get/get.dart';
 
 import '../../../core/home/film_dizi_detail_args.dart';
 import '../../../core/home/recommended_films_catalog.dart';
+import '../../../core/home/series_episode_loader.dart';
 import '../../../core/home/series_name_grouping.dart';
 import '../../../core/home/home_card_frame_style.dart';
 import '../../../core/layout/app_layout_mode.dart';
 import '../../../core/routes/app_routes.dart';
 import '../../../core/services/app_image_cache_service.dart';
 import '../../../core/services/app_settings_service.dart';
+import '../../../core/services/playlist_cache_service.dart';
 import '../../../core/services/playlist_data_source.dart';
 import '../../../core/services/watch_progress_service.dart';
+import '../../../core/theme/app_performance.dart';
 import '../../../core/theme/app_scroll_physics.dart';
 import '../../../core/theme/glass_appearance.dart';
 import '../../../domain/entities/m3u_result.dart';
 import '../../../domain/entities/series.dart';
 import '../../../domain/entities/vod.dart';
+import '../../../domain/repositories/playlist_repository.dart';
 import '../../../ui/tv_dpad_focus.dart';
 import '../../../ui/auto_scroll_text.dart';
+import '../../player/player_route_args.dart';
 import 'watch_progress_circle.dart';
 
 /// İzlemeye Devam Et listesinde gösterilecek, kataloga çözülmüş öğe.
@@ -170,12 +175,75 @@ class _ContinueWatchingStripState extends State<ContinueWatchingStrip> {
         AppRoutes.filmDiziDetail,
         arguments: FilmDiziDetailArgs(vod: item.vod!),
       );
-    } else if (item.series != null) {
+      return;
+    }
+    final series = item.series;
+    if (series == null) return;
+    // Dizi: mümkünse son bölümü (veya sonraki) doğrudan oynat.
+    unawaited(_openSeriesContinue(series, item.entry));
+  }
+
+  Future<void> _openSeriesContinue(
+    SeriesItem series,
+    ContinueWatchingEntry entry,
+  ) async {
+    final cacheData = Get.isRegistered<PlaylistCacheService>()
+        ? Get.find<PlaylistCacheService>().result.value
+        : widget.data;
+    if (!Get.isRegistered<PlaylistRepository>()) {
       Get.toNamed<void>(
         AppRoutes.filmDiziSeriesDetail,
         arguments: FilmDiziSeriesDetailArgs.fromSeries(
-          item.series!,
-          playlistData: widget.data,
+          series,
+          playlistData: cacheData,
+        ),
+      );
+      return;
+    }
+    try {
+      final result = await SeriesEpisodeLoader.load(
+        series: series,
+        playlist: Get.find<PlaylistRepository>(),
+        playlistData: cacheData,
+        displayTitle: SeriesNameGrouping.displayTitleFromName(series.name),
+      );
+      final episodes = result.episodes;
+      if (episodes.isEmpty) {
+        Get.toNamed<void>(
+          AppRoutes.filmDiziSeriesDetail,
+          arguments: FilmDiziSeriesDetailArgs.fromSeries(
+            series,
+            playlistData: cacheData,
+          ),
+        );
+        return;
+      }
+      var idx = 0;
+      final es = entry.episodeStreamId;
+      if (es != null) {
+        final found = episodes.indexWhere((e) => e.channel.id == es);
+        if (found >= 0) {
+          // Bölüm neredeyse bitmişse sonraki bölüme geç.
+          final nearEnd = entry.durationMs > 0 &&
+              entry.positionMs >= (entry.durationMs * 0.90).round();
+          idx = nearEnd && found < episodes.length - 1 ? found + 1 : found;
+        }
+      }
+      final ep = episodes[idx];
+      Get.toNamed<void>(
+        AppRoutes.player,
+        arguments: PlayerScreenArgs(
+          channel: ep.channel,
+          playingSeriesInTape: series,
+          episodeBrowseTape: episodes,
+        ),
+      );
+    } catch (_) {
+      Get.toNamed<void>(
+        AppRoutes.filmDiziSeriesDetail,
+        arguments: FilmDiziSeriesDetailArgs.fromSeries(
+          series,
+          playlistData: cacheData,
         ),
       );
     }
@@ -358,17 +426,31 @@ class _ContinueWatchingCardState extends State<_ContinueWatchingCard> {
               ),
             ),
             if (hasPoster)
-              CachedNetworkImage(
-                imageUrl: poster,
-                cacheKey: AppImageCacheService.cacheKeyFor(poster),
-                cacheManager: AppImageCacheService.manager,
-                fit: BoxFit.cover,
-                memCacheWidth: 240,
-                fadeInDuration: Duration.zero,
-                fadeOutDuration: Duration.zero,
-                errorWidget: (_, __, ___) =>
-                    _buildPlaceholder(item),
-                placeholder: (_, __) => _buildPlaceholder(item),
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final settings = Get.find<AppSettingsService>();
+                  final dpr = MediaQuery.devicePixelRatioOf(context);
+                  final w = constraints.maxWidth.isFinite &&
+                          constraints.maxWidth > 0
+                      ? constraints.maxWidth
+                      : 120.0;
+                  final memW =
+                      AppPerformance.posterDecodeWidth(settings, w, dpr);
+                  final memH = AppPerformance.posterDecodeHeight(memW);
+                  return CachedNetworkImage(
+                    imageUrl: poster,
+                    cacheKey: AppImageCacheService.cacheKeyFor(poster),
+                    cacheManager: AppImageCacheService.manager,
+                    fit: BoxFit.cover,
+                    memCacheWidth: memW,
+                    memCacheHeight: memH,
+                    fadeInDuration: Duration.zero,
+                    fadeOutDuration: Duration.zero,
+                    filterQuality: FilterQuality.low,
+                    errorWidget: (_, __, ___) => _buildPlaceholder(item),
+                    placeholder: (_, __) => _buildPlaceholder(item),
+                  );
+                },
               )
             else
               _buildPlaceholder(item),
@@ -420,16 +502,20 @@ class _ContinueWatchingCardState extends State<_ContinueWatchingCard> {
               ),
             ),
 
-            // Sağ-üst (boş köşe): izlenme oranı — daire içinde yüzde.
-            // Sol-üstte oynat rozeti olduğundan sağ-üst köşe kullanılır.
+            // Alt kenarda (Netflix tipi) yatay ilerleme çubuğu.
             if (fraction > 0)
               Positioned(
-                top: 6,
-                right: 6,
-                child: WatchProgressCircle(
-                  fraction: fraction == 0 ? 0.02 : fraction,
-                  accent: accent,
-                  size: 28,
+                left: 0,
+                right: 0,
+                bottom: 0,
+                child: Container(
+                  height: 3,
+                  color: Colors.white.withValues(alpha: 0.2),
+                  alignment: Alignment.centerLeft,
+                  child: FractionallySizedBox(
+                    widthFactor: fraction == 0 ? 0.02 : fraction,
+                    child: Container(color: const Color(0xFFE50914)),
+                  ),
                 ),
               ),
 
@@ -437,7 +523,7 @@ class _ContinueWatchingCardState extends State<_ContinueWatchingCard> {
             Positioned(
               left: 8,
               right: 8,
-              bottom: 7,
+              bottom: 11,
               child: AutoScrollText(
                 text: item.title,
                 style: const TextStyle(

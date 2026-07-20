@@ -21,6 +21,7 @@ import 'tv_shell_interactive.dart';
 import 'tv_shell_motion.dart';
 import 'tv_shell_palette.dart';
 import 'tv_shell_perf.dart';
+import '../../../ui/auto_scroll_text.dart';
 
 String _filmTitle(VodItem v) {
   final cleaned = RecommendedFilmsCatalog.cleanTitleAndYear(v.name);
@@ -612,11 +613,28 @@ class _MovieHero extends StatelessWidget {
                       ),
                       const SizedBox(height: 10),
                       Expanded(
-                        child: Text(
-                          plot.isNotEmpty ? plot : 'tvShell.movies.noPlot'.tr,
-                          maxLines: 6,
-                          overflow: TextOverflow.ellipsis,
-                          style: palette.mutedStyle(size: 13).copyWith(height: 1.45),
+                        child: Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(11),
+                            border: Border.all(
+                              color: Colors.white.withValues(alpha: 0.13),
+                              width: 0.85,
+                            ),
+                            gradient: LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [
+                                Colors.white.withValues(alpha: 0.075),
+                                Colors.white.withValues(alpha: 0.02),
+                              ],
+                            ),
+                          ),
+                          child: AutoScrollVerticalText(
+                            text: plot.isNotEmpty ? plot : 'tvShell.movies.noPlot'.tr,
+                            maxVisibleLines: 5,
+                            style: palette.mutedStyle(size: 13).copyWith(height: 1.45),
+                          ),
                         ),
                       ),
                     ],

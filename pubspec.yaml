@@ -1,7 +1,7 @@
 name: mina_iptv_player
 description: Mina IPTV Player — Android TV optimized IPTV client with GetX.
 publish_to: none
-version: 2.17.74+4548
+version: 2.17.123+6597
 
 environment:
   sdk: '>=3.6.0 <4.0.0'
@@ -63,6 +63,8 @@ dependencies:
   google_api_availability: ^5.0.1
   workmanager: ^0.9.0
   in_app_purchase: ^3.2.0
+  fl_chart: ^1.2.0
+  firebase_crashlytics: ^5.2.6
 
 dev_dependencies:
   flutter_test:

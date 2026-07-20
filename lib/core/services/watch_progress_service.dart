@@ -20,6 +20,7 @@ class ContinueWatchingEntry {
     required this.positionMs,
     required this.durationMs,
     required this.updatedMs,
+    this.episodeStreamId,
   });
 
   /// Film için VOD `id`; dizi için dizi `id`.
@@ -30,6 +31,9 @@ class ContinueWatchingEntry {
   final int positionMs;
   final int durationMs;
   final int updatedMs;
+
+  /// Dizi: son izlenen bölümün kanal/stream [Channel.id]'si (yoksa null).
+  final int? episodeStreamId;
 
   /// 0.0 – 1.0 arası izlenme oranı.
   double get fraction {
@@ -45,6 +49,7 @@ class ContinueWatchingEntry {
         'p': positionMs,
         'd': durationMs,
         'u': updatedMs,
+        if (episodeStreamId != null) 'es': episodeStreamId,
       };
 
   static ContinueWatchingEntry? tryFromJson(Object? raw) {
@@ -63,6 +68,7 @@ class ContinueWatchingEntry {
       positionMs: p,
       durationMs: d,
       updatedMs: (raw['u'] as num?)?.toInt() ?? 0,
+      episodeStreamId: (raw['es'] as num?)?.toInt(),
     );
   }
 }
@@ -171,6 +177,7 @@ class WatchProgressService extends GetxService with WidgetsBindingObserver {
     String? coverUrl,
     required int positionMs,
     required int durationMs,
+    int? episodeStreamId,
   }) async {
     await _upsertIndex(
       index: _seriesIndex,
@@ -180,6 +187,7 @@ class WatchProgressService extends GetxService with WidgetsBindingObserver {
       coverUrl: coverUrl,
       positionMs: positionMs,
       durationMs: durationMs,
+      episodeStreamId: episodeStreamId,
     );
   }
 
@@ -315,6 +323,7 @@ class WatchProgressService extends GetxService with WidgetsBindingObserver {
     String? coverUrl,
     required int positionMs,
     required int durationMs,
+    int? episodeStreamId,
   }) async {
     await ensureLoaded();
     if (durationMs <= 0) return;
@@ -327,6 +336,7 @@ class WatchProgressService extends GetxService with WidgetsBindingObserver {
       }
       return;
     }
+    final prev = index[id];
     index[id] = ContinueWatchingEntry(
       id: id,
       kind: kind,
@@ -335,6 +345,7 @@ class WatchProgressService extends GetxService with WidgetsBindingObserver {
       positionMs: positionMs,
       durationMs: durationMs,
       updatedMs: DateTime.now().millisecondsSinceEpoch,
+      episodeStreamId: episodeStreamId ?? prev?.episodeStreamId,
     );
     _schedulePersistIndex();
     revision.value++;

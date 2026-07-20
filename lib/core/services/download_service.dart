@@ -257,10 +257,10 @@ class DownloadService extends GetxService {
   }
 
   /// Tamamlanmış indirmelerin yerel dosya yolu — yoksa null.
-  String? localPathIfReady(String id) {
+  Future<String?> localPathIfReady(String id) async {
     final i = items[id];
     if (i == null || !i.isCompleted) return null;
-    if (!File(i.localPath).existsSync()) return null;
+    if (!await File(i.localPath).exists()) return null;
     return i.localPath;
   }
 
@@ -300,7 +300,7 @@ class DownloadService extends GetxService {
 
     items[id] = item.copyWith(status: DownloadStatus.cancelled);
     await _persist();
-    _safeDelete(item.localPath);
+    await _safeDeleteAsync(item.localPath);
     _kick();
   }
 
@@ -309,7 +309,7 @@ class DownloadService extends GetxService {
     final item = items[id];
     if (item == null) return;
     if (item.isActive) await cancel(id);
-    _safeDelete(item.localPath);
+    await _safeDeleteAsync(item.localPath);
     items.remove(id);
     await _persist();
   }
@@ -608,10 +608,10 @@ class DownloadService extends GetxService {
 
       // Progress yaklaşımı: dosya boyutunu periyodik oku → bytesReceived.
       // total bilinmiyor (HLS segmentleri canlı çekiliyor).
-      progressTimer = Timer.periodic(const Duration(seconds: 2), (_) {
+      progressTimer = Timer.periodic(const Duration(seconds: 2), (_) async {
         final f = File(item.localPath);
-        if (f.existsSync()) {
-          progress[item.id] = (received: f.lengthSync(), total: null);
+        if (await f.exists()) {
+          progress[item.id] = (received: await f.length(), total: null);
         }
       });
 
@@ -709,12 +709,6 @@ class DownloadService extends GetxService {
     return s;
   }
 
-  void _safeDelete(String path) {
-    try {
-      final f = File(path);
-      if (f.existsSync()) f.deleteSync();
-    } catch (_) {}
-  }
 
   Future<void> _safeDeleteAsync(String path) async {
     try {

@@ -62,9 +62,9 @@ class FilmDiziDetailView extends GetView<FilmDiziDetailController> {
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
                     colors: [
-                      Colors.black.withValues(alpha: 0.35),
-                      Colors.black.withValues(alpha: 0.72),
-                      Colors.black.withValues(alpha: 0.94),
+                      Colors.black.withValues(alpha: 0.15),
+                      const Color(0xFF0F172A).withValues(alpha: 0.65),
+                      const Color(0xFF0F172A).withValues(alpha: 0.95),
                     ],
                     stops: const [0.0, 0.45, 1.0],
                   ),
@@ -247,6 +247,13 @@ class _DetailScrollState extends State<_DetailScroll> {
             fontSize: 20,
             fontWeight: FontWeight.w800,
             height: 1.2,
+            shadows: [
+              Shadow(
+                color: Colors.black54,
+                blurRadius: 4,
+                offset: Offset(0, 2),
+              ),
+            ],
           ),
         ),
         Obx(() {
@@ -346,32 +353,33 @@ class _DetailScrollState extends State<_DetailScroll> {
     return [
       // TV'de tür/teknik rozetleri başlık alanına (favori yanına) taşındı;
       // burada tekrar gösterilmez. Diğer modlarda İzle/İndir altında.
-      if (!tv)
-        Obx(() {
-          controller.meta.value;
-          controller.xtreamFields.value;
-          controller.metaEnriching.value;
-          final genre = controller.genreRowPills;
-          final tech = controller.techRowPills;
-          final synopsis = controller.synopsis;
-          final director = controller.directorLabel;
-          final genres = controller.genreRowPills
-              .map((p) => p.label.trim())
-              .where((s) => s.isNotEmpty)
-              .toList(growable: false);
-          final cast = controller.meta.value?.cast;
-          
-          final pillsSection = genre.isEmpty && tech.isEmpty
-              ? (controller.metaEnriching.value
-                  ? const Padding(
-                      padding: EdgeInsets.only(top: 14),
-                      child: FilmDiziPillsSkeleton(count: 3),
-                    )
-                  : const SizedBox.shrink())
-              : Padding(
-                  padding: const EdgeInsets.only(top: 14),
-                  child: _DetailPillRow(genre: genre, tech: tech),
-                );
+      Obx(() {
+        controller.meta.value;
+        controller.xtreamFields.value;
+        controller.metaEnriching.value;
+        final genre = controller.genreRowPills;
+        final tech = controller.techRowPills;
+        final synopsis = controller.synopsis;
+        final director = controller.directorLabel;
+        final genres = controller.genreRowPills
+            .map((p) => p.label.trim())
+            .where((s) => s.isNotEmpty)
+            .toList(growable: false);
+        final cast = controller.meta.value?.cast;
+        
+        final pillsSection = tv
+            ? const SizedBox.shrink()
+            : (genre.isEmpty && tech.isEmpty
+                ? (controller.metaEnriching.value
+                    ? const Padding(
+                        padding: EdgeInsets.only(top: 14),
+                        child: FilmDiziPillsSkeleton(count: 3),
+                      )
+                    : const SizedBox.shrink())
+                : Padding(
+                    padding: const EdgeInsets.only(top: 14),
+                    child: _DetailPillRow(genre: genre, tech: tech),
+                  ));
           
           final quickInfoSection = director == null && genres.isEmpty
               ? const SizedBox.shrink()
@@ -392,7 +400,7 @@ class _DetailScrollState extends State<_DetailScroll> {
                     _SectionTitle('filmDizi.cast'.tr),
                     const SizedBox(height: 10),
                     SizedBox(
-                      height: 132,
+                      height: 74,
                       child: ListView.separated(
                         scrollDirection: Axis.horizontal,
                         physics: AppScrollPhysics.list(context: context),
@@ -962,54 +970,71 @@ class _CastChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final body = SizedBox(
-      width: 72,
+    final body = Container(
+      width: 220,
+      margin: const EdgeInsets.only(right: 12),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.25),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.15),
+          width: 0.85,
+        ),
+      ),
       child: Material(
         color: Colors.transparent,
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(8),
-          child: Column(
-            children: [
-              CircleAvatar(
-                radius: 34,
-                backgroundColor: Colors.white.withValues(alpha: 0.1),
-                backgroundImage: member.profilePath != null
-                    ? CachedNetworkImageProvider(member.profilePath!)
-                    : null,
-                child: member.profilePath == null
-                    ? const Icon(Icons.person, color: Colors.white38)
-                    : null,
-              ),
-              const SizedBox(height: 6),
-              Text(
-                member.name,
-                maxLines: 2,
-                textAlign: TextAlign.center,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.92),
-                  fontSize: 11,
-                  fontWeight: FontWeight.w600,
-                  height: 1.2,
+          borderRadius: BorderRadius.circular(12),
+          child: Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: Row(
+              children: [
+                CircleAvatar(
+                  radius: 28,
+                  backgroundColor: Colors.white.withValues(alpha: 0.1),
+                  backgroundImage: member.profilePath != null
+                      ? CachedNetworkImageProvider(member.profilePath!)
+                      : null,
+                  child: member.profilePath == null
+                      ? const Icon(Icons.person, color: Colors.white38)
+                      : null,
                 ),
-              ),
-              if (member.character != null &&
-                  member.character!.trim().isNotEmpty) ...[
-                const SizedBox(height: 4),
-                Text(
-                  member.character!.trim(),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    color: Colors.white.withValues(alpha: 0.55),
-                    fontSize: 10,
-                    height: 1.2,
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        member.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      if (member.character != null &&
+                          member.character!.trim().isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          member.character!.trim(),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.6),
+                            fontSize: 11,
+                          ),
+                        ),
+                      ],
+
+                    ],
                   ),
                 ),
               ],
-            ],
+            ),
           ),
         ),
       ),

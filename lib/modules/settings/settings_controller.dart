@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:dio/dio.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -38,6 +39,8 @@ import '../../core/services/watch_progress_service.dart';
 import '../../services/user_history_service.dart';
 import '../home/widgets/ai_recommendations_strip.dart';
 import '../../core/layout/app_layout_mode.dart';
+import 'admin_panel_view.dart';
+
 import '../../core/player/subtitle_font_family.dart';
 import '../../core/theme/glass_appearance.dart';
 import '../../domain/entities/playlist_source.dart';
@@ -514,6 +517,20 @@ class SettingsController extends GetxController {
   static const _shellProfiles = 9;
   static const _shellCloud = 10;
   static const _shellDownloads = 11;
+  int _lastBackHandledMs = 0;
+
+  /// Ayarlardan çıkış (üst geri düğmesi veya TV kumandası).
+  void goBack() {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (now - _lastBackHandledMs < 400) return;
+    _lastBackHandledMs = now;
+
+    if (Get.isDialogOpen == true || Get.isBottomSheetOpen == true) {
+      Get.back<void>();
+      return;
+    }
+    Get.back<void>();
+  }
 
   /// Ayarlar alt sayfası: dönüşte aynı karoya odaklan (TV kabuğu).
   Future<T?>? pushSettingsSubpage<T>(
@@ -634,7 +651,7 @@ class SettingsController extends GetxController {
 
   void setAutoRefreshHours(int hours) => _app.setAutoRefreshHours(hours);
 
-  void goBack() => Get.back();
+
 
   Future<void> openPlaylistList() async {
     // Ayarlar > Playlist: slot tabanlı liste yöneticisine git. Eski
@@ -1581,6 +1598,7 @@ class SettingsController extends GetxController {
       ),
     );
   }
+
 
   String _liveStreamFormatLabel(String v) {
     if (v == AppSettingsService.liveStreamFormatTs) {
@@ -3090,9 +3108,8 @@ class SettingsController extends GetxController {
     final ctx = Get.context;
     if (ctx == null) return;
 
-    showDialog<void>(
-      context: ctx,
-      builder: (c) => GlassAlertDialog(
+    Get.dialog<void>(
+      GlassAlertDialog(
         title: Text('settings.snackbar.aboutTitle'.tr),
         content: SingleChildScrollView(
           child: Obx(() {
@@ -3101,7 +3118,7 @@ class SettingsController extends GetxController {
             return Text(
               '$head\n\n${'settings.dialog.aboutFeatures'.tr}',
               style: TextStyle(
-                color: Theme.of(c).colorScheme.onSurface.withValues(alpha: 0.9),
+                color: Theme.of(ctx).colorScheme.onSurface.withValues(alpha: 0.9),
                 height: 1.45,
               ),
             );
@@ -3111,7 +3128,7 @@ class SettingsController extends GetxController {
           GlassDialogActionButton(
             label: 'settings.dialog.changelogTitle'.tr,
             onPressed: () {
-              Navigator.pop(c);
+              Get.back<void>();
               showChangelog();
             },
           ),
@@ -3126,16 +3143,26 @@ class SettingsController extends GetxController {
             ),
           ),
           GlassDialogActionButton(
-            label: 'settings.dialog.adminButton'.tr,
+            label: 'settings.tile.contactUs'.tr,
             onPressed: () {
-              Navigator.pop(c);
-              AdminAboutDialog.show(ctx);
+              Get.back<void>();
+              openContactUs();
             },
           ),
+          if (Get.isRegistered<ChatService>() && Get.find<ChatService>().isCurrentUserAdmin)
+            GlassDialogActionButton(
+              label: 'settings.dialog.adminButton'.tr,
+              onPressed: () {
+                Get.back<void>();
+                if (Get.context != null) {
+                  AdminAboutDialog.show(Get.context!);
+                }
+              },
+            ),
           GlassDialogActionButton(
             label: 'common.close'.tr,
             primary: true,
-            onPressed: () => Navigator.pop(c),
+            onPressed: () => Get.back<void>(),
           ),
         ],
       ),
@@ -3181,6 +3208,72 @@ class SettingsController extends GetxController {
       isCheckingUpdate.value = false;
     }
   }
+
+  /// Hesabı silme onay kutusu
+  void showDeleteAccountDialog() {
+    Get.defaultDialog(
+      title: 'Hesabı Sil',
+      titleStyle: const TextStyle(fontWeight: FontWeight.bold, color: Colors.redAccent),
+      middleText: 'Hesabınızı ve buluttaki tüm verilerinizi kalıcı olarak silmek istediğinize emin misiniz? Bu işlem geri alınamaz!',
+      textConfirm: 'Evet, Sil',
+      textCancel: 'İptal',
+      confirmTextColor: Colors.white,
+      buttonColor: Colors.redAccent,
+      cancelTextColor: Colors.white,
+      backgroundColor: const Color(0xFF1E1E1E),
+      onConfirm: () async {
+        Get.back();
+        Get.dialog(
+          const Center(child: CircularProgressIndicator()),
+          barrierDismissible: false,
+        );
+        try {
+          final auth = Get.find<AuthService>();
+          final success = await auth.deleteAccount();
+          Get.back(); // close loading
+
+          if (success) {
+            Get.snackbar(
+              'Başarılı',
+              'Hesabınız kalıcı olarak silindi.',
+              snackPosition: SnackPosition.BOTTOM,
+              backgroundColor: Colors.green.withOpacity(0.8),
+              colorText: Colors.white,
+            );
+          } else {
+            Get.snackbar(
+              'Hata',
+              'Hesabınız silinemedi. Daha sonra tekrar deneyin.',
+              snackPosition: SnackPosition.BOTTOM,
+              backgroundColor: Colors.redAccent.withOpacity(0.8),
+              colorText: Colors.white,
+            );
+          }
+        } catch (e) {
+          Get.back(); // close loading
+          if (e.toString().contains('requires-recent-login')) {
+            Get.snackbar(
+              'Güvenlik Uyarısı',
+              'Güvenliğiniz için hesabınızı silebilmek adına lütfen çıkış yapıp tekrar giriş yapın.',
+              snackPosition: SnackPosition.BOTTOM,
+              backgroundColor: Colors.orange.withOpacity(0.8),
+              colorText: Colors.white,
+              duration: const Duration(seconds: 5),
+            );
+          } else {
+            Get.snackbar(
+              'Hata',
+              'Hesap silinirken bir hata oluştu: $e',
+              snackPosition: SnackPosition.BOTTOM,
+              backgroundColor: Colors.redAccent.withOpacity(0.8),
+              colorText: Colors.white,
+            );
+          }
+        }
+      },
+    );
+  }
+
 
   Future<String?> _fetchPlayStoreVersion(String packageName) async {
     if (packageName.isEmpty) return null;
@@ -3605,6 +3698,7 @@ class SettingsController extends GetxController {
         bool buying = false;
         bool restoring = false;
         bool buyingCoffee = false;
+        bool buying3Devices = false;
 
         // Satın alım başarılı olursa splash'e git
         ever<bool>(licensing.purchaseCompleted, (completed) {
@@ -3718,7 +3812,7 @@ class SettingsController extends GetxController {
                       }),
                       Obx(() {
                         if (licensing.isPremium.value) {
-                          if (buyingCoffee) {
+                          if (buyingCoffee || buying3Devices) {
                             return const Center(
                               child: Padding(
                                 padding: EdgeInsets.all(12.0),
@@ -3735,6 +3829,52 @@ class SettingsController extends GetxController {
                               const SizedBox(height: 16),
                               const Divider(color: Colors.white12, height: 1),
                               const SizedBox(height: 12),
+                              if (licensing.maxDevices.value < 6) ...[
+                                ElevatedButton.icon(
+                                  style: ElevatedButton.styleFrom(
+                                    backgroundColor: Colors.blueAccent.withValues(alpha: 0.15),
+                                    foregroundColor: Colors.blueAccent,
+                                    side: const BorderSide(color: Colors.blueAccent, width: 1),
+                                    padding: const EdgeInsets.symmetric(vertical: 12),
+                                    shape: RoundedRectangleBorder(
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                  ),
+                                  icon: const Icon(Icons.add_circle_outline_rounded, size: 18),
+                                  label: Text(
+                                    'paywall.button.buy3devices'.tr,
+                                    style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                                  ),
+                                  onPressed: () async {
+                                    setState(() => buying3Devices = true);
+                                    try {
+                                      final success = await licensing.buyPlus3DevicesProduct();
+                                      if (success) {
+                                        Get.snackbar(
+                                          'paywall.success.title'.tr ?? 'Başarılı',
+                                          'paywall.success.devices'.tr ?? 'Cihaz limitiniz artırıldı.',
+                                          snackPosition: SnackPosition.BOTTOM,
+                                          backgroundColor: Colors.green.withValues(alpha: 0.85),
+                                          colorText: Colors.white,
+                                        );
+                                      } else {
+                                        Get.snackbar(
+                                          'paywall.error.title'.tr,
+                                          'paywall.error.body'.tr,
+                                          snackPosition: SnackPosition.BOTTOM,
+                                          backgroundColor: Colors.red.withValues(alpha: 0.85),
+                                          colorText: Colors.white,
+                                        );
+                                      }
+                                    } finally {
+                                      if (context.mounted) {
+                                        setState(() => buying3Devices = false);
+                                      }
+                                    }
+                                  },
+                                ),
+                                const SizedBox(height: 12),
+                              ],
                               ElevatedButton.icon(
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: Colors.amber.withValues(alpha: 0.15),
@@ -3933,6 +4073,28 @@ class SettingsController extends GetxController {
                                       }
                                     },
                                   ),
+                                  if (!licensing.isPremium.value) ...[
+                                    const SizedBox(height: 8),
+                                    ElevatedButton.icon(
+                                      style: ElevatedButton.styleFrom(
+                                        backgroundColor: Colors.blueAccent.withValues(alpha: 0.15),
+                                        foregroundColor: Colors.blueAccent,
+                                        side: const BorderSide(color: Colors.blueAccent, width: 1),
+                                        padding: const EdgeInsets.symmetric(vertical: 12),
+                                        shape: RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.circular(12),
+                                        ),
+                                      ),
+                                      icon: const Icon(Icons.key, size: 18),
+                                      label: const Text(
+                                        'Manuel Lisansla',
+                                        style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                                      ),
+                                      onPressed: () {
+                                        _showManualLicenseDialog(context);
+                                      },
+                                    ),
+                                  ],
                                 ],
                               ),
                           ],
@@ -3946,6 +4108,67 @@ class SettingsController extends GetxController {
                 GlassDialogActionButton(
                   label: 'common.close'.tr,
                   onPressed: () => Navigator.pop(c),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  void _showManualLicenseDialog(BuildContext context) {
+    final textController = TextEditingController();
+    bool isSubmitting = false;
+
+    showDialog<void>(
+      context: context,
+      builder: (c) {
+        return StatefulBuilder(
+          builder: (ctx, setState) {
+            return GlassAlertDialog(
+              title: const Text('Manuel Lisansla'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text('Lütfen lisans kodunuzu girin:', style: TextStyle(color: Colors.white70)),
+                  const SizedBox(height: 16),
+                  TextField(
+                    controller: textController,
+                    style: const TextStyle(color: Colors.white),
+                    decoration: const InputDecoration(
+                      hintText: 'MINA-XXXX-XXXX',
+                      hintStyle: TextStyle(color: Colors.white38),
+                      enabledBorder: OutlineInputBorder(borderSide: BorderSide(color: Colors.white24)),
+                      focusedBorder: OutlineInputBorder(borderSide: BorderSide(color: Colors.blueAccent)),
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                GlassDialogActionButton(
+                  label: 'İptal',
+                  onPressed: () => Navigator.pop(c),
+                ),
+                GlassDialogActionButton(
+                  label: isSubmitting ? 'Onaylanıyor...' : 'Onayla',
+                  onPressed: isSubmitting
+                      ? null
+                      : () async {
+                          final code = textController.text.trim();
+                          if (code.isEmpty) return;
+                          setState(() => isSubmitting = true);
+                          try {
+                            await LicensingService.to.redeemManualLicense(code);
+                            if (c.mounted) Navigator.pop(c);
+                          } catch (e) {
+                            // error is handled in LicensingService via snackbar
+                          } finally {
+                            if (ctx.mounted) {
+                              setState(() => isSubmitting = false);
+                            }
+                          }
+                        },
                 ),
               ],
             );

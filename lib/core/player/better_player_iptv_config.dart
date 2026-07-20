@@ -89,12 +89,13 @@ abstract final class IptvBetterPlayerConfig {
   /// Canlı: düşük gecikme / hızlı zapping (kısa Exo [DefaultLoadControl] penceresi).
   static const BetterPlayerBufferingConfiguration iptvLiveBufferingTv =
       BetterPlayerBufferingConfiguration(
-    // Ağ jitter / kısa blip toleransı: daha geniş yastık, rebuffer sonrası
-    // biraz daha uzun bekleme (kesil-devam hissini azaltır).
-    minBufferMs: 5000,
-    maxBufferMs: 14000,
+    // Ağ jitter / kısa blip toleransı: geniş yastık, rebuffer sonrası
+    // 8 sn tampon bekleme — dalgalı bağlantıda yo-yo'yu önler.
+    // bufferForPlaybackMs düşük tutulur → açılış hızlı kalır.
+    minBufferMs: 9000,
+    maxBufferMs: 17000,
     bufferForPlaybackMs: 1200,
-    bufferForPlaybackAfterRebufferMs: 4500,
+    bufferForPlaybackAfterRebufferMs: 8000,
     preferSoftwareVideoDecoder: false,
     prioritizeTimeOverSizeThresholds: true,
     targetBufferBytes: exoTargetBufferBytesTsLive,
@@ -105,10 +106,10 @@ abstract final class IptvBetterPlayerConfig {
   /// uzun rebuffer bekleme süresi içerir; küçük ağ dalgalanmalarına karşı direnç sağlar.
   static const BetterPlayerBufferingConfiguration iptvLiveBufferingTvStabilized =
       BetterPlayerBufferingConfiguration(
-    minBufferMs: 7000,
-    maxBufferMs: 18000,
+    minBufferMs: 11000,
+    maxBufferMs: 22000,
     bufferForPlaybackMs: 2500,
-    bufferForPlaybackAfterRebufferMs: 5500,
+    bufferForPlaybackAfterRebufferMs: 9000,
     preferSoftwareVideoDecoder: false,
     prioritizeTimeOverSizeThresholds: true,
     targetBufferBytes: exoTargetBufferBytesTsLive,
@@ -141,10 +142,10 @@ abstract final class IptvBetterPlayerConfig {
     switch (seg) {
       case DevicePlaybackSegment.low:
         return const BetterPlayerBufferingConfiguration(
-          minBufferMs: 6000,
-          maxBufferMs: 18000,
+          minBufferMs: 9500,
+          maxBufferMs: 20000,
           bufferForPlaybackMs: 3000,
-          bufferForPlaybackAfterRebufferMs: 5000,
+          bufferForPlaybackAfterRebufferMs: 8000,
           preferSoftwareVideoDecoder: false,
           prioritizeTimeOverSizeThresholds: true,
           targetBufferBytes: exoTargetBufferBytesTsLive,
@@ -156,7 +157,7 @@ abstract final class IptvBetterPlayerConfig {
           minBufferMs: 15000,
           maxBufferMs: 30000,
           bufferForPlaybackMs: 2000,
-          bufferForPlaybackAfterRebufferMs: 4000,
+          bufferForPlaybackAfterRebufferMs: 8000,
           preferSoftwareVideoDecoder: false,
           prioritizeTimeOverSizeThresholds: true,
           targetBufferBytes: exoTargetBufferBytesVod, // 32MB
@@ -235,11 +236,13 @@ abstract final class IptvBetterPlayerConfig {
     final startMs = base.bufferForPlaybackMs < 2500
         ? 3000
         : base.bufferForPlaybackMs.clamp(2500, 3500);
+    // Zayıf TV: rebuffer eşiği base profilden miras alınır (dalgalı ağ toleransı).
+    final afterRebufferMs = math.max(base.bufferForPlaybackAfterRebufferMs, 7500);
     return BetterPlayerBufferingConfiguration(
-      minBufferMs: base.minBufferMs,
+      minBufferMs: math.max(base.minBufferMs, afterRebufferMs + 1000),
       maxBufferMs: base.maxBufferMs,
       bufferForPlaybackMs: startMs,
-      bufferForPlaybackAfterRebufferMs: 5000,
+      bufferForPlaybackAfterRebufferMs: afterRebufferMs,
       preferSoftwareVideoDecoder: base.preferSoftwareVideoDecoder,
       prioritizeTimeOverSizeThresholds: true,
     );
@@ -261,10 +264,10 @@ abstract final class IptvBetterPlayerConfig {
   /// Fire TV Stick Lite, eski 1 GiB kutular.
   static const BetterPlayerBufferingConfiguration oneGiBLiveBuffering =
       BetterPlayerBufferingConfiguration(
-    minBufferMs: 5500,
-    maxBufferMs: 16000,
+    minBufferMs: 9000,
+    maxBufferMs: 22000,
     bufferForPlaybackMs: 2800,
-    bufferForPlaybackAfterRebufferMs: 4500,
+    bufferForPlaybackAfterRebufferMs: 7500,
     preferSoftwareVideoDecoder: false,
     prioritizeTimeOverSizeThresholds: true,
   );
@@ -272,10 +275,10 @@ abstract final class IptvBetterPlayerConfig {
   /// Ucuz 2 GiB kutu (X96/T95/H618/RK3318) — geniş başlangıç, dar max (RAM sınırı).
   static const BetterPlayerBufferingConfiguration budgetTwoGiBLiveBuffering =
       BetterPlayerBufferingConfiguration(
-    minBufferMs: 6000,
-    maxBufferMs: 18000,
+    minBufferMs: 9500,
+    maxBufferMs: 21000,
     bufferForPlaybackMs: 3200,
-    bufferForPlaybackAfterRebufferMs: 4800,
+    bufferForPlaybackAfterRebufferMs: 8000,
     preferSoftwareVideoDecoder: false,
     prioritizeTimeOverSizeThresholds: true,
   );
@@ -283,10 +286,10 @@ abstract final class IptvBetterPlayerConfig {
   /// TCL / Philips / Toshiba / Hisense Android TV — MTK/Realtek jitter'a karşı geniş tampon.
   static const BetterPlayerBufferingConfiguration lowEndSmartTvLiveBuffering =
       BetterPlayerBufferingConfiguration(
-    minBufferMs: 6500,
-    maxBufferMs: 22000,
+    minBufferMs: 9500,
+    maxBufferMs: 24000,
     bufferForPlaybackMs: 3500,
-    bufferForPlaybackAfterRebufferMs: 5500,
+    bufferForPlaybackAfterRebufferMs: 8000,
     preferSoftwareVideoDecoder: false,
     prioritizeTimeOverSizeThresholds: true,
   );
@@ -294,10 +297,10 @@ abstract final class IptvBetterPlayerConfig {
   /// 2 GiB capable TV/box — canlıda dengeli tampon (Mi Box S, Chromecast 4K, Onn 4K).
   static const BetterPlayerBufferingConfiguration twoGiBLiveBuffering =
       BetterPlayerBufferingConfiguration(
-    minBufferMs: 4200,
-    maxBufferMs: 17000,
+    minBufferMs: 9000,
+    maxBufferMs: 19000,
     bufferForPlaybackMs: 2200,
-    bufferForPlaybackAfterRebufferMs: 3200,
+    bufferForPlaybackAfterRebufferMs: 7500,
     preferSoftwareVideoDecoder: false,
     prioritizeTimeOverSizeThresholds: true,
   );
@@ -345,10 +348,10 @@ abstract final class IptvBetterPlayerConfig {
     // Raw TS için daha geniş buffering (kasma önleme)
     if (isRawTs) {
       return const BetterPlayerBufferingConfiguration(
-        minBufferMs: 5000,
-        maxBufferMs: 15000,
+        minBufferMs: 8500,
+        maxBufferMs: 18000,
         bufferForPlaybackMs: 1500,
-        bufferForPlaybackAfterRebufferMs: 4000,
+        bufferForPlaybackAfterRebufferMs: 7500,
         preferSoftwareVideoDecoder: false,
         prioritizeTimeOverSizeThresholds: true,
       );

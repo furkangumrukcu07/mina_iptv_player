@@ -2,12 +2,14 @@ import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import '../core/layout/app_layout_mode.dart';
 import '../core/services/app_settings_service.dart';
 import 'glass_overlays.dart';
+import 'tv_dpad_focus.dart' show tvKeyIsBack;
 
 /// Diyalog sonucu: [rated] = Play Store CTA; [later] / kapatma = bugün tekrar gösterme.
 enum PlayStoreRateDialogResult { later, rated }
@@ -21,6 +23,7 @@ class _RateDialogActions extends StatelessWidget {
     required this.laterLabel,
     required this.ctaLabel,
     required this.autofocusCta,
+    this.ctaFocusNode,
     required this.onLater,
     required this.onRate,
   });
@@ -28,6 +31,7 @@ class _RateDialogActions extends StatelessWidget {
   final String laterLabel;
   final String ctaLabel;
   final bool autofocusCta;
+  final FocusNode? ctaFocusNode;
   final VoidCallback onLater;
   final VoidCallback onRate;
 
@@ -64,6 +68,7 @@ class _RateDialogActions extends StatelessWidget {
             label: ctaLabel,
             primary: true,
             autofocus: autofocusCta,
+            focusNode: ctaFocusNode,
             onPressed: onRate,
           ),
         );
@@ -97,7 +102,7 @@ class _RateDialogActions extends StatelessWidget {
 }
 
 /// Google Play’den yüklenen sürümde, güncelleme sonrası değerlendirme isteği için cam diyalog.
-class PlayStoreRateGlassDialog extends StatelessWidget {
+class PlayStoreRateGlassDialog extends StatefulWidget {
   const PlayStoreRateGlassDialog({
     super.key,
     required this.packageName,
@@ -117,10 +122,36 @@ class PlayStoreRateGlassDialog extends StatelessWidget {
     );
   }
 
+  @override
+  State<PlayStoreRateGlassDialog> createState() => _PlayStoreRateGlassDialogState();
+}
+
+class _PlayStoreRateGlassDialogState extends State<PlayStoreRateGlassDialog> {
+  final FocusNode _ctaFocusNode = FocusNode();
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final settings = Get.find<AppSettingsService>();
+      if (settings.layoutMode.value == AppLayoutMode.tv) {
+        if (mounted) {
+          FocusScope.of(context).requestFocus(_ctaFocusNode);
+        }
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _ctaFocusNode.dispose();
+    super.dispose();
+  }
+
   Future<void> _openListing() async {
-    final market = Uri.parse('market://details?id=$packageName');
+    final market = Uri.parse('market://details?id=${widget.packageName}');
     final https = Uri.parse(
-      'https://play.google.com/store/apps/details?id=$packageName',
+      'https://play.google.com/store/apps/details?id=${widget.packageName}',
     );
     if (await launchUrl(market, mode: LaunchMode.externalApplication)) {
       return;
@@ -145,11 +176,26 @@ class PlayStoreRateGlassDialog extends StatelessWidget {
       backgroundColor: Colors.transparent,
       insetPadding:
           EdgeInsets.symmetric(horizontal: insetW, vertical: insetH),
-      child: FocusTraversalGroup(
-        policy: OrderedTraversalPolicy(),
-        child: ConstrainedBox(
-          constraints: BoxConstraints(maxWidth: maxW),
-          child: ClipRRect(
+      child: Focus(
+        autofocus: tv,
+        focusNode: _ctaFocusNode,
+        onKeyEvent: (node, event) {
+          if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+            return KeyEventResult.ignored;
+          }
+          if (tvKeyIsBack(event.logicalKey)) {
+            Get.back<PlayStoreRateDialogResult>(
+              result: PlayStoreRateDialogResult.later,
+            );
+            return KeyEventResult.handled;
+          }
+          return KeyEventResult.ignored;
+        },
+        child: FocusTraversalGroup(
+          policy: OrderedTraversalPolicy(),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: maxW),
+            child: ClipRRect(
             borderRadius: BorderRadius.circular(28),
             child: BackdropFilter(
               filter: ImageFilter.blur(sigmaX: sigma, sigmaY: sigma),
@@ -281,6 +327,7 @@ class PlayStoreRateGlassDialog extends StatelessWidget {
                             laterLabel: 'rateApp.later'.tr,
                             ctaLabel: 'rateApp.cta'.tr,
                             autofocusCta: tv,
+                            ctaFocusNode: _ctaFocusNode,
                             onLater: () => Navigator.of(context).pop(
                               PlayStoreRateDialogResult.later,
                             ),
@@ -300,6 +347,7 @@ class PlayStoreRateGlassDialog extends StatelessWidget {
                 ],
               ),
             ),
+          ),
           ),
         ),
       ),

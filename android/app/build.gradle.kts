@@ -9,6 +9,7 @@ plugins {
     id("kotlin-android")
     // Firebase: google-services.json'dan kaynak (ör. default_web_client_id) üretir.
     id("com.google.gms.google-services")
+    id("com.google.firebase.crashlytics")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
@@ -142,12 +143,7 @@ android {
         jniLibs {
             // androidx/media3 decoder_ffmpeg AAR eklendiğinde çakışmayı önler.
             pickFirsts.add("lib/**/libffmpegJNI.so")
-            // x86 / x86_64 yalnızca emülatörler içindir; gerçek telefon ve TV
-            // box'ların tamamı ARM. Flutter'ın `ndk.abiFilters`'ı evrensel APK
-            // paketlemesinde dikkate almadığı eklenti native kütüphanelerini
-            // (ör. x86_64 libmpv ~15.8 MB) burada paketleme aşamasında zorla
-            // dışlıyoruz. Hem APK hem AAB için, derleme bayrağından bağımsız.
-            excludes += listOf("**/x86/**", "**/x86_64/**")
+            // Not: x86 / x86_64 PC'lerde ve emülatörlerde çalışması için hariç tutmalar kaldırıldı.
         }
     }
 }
@@ -161,8 +157,18 @@ dependencies {
     // Android 15 edge-to-edge: MainActivity’de [enableEdgeToEdge].
     implementation("androidx.activity:activity-ktx:1.10.1")
     // HLS master + WEBVTT altyazı track’leri için Media3 HLS modülü zorunlu.
-    // better_player_plus bunu transitif taşır; sürümü hizalayıp APK’da kesin bulunmasını sağlar.
-    implementation("androidx.media3:media3-exoplayer-hls:1.8.0")
+    // better_player_plus transitif 1.10.1 taşır; app’te eski pin (1.8.0) classpath
+    // çakışması / downgrade riski yaratır — sürümü plugin ile aynı tut.
+    implementation("androidx.media3:media3-exoplayer-hls:1.10.1")
+    // Tüm Media3 artifact’larını tek sürüme kilitle (transitif sapmaları önle).
+    configurations.configureEach {
+        resolutionStrategy.eachDependency {
+            if (requested.group == "androidx.media3") {
+                useVersion("1.10.1")
+                because("Align Media3 with better_player_plus (Better Flutter API unchanged)")
+            }
+        }
+    }
     // Media3 FFmpeg uzantısı (Maven’da yok). Plugin library’de local AAR AGP’yi
     // kırdığı için APK runtime’ına burada eklenir.
     listOf(

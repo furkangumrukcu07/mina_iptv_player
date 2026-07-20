@@ -31,11 +31,11 @@ abstract final class PlaylistSqliteStore {
   static const _tSeriesCat = 'pl_series_cat';
   static const _tMeta = 'pl_meta';
 
-  /// Batch commit aralığı — bellek tepe noktasını düşük tutar. 76.000+ satırlık
-  /// listelerde 500 çok sık commit/fsync demekti (152 ayrı transaction);
-  /// 2000'e çıkarıldı → commit sayısı ~4 kat azalır, bellek tepe noktası hâlâ
-  /// küçük. Her commit sonrası UI'a bir kez nefes verilir.
-  static const int _kInsertChunk = 2000;
+  /// Batch commit aralığı — bellek tepe noktasını düşük tutar. JNI LocalRef
+  /// limitlerini aşmamak için 250 olarak ayarlandı (Flutter MethodChannel'dan
+  /// gönderilen devasa haritalar Android JNI tarafında NewLocalRef taşmalarına
+  /// sebep oluyordu). Her commit sonrası UI'a bir kez nefes verilir.
+  static const int _kInsertChunk = 250;
 
   static Future<Database> _open() async {
     if (_db != null) return _db!;

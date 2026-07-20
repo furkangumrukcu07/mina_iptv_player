@@ -81,10 +81,11 @@ class FilmDiziSeriesDetailView extends GetView<FilmDiziSeriesDetailController> {
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
                     colors: [
-                      Colors.black.withValues(alpha: 0.35),
-                      Colors.black.withValues(alpha: 0.75),
-                      Colors.black.withValues(alpha: 0.94),
+                      Colors.black.withValues(alpha: 0.15),
+                      const Color(0xFF0F172A).withValues(alpha: 0.65),
+                      const Color(0xFF0F172A).withValues(alpha: 0.95),
                     ],
+                    stops: const [0.0, 0.45, 1.0],
                   ),
                 ),
               ),
@@ -351,6 +352,13 @@ class _SeriesDetailContent extends StatelessWidget {
             fontSize: titleFontSize,
             fontWeight: FontWeight.w800,
             height: 1.2,
+            shadows: const [
+              Shadow(
+                color: Colors.black54,
+                blurRadius: 4,
+                offset: Offset(0, 2),
+              ),
+            ],
           ),
         ),
         const SizedBox(height: 10),
@@ -481,7 +489,7 @@ class _SeriesDetailContent extends StatelessWidget {
             _SectionTitle('filmDizi.cast'.tr),
             const SizedBox(height: 10),
             SizedBox(
-              height: 132,
+              height: 74,
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
                 physics: AppScrollPhysics.list(context: context),
@@ -1374,31 +1382,30 @@ class _EpisodesPanelState extends State<_EpisodesPanel> {
       ];
 
       if (shrinkWrap) {
-        // Dikey ana kaydırma içinde: iç içe ListView yerine basit Column kullanalım!
         return Column(
-          mainAxisSize: MainAxisSize.min, // Critical: no unbounded height
+          mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             ...children,
             if (list.isNotEmpty)
-              ...List.generate(list.length, (i) {
-                final tile = _buildEpisodeTile(context, list, i);
-                if (i == list.length - 1) {
-                  return tile;
-                }
-                return Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    tile,
-                    const SizedBox(height: 10),
-                  ],
-                );
-              }),
+              ListView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: list.length,
+                itemBuilder: (context, i) {
+                  return Padding(
+                    padding: EdgeInsets.only(
+                      bottom: i == list.length - 1 ? 0 : 10,
+                    ),
+                    child: _buildEpisodeTile(context, list, i),
+                  );
+                },
+              ),
           ],
         );
       }
 
-      return ListView(
+      return ListView.builder(
         physics: AppScrollPhysics.list(context: context),
         padding: EdgeInsets.fromLTRB(
           16,
@@ -1406,19 +1413,19 @@ class _EpisodesPanelState extends State<_EpisodesPanel> {
           16,
           16 + MediaQuery.paddingOf(context).bottom,
         ),
-        children: [
-          ...children,
-          if (list.isNotEmpty)
-            ...List.generate(
-              list.length,
-              (i) => Padding(
-                padding: EdgeInsets.only(
-                  bottom: i == list.length - 1 ? 0 : 10,
-                ),
-                child: _buildEpisodeTile(context, list, i),
-              ),
+        itemCount: children.length + list.length,
+        itemBuilder: (context, index) {
+          if (index < children.length) {
+            return children[index];
+          }
+          final i = index - children.length;
+          return Padding(
+            padding: EdgeInsets.only(
+              bottom: i == list.length - 1 ? 0 : 10,
             ),
-        ],
+            child: _buildEpisodeTile(context, list, i),
+          );
+        },
       );
     });
   }
@@ -1910,50 +1917,72 @@ class _CastChip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final body = SizedBox(
-      width: 72,
-      child: InkWell(
-        onTap: onTap,
-        child: Column(
-          children: [
-            CircleAvatar(
-              radius: 34,
-              backgroundImage: member.profilePath != null
-                  ? CachedNetworkImageProvider(member.profilePath!)
-                  : null,
-              child: member.profilePath == null
-                  ? const Icon(Icons.person, color: Colors.white38)
-                  : null,
-            ),
-            const SizedBox(height: 6),
-            Text(
-              member.name,
-              maxLines: 2,
-              textAlign: TextAlign.center,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.92),
-                fontSize: 11,
-                fontWeight: FontWeight.w600,
-                height: 1.2,
-              ),
-            ),
-            if (member.character != null &&
-                member.character!.trim().isNotEmpty) ...[
-              const SizedBox(height: 4),
-              Text(
-                member.character!.trim(),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                textAlign: TextAlign.center,
-                style: TextStyle(
-                  color: Colors.white.withValues(alpha: 0.55),
-                  fontSize: 10,
-                  height: 1.2,
+    final body = Container(
+      width: 220,
+      margin: const EdgeInsets.only(right: 12),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.25),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.15),
+          width: 0.85,
+        ),
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(12),
+          child: Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: Row(
+              children: [
+                CircleAvatar(
+                  radius: 28,
+                  backgroundColor: Colors.white.withValues(alpha: 0.1),
+                  backgroundImage: member.profilePath != null
+                      ? CachedNetworkImageProvider(member.profilePath!)
+                      : null,
+                  child: member.profilePath == null
+                      ? const Icon(Icons.person, color: Colors.white38)
+                      : null,
                 ),
-              ),
-            ],
-          ],
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        member.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      if (member.character != null &&
+                          member.character!.trim().isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          member.character!.trim(),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.6),
+                            fontSize: 11,
+                          ),
+                        ),
+                      ],
+
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );

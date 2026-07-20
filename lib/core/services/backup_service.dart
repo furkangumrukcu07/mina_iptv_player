@@ -14,6 +14,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../constants/playlist_storage.dart';
+import 'mina_secure_storage.dart';
 
 /// `mina_backup.dat` – Mina Pro ayarları + M3U/Xtream kimlik bilgileri + yerel
 /// kaydedilmiş playlist dosyaları için AES‑256‑CBC ile şifrelenmiş tek dosyalık
@@ -31,10 +32,7 @@ class BackupService {
     SharedPreferences? prefs,
     FlutterSecureStorage? storage,
   })  : _prefsOverride = prefs,
-        _storage = storage ??
-            const FlutterSecureStorage(
-              aOptions: AndroidOptions(encryptedSharedPreferences: true),
-            );
+        _storage = storage ?? MinaSecureStorage.instance;
 
   final SharedPreferences? _prefsOverride;
   final FlutterSecureStorage _storage;
@@ -87,6 +85,8 @@ class BackupService {
     // Düşük donanımlı cihaz modu
     'mina_settings_low_end_device_mode',
     'mina_settings_low_end_suggest_dismissed',
+    // EPG Son Güncellenme zamanı cihaza özeldir, yedeğe dahil olmaz
+    'mina_settings_last_refresh_time',
   };
 
   /// FlutterSecureStorage’daki M3U / Xtream kimlik bilgisi anahtar tabanları
@@ -170,6 +170,7 @@ class BackupService {
     // okumaktan daha güvenilir (bazı cihazlarda keystore gecikmesi).
     final secureMap = <String, String>{};
     try {
+      await MinaSecureStorage.ensureReady();
       final allSecure = await _storage.readAll();
       for (final k in _secureKeys) {
         final v = allSecure[k];
@@ -461,6 +462,7 @@ class BackupService {
     // 2) SecureStorage: M3U / Xtream kimlik bilgileri.
     final secureRaw = data['secure'];
     if (secureRaw is Map) {
+      await MinaSecureStorage.ensureReady();
       for (final k in _secureKeys) {
         try {
           final v = secureRaw[k];

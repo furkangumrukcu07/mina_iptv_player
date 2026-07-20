@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 import 'dart:async';
+import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -93,50 +94,61 @@ class TvShellRail extends StatelessWidget {
 
           final sections = _railSections(wrappedEnabled);
 
+          Widget content = Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              const SizedBox(height: 14),
+              _BrandHeader(
+                expanded: expanded,
+                palette: palette,
+                onTap: () {
+                  if (expanded) {
+                    if (tvShellTouchInputEnabled(context)) {
+                      controller.collapseRail();
+                    }
+                  } else {
+                    controller.expandRail();
+                  }
+                },
+              ),
+              const SizedBox(height: 10),
+              Expanded(
+                child: ListView(
+                  padding: const EdgeInsets.fromLTRB(8, 0, 8, 14),
+                  children: [
+                    for (var i = 0; i < sections.length; i++) ...[
+                      if (i > 0) const SizedBox(height: 4),
+                      _buildRailTile(
+                        context: context,
+                        palette: palette,
+                        expanded: expanded,
+                        sections: sections,
+                        section: sections[i],
+                        index: i,
+                        onSectionActivate: onSectionActivate,
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          );
+
+          if (palette.ga.isTrabzon) {
+            content = ClipRect(
+              child: BackdropFilter(
+                filter: ImageFilter.blur(sigmaX: 40, sigmaY: 40),
+                child: content,
+              ),
+            );
+          }
+
           return TvShellAnimBox(
             duration: TvShellPerf.railWidth,
             curve: TvShellMotion.panelCurve,
             constraints: BoxConstraints.tightFor(width: w),
             decoration: palette.sidePanelDecoration(),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                const SizedBox(height: 14),
-                _BrandHeader(
-                  expanded: expanded,
-                  palette: palette,
-                  onTap: () {
-                    if (expanded) {
-                      if (tvShellTouchInputEnabled(context)) {
-                        controller.collapseRail();
-                      }
-                    } else {
-                      controller.expandRail();
-                    }
-                  },
-                ),
-                const SizedBox(height: 10),
-                Expanded(
-                  child: ListView(
-                    padding: const EdgeInsets.fromLTRB(8, 0, 8, 14),
-                    children: [
-                      for (var i = 0; i < sections.length; i++) ...[
-                        if (i > 0) const SizedBox(height: 4),
-                        _buildRailTile(
-                          context: context,
-                          palette: palette,
-                          expanded: expanded,
-                          sections: sections,
-                          section: sections[i],
-                          index: i,
-                          onSectionActivate: onSectionActivate,
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ],
-            ),
+            child: content,
           );
         });
       },

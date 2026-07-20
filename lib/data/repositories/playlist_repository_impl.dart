@@ -15,6 +15,7 @@ import '../../core/constants/playlist_storage.dart';
 import '../../core/player/playback_user_agent.dart';
 import '../../core/services/app_settings_service.dart';
 import '../../core/services/active_playlist_service.dart';
+import '../../core/services/mina_secure_storage.dart';
 import '../../core/services/playlist_sqlite_backfill_service.dart';
 import '../../core/perf/playlist_memory_diagnostics.dart';
 import '../local/playlist_snapshot_store.dart';
@@ -82,12 +83,7 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
                 },
               ),
             ),
-        _storage = storage ??
-            const FlutterSecureStorage(
-              aOptions: AndroidOptions(
-                encryptedSharedPreferences: true,
-              ),
-            );
+        _storage = storage ?? MinaSecureStorage.instance;
 
   /// [loadMergedPlaylist] birleşik sonucu DB'ye yazdığında oluşan `source_key`.
   /// Çağıran taraf cache'i "slim" beslemek için bu anahtarı okur.
@@ -204,8 +200,40 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
       throw const ParseException('M3U içeriği boş');
     }
     try {
-      // Büyük listelerde UI kilitlenmesini önlemek için parse işlemini compute (isolate) ile yapıyoruz.
-      return await compute(M3uParser.instance.parse, body);
+      // Büyük listelerde UI kilitlenmesini önlemek için parse işlemini
+      // compute() üzerinden tek seferde yapmak yerine Stream parser'a
+      // yönlendirerek chunk'lıyoruz (IsolateMessageHandler ANR'sını önler).
+      final lines = Stream.value(body).transform(const LineSplitter());
+      return await M3uStreamParser.parse(
+        lines: lines,
+        sourceKey: '',
+        buildVodSeriesInMemory: true,
+        buildChannelsInMemory: true,
+      );
+    } on AppException {
+      rethrow;
+    } catch (e) {
+      throw ParseException('M3U okunamadı: $e');
+    }
+  }
+
+  @override
+  Future<M3uResult> loadFromM3uFile(String path) async {
+    final f = File(path);
+    if (!await f.exists()) {
+      throw const ParseException('M3U dosyası bulunamadı');
+    }
+    try {
+      final lines = f
+          .openRead()
+          .transform(const Utf8Decoder(allowMalformed: true))
+          .transform(const LineSplitter());
+      return await M3uStreamParser.parse(
+        lines: lines,
+        sourceKey: '',
+        buildVodSeriesInMemory: true,
+        buildChannelsInMemory: true,
+      );
     } on AppException {
       rethrow;
     } catch (e) {
@@ -216,6 +244,10 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
   @override
   Future<M3uResult> persistM3uLocalContent(String content) =>
       persistM3uLocalContentAt(1, content);
+
+  @override
+  Future<M3uResult> persistM3uLocalFile(String path) =>
+      persistM3uLocalFileAt(1, path);
 
   @override
   Future<M3uResult> loadFromM3uUrl(String url) async {
@@ -242,15 +274,16 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
                 : 'Kayıtlı $slot. yerel playlist bulunamadı',
           );
         }
-        final body = await f.readAsString();
-        if (body.trim().isEmpty) {
-          throw ParseException(
-            slot == 1
-                ? 'Yerel playlist dosyası boş'
-                : '$slot. yerel playlist dosyası boş',
-          );
-        }
-        final result = await compute(M3uParser.instance.parse, body);
+        final lines = f
+            .openRead()
+            .transform(const Utf8Decoder(allowMalformed: true))
+            .transform(const LineSplitter());
+        final result = await M3uStreamParser.parse(
+          lines: lines,
+          sourceKey: '',
+          buildVodSeriesInMemory: false,
+          buildChannelsInMemory: true,
+        );
         return (result: result, resolvedUrl: trimmed);
       } on AppException {
         rethrow;
@@ -557,6 +590,7 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
 
   @override
   Future<String?> getXtreamEpgUrl() async {
+    await MinaSecureStorage.ensureReady();
     final type = await _storage.read(key: _kSourceType);
     if (type != 'xtream') return null;
 
@@ -1180,6 +1214,7 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
     if (slot < 1 || slot > kPlaylistSlotCount) {
       throw ArgumentError.value(slot, 'slot');
     }
+    await MinaSecureStorage.ensureReady();
     final keys = _slotKeys(slot);
     try {
       final type = await _storage.read(key: keys.type);
@@ -1229,7 +1264,11 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
       }
       return null;
     } catch (e) {
-      throw StorageException('Could not read source slot $slot', e);
+      debugPrint('[PlaylistRepositoryImpl] Keystore error reading slot $slot: $e. Clearing corrupted storage.');
+      try {
+        await _storage.deleteAll();
+      } catch (_) {}
+      return null;
     }
   }
 
@@ -1239,6 +1278,7 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
     // `readSourceAt` ile okumak yavaş keystore'lu cihazlarda (her okuma birkaç
     // ms + keystore uyarıları) açılışı belirgin uzatıyordu. `readAll()` tek
     // turda hepsini getirir; slotları bellek içinde ayrıştırıyoruz.
+    await MinaSecureStorage.ensureReady();
     Map<String, String> all;
     try {
       all = await _storage.readAll();
@@ -1262,6 +1302,7 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
   @override
   Future<List<({int slot, PlaylistSource source, bool disabled, String? name})>>
       readAllSlotInfos() async {
+    await MinaSecureStorage.ensureReady();
     Map<String, String> all;
     try {
       all = await _storage.readAll();
@@ -1593,6 +1634,7 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
     if (slot < 1 || slot > kPlaylistSlotCount) {
       throw ArgumentError.value(slot, 'slot');
     }
+    await MinaSecureStorage.ensureReady();
     final keys = _slotKeys(slot);
     try {
       await PlaylistSnapshotStore.delete();
@@ -1924,6 +1966,19 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
   }
 
   @override
+  Future<M3uResult> persistM3uLocalFileAt(int slot, String path) async {
+    if (slot < 1 || slot > kPlaylistSlotCount) {
+      throw ArgumentError.value(slot, 'slot');
+    }
+    final result = await loadFromM3uFile(path);
+    final f = await _localM3uFileAt(slot);
+    await f.parent.create(recursive: true);
+    await File(path).copy(f.path);
+    await persistSourceAt(slot, M3uSource(url: localM3uSentinelForSlot(slot)));
+    return result;
+  }
+
+  @override
   Future<void> persistPlaylistUrl(String url) async {
     try {
       await _deleteLocalM3uFile();
@@ -1968,6 +2023,10 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
   @override
   Future<M3uResult> persistM3uLocalContentSecondary(String content) =>
       persistM3uLocalContentAt(2, content);
+
+  @override
+  Future<M3uResult> persistM3uLocalFileSecondary(String path) =>
+      persistM3uLocalFileAt(2, path);
 
   @override
   Future<M3uResult> loadMergedPlaylist({

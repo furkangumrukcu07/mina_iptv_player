@@ -443,13 +443,32 @@ class _SeriesHero extends StatelessWidget {
                             ),
                         ],
                       ),
-                      const SizedBox(height: 10),
+                      const SizedBox(height: 12),
                       Expanded(
-                        child: Text(
-                          plot.isNotEmpty ? plot : 'tvShell.movies.noPlot'.tr,
-                          maxLines: 6,
-                          overflow: TextOverflow.ellipsis,
-                          style: palette.mutedStyle(size: 13).copyWith(height: 1.45),
+                        child: Container(
+                          width: double.infinity,
+                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(11),
+                            border: Border.all(
+                              color: Colors.white.withValues(alpha: 0.13),
+                              width: 0.85,
+                            ),
+                            gradient: LinearGradient(
+                              begin: Alignment.topLeft,
+                              end: Alignment.bottomRight,
+                              colors: [
+                                Colors.white.withValues(alpha: 0.075),
+                                Colors.white.withValues(alpha: 0.02),
+                              ],
+                            ),
+                          ),
+                          child: Text(
+                            plot.isNotEmpty ? plot : 'tvShell.movies.noPlot'.tr,
+                            maxLines: 5,
+                            overflow: TextOverflow.ellipsis,
+                            style: palette.mutedStyle(size: 13).copyWith(height: 1.45),
+                          ),
                         ),
                       ),
                     ],

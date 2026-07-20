@@ -80,6 +80,8 @@ class _ChatRoomViewState extends State<ChatRoomView> {
             _support!.threadUid,
             text,
             replyTo: _replyTo,
+            targetUserName: _support!.title,
+            targetUserPhotoUrl: _support!.photoUrl,
           )
         : await _chat.sendMessage(
             _room.langCode,
@@ -107,6 +109,64 @@ class _ChatRoomViewState extends State<ChatRoomView> {
   }
 
   void _cancelReply() => setState(() => _replyTo = null);
+
+  void _showReportIssueDialog() {
+    final ctrl = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        backgroundColor: const Color(0xFF1E293B),
+        title: const Text('Sorun Bildir', style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Lütfen yaşadığınız sorunu detaylıca açıklayın.', style: TextStyle(color: Colors.white70, fontSize: 14)),
+            const SizedBox(height: 12),
+            TextField(
+              controller: ctrl,
+              style: const TextStyle(color: Colors.white),
+              maxLines: 4,
+              decoration: InputDecoration(
+                hintText: 'Sorununuz nedir?',
+                hintStyle: const TextStyle(color: Colors.white38),
+                filled: true,
+                fillColor: Colors.white.withValues(alpha: 0.05),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12), borderSide: BorderSide.none),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(ctx).pop(),
+            child: Text('common.cancel'.tr, style: const TextStyle(color: Colors.white54)),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.amberAccent,
+              foregroundColor: Colors.black,
+            ),
+            onPressed: () async {
+              final text = ctrl.text.trim();
+              if (text.isEmpty) return;
+              Navigator.of(ctx).pop();
+              
+              // Send message which automatically marks thread as 'unread' (pending)
+              await _chat.sendSupportMessage(
+                _support!.threadUid,
+                text,
+              );
+              if (mounted) {
+                GlassSnackbar.show('Başarılı', 'Destek talebiniz oluşturuldu.');
+              }
+            },
+            child: const Text('Gönder', style: TextStyle(fontWeight: FontWeight.bold)),
+          ),
+        ],
+      ),
+    );
+  }
 
   Future<void> _pickStatusTag() async {
     FocusScope.of(context).unfocus();
@@ -257,6 +317,21 @@ class _ChatRoomViewState extends State<ChatRoomView> {
                           ],
                         ),
                       ),
+                      if (_isSupport && !_support!.adminView) ...[
+                        const SizedBox(width: 8),
+                        ElevatedButton.icon(
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.amberAccent.withValues(alpha: 0.2),
+                            foregroundColor: Colors.amberAccent,
+                            elevation: 0,
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          ),
+                          icon: const Icon(Icons.support_agent_rounded, size: 16),
+                          label: const Text('Sorun Bildir', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                          onPressed: _showReportIssueDialog,
+                        ),
+                      ],
                       if (!_isSupport) ...[
                         const SizedBox(width: 8),
                         const ChatOnlineBadge(),

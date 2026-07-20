@@ -8,6 +8,7 @@ version = "1.0-SNAPSHOT"
 
 val lifecycleVersion = "2.9.4"
 val annotationVersion = "1.9.1"
+// Latest stable Media3 (as of 2026-07). Better Flutter API unchanged — native only.
 val media3Version = "1.10.1"
 val workVersion = "2.10.5"
 

@@ -3,6 +3,9 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'admin_panel_view.dart';
+import 'admin_about_dialog.dart';
 import 'package:get/get.dart';
 
 import '../../core/haptics/adaptive_haptics_service.dart';
@@ -12,6 +15,9 @@ import '../../core/services/app_settings_service.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/services/licensing_service.dart';
 import '../../core/services/profiles_service.dart';
+import 'privacy_policy_view.dart' as privacy;
+
+import '../../core/i18n/app_locale.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/theme/glass_appearance.dart';
 import '../../ui/tv_dpad_focus.dart'
@@ -40,6 +46,7 @@ abstract final class _ShellDpad {
   static const setup = 15;
   static const account = 16;
   static const subscription = 17;
+  static const admin = 18;
 }
 
 class SettingsView extends GetView<SettingsController> {
@@ -528,17 +535,18 @@ class SettingsView extends GetView<SettingsController> {
                                       iconColor: primary,
                                       onTap: controller.showAboutApp,
                                     ),
+
                                     _GlassTile(
                                       index: ai(),
-                                      shellDpadIndex: _ShellDpad.contact,
-                                      title: 'settings.tile.contactUs'.tr,
+                                      shellDpadIndex: _ShellDpad.about + 10,
+                                      title: 'Gizlilik Politikası',
                                       subtitle: Text(
-                                        'settings.tile.contactUs.sub'.tr,
+                                        'Uygulama kullanım koşulları ve gizlilik sözleşmesi.',
                                         style: _subtitleStyle,
                                       ),
-                                      icon: Icons.support_agent_rounded,
+                                      icon: Icons.privacy_tip_outlined,
                                       iconColor: primary,
-                                      onTap: controller.openContactUs,
+                                      onTap: () => Get.to(() => const privacy.PrivacyPolicyView()),
                                     ),
 
                                     _GlassTile(
@@ -620,12 +628,25 @@ class SettingsView extends GetView<SettingsController> {
                                         onTap: controller.showSubscriptionStatusDialog,
                                       );
                                     }),
-                                  ],
+                                      _GlassTile(
+                                        index: ai(),
+                                        shellDpadIndex: _ShellDpad.about + 11,
+                                        title: 'Hesabımı Sil',
+                                        subtitle: Text(
+                                          'Hesabınızı ve buluttaki tüm verilerinizi kalıcı olarak siler.',
+                                          style: _subtitleStyle.copyWith(color: Colors.red[300]),
+                                        ),
+                                        icon: Icons.delete_forever_rounded,
+                                        iconColor: Colors.redAccent,
+                                        onTap: controller.showDeleteAccountDialog,
+                                      ),
+                                    ],
                                 );
                               },
                             ),
                             // Xtream kullanıcı adı / bağlantı adresi alt
                             // bilgisi gizlendi (kullanıcı isteği).
+
                           ],
                         );
   }
@@ -1174,10 +1195,6 @@ class _TvShellSettingsScrollBack extends StatelessWidget {
         if (event is! KeyDownEvent) return KeyEventResult.ignored;
         if (tvKeyIsBack(event.logicalKey) ||
             event.logicalKey == LogicalKeyboardKey.arrowLeft) {
-          if (Get.isDialogOpen == true) {
-            Get.back<void>();
-            return KeyEventResult.handled;
-          }
           onBack();
           return KeyEventResult.handled;
         }

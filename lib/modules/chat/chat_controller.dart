@@ -111,6 +111,7 @@ class ChatController extends GetxController {
     }
     final uid = chat.currentUserId;
     if (uid == null) return;
+    chat.markSupportMessagesRead();
     Get.toNamed<void>(
       AppRoutes.chatRoom,
       arguments: ChatSupportTarget(

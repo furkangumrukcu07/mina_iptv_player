@@ -15,7 +15,7 @@ abstract final class MediaKitMpvCrispyConfig {
         ? 'allowed_extensions=ALL,tls_verify=0'
         : 'allowed_extensions=ALL';
     if (!live) return ext;
-    return 'reconnect=1,reconnect_streamed=1,reconnect_delay_max=5,$ext';
+    return 'reconnect=1,reconnect_streamed=1,reconnect_delay_max=10,$ext';
   }
 
   /// `hls-bitrate` yalnızca HLS/manifest URL'lerinde; MKV/MP4/TS VOD'da mpv'yi bozmasın.

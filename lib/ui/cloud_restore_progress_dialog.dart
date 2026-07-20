@@ -53,12 +53,10 @@ class CloudRestoreProgressDialog extends StatefulWidget {
     BuildContext context, {
     required ValueNotifier<CloudRestoreProgress> progress,
   }) {
-    return showDialog<void>(
-      context: context,
+    return Get.dialog<void>(
+      CloudRestoreProgressDialog(progress: progress),
       barrierDismissible: false,
-      useRootNavigator: true,
       barrierColor: Colors.black.withValues(alpha: 0.78),
-      builder: (_) => CloudRestoreProgressDialog(progress: progress),
     );
   }
 
@@ -129,8 +127,8 @@ class _CloudRestoreProgressDialogState extends State<CloudRestoreProgressDialog>
   void _scheduleAutoClose() {
     if (_autoCloseTimer != null) return;
     _autoCloseTimer = Timer(const Duration(seconds: _autoCloseSeconds), () {
-      if (mounted && Navigator.of(context).canPop()) {
-        Navigator.of(context).pop();
+      if (mounted) {
+        Get.back<void>();
       }
     });
   }

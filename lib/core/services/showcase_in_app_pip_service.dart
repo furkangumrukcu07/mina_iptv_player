@@ -80,6 +80,9 @@ class ShowcaseInAppPipService extends GetxService {
   bool get hasPendingRestoreForReopen =>
       active.value && _args != null && _reopenedFromPipBubble;
 
+  /// PiP'te kayıtlı olan kanal (null ise aktif oturum yok)
+  Channel? get savedChannel => _args?.channel;
+
   /// Ana ekranda balon gösterilsin mi? [overlayVisible] tek başına yeterli değil:
   /// handoff sonrası motor serviste ([active]) kalıp bayrak sıfırlanabiliyor.
   bool get shouldShowHomeOverlay {
@@ -201,9 +204,14 @@ class ShowcaseInAppPipService extends GetxService {
   }
 
   /// [PlayerBinding] — yeni rota açılırken balonu anında gizle (async dispose öncesi).
-  void hideOverlayForNewPlayerRoute({required bool reopeningFromPipBubble}) {
+  Future<void> hideOverlayForNewPlayerRoute({required bool reopeningFromPipBubble}) async {
     if (reopeningFromPipBubble || _openingPlayerRoute) return;
     overlayVisible.value = false;
+    
+    // Eğer tamamen yeni bir video açılıyorsa (PiP balonundan geri dönüş değilse),
+    // arka planda kalmış olan canlı yayını / videoyu tamamen durdurup temizle.
+    // Aksi takdirde yeni açılan filmin sesi ile arka plandaki yayının sesi karışır.
+    await stopAndDispose();
   }
 
   /// Oynatıcı route kapanmadan motorları servise devralır.
@@ -331,6 +339,13 @@ class ShowcaseInAppPipService extends GetxService {
   void _popOrphanedBetterFullScreenOnRootNavigator() {
     final ctx = Get.overlayContext ?? Get.context;
     if (ctx == null) return;
+
+    // Dialog/BottomSheet açıksa onlara dokunma, orphan fullscreen değildir veya altında kalmıştır.
+    if (Get.isDialogOpen == true || Get.isBottomSheetOpen == true) {
+      debugPrint('mina_iptv: showcase pip orphaned fullscreen pop skipped due to open dialog');
+      return;
+    }
+
     try {
       final root = Navigator.of(ctx, rootNavigator: true);
       if (root.canPop()) {
@@ -363,6 +378,7 @@ class ShowcaseInAppPipService extends GetxService {
       await SchedulerBinding.instance.endOfFrame;
       await Future<void>.delayed(Duration(milliseconds: 40 * (attempt + 1)));
 
+      var success = false;
       final b = _better;
       if (b != null) {
         try {
@@ -370,6 +386,7 @@ class ShowcaseInAppPipService extends GetxService {
           if (b.videoPlayerController?.value.isPlaying != true) {
             await b.play();
           }
+          success = true;
         } catch (e, st) {
           debugPrint(
             'mina_iptv: showcase pip better surface refresh#$attempt: $e\n$st',
@@ -390,6 +407,7 @@ class ShowcaseInAppPipService extends GetxService {
           if (!mk.state.playing) {
             unawaited(mk.play());
           }
+          success = true;
         } catch (e, st) {
           debugPrint(
             'mina_iptv: showcase pip mediaKit surface refresh#$attempt: $e\n$st',
@@ -398,6 +416,7 @@ class ShowcaseInAppPipService extends GetxService {
       }
 
       surfaceEpoch.value++;
+      if (success) break;
     }
 
     ensureOverlayVisibleOnHome();
@@ -408,32 +427,7 @@ class ShowcaseInAppPipService extends GetxService {
   }
 
   Future<void> _abortPreMountHandoff() async {
-    overlayVisible.value = false;
-    active.value = false;
-    posterUrl.value = null;
-    _args = null;
-    _mediaKitVideo = null;
-    _handoffEngine = PlaybackEngineKind.better;
-
-    final b = _better;
-    _better = null;
-    if (b != null) {
-      try {
-        await b.videoPlayerController?.clearPlatformSurfaceHandoffMark();
-        await b.pause();
-        b.dispose(forceDispose: true);
-      } catch (_) {}
-    }
-
-    final mk = _mediaKitPlayer;
-    _mediaKitPlayer = null;
-    if (mk != null) {
-      try {
-        await mk.pause();
-        await mk.stop();
-        await mk.dispose();
-      } catch (_) {}
-    }
+    await stopAndDispose();
   }
 
   /// Yeni [PlayerController] açılışında motorları geri verir; [_boot] atlanır.
@@ -507,11 +501,15 @@ class ShowcaseInAppPipService extends GetxService {
     overlayVisible.value = false;
     surfaceEpoch.value++;
 
-    // Wait 150ms for the old Video widget's dispose() method to finish unregistering
-    // the native texture ID before pushing the route and creating the new VideoController.
-    unawaited(Future.delayed(const Duration(milliseconds: 150), () {
-      unawaited(
-        openPlayerRoute(
+    // Doku (texture) temizliğinin sağlıklı yapılması için UI frame'ini bekle.
+    unawaited(() async {
+      try {
+        await SchedulerBinding.instance.endOfFrame;
+        await SchedulerBinding.instance.endOfFrame;
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+        if (!active.value) return;
+
+        await openPlayerRoute(
           PlayerScreenArgs(
             channel: args.channel,
             movieBrowseTape: args.movieBrowseTape,
@@ -524,11 +522,11 @@ class ShowcaseInAppPipService extends GetxService {
             showcaseInAppPipHandoff: false,
             reopenFromInAppPip: true,
           ),
-        ).whenComplete(() {
-          _openingPlayerRoute = false;
-        }),
-      );
-    }));
+        );
+      } finally {
+        _openingPlayerRoute = false;
+      }
+    }());
   }
 
   Future<void> stopAndDispose() async {

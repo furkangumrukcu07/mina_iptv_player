@@ -42,6 +42,7 @@ import '../services/tv_key_mapping_service.dart';
 import '../services/background_sync_service.dart';
 import '../services/licensing_service.dart';
 import '../services/showcase_in_app_pip_service.dart';
+import '../services/device_memory_service.dart';
 
 class InitialBinding extends Bindings {
   @override
@@ -78,6 +79,10 @@ class InitialBinding extends Bindings {
     Get.put<AuthService>(AuthService(), permanent: true);
     // Uygulama geneli çevrimiçi presence (sohbet rozeti) — Auth'tan sonra.
     Get.put<ChatService>(ChatService(), permanent: true);
+    // Cihaz belleğini (RAM) erken başlat ki diğer servisler yüklenme süresini ayarlayabilsin.
+    Get.put<DeviceMemoryService>(DeviceMemoryService(), permanent: true);
+    Get.find<DeviceMemoryService>().init();
+
     // Sunucu-tarafı bayraklar (varsayilan_video_motoru / inceleme_modu_aktif /
     // zorunlu_surum_kontrolu). Splash fetch'i bekler.
     Get.put<RemoteConfigService>(RemoteConfigService(), permanent: true);

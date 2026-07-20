@@ -11,8 +11,10 @@ import '../../../core/services/playlist_cache_service.dart';
 import '../../../core/theme/app_scroll_physics.dart';
 import '../../../domain/entities/series.dart';
 import '../../../domain/entities/vod.dart';
+import '../../../core/home/trend_catalog.dart';
 import 'film_dizi_az_index_bar.dart';
 import 'film_dizi_poster_card.dart';
+import '../../../ui/empty_state.dart';
 
 /// Kategori «tümünü gör» — A–Z sıralı poster ızgarası + sağ indeks.
 class FilmDiziCategoryGrid extends StatefulWidget {
@@ -60,13 +62,82 @@ class _FilmDiziCategoryGridState extends State<FilmDiziCategoryGrid> {
   Map<String, int>? _letterIndex;
   Object? _cacheKey;
 
+  int? _selectedGenreId;
+  String? _selectedYear;
+  double? _minRating;
+
+  List<int>? _allGenreIds;
+  List<String>? _allYears;
+
+  @override
+  void didUpdateWidget(covariant FilmDiziCategoryGrid oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.films != widget.films || oldWidget.series != widget.series) {
+      _allGenreIds = null;
+      _allYears = null;
+      _selectedGenreId = null;
+      _selectedYear = null;
+      _minRating = null;
+    }
+  }
+
   @override
   void dispose() {
     _scroll.dispose();
     super.dispose();
   }
 
+  void _extractFiltersIfNeeded() {
+    if (_allGenreIds != null) return;
+    final isFilms = widget.films != null;
+    final genreSet = <int>{};
+    final yearSet = <String>{};
+
+    if (isFilms) {
+      for (final v in widget.films!) {
+        genreSet.add(v.categoryId);
+        final parsed = RecommendedFilmsCatalog.cleanTitleAndYear(v.name);
+        if (parsed.$2 != null) yearSet.add(parsed.$2!);
+      }
+    } else {
+      for (final s in widget.series!) {
+        genreSet.add(s.categoryId);
+        final parsed = RecommendedFilmsCatalog.cleanTitleAndYear(s.name);
+        if (parsed.$2 != null) yearSet.add(parsed.$2!);
+      }
+    }
+    _allGenreIds = genreSet.toList()..sort();
+    _allYears = yearSet.toList()..sort((a, b) => b.compareTo(a));
+  }
+
+  bool _filmMatchesFilters(VodItem v) {
+    if (_selectedGenreId != null && v.categoryId != _selectedGenreId) return false;
+    if (_selectedYear != null) {
+      final y = RecommendedFilmsCatalog.cleanTitleAndYear(v.name).$2;
+      if (y != _selectedYear) return false;
+    }
+    if (_minRating != null) {
+      final r = RecommendedFilmsRatingCache.effectiveRating(v);
+      if (r < _minRating!) return false;
+    }
+    return true;
+  }
+
+  bool _seriesMatchesFilters(SeriesItem s) {
+    if (_selectedGenreId != null && s.categoryId != _selectedGenreId) return false;
+    if (_selectedYear != null) {
+      final y = RecommendedFilmsCatalog.cleanTitleAndYear(s.name).$2;
+      if (y != _selectedYear) return false;
+    }
+    if (_minRating != null) {
+      final r = SeriesRatingCache.effectiveRating(s);
+      if (r < _minRating!) return false;
+    }
+    return true;
+  }
+
   void _ensureSortedCache() {
+    _extractFiltersIfNeeded();
     final isFilms = widget.films != null;
     final source = isFilms ? widget.films! : widget.series!;
     final key = Object.hash(
@@ -74,12 +145,15 @@ class _FilmDiziCategoryGridState extends State<FilmDiziCategoryGrid> {
       widget.preserveOrder,
       source.length,
       identityHashCode(source),
+      _selectedGenreId,
+      _selectedYear,
+      _minRating,
     );
     if (key == _cacheKey) return;
     _cacheKey = key;
 
     if (isFilms) {
-      final list = List<VodItem>.from(widget.films!);
+      final list = widget.films!.where(_filmMatchesFilters).toList();
       if (!widget.preserveOrder) {
         list.sort((a, b) => _filmSortKey(a).compareTo(_filmSortKey(b)));
       }
@@ -87,7 +161,7 @@ class _FilmDiziCategoryGridState extends State<FilmDiziCategoryGrid> {
       _sortedSeries = null;
       _sortKeys = list.map(_filmSortKey).toList(growable: false);
     } else {
-      final list = List<SeriesItem>.from(widget.series!);
+      final list = widget.series!.where(_seriesMatchesFilters).toList();
       if (!widget.preserveOrder) {
         list.sort((a, b) => _seriesSortKey(a).compareTo(_seriesSortKey(b)));
       }
@@ -147,99 +221,193 @@ class _FilmDiziCategoryGridState extends State<FilmDiziCategoryGrid> {
     final sortedSeries = _sortedSeries;
     final count = isFilms ? sortedFilms!.length : sortedSeries!.length;
 
-    if (count == 0) {
-      return Center(
-        child: Text(
-          isFilms ? 'filmDizi.emptyFilms'.tr : 'filmDizi.emptySeries'.tr,
-          style: TextStyle(
-            color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.7),
-          ),
-        ),
-      );
-    }
-
     final width = MediaQuery.sizeOf(context).width;
     final landscape =
         MediaQuery.orientationOf(context) == Orientation.landscape;
     final isTv = Get.find<AppSettingsService>().layoutMode.value ==
             AppLayoutMode.tv &&
         landscape;
-    // Tümünü gör — dikey modda her zaman 3 sütun (kullanıcı tercihi).
-    // 420dp altı dar telefonlarda da 3 görsel sığar; çok dar (<340dp)
-    // cihazlarda 2'ye düşürülür. TV yatayda ekran çok geniş olduğu için
-    // 6-7 sütuna çıkıyoruz; aksi halde her poster aşırı büyük çıkıyor.
-    final crossAxisCount = isTv
-        ? (width >= 1700 ? 7 : (width >= 1280 ? 6 : 5))
-        : (landscape
-            ? (width >= 900 ? 5 : 4)
-            : (width < 340 ? 2 : 3));
-    final hPad = widget.padding.horizontal;
-    final spacing = isTv ? 14.0 : 10.0;
-    final cellW =
-        (width - hPad - spacing * (crossAxisCount - 1)) / crossAxisCount;
-    final cellH = cellW * 1.48 + (isTv ? 50 : 40);
-    final rowExtent = cellH + (isTv ? 16 : 12);
 
-    final letterIndex = _letterIndex;
-    final showAzIndex = !widget.preserveOrder && letterIndex != null;
+    Widget body;
+    if (count == 0) {
+      body = EmptyStateWidget(
+        message: isFilms ? 'filmDizi.emptyFilms'.tr : 'filmDizi.emptySeries'.tr,
+      );
+    } else {
+      final crossAxisCount = isTv
+          ? (width >= 1700 ? 7 : (width >= 1280 ? 6 : 5))
+          : (landscape
+              ? (width >= 900 ? 5 : 4)
+              : (width < 340 ? 2 : 3));
+      final hPad = widget.padding.horizontal;
+      final spacing = isTv ? 14.0 : 10.0;
+      final cellW =
+          (width - hPad - spacing * (crossAxisCount - 1)) / crossAxisCount;
+      final cellH = cellW * 1.48 + (isTv ? 50 : 40);
+      final rowExtent = cellH + (isTv ? 16 : 12);
 
-    return Stack(
-      children: [
-        GridView.builder(
-          controller: _scroll,
-          physics: AppScrollPhysics.list(context: context),
-          padding: widget.padding.copyWith(
-            right: widget.padding.right + 6,
-            bottom: widget.padding.bottom + MediaQuery.paddingOf(context).bottom,
-          ),
-          cacheExtent: cellH * 2,
-          addRepaintBoundaries: true,
-          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-            crossAxisCount: crossAxisCount,
-            mainAxisSpacing: isTv ? 16 : 12,
-            crossAxisSpacing: spacing,
-            mainAxisExtent: cellH,
-          ),
-          itemCount: count,
-          itemBuilder: (context, index) {
-            if (isFilms) {
-              final v = sortedFilms![index];
+      final letterIndex = _letterIndex;
+      final showAzIndex = !widget.preserveOrder && letterIndex != null;
+
+      body = Stack(
+        children: [
+          GridView.builder(
+            controller: _scroll,
+            physics: AppScrollPhysics.list(context: context),
+            padding: widget.padding.copyWith(
+              right: widget.padding.right + 6,
+              bottom: widget.padding.bottom + MediaQuery.paddingOf(context).bottom,
+            ),
+            cacheExtent: cellH * 2,
+            addRepaintBoundaries: true,
+            gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+              crossAxisCount: crossAxisCount,
+              mainAxisSpacing: isTv ? 16 : 12,
+              crossAxisSpacing: spacing,
+              mainAxisExtent: cellH,
+            ),
+            itemCount: count,
+            itemBuilder: (context, index) {
+              if (isFilms) {
+                final v = sortedFilms![index];
+                return RepaintBoundary(
+                  child: FilmDiziPosterCard.film(
+                    vod: v,
+                    posterWidth: cellW,
+                    onTap: () => _openFilm(v),
+                  ),
+                );
+              }
+              final s = sortedSeries![index];
               return RepaintBoundary(
-                child: FilmDiziPosterCard.film(
-                  vod: v,
+                child: FilmDiziPosterCard.series(
+                  series: s,
                   posterWidth: cellW,
-                  onTap: () => _openFilm(v),
+                  onTap: () => _openSeries(s),
                 ),
               );
-            }
-            final s = sortedSeries![index];
-            return RepaintBoundary(
-              child: FilmDiziPosterCard.series(
-                series: s,
-                posterWidth: cellW,
-                onTap: () => _openSeries(s),
-              ),
-            );
-          },
-        ),
-        if (showAzIndex)
-          Positioned(
-            right: 0,
-            top: 0,
-            bottom: 0,
-            child: SafeArea(
-              left: false,
-              child: Center(
-                child: FilmDiziAzIndexBar(
-                  scrollController: _scroll,
-                  firstIndexByLetter: letterIndex,
-                  crossAxisCount: crossAxisCount,
-                  rowExtent: rowExtent,
+            },
+          ),
+          if (showAzIndex)
+            Positioned(
+              right: 0,
+              top: 0,
+              bottom: 0,
+              child: SafeArea(
+                left: false,
+                child: Center(
+                  child: FilmDiziAzIndexBar(
+                    scrollController: _scroll,
+                    firstIndexByLetter: letterIndex,
+                    crossAxisCount: crossAxisCount,
+                    rowExtent: rowExtent,
+                  ),
                 ),
               ),
             ),
+        ],
+      );
+    }
+
+    final cs = Theme.of(context).colorScheme;
+    final data = Get.isRegistered<PlaylistCacheService>() 
+        ? Get.find<PlaylistCacheService>().result.value 
+        : null;
+
+    String genreName(int id) {
+       if (data == null) return '$id';
+       if (isFilms) {
+         return data.vodCategories.firstWhereOrNull((c) => c.id == id)?.name ?? '$id';
+       } else {
+         return data.seriesCategories.firstWhereOrNull((c) => c.id == id)?.name ?? '$id';
+       }
+    }
+
+    Widget buildChip(String label, bool isActive) {
+      return Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        decoration: BoxDecoration(
+          color: isActive ? cs.primary.withValues(alpha: 0.2) : Colors.white.withValues(alpha: 0.05),
+          border: Border.all(color: isActive ? cs.primary : Colors.white24),
+          borderRadius: BorderRadius.circular(20),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text(
+              label,
+              style: TextStyle(
+                color: isActive ? cs.primary : Colors.white70,
+                fontSize: 13,
+                fontWeight: isActive ? FontWeight.bold : FontWeight.normal,
+              ),
+            ),
+            const SizedBox(width: 4),
+            Icon(Icons.arrow_drop_down, size: 16, color: isActive ? cs.primary : Colors.white70),
+          ],
+        ),
+      );
+    }
+
+    final hasFilters = (_allGenreIds != null && _allGenreIds!.isNotEmpty) || 
+                       (_allYears != null && _allYears!.isNotEmpty);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (hasFilters)
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            padding: EdgeInsets.fromLTRB(widget.padding.left, 0, widget.padding.right, 8),
+            child: Row(
+              children: [
+                if (_allGenreIds != null && _allGenreIds!.isNotEmpty)
+                   PopupMenuButton<int?>(
+                      initialValue: _selectedGenreId,
+                      onSelected: (val) => setState(() => _selectedGenreId = val),
+                      color: cs.surface,
+                      itemBuilder: (context) => [
+                        const PopupMenuItem(value: null, child: Text('Tüm Türler')),
+                        ..._allGenreIds!.map((id) => PopupMenuItem(
+                          value: id,
+                          child: Text(genreName(id)),
+                        )),
+                      ],
+                      child: buildChip(_selectedGenreId == null ? 'Tür' : genreName(_selectedGenreId!), _selectedGenreId != null),
+                   ),
+                const SizedBox(width: 8),
+                if (_allYears != null && _allYears!.isNotEmpty)
+                   PopupMenuButton<String?>(
+                      initialValue: _selectedYear,
+                      onSelected: (val) => setState(() => _selectedYear = val),
+                      color: cs.surface,
+                      itemBuilder: (context) => [
+                        const PopupMenuItem(value: null, child: Text('Tüm Yıllar')),
+                        ..._allYears!.map((y) => PopupMenuItem(
+                          value: y,
+                          child: Text('$y'),
+                        )),
+                      ],
+                      child: buildChip(_selectedYear == null ? 'Yıl' : '$_selectedYear', _selectedYear != null),
+                   ),
+                const SizedBox(width: 8),
+                PopupMenuButton<double?>(
+                   initialValue: _minRating,
+                   onSelected: (val) => setState(() => _minRating = val),
+                   color: cs.surface,
+                   itemBuilder: (context) => [
+                     const PopupMenuItem(value: null, child: Text('Tüm Puanlar')),
+                     for (final r in [5.0, 6.0, 7.0, 8.0, 9.0])
+                       PopupMenuItem(value: r, child: Text('IMDB $r+')),
+                   ],
+                   child: buildChip(_minRating == null ? 'Puan' : 'IMDB $_minRating+', _minRating != null),
+                ),
+              ],
+            ),
           ),
+        Expanded(child: body),
       ],
     );
   }
 }
+

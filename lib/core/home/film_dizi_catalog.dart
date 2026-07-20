@@ -13,6 +13,7 @@ import '../services/playlist_category_hide.dart';
 import '../services/playlist_data_source.dart';
 import 'recommended_films_catalog.dart';
 import 'series_name_grouping.dart';
+import 'trend_catalog.dart';
 
 /// Film & Dizi ana ekranı — film / dizi sekmesi.
 enum FilmDiziTab { films, series }
@@ -35,6 +36,7 @@ const int kFilmDiziLast50SeriesCategoryId = -1004;
 /// Sentinel kategori ID'si — **IMDB puanına göre en yüksek filmler** (Vitrin
 /// düzeni «IMDB Yüksek Puanlı» satırının «Tümünü gör» hedefi).
 const int kFilmDiziTopRatedFilmsCategoryId = -1005;
+const int kFilmDiziTopRatedSeriesCategoryId = -1010;
 
 /// Sentinel kategori ID'si — vitrin **karışık filmler** satırı.
 const int kFilmDiziMixedFilmsCategoryId = -1006;
@@ -88,6 +90,7 @@ class FilmDiziCategoryArgs {
 
   /// Sentinel categoryId → IMDB en yüksek puanlı filmler.
   bool get isTopRatedFilms => categoryId == kFilmDiziTopRatedFilmsCategoryId;
+  bool get isTopRatedSeries => categoryId == kFilmDiziTopRatedSeriesCategoryId;
 
   /// Sentinel categoryId → vitrin karışık filmler.
   bool get isMixedFilms => categoryId == kFilmDiziMixedFilmsCategoryId;
@@ -233,6 +236,17 @@ abstract final class FilmDiziCatalog {
       );
     }
 
+    
+    // Custom Categories Injection
+    final topRatedFilms = RecommendedFilmsCatalog.build(data, limit: 20).topRated;
+    if (topRatedFilms.isNotEmpty) {
+      rows.insert(0, FilmDiziCategoryRow(categoryId: kFilmDiziTopRatedFilmsCategoryId, name: 'home.showcase.topRatedFilms'.tr, items: topRatedFilms));
+    }
+    final trendF = TrendCatalog.trendFilms(data);
+    if (trendF.isNotEmpty) {
+      rows.insert(0, FilmDiziCategoryRow(categoryId: kFilmDiziTrendFilmsCategoryId, name: 'home.showcase.trendFilms'.tr, items: trendF.take(20).toList()));
+    }
+
     return FilmDiziFilmsFeed(
       recentlyAdded: recentlyAdded,
       last50: last50,
@@ -270,6 +284,17 @@ abstract final class FilmDiziCatalog {
       );
     }
 
+    
+    // Custom Categories Injection
+    final topRatedS = TrendCatalog.topRatedSeries(data, limit: 20);
+    if (topRatedS.isNotEmpty) {
+      rows.insert(0, FilmDiziCategoryRow(categoryId: kFilmDiziTopRatedSeriesCategoryId, name: 'home.showcase.topRatedSeries'.tr, items: topRatedS));
+    }
+    final trendS = TrendCatalog.trendSeries(data);
+    if (trendS.isNotEmpty) {
+      rows.insert(0, FilmDiziCategoryRow(categoryId: kFilmDiziTrendSeriesCategoryId, name: 'home.showcase.trendSeries'.tr, items: trendS.take(20).toList()));
+    }
+
     return FilmDiziSeriesFeed(
       recentlyAdded: recentlyAdded,
       last50: last50,
@@ -281,7 +306,7 @@ abstract final class FilmDiziCatalog {
   /// [_chunkCategories] kategoride bir event-loop'a yield eder; böylece feed
   /// kurulurken UI thread bloklanmaz ve açılış iskeletinin yanıp sönme
   /// animasyonu akmaya devam eder.
-  static Future<FilmDiziFilmsFeed> buildFilmsChunked(M3uResult data) async {
+  static Future<FilmDiziFilmsFeed> buildFilmsChunked(M3uResult data, {bool limitCategories = true}) async {
     final items = visibleVods(data);
     // Ağır sıralama/gruplamadan önce event-loop'a yield et → açılış iskeletinin
     // ilk yanıp sönme (pulse) frame'i akar, ekran "donmuş" görünmez.
@@ -298,7 +323,9 @@ abstract final class FilmDiziCatalog {
 
     final rows = <FilmDiziCategoryRow<VodItem>>[];
     var processed = 0;
-    for (final cat in data.vodCategories) {
+    final daySeed = DateTime.now().millisecondsSinceEpoch ~/ 86400000;
+    final catList = limitCategories ? (data.vodCategories.toList()..shuffle(Random(daySeed))) : data.vodCategories;
+    for (final cat in catList) {
       final bucket = byCat[cat.id];
       if (bucket == null || bucket.length < minCategoryItems) continue;
       if (_vodCategoryHidden(data, cat.id)) continue;
@@ -310,9 +337,21 @@ abstract final class FilmDiziCatalog {
           items: rowItems,
         ),
       );
+      if (limitCategories && rows.length >= 7) break;
       if (++processed % _chunkCategories == 0) {
         await Future<void>.delayed(Duration.zero);
       }
+    }
+
+    
+    // Custom Categories Injection
+    final topRatedFilms = RecommendedFilmsCatalog.build(data, limit: 20).topRated;
+    if (topRatedFilms.isNotEmpty) {
+      rows.insert(0, FilmDiziCategoryRow(categoryId: kFilmDiziTopRatedFilmsCategoryId, name: 'home.showcase.topRatedFilms'.tr, items: topRatedFilms));
+    }
+    final trendF = TrendCatalog.trendFilms(data);
+    if (trendF.isNotEmpty) {
+      rows.insert(0, FilmDiziCategoryRow(categoryId: kFilmDiziTrendFilmsCategoryId, name: 'home.showcase.trendFilms'.tr, items: trendF.take(20).toList()));
     }
 
     return FilmDiziFilmsFeed(
@@ -325,8 +364,9 @@ abstract final class FilmDiziCatalog {
   /// [buildFilmsChunked] — SQLite sayfalı okuma (RAM'de tüm VOD listesi yok).
   static Future<FilmDiziFilmsFeed> buildFilmsChunkedFromDb(
     M3uResult data,
-    PlaylistDataSource ds,
-  ) async {
+    PlaylistDataSource ds, {
+    bool limitCategories = true,
+  }) async {
     await Future<void>.delayed(Duration.zero);
 
     final visibleRecent = await _recentVodsFromDb(
@@ -344,7 +384,9 @@ abstract final class FilmDiziCatalog {
 
     final rows = <FilmDiziCategoryRow<VodItem>>[];
     var processed = 0;
-    for (final cat in cats) {
+    final daySeed = DateTime.now().millisecondsSinceEpoch ~/ 86400000;
+    final catList = limitCategories ? (cats.toList()..shuffle(Random(daySeed))) : cats;
+    for (final cat in catList) {
       if (_vodCategoryHidden(data, cat.id)) continue;
       if ((counts[cat.id] ?? 0) < minCategoryItems) continue;
 
@@ -374,9 +416,21 @@ abstract final class FilmDiziCatalog {
           items: _sortVodByAdded(rowItems).take(rowPreviewLimit).toList(),
         ),
       );
+      if (limitCategories && rows.length >= 7) break;
       if (++processed % _chunkCategories == 0) {
         await Future<void>.delayed(Duration.zero);
       }
+    }
+
+    
+    // Custom Categories Injection
+    final topRatedFilms = RecommendedFilmsCatalog.build(data, limit: 20).topRated;
+    if (topRatedFilms.isNotEmpty) {
+      rows.insert(0, FilmDiziCategoryRow(categoryId: kFilmDiziTopRatedFilmsCategoryId, name: 'home.showcase.topRatedFilms'.tr, items: topRatedFilms));
+    }
+    final trendF = TrendCatalog.trendFilms(data);
+    if (trendF.isNotEmpty) {
+      rows.insert(0, FilmDiziCategoryRow(categoryId: kFilmDiziTrendFilmsCategoryId, name: 'home.showcase.trendFilms'.tr, items: trendF.take(20).toList()));
     }
 
     return FilmDiziFilmsFeed(
@@ -389,7 +443,7 @@ abstract final class FilmDiziCatalog {
   /// [buildSeries]'in aşamalı (yield'li) sürümü — dizi gruplama kategori
   /// başına çalıştığı için film feed'inden daha ağırdır; her kategori sonrası
   /// yield ederek UI'ı akıcı tutar.
-  static Future<FilmDiziSeriesFeed> buildSeriesChunked(M3uResult data) async {
+  static Future<FilmDiziSeriesFeed> buildSeriesChunked(M3uResult data, {bool limitCategories = true}) async {
     final items = visibleSeries(data);
     final grouped = _groupedSeriesSortedByAdded(items);
     final recentlyAdded = grouped.take(recentlyAddedLimit).toList();
@@ -403,7 +457,9 @@ abstract final class FilmDiziCatalog {
 
     final rows = <FilmDiziCategoryRow<SeriesItem>>[];
     var processed = 0;
-    for (final cat in data.seriesCategories) {
+    final daySeed = DateTime.now().millisecondsSinceEpoch ~/ 86400000;
+    final catList = limitCategories ? (data.seriesCategories.toList()..shuffle(Random(daySeed))) : data.seriesCategories;
+    for (final cat in catList) {
       final bucket = byCat[cat.id];
       if (bucket == null || bucket.length < minCategoryItems) continue;
       if (_seriesCategoryHidden(data, cat.id)) continue;
@@ -417,9 +473,21 @@ abstract final class FilmDiziCatalog {
           items: rowItems,
         ),
       );
+      if (limitCategories && rows.length >= 7) break;
       if (++processed % _chunkCategories == 0) {
         await Future<void>.delayed(Duration.zero);
       }
+    }
+
+    
+    // Custom Categories Injection
+    final topRatedS = TrendCatalog.topRatedSeries(data, limit: 20);
+    if (topRatedS.isNotEmpty) {
+      rows.insert(0, FilmDiziCategoryRow(categoryId: kFilmDiziTopRatedSeriesCategoryId, name: 'home.showcase.topRatedSeries'.tr, items: topRatedS));
+    }
+    final trendS = TrendCatalog.trendSeries(data);
+    if (trendS.isNotEmpty) {
+      rows.insert(0, FilmDiziCategoryRow(categoryId: kFilmDiziTrendSeriesCategoryId, name: 'home.showcase.trendSeries'.tr, items: trendS.take(20).toList()));
     }
 
     return FilmDiziSeriesFeed(
@@ -433,8 +501,9 @@ abstract final class FilmDiziCatalog {
   /// gruplama yalnızca o kategoriden çekilen küçük sayfa üzerinde yapılır.
   static Future<FilmDiziSeriesFeed> buildSeriesChunkedFromDb(
     M3uResult data,
-    PlaylistDataSource ds,
-  ) async {
+    PlaylistDataSource ds, {
+    bool limitCategories = true,
+  }) async {
     final recentRaw = await _recentSeriesRawFromDb(
       data,
       ds,
@@ -450,7 +519,9 @@ abstract final class FilmDiziCatalog {
 
     final rows = <FilmDiziCategoryRow<SeriesItem>>[];
     var processed = 0;
-    for (final cat in cats) {
+    final daySeed = DateTime.now().millisecondsSinceEpoch ~/ 86400000;
+    final catList = limitCategories ? (cats.toList()..shuffle(Random(daySeed))) : cats;
+    for (final cat in catList) {
       if (_seriesCategoryHidden(data, cat.id)) continue;
       if ((counts[cat.id] ?? 0) < minCategoryItems) continue;
 
@@ -481,9 +552,21 @@ abstract final class FilmDiziCatalog {
           items: rowItems,
         ),
       );
+      if (limitCategories && rows.length >= 7) break;
       if (++processed % _chunkCategories == 0) {
         await Future<void>.delayed(Duration.zero);
       }
+    }
+
+    
+    // Custom Categories Injection
+    final topRatedS = TrendCatalog.topRatedSeries(data, limit: 20);
+    if (topRatedS.isNotEmpty) {
+      rows.insert(0, FilmDiziCategoryRow(categoryId: kFilmDiziTopRatedSeriesCategoryId, name: 'home.showcase.topRatedSeries'.tr, items: topRatedS));
+    }
+    final trendS = TrendCatalog.trendSeries(data);
+    if (trendS.isNotEmpty) {
+      rows.insert(0, FilmDiziCategoryRow(categoryId: kFilmDiziTrendSeriesCategoryId, name: 'home.showcase.trendSeries'.tr, items: trendS.take(20).toList()));
     }
 
     return FilmDiziSeriesFeed(
@@ -692,6 +775,44 @@ abstract final class FilmDiziCatalog {
       await Future<void>.delayed(Duration.zero);
     }
     return _groupedSeriesSortedByAdded(bucket);
+  }
+
+  /// **İzlediğin için** — son izlenen filmin kategorisinden benzerler.
+  static List<VodItem> becauseYouWatchedFilms(
+    M3uResult data, {
+    int count = rowPreviewLimit,
+  }) {
+    final recent = recentlyWatchedFilms(data);
+    if (recent.isEmpty) return const <VodItem>[];
+    final seed = recent.first;
+    final out = <VodItem>[];
+    final seen = <int>{seed.id};
+    for (final v in visibleVods(data)) {
+      if (v.categoryId != seed.categoryId) continue;
+      if (!seen.add(v.id)) continue;
+      out.add(v);
+      if (out.length >= count) break;
+    }
+    return out;
+  }
+
+  /// **İzlediğin için** — son izlenen dizinin kategorisinden benzerler.
+  static List<SeriesItem> becauseYouWatchedSeries(
+    M3uResult data, {
+    int count = rowPreviewLimit,
+  }) {
+    final recent = recentlyWatchedSeries(data);
+    if (recent.isEmpty) return const <SeriesItem>[];
+    final seed = recent.first;
+    final out = <SeriesItem>[];
+    final seen = <int>{seed.id};
+    for (final s in visibleSeries(data)) {
+      if (s.categoryId != seed.categoryId) continue;
+      if (!seen.add(s.id)) continue;
+      out.add(s);
+      if (out.length >= count) break;
+    }
+    return out;
   }
 
   /// **Son izlenenler — Filmler.**

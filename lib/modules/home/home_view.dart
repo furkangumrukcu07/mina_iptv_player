@@ -166,6 +166,7 @@ class HomeView extends GetView<HomeController> {
                 child: scaled,
               );
             }),
+
             Container(
               decoration: BoxDecoration(
                 gradient: LinearGradient(

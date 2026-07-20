@@ -74,6 +74,9 @@ class TvKeyMappingService extends GetxService {
   }
 
   Future<void> assignKey(int keyId, String keyLabel, String action) async {
+    // Aynı eyleme (action) atanmış eski tuşlar varsa temizle
+    mappings.removeWhere((k, v) => v['action'] == action);
+    
     // Aynı tuşa atanmış eski eylemi sil/güncelle
     mappings[keyId] = {
       'action': action,

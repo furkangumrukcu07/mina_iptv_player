@@ -4,8 +4,10 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 
+import 'device_memory_service.dart';
 import '../../ui/glass_overlays.dart';
 import 'firebase_bootstrap.dart';
+import '../i18n/app_locale.dart';
 
 /// Uygulama arka planda / kapalıyken gelen FCM mesajlarını işleyen üst-seviye
 /// handler. Firebase plugin'i izole bir isolate'te çağırır; bu yüzden global
@@ -53,6 +55,15 @@ class MinaPushService extends GetxService {
       return this;
     }
     try {
+      // ANR Düzeltme: FCM token isteği (getToken) uygulamanın açılışında
+      // ağır bir Google Play Services IPC/Ağ isteği yapar ve Splash
+      // ekranını dondurabilir. İşlemi birkaç saniye öteliyoruz. Düşük RAM
+      // cihazlarda çok daha uzun (15sn) ötelenir.
+      final delayMs = Get.isRegistered<DeviceMemoryService>() 
+          ? Get.find<DeviceMemoryService>().recommendedStartupDelayMs 
+          : 3500;
+      await Future<void>.delayed(Duration(milliseconds: delayMs));
+
       _fm = FirebaseMessaging.instance;
 
       // İzin iste (Android 13+ runtime prompt; iOS APNs izni). Reddedilirse
@@ -76,6 +87,12 @@ class MinaPushService extends GetxService {
 
       // Herkese yayın topic'ine abone ol.
       await _fm!.subscribeToTopic(kBroadcastTopic);
+
+      // Kullanıcının mevcut diline özel topic'e abone ol (ör. all_tr, all_en).
+      // İleride dil değiştirildiğinde bu servise ulaşılıp
+      // eski dilden çıkma / yeni dile abone olma mantığı eklenebilir.
+      final lang = Get.locale?.languageCode ?? 'en';
+      await _fm!.subscribeToTopic('${kBroadcastTopic}_$lang');
 
       // Token (hedefli gönderim veya hata ayıklama için).
       token = await _fm!.getToken();

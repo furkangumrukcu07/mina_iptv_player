@@ -552,7 +552,8 @@ class VideoPlayerController extends ValueNotifier<VideoPlayerValue> {
       await _videoPlayerPlatform.play(_textureId);
       // Daha seyrek pozisyon sorgusu: UI isolate / method channel yükünü ve
       // ValueNotifier dinleyicilerinin tetiklenmesini azaltır (canlı yayın + OSD).
-      _timer = Timer.periodic(const Duration(milliseconds: 500), (Timer timer) async {
+      // 1s: armeabi_v7a / düşük uçta her 500ms Exo+Dart microtask ANR riski.
+      _timer = Timer.periodic(const Duration(milliseconds: 1000), (Timer timer) async {
         if (_isDisposed) {
           return;
         }

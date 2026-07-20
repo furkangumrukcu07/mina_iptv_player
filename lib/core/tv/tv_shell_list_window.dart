@@ -43,8 +43,7 @@ abstract final class TvShellListWindow {
   }
 
   static int maxContentItemsOf({required bool tvLite, required bool tvLayout}) {
-    if (tvLite) return 96;
-    if (tvLayout) return 140;
-    return maxContentItems;
+    // Limits removed so user can scroll indefinitely
+    return 100000;
   }
 }

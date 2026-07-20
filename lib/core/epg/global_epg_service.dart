@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:isolate';
 import 'dart:io';
 import 'dart:collection';
 
@@ -296,13 +297,40 @@ class GlobalEpgService extends GetxService {
       final xmlBytes = isGzip ? gzip.decode(raw) : raw;
       final xmlString = utf8.decode(xmlBytes, allowMalformed: true);
       
-      // Parse XML (isolate'da)
-      final parseResult = await compute(_parseXmltvInIsolate, xmlString);
+      // Parse XML (isolate'da chunked)
+      final receivePort = ReceivePort();
+      await Isolate.spawn(
+        xmltv_parser.parseXmlTvChunkedIsolate,
+        {'sendPort': receivePort.sendPort, 'xmlString': xmlString},
+      );
+
+      final channels = <String, EpgChannel>{};
+      final programmes = <String, List<EpgProgramme>>{};
+
+      await for (final msg in receivePort) {
+        if (msg is Map<String, dynamic>) {
+          final type = msg['type'];
+          if (type == 'channels') {
+            channels.addAll(msg['data'] as Map<String, EpgChannel>);
+          } else if (type == 'programmes') {
+            final chunk = msg['data'] as Map<String, List<EpgProgramme>>;
+            for (final e in chunk.entries) {
+              programmes.putIfAbsent(e.key, () => []).addAll(e.value);
+            }
+          } else if (type == 'done') {
+            receivePort.close();
+            break;
+          } else if (type == 'error') {
+            receivePort.close();
+            throw Exception('EPG Isolate Error: ${msg['error']} \n ${msg['stack']}');
+          }
+        }
+      }
       
       return EpgData(
         countryCode: countryCode,
-        channels: parseResult.$1,
-        programmes: parseResult.$2,
+        channels: channels,
+        programmes: programmes,
         sourceUrl: url,
       );
       
@@ -365,7 +393,7 @@ class GlobalEpgService extends GetxService {
         }
         await channelBatch.commit(noResult: true);
 
-        const chunkSize = 500;
+        const chunkSize = 150;
         var programmeBatch = txn.batch();
         var count = 0;
 
@@ -667,13 +695,8 @@ CREATE TABLE global_epg_programme (
     try {
       final file = await _normMapCacheFile();
       if (!await file.exists()) return null;
-      final raw = jsonDecode(await file.readAsString()) as Map<String, dynamic>;
-      if (raw['key'] != normMapKey) return null;
-      final entries = raw['entries'] as Map<String, dynamic>?;
-      if (entries == null || entries.isEmpty) return null;
-      return entries.map(
-        (k, v) => MapEntry(k, (v as List<dynamic>).cast<String>().toSet()),
-      );
+      final rawString = await file.readAsString();
+      return await compute(_parseNormMapIsolate, {'raw': rawString, 'key': normMapKey});
     } catch (e) {
       debugPrint('mina_iptv: Global EPG - norm map disk read failed: $e');
       return null;
@@ -686,10 +709,7 @@ CREATE TABLE global_epg_programme (
   ) async {
     try {
       final file = await _normMapCacheFile();
-      final payload = jsonEncode({
-        'key': normMapKey,
-        'entries': map.map((k, v) => MapEntry(k, v.toList())),
-      });
+      final payload = await compute(_encodeNormMapIsolate, {'key': normMapKey, 'map': map});
       await file.writeAsString(payload);
     } catch (e) {
       debugPrint('mina_iptv: Global EPG - norm map disk write failed: $e');
@@ -752,4 +772,27 @@ class Semaphore {
       _currentCount++;
     }
   }
+}
+
+// --- Isolate Top-Level Functions ---
+
+Map<String, Set<String>>? _parseNormMapIsolate(Map<String, dynamic> args) {
+  final rawString = args['raw'] as String;
+  final normMapKey = args['key'] as String;
+  final raw = jsonDecode(rawString) as Map<String, dynamic>;
+  if (raw['key'] != normMapKey) return null;
+  final entries = raw['entries'] as Map<String, dynamic>?;
+  if (entries == null || entries.isEmpty) return null;
+  return entries.map(
+    (k, v) => MapEntry(k, (v as List<dynamic>).cast<String>().toSet()),
+  );
+}
+
+String _encodeNormMapIsolate(Map<String, dynamic> args) {
+  final normMapKey = args['key'] as String;
+  final map = args['map'] as Map<String, Set<String>>;
+  return jsonEncode({
+    'key': normMapKey,
+    'entries': map.map((k, v) => MapEntry(k, v.toList())),
+  });
 }

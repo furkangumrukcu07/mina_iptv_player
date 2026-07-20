@@ -53,8 +53,8 @@ class _MediaKitOsdSnapshot {
 }
 
 class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
-  static const _hideAfterMobile = Duration(seconds: 3);
-  static const _hideAfterTv = Duration(seconds: 4);
+  static const _hideAfterMobile = Duration(seconds: 5);
+  static const _hideAfterTv = Duration(seconds: 5);
   static const _skipMs = 15_000;
   static const _loadingColor = Color(0xFF6ECFE0);
 
@@ -70,7 +70,7 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
   Worker? _tvOsdKeyBumpWorker;
   Timer? _hideTimer;
 
-  bool _visible = true;
+  final _visible = true.obs;
   late final ValueNotifier<_MediaKitOsdSnapshot?> _mkSnapNotifier;
 
   Player? _mkListenerTarget;
@@ -107,7 +107,7 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
     final settings = Get.find<AppSettingsService>();
     final remoteLayout = settings.layoutMode.value.usesRemoteNavigationStyle;
     if (remoteLayout) {
-      _visible = _pc.tvOsdVisible.value;
+      _visible.value = _pc.tvOsdVisible.value;
       _tvOsdVisibleWorker = ever(_pc.tvOsdVisible, (bool visible) {
         if (!mounted) return;
         if (!Get.find<AppSettingsService>()
@@ -116,8 +116,8 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
             .usesRemoteNavigationStyle) {
           return;
         }
-        if (_visible == visible) return;
-        setState(() => _visible = visible);
+        if (_visible.value == visible) return;
+        _visible.value = visible;
         if (visible) {
           _restartHideTimer();
           widget.onPlayerVisibilityChanged(true);
@@ -196,7 +196,7 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
       _restartHideTimer();
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      widget.onPlayerVisibilityChanged(_visible);
+      widget.onPlayerVisibilityChanged(_visible.value);
       _requestTvPlayerFocus();
       if (remoteLayout) {
         Future<void>.delayed(const Duration(milliseconds: 320), () {
@@ -288,7 +288,7 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
         _subDialogOpen) {
       return;
     }
-    if (_visible) {
+    if (_visible.value) {
       _firstOsdButtonFocus.requestFocus();
     } else {
       _mainFocusNode.requestFocus();
@@ -316,7 +316,7 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
     if (remote) {
       _pc.tvOsdVisible.value = true;
     }
-    setState(() => _visible = true);
+    _visible.value = true;
     widget.onPlayerVisibilityChanged(true);
     _restartHideTimer();
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -379,7 +379,7 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
         _restartHideTimer();
         return;
       }
-      setState(() => _visible = false);
+      _visible.value = false;
       widget.onPlayerVisibilityChanged(false);
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
@@ -400,7 +400,7 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
         .usesRemoteNavigationStyle) {
       _pc.tvOsdVisible.value = true;
     }
-    setState(() => _visible = true);
+    _visible.value = true;
     widget.onPlayerVisibilityChanged(true);
     _restartHideTimer();
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -802,8 +802,8 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
             }
             if (key == LogicalKeyboardKey.arrowUp) {
               // Yukarý tuþu: OSD'yi hemen göster ve önceki kanala geç
-              if (!_visible) {
-                setState(() => _visible = true);
+              if (!_visible.value) {
+                _visible.value = true;
                 widget.onPlayerVisibilityChanged(true);
               }
               _restartHideTimer();
@@ -819,8 +819,8 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
             }
             if (key == LogicalKeyboardKey.arrowDown) {
               // Aþaðý tuþu: OSD'yi hemen göster ve sonraki kanala geç
-              if (!_visible) {
-                setState(() => _visible = true);
+              if (!_visible.value) {
+                _visible.value = true;
                 widget.onPlayerVisibilityChanged(true);
               }
               _restartHideTimer();
@@ -1088,36 +1088,20 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
     final leftInset = MediaQuery.paddingOf(context).left;
     final rightInset = MediaQuery.paddingOf(context).right;
 
-    // Yatay mobil + küçük ekranlarda OSD kapsülü sığsın diye buton boyutunu,
-    // butonlar arası boşluğu ve sol bilgi bloğunun genişliğini cihaz
-    // pikselleriyle (logical px = DPI normalize edilmiş) ölçeklendiriyoruz.
-    // 11+ butonlu sağ şerit yine sığmazsa kapsülde yatay kaydırma devreye
-    // girer; bu hesap «doğal genişlik» eşiğini düşürmek içindir.
-    final screenW = MediaQuery.sizeOf(context).width - leftInset - rightInset;
-    final microCompactOsd = screenW < 480;
-    final ultraCompactOsd = screenW < 600;
-    final compactOsd = screenW < 780;
-    _osdBtnSize = microCompactOsd
-        ? 28.0
-        : ultraCompactOsd
-            ? 32.0
-            : compactOsd
-                ? 36.0
-                : 44.0;
-    _osdBtnGap = microCompactOsd
-        ? 2.0
-        : ultraCompactOsd
-            ? 3.0
-            : compactOsd
-                ? 4.0
-                : 6.0;
-    _osdInfoMaxW = microCompactOsd
-        ? 96.0
-        : ultraCompactOsd
-            ? 108.0
-            : compactOsd
-                ? 134.0
-                : 168.0;
+
+    final osdTier = Get.find<AppSettingsService>().osdSizeTier.value;
+    double osdScale = 1.0;
+    if (osdTier == 0) {
+      osdScale = 0.85;
+    } else if (osdTier == 2) {
+      osdScale = 1.25;
+    } else if (osdTier == 3) {
+      osdScale = 1.45;
+    }
+
+    _osdBtnSize = 44.0;
+    _osdBtnGap = 6.0;
+    _osdInfoMaxW = 168.0;
 
     return Obx(() {
       final ch = _pc.channel.value;
@@ -1178,7 +1162,7 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
                   key == LogicalKeyboardKey.arrowUp ? -1 : 1;
               final liveTimeshift = live && _pc.liveTimeshiftSeekAvailable;
               if (live && !liveTimeshift) {
-                if (!_visible) {
+                if (!_visible.value) {
                   _showControls();
                 } else {
                   _restartHideTimer();
@@ -1189,7 +1173,7 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
                 _zap(zapDelta);
                 return KeyEventResult.handled;
               }
-              if (!_visible) {
+              if (!_visible.value) {
                 _showControls();
                 return KeyEventResult.handled;
               }
@@ -1206,7 +1190,7 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
                 key == LogicalKeyboardKey.numpadEnter ||
                 key == LogicalKeyboardKey.space ||
                 key == LogicalKeyboardKey.gameButtonSelect) {
-              if (!_visible) {
+              if (!_visible.value) {
                 _showControls();
                 return KeyEventResult.handled;
               }
@@ -1214,28 +1198,30 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
             if (key == LogicalKeyboardKey.goBack ||
                 key == LogicalKeyboardKey.backspace ||
                 key == LogicalKeyboardKey.escape) {
-              if (_visible) {
-                setState(() {
-                  _visible = false;
-                  _mainFocusNode.requestFocus();
-                });
+              if (_visible.value) {
+                _visible.value = false;
+                _mainFocusNode.requestFocus();
                 widget.onPlayerVisibilityChanged(false);
                 return KeyEventResult.handled;
               }
               if (key == LogicalKeyboardKey.goBack) {
+                if (Get.isDialogOpen == true || Get.isBottomSheetOpen == true) {
+                  Get.back<void>();
+                  return KeyEventResult.handled;
+                }
                 Get.find<PlayerController>().handleBack();
                 return KeyEventResult.handled;
               }
             }
 
-            if (!_visible && isVod) {
+            if (!_visible.value && isVod) {
               if (key == LogicalKeyboardKey.arrowLeft ||
                   key == LogicalKeyboardKey.arrowRight) {
                 _showControls();
                 return KeyEventResult.handled;
               }
             }
-            if (_visible && isVod) {
+            if (_visible.value && isVod) {
               if (key == LogicalKeyboardKey.arrowLeft) {
                 _skipBack15();
                 return KeyEventResult.handled;
@@ -1276,14 +1262,17 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
                 right: 12 + rightInset,
                 bottom: 12 + bottomInset,
                 child: ExcludeFocus(
-                  excluding: !_visible,
-                  child: AnimatedSlide(
-                    duration: const Duration(milliseconds: 260),
-                    curve: Curves.easeOutCubic,
-                    offset: _visible ? Offset.zero : const Offset(0, 1.2),
+                  excluding: !_visible.value,
+                  child: Transform.scale(
+                    scale: osdScale,
+                    alignment: Alignment.bottomCenter,
+                    child: AnimatedSlide(
+                      duration: const Duration(milliseconds: 260),
+                      curve: Curves.easeOutCubic,
+                    offset: _visible.value ? Offset.zero : const Offset(0, 1.2),
                     child: AnimatedOpacity(
                       duration: const Duration(milliseconds: 220),
-                      opacity: _visible ? 1 : 0,
+                      opacity: _visible.value ? 1 : 0,
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -1645,27 +1634,6 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
                                                return Row(
                                                  mainAxisSize: MainAxisSize.min,
                                                  children: [
-                                                   SizedBox(width: _osdBtnGap),
-                                                   _osdButton(
-                                                     context,
-                                                     tooltip: mk
-                                                         ? 'player.engine.toExo'.tr
-                                                         : 'player.engine.toMediaKit'.tr,
-                                                     icon: mk
-                                                         ? Icons.memory_rounded
-                                                         : Icons.bolt_rounded,
-                                                     onPressed: () {
-                                                       _restartHideTimer();
-                                                       unawaited(
-                                                         _pc.switchToBetterPlayer(),
-                                                       );
-                                                       GlassSnackbar.show(
-                                                         'player.engine.title'.tr,
-                                                         'player.engine.switchedExo'.tr,
-                                                         snackPosition: SnackPosition.BOTTOM,
-                                                       );
-                                                     },
-                                                   ),
                                                    if (s.layoutMode.value == AppLayoutMode.mobile) ...[
                                                      SizedBox(width: _osdBtnGap),
                                                      _osdButton(
@@ -1696,6 +1664,7 @@ class _TvMediaKitPlayerControlsState extends State<TvMediaKitPlayerControls> {
                           ),
                         ],
                       ),
+                    ),
                     ),
                   ),
                 ),
@@ -1803,12 +1772,7 @@ class _MkTrackPickDialogState extends State<_MkTrackPickDialog> {
   @override
   Widget build(BuildContext context) {
     return CallbackShortcuts(
-      bindings: <ShortcutActivator, VoidCallback>{
-        const SingleActivator(LogicalKeyboardKey.goBack): () =>
-            Get.back<void>(),
-        const SingleActivator(LogicalKeyboardKey.escape): () =>
-            Get.back<void>(),
-      },
+      bindings: const <ShortcutActivator, VoidCallback>{},
       child: Focus(
         autofocus: true,
         onKeyEvent: (_, event) {
@@ -1816,12 +1780,6 @@ class _MkTrackPickDialogState extends State<_MkTrackPickDialog> {
             return KeyEventResult.handled;
           }
           final key = event.logicalKey;
-          if (key == LogicalKeyboardKey.goBack ||
-              key == LogicalKeyboardKey.escape ||
-              key == LogicalKeyboardKey.backspace) {
-            Get.back<void>();
-            return KeyEventResult.handled;
-          }
           if (key == LogicalKeyboardKey.arrowUp) {
             if (_isCloseFocused) {
               if (_entryFocusNodes.isNotEmpty) {
@@ -2053,10 +2011,7 @@ class _MkDialogCloseButtonState extends State<_MkDialogCloseButton> {
             key == LogicalKeyboardKey.enter ||
             key == LogicalKeyboardKey.numpadEnter ||
             key == LogicalKeyboardKey.space ||
-            key == LogicalKeyboardKey.gameButtonSelect ||
-            key == LogicalKeyboardKey.goBack ||
-            key == LogicalKeyboardKey.escape ||
-            key == LogicalKeyboardKey.backspace) {
+            key == LogicalKeyboardKey.gameButtonSelect) {
           widget.onClose();
           return KeyEventResult.handled;
         }

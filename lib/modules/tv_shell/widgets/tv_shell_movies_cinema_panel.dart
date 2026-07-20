@@ -1,4 +1,4 @@
-import 'dart:async' show unawaited;
+import 'dart:async';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
@@ -400,8 +400,6 @@ class _CinemaInfoBlock extends StatelessWidget {
 
     final title = FilmDiziVodMetaLabels.displayTitle(vod!, omdb);
     final year = FilmDiziVodMetaLabels.releaseYear(vod!, omdb, xtream);
-    final country = FilmDiziVodMetaLabels.countryLabel(omdb, xtream);
-    final rated = FilmDiziVodMetaLabels.ratedLabel(omdb);
     final imdb = (omdb?.imdbRating != null && omdb!.imdbRating != 'N/A')
         ? omdb!.imdbRating!.trim()
         : null;
@@ -416,10 +414,8 @@ class _CinemaInfoBlock extends StatelessWidget {
                 : null);
     final runtime = FilmDiziVodMetaLabels.runtimeLabel(vod!, omdb, xtream) ??
         vodFmtOmdbRuntimeForDetail(omdb?.runtime);
-    final genres = FilmDiziVodMetaLabels.genreLabels(omdb, xtream);
-    final techPills = FilmDiziVodMetaLabels.techPills(vod!, xtream);
-    final cast = FilmDiziVodMetaLabels.castMembers(omdb, xtream);
     final plot = FilmDiziVodMetaLabels.plotText(vod!, omdb, xtream) ?? '';
+    final cast = FilmDiziVodMetaLabels.castMembers(omdb, xtream);
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -428,6 +424,18 @@ class _CinemaInfoBlock extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
+              if (loading)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: palette.accent,
+                    ),
+                  ),
+                ),
               Text(
                 title,
                 maxLines: pinned ? 3 : 2,
@@ -435,80 +443,41 @@ class _CinemaInfoBlock extends StatelessWidget {
                 style: palette.titleStyle(size: pinned ? 28 : 24),
               ),
               const SizedBox(height: 10),
-              Wrap(
-                spacing: 8,
-                runSpacing: 6,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  if (rating != null)
-                    _CinemaMetaChip(
-                      palette: palette,
-                      label: rating,
-                      filled: true,
-                      icon: Icons.star_rounded,
-                    ),
-                  if (year != null)
-                    _CinemaMetaChip(palette: palette, label: year),
-                  if (runtime != null)
-                    _CinemaMetaChip(palette: palette, label: runtime),
-                  if (country != null)
-                    _CinemaMetaChip(
-                      palette: palette,
-                      label: country,
-                      icon: Icons.public_rounded,
-                    ),
-                  if (rated != null)
-                    _CinemaMetaChip(
-                      palette: palette,
-                      label: rated,
-                      icon: Icons.local_movies_outlined,
-                    ),
-                  for (final genre in genres)
-                    _CinemaMetaChip(palette: palette, label: genre),
-                  for (final pill in techPills)
-                    _CinemaMetaChip(
-                      palette: palette,
-                      label: pill.label,
-                      filled: pill.highlight,
-                    ),
-                  if (loading)
-                    SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: palette.accent,
-                      ),
-                    ),
-                ],
-              ),
-              if (cast.isNotEmpty) ...[
-                const SizedBox(height: 10),
-                _CinemaCastRow(palette: palette, cast: cast),
-              ],
+              const SizedBox(height: 10),
               if (pinned && plot.isNotEmpty) ...[
-                const SizedBox(height: 14),
                 SizedBox(
-                  height: (MediaQuery.sizeOf(context).height * 0.26)
-                      .clamp(100.0, 200.0),
+                  height: (MediaQuery.sizeOf(context).height * 0.15)
+                      .clamp(60.0, 120.0),
                   child: AutoScrollVerticalText(
                     text: plot,
-                    maxVisibleLines: 8,
-                    style: palette.bodyStyle(size: 10.125, weight: FontWeight.w500)
+                    maxVisibleLines: 6,
+                    style: palette.bodyStyle(size: 11.5, weight: FontWeight.w500)
                         .copyWith(
                       color: palette.body.withValues(alpha: 0.92),
-                      height: 1.42,
+                      height: 1.45,
                     ),
                   ),
                 ),
+                const SizedBox(height: 16),
               ] else if (!pinned && plot.isNotEmpty) ...[
-                const SizedBox(height: 10),
                 Text(
                   plot,
-                  maxLines: 5,
+                  maxLines: 4,
                   overflow: TextOverflow.ellipsis,
-                  style: palette.mutedStyle(size: 9).copyWith(height: 1.35),
+                  style: palette.mutedStyle(size: 10.5).copyWith(height: 1.4),
                 ),
+                const SizedBox(height: 16),
+              ],
+              _CinemaGlassMetadataBar(
+                palette: palette,
+                rating: rating,
+                year: year,
+                runtime: runtime,
+                audioSubtitle: FilmDiziVodMetaLabels.audioSubtitleLabel(omdb, xtream),
+              ),
+              if (cast.isNotEmpty && pinned) ...[
+                const SizedBox(height: 16),
+                _CinemaCastRow(palette: palette, cast: cast),
               ],
             ],
           ),
@@ -527,28 +496,70 @@ class _CinemaCastRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return SizedBox(
-      height: 40,
+      height: 74,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
         itemCount: cast.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        separatorBuilder: (_, __) => const SizedBox(width: 14),
         itemBuilder: (context, index) {
           final member = cast[index];
-          return Tooltip(
-            message: member.name,
-            child: CircleAvatar(
-              radius: 18,
-              backgroundColor: palette.body.withValues(alpha: 0.12),
-              backgroundImage: member.profilePath != null
-                  ? CachedNetworkImageProvider(member.profilePath!)
-                  : null,
-              child: member.profilePath == null
-                  ? Icon(
-                      Icons.person_rounded,
-                      size: 18,
-                      color: palette.muted.withValues(alpha: 0.7),
-                    )
-                  : null,
+          return Container(
+            width: 220,
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.25),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.15),
+                width: 0.85,
+              ),
+            ),
+            padding: const EdgeInsets.all(8.0),
+            child: Row(
+              children: [
+                CircleAvatar(
+                  radius: 28,
+                  backgroundColor: Colors.white.withValues(alpha: 0.1),
+                  backgroundImage: member.profilePath != null
+                      ? CachedNetworkImageProvider(member.profilePath!)
+                      : null,
+                  child: member.profilePath == null
+                      ? const Icon(Icons.person, color: Colors.white38)
+                      : null,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        member.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      if (member.character != null &&
+                          member.character!.trim().isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          member.character!.trim(),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.6),
+                            fontSize: 11,
+                          ),
+                        ),
+                      ],
+
+                    ],
+                  ),
+                ),
+              ],
             ),
           );
         },
@@ -556,6 +567,7 @@ class _CinemaCastRow extends StatelessWidget {
     );
   }
 }
+
 
 class _CinemaActionBar extends StatefulWidget {
   const _CinemaActionBar({
@@ -866,46 +878,6 @@ class _CinemaActionButton extends StatelessWidget {
   }
 }
 
-class _CinemaMetaChip extends StatelessWidget {
-  const _CinemaMetaChip({
-    required this.palette,
-    required this.label,
-    this.filled = false,
-    this.icon,
-  });
-
-  final TvShellPalette palette;
-  final String label;
-  final bool filled;
-  final IconData? icon;
-
-  @override
-  Widget build(BuildContext context) {
-    final chipFg = filled
-        ? Colors.black
-        : palette.cinemaActionSecondaryForeground;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-      decoration: palette.cinemaMetaChipDecoration(filled: filled),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (icon != null) ...[
-            Icon(icon, size: 14, color: chipFg),
-            const SizedBox(width: 4),
-          ],
-          Text(
-            label,
-            style: palette.bodyStyle(size: 12, weight: FontWeight.w700).copyWith(
-                  color: chipFg,
-                ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _CinemaPosterTile extends StatefulWidget {
   const _CinemaPosterTile({
     super.key,
@@ -983,6 +955,102 @@ class _CinemaPosterTileState extends State<_CinemaPosterTile> {
         enableDpadFocus: false,
         minimalOverlays: true,
         onTap: widget.onOpen,
+      ),
+    );
+  }
+}
+
+class _CinemaGlassMetadataBar extends StatelessWidget {
+  const _CinemaGlassMetadataBar({
+    required this.palette,
+    required this.rating,
+    required this.year,
+    required this.runtime,
+    required this.audioSubtitle,
+  });
+
+  final TvShellPalette palette;
+  final String? rating;
+  final String? year;
+  final String? runtime;
+  final String? audioSubtitle;
+
+  Widget _buildDivider() {
+    return Container(
+      width: 1,
+      height: 28,
+      color: Colors.white.withValues(alpha: 0.2),
+    );
+  }
+
+  Widget _buildCol(String title, String value, IconData icon) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(title, style: palette.mutedStyle(size: 10)),
+        const SizedBox(height: 4),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (title == 'Değerlendirme') ...[
+              Text(value, style: palette.titleStyle(size: 14)),
+              const SizedBox(width: 4),
+              Icon(icon, color: palette.accent, size: 14),
+            ] else ...[
+              Icon(icon, color: Colors.white.withValues(alpha: 0.7), size: 14),
+              const SizedBox(width: 4),
+              Text(
+                value.length > 20 ? '${value.substring(0, 18)}...' : value,
+                style: palette.bodyStyle(size: 12, weight: FontWeight.w600),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ]
+          ],
+        )
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        color: Colors.black.withValues(alpha: 0.25),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.15),
+          width: 0.85,
+        ),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Colors.white.withValues(alpha: 0.08),
+            Colors.white.withValues(alpha: 0.02),
+          ],
+        ),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: [
+          Expanded(child: _buildCol('Değerlendirme', rating ?? 'N/A', Icons.star_rounded)),
+          _buildDivider(),
+          const SizedBox(width: 16),
+          Expanded(child: _buildCol('Yıl', year ?? 'N/A', Icons.calendar_today_rounded)),
+          _buildDivider(),
+          const SizedBox(width: 16),
+          Expanded(child: _buildCol('Süre', runtime ?? 'N/A', Icons.schedule_rounded)),
+          _buildDivider(),
+          const SizedBox(width: 16),
+          Expanded(
+            flex: 2,
+            child: _buildCol('Ses/Altyazı', audioSubtitle ?? 'Belirtilmemiş', Icons.closed_caption_rounded),
+          ),
+        ],
       ),
     );
   }

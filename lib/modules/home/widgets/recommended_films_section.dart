@@ -1,4 +1,5 @@
-import 'dart:async' show unawaited;
+import 'dart:async';
+import 'dart:math' as math;
 import 'dart:ui';
 
 import 'package:flutter/material.dart';
@@ -9,6 +10,7 @@ import '../../../core/home/film_dizi_detail_args.dart';
 import '../../../core/home/recommended_films_catalog.dart';
 import '../../../core/home/series_episode_loader.dart';
 import '../../../core/home/series_name_grouping.dart';
+import '../../../core/home/trend_catalog.dart';
 import '../../../core/layout/app_layout_mode.dart' show AppLayoutMode, filmDiziRemoteNavEnabled;
 import '../../../core/routes/app_routes.dart';
 import '../../../core/services/app_settings_service.dart';
@@ -21,6 +23,7 @@ import '../../../domain/entities/series.dart';
 import '../../../domain/entities/vod.dart';
 import '../../../domain/repositories/playlist_repository.dart';
 import '../../../ui/tv_dpad_focus.dart';
+import '../../../ui/empty_state.dart';
 import '../../player/player_route_args.dart';
 import '../recommended_films/recommended_films_controller.dart';
 import 'film_dizi_hero_banner.dart';
@@ -268,9 +271,8 @@ class RecommendedFilmsSection extends StatelessWidget {
     // kendi Obx'inde) yeniden çizilir. Sekme değişimi bunları rebuild etmez.
     final filmsBody = Obx(
       () {
-        // OMDb puanları gelince tüm film gövdesi bir kez yenilenir (kart başına
-        // Obx yerine — çok kategori satırında stack overflow önlenir).
-        RecommendedFilmsRatingCache.revision.value;
+        // Puan rozeti strip-level re-sort gerektirmez; revision dinleme
+        // tüm film gövdesini gereksiz rebuild ederdi (A5).
         return _FilmsBody(
         key: const PageStorageKey<String>('film_dizi_films_tab'),
         data: data,
@@ -399,24 +401,59 @@ class _FilmsBody extends StatelessWidget {
         .where((v) => RecommendedFilmsRatingCache.effectiveRating(v) > 0)
         .toList();
     final source = rated.length >= 3 ? rated : recentlyAdded;
-    return source.take(5).map((v) {
+    final daySeed = DateTime.now().millisecondsSinceEpoch ~/ 86400000;
+    final rng = math.Random(daySeed);
+    final shuffledSource = source.toList()..shuffle(rng);
+    List<String> extractTags(String rawName) {
+      final tags = <String>[];
+      final upper = rawName.toUpperCase();
+      if (upper.contains('4K') || upper.contains('UHD')) tags.add('4K');
+      if (upper.contains('HDR')) tags.add('HDR');
+      if (upper.contains('1080P') || upper.contains('FHD')) tags.add('FHD');
+      return tags;
+    }
+
+    final poolList = shuffledSource.take(10).toList();
+    final slides = <FilmDiziHeroSlide>[];
+
+    for (final v in poolList) {
       final cleaned = RecommendedFilmsCatalog.cleanTitleAndYear(v.name);
       final title = cleaned.$1.trim().isNotEmpty ? cleaned.$1.trim() : v.name;
-      return FilmDiziHeroSlide(
+      slides.add(FilmDiziHeroSlide(
         title: title,
         posterUrl: v.posterUrl,
         rating: RecommendedFilmsRatingCache.effectiveRating(v),
-        // İzle → doğrudan oynat; Detay → film detay sayfası.
+        tags: extractTags(v.name),
         onPlay: () => onPlayDirect(v),
         onDetail: () => onOpenDetail(v),
-      );
-    }).toList();
+      ));
+    }
+
+    if (slides.length > 1) {
+      return List.generate(slides.length, (i) {
+        final current = slides[i];
+        final next = slides[(i + 1) % slides.length];
+        return FilmDiziHeroSlide(
+          title: current.title,
+          posterUrl: current.posterUrl,
+          rating: current.rating,
+          tags: current.tags,
+          onPlay: current.onPlay,
+          onDetail: current.onDetail,
+          nextSlidePreview: next,
+        );
+      });
+    }
+
+    return slides;
   }
 
   @override
   Widget build(BuildContext context) {
     if (feed == null || feed!.isEmpty) {
-      return _EmptyMessage(message: 'filmDizi.emptyFilms'.tr);
+      return Center(
+        child: EmptyStateWidget(message: 'filmDizi.emptyFilms'.tr),
+      );
     }
     final f = feed!;
     final heroSlides = _heroSlides(f.recentlyAdded);
@@ -428,6 +465,16 @@ class _FilmsBody extends StatelessWidget {
     // recentlyAdded listesinden ilk rowPreviewLimit kadar. «Tümünü gör» 50'yi açar.
     final lastAddedPreview =
         f.recentlyAdded.take(FilmDiziCatalog.rowPreviewLimit).toList();
+    
+    final topRatedPreview = RecommendedFilmsCatalog.build(
+      data,
+      limit: FilmDiziCatalog.rowPreviewLimit,
+    ).topRated;
+    
+    final trendFilmsPreview = TrendCatalog.trendFilms(data)
+        .take(FilmDiziCatalog.rowPreviewLimit)
+        .toList();
+
     final rowGap = isTv ? 32.0 : 24.0;
     final bottomPad = 24.0 + MediaQuery.paddingOf(context).bottom;
 
@@ -469,6 +516,40 @@ class _FilmsBody extends StatelessWidget {
                       recentlyWatchedPreview[i],
                       categoryName:
                           'recommendedFilms.recentlyWatched.title'.tr,
+                    ),
+                  ),
+                ),
+              ),
+              SliverToBoxAdapter(child: SizedBox(height: rowGap)),
+            ],
+          );
+        }),
+        Obx(() {
+          final becausePreview = controller.filmsBecauseYouWatched
+              .take(FilmDiziCatalog.rowPreviewLimit)
+              .toList(growable: false);
+          if (becausePreview.isEmpty) {
+            return const SliverToBoxAdapter(child: SizedBox.shrink());
+          }
+          return SliverMainAxisGroup(
+            slivers: [
+              SliverToBoxAdapter(
+                child: _HorizontalRow(
+                  title: 'home.showcase.becauseYouWatched'.tr,
+                  accent: accent,
+                  onSurface: onSurface,
+                  posterWidth: posterWidth,
+                  sectionPadding: sectionPadding,
+                  isTv: isTv,
+                  onSeeAll: null,
+                  childCount: becausePreview.length,
+                  itemBuilder: (i) => FilmDiziPosterCard.film(
+                    vod: becausePreview[i],
+                    posterWidth: posterWidth,
+                    compactLabel: true,
+                    onTap: () => onOpenDetail(
+                      becausePreview[i],
+                      categoryName: 'home.showcase.becauseYouWatched'.tr,
                     ),
                   ),
                 ),
@@ -533,6 +614,64 @@ class _FilmsBody extends StatelessWidget {
                     onTap: () => onOpenDetail(
                       lastAddedPreview[i],
                       categoryName: 'recommendedFilms.last50Films'.tr,
+                    ),
+                  ),
+                ),
+                SizedBox(height: rowGap),
+              ],
+            ),
+          ),
+        if (topRatedPreview.isNotEmpty)
+          SliverToBoxAdapter(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _HorizontalRow(
+                  title: 'home.showcase.topRatedFilms'.tr,
+                  accent: accent,
+                  onSurface: onSurface,
+                  posterWidth: posterWidth,
+                  sectionPadding: sectionPadding,
+                  isTv: isTv,
+                  onSeeAll: () => onSeeAllCategory(kFilmDiziTopRatedFilmsCategoryId, 'home.showcase.topRatedFilms'.tr),
+                  childCount: topRatedPreview.length,
+                  itemBuilder: (i) => FilmDiziPosterCard.film(
+                    vod: topRatedPreview[i],
+                    posterWidth: posterWidth,
+                    compactLabel: true,
+                    onTap: () => onOpenDetail(
+                      topRatedPreview[i],
+                      categoryName: 'home.showcase.topRatedFilms'.tr,
+                    ),
+                  ),
+                ),
+                SizedBox(height: rowGap),
+              ],
+            ),
+          ),
+        if (trendFilmsPreview.isNotEmpty)
+          SliverToBoxAdapter(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _HorizontalRow(
+                  title: 'home.showcase.trendFilms'.tr,
+                  accent: accent,
+                  onSurface: onSurface,
+                  posterWidth: posterWidth,
+                  sectionPadding: sectionPadding,
+                  isTv: isTv,
+                  onSeeAll: () => onSeeAllCategory(kFilmDiziTrendFilmsCategoryId, 'home.showcase.trendFilms'.tr),
+                  childCount: trendFilmsPreview.length,
+                  itemBuilder: (i) => FilmDiziPosterCard.film(
+                    vod: trendFilmsPreview[i],
+                    posterWidth: posterWidth,
+                    compactLabel: true,
+                    onTap: () => onOpenDetail(
+                      trendFilmsPreview[i],
+                      categoryName: 'home.showcase.trendFilms'.tr,
                     ),
                   ),
                 ),
@@ -625,22 +764,48 @@ class _SeriesBody extends StatelessWidget {
   /// puanı tutmadığımız için `rating: 0` veririz; banner puan satırını gizler.
   List<FilmDiziHeroSlide> _heroSlides(List<SeriesItem> recentlyAdded) {
     if (recentlyAdded.isEmpty) return const <FilmDiziHeroSlide>[];
-    return recentlyAdded.take(5).map((s) {
+    final daySeed = DateTime.now().millisecondsSinceEpoch ~/ 86400000;
+    final rng = math.Random(daySeed);
+    final shuffledSource = recentlyAdded.toList()..shuffle(rng);
+    final poolList = shuffledSource.take(10).toList();
+    final slides = <FilmDiziHeroSlide>[];
+
+    for (final s in poolList) {
       final title = SeriesNameGrouping.displayTitleFromName(s.name);
-      return FilmDiziHeroSlide(
+      slides.add(FilmDiziHeroSlide(
         title: title,
         posterUrl: s.posterUrl,
         rating: 0,
         onPlay: () => onPlayDirect(s),
         onDetail: () => onOpen(s),
-      );
-    }).toList();
+      ));
+    }
+
+    if (slides.length > 1) {
+      return List.generate(slides.length, (i) {
+        final current = slides[i];
+        final next = slides[(i + 1) % slides.length];
+        return FilmDiziHeroSlide(
+          title: current.title,
+          posterUrl: current.posterUrl,
+          rating: current.rating,
+          tags: current.tags,
+          onPlay: current.onPlay,
+          onDetail: current.onDetail,
+          nextSlidePreview: next,
+        );
+      });
+    }
+
+    return slides;
   }
 
   @override
   Widget build(BuildContext context) {
     if (feed == null || feed!.isEmpty) {
-      return _EmptyMessage(message: 'filmDizi.emptySeries'.tr);
+      return SliverToBoxAdapter(
+        child: EmptyStateWidget(message: 'filmDizi.emptySeries'.tr),
+      );
     }
     final f = feed!;
     final heroSlides = _heroSlides(f.recentlyAdded);
@@ -650,6 +815,20 @@ class _SeriesBody extends StatelessWidget {
     // "Son eklenen 50 dizi" satırı önizlemesi — «Tümünü gör» 50'yi açar.
     final lastAddedPreview =
         f.recentlyAdded.take(FilmDiziCatalog.rowPreviewLimit).toList();
+
+    final allSeries = FilmDiziCatalog.visibleSeries(data);
+    final topRatedSeriesAll = allSeries
+        .where((s) => SeriesRatingCache.effectiveRating(s) > 0)
+        .toList()
+      ..sort((a, b) => SeriesRatingCache.effectiveRating(b)
+          .compareTo(SeriesRatingCache.effectiveRating(a)));
+    final topRatedSeriesPreview =
+        topRatedSeriesAll.take(FilmDiziCatalog.rowPreviewLimit).toList();
+
+    final trendSeriesPreview = TrendCatalog.trendSeries(data)
+        .take(FilmDiziCatalog.rowPreviewLimit)
+        .toList();
+
     final rowGap = isTv ? 32.0 : 24.0;
     final bottomPad = 24.0 + MediaQuery.paddingOf(context).bottom;
 
@@ -755,6 +934,64 @@ class _SeriesBody extends StatelessWidget {
                     onTap: () => onOpen(
                       lastAddedPreview[i],
                       categoryName: 'recommendedFilms.last50Series'.tr,
+                    ),
+                  ),
+                ),
+                SizedBox(height: rowGap),
+              ],
+            ),
+          ),
+        if (topRatedSeriesPreview.isNotEmpty)
+          SliverToBoxAdapter(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _HorizontalRow(
+                  title: 'home.showcase.topRatedSeries'.tr,
+                  accent: accent,
+                  onSurface: onSurface,
+                  posterWidth: posterWidth,
+                  sectionPadding: sectionPadding,
+                  isTv: isTv,
+                  onSeeAll: () => onSeeAllCategory(kFilmDiziTrendSeriesCategoryId, 'home.showcase.topRatedSeries'.tr),
+                  childCount: topRatedSeriesPreview.length,
+                  itemBuilder: (i) => FilmDiziPosterCard.series(
+                    series: topRatedSeriesPreview[i],
+                    posterWidth: posterWidth,
+                    compactLabel: true,
+                    onTap: () => onOpen(
+                      topRatedSeriesPreview[i],
+                      categoryName: 'home.showcase.topRatedSeries'.tr,
+                    ),
+                  ),
+                ),
+                SizedBox(height: rowGap),
+              ],
+            ),
+          ),
+        if (trendSeriesPreview.isNotEmpty)
+          SliverToBoxAdapter(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _HorizontalRow(
+                  title: 'home.showcase.trendSeries'.tr,
+                  accent: accent,
+                  onSurface: onSurface,
+                  posterWidth: posterWidth,
+                  sectionPadding: sectionPadding,
+                  isTv: isTv,
+                  onSeeAll: () => onSeeAllCategory(kFilmDiziTrendSeriesCategoryId, 'home.showcase.trendSeries'.tr),
+                  childCount: trendSeriesPreview.length,
+                  itemBuilder: (i) => FilmDiziPosterCard.series(
+                    series: trendSeriesPreview[i],
+                    posterWidth: posterWidth,
+                    compactLabel: true,
+                    onTap: () => onOpen(
+                      trendSeriesPreview[i],
+                      categoryName: 'home.showcase.trendSeries'.tr,
                     ),
                   ),
                 ),
@@ -1051,24 +1288,3 @@ class _SeriesPlayLoadingDialog extends StatelessWidget {
   }
 }
 
-class _EmptyMessage extends StatelessWidget {
-  const _EmptyMessage({required this.message});
-
-  final String message;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 32),
-      child: Center(
-        child: Text(
-          message,
-          textAlign: TextAlign.center,
-          style: TextStyle(
-            color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.65),
-          ),
-        ),
-      ),
-    );
-  }
-}

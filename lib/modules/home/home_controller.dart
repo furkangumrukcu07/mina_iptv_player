@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart'
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'dart:async';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../../core/home/film_dizi_detail_args.dart';
 import '../../core/services/showcase_in_app_pip_service.dart';
@@ -70,10 +71,15 @@ class HomeController extends GetxController {
   final cachedShowcaseFilms = Rxn<FilmDiziFilmsFeed>();
   final cachedShowcaseSeries = Rxn<FilmDiziSeriesFeed>();
   final cachedShowcaseTopRatedAll = Rxn<List<VodItem>>();
+  final cachedShowcaseTrendFilms = Rxn<List<VodItem>>();
+  final cachedShowcaseTrendSeries = Rxn<List<SeriesItem>>();
   final cachedShowcaseMixedFilmsAll = Rxn<List<VodItem>>();
   final cachedShowcaseMixedSeriesAll = Rxn<List<SeriesItem>>();
   final cachedShowcaseFilmCategorySeeAll = Rxn<Map<int, List<VodItem>>>();
   final cachedShowcaseSeriesCategorySeeAll = Rxn<Map<int, List<SeriesItem>>>();
+
+  /// Vitrin sinematik arkaplanı için mevcut aktif olan afişin URL'si.
+  final showcaseAmbientPoster = RxnString();
 
   final _cache = Get.find<PlaylistCacheService>();
   final _fav = Get.find<FavoritesService>();
@@ -105,6 +111,7 @@ class HomeController extends GetxController {
     cachedShowcaseMixedSeriesAll.value = null;
     cachedShowcaseFilmCategorySeeAll.value = null;
     cachedShowcaseSeriesCategorySeeAll.value = null;
+    showcaseAmbientPoster.value = null;
   }
 
   int _nameMatchScore(String name, String normalizedQuery) {
@@ -148,57 +155,63 @@ class HomeController extends GetxController {
         Get.find<AppSettingsService>().xtreamHideRevision.value,
       );
 
-  List<Channel> _rankedChannelsForQuery(String raw, int limit) {
+  Future<List<Channel>> _rankedChannelsForQuery(String raw, int limit) async {
     final q = raw.trim().toLowerCase();
     final d = data;
     if (q.isEmpty || d == null) return [];
     final app = Get.find<AppSettingsService>();
     final scored = <(Channel, int)>[];
+    int _yieldCounter = 0;
     for (final ch in d.channels) {
       if (PlaylistCategoryHide.channelHiddenInLive(app, _cache, d, ch)) {
         continue;
       }
       final s = _nameMatchScore(ch.name, q);
       if (s >= 0) scored.add((ch, s));
+      if (++_yieldCounter % 1500 == 0) await Future.delayed(Duration.zero);
     }
     scored.sort((a, b) => b.$2.compareTo(a.$2));
     return scored.take(limit).map((e) => e.$1).toList();
   }
 
-  List<VodItem> _rankedVodsForQuery(String raw, int limit) {
+  Future<List<VodItem>> _rankedVodsForQuery(String raw, int limit) async {
     final q = raw.trim().toLowerCase();
     final d = data;
     if (q.isEmpty || d == null) return [];
     final app = Get.find<AppSettingsService>();
     final scored = <(VodItem, int)>[];
+    int _yieldCounter = 0;
     for (final v in d.vod) {
       if (PlaylistCategoryHide.vodItemHidden(app, _cache, d, v)) continue;
       final s = _nameMatchScore(v.name, q);
       if (s >= 0) scored.add((v, s));
+      if (++_yieldCounter % 1500 == 0) await Future.delayed(Duration.zero);
     }
     scored.sort((a, b) => b.$2.compareTo(a.$2));
     return scored.take(limit).map((e) => e.$1).toList();
   }
 
-  List<SeriesItem> _rankedSeriesForQuery(String raw, int limit) {
+  Future<List<SeriesItem>> _rankedSeriesForQuery(String raw, int limit) async {
     final q = raw.trim().toLowerCase();
     final d = data;
     if (q.isEmpty || d == null) return [];
     final app = Get.find<AppSettingsService>();
     final scored = <(SeriesItem, int)>[];
+    int _yieldCounter = 0;
     for (final s in d.series) {
       if (PlaylistCategoryHide.seriesItemHidden(app, _cache, d, s)) {
         continue;
       }
       final sc = _nameMatchScore(s.name, q);
       if (sc >= 0) scored.add((s, sc));
+      if (++_yieldCounter % 1500 == 0) await Future.delayed(Duration.zero);
     }
     scored.sort((a, b) => b.$2.compareTo(a.$2));
     return scored.take(limit).map((e) => e.$1).toList();
   }
 
-  HomeUnifiedSearchBuckets portraitSearchBuckets(String raw) {
-    // Existing synchronous implementation
+  Future<HomeUnifiedSearchBuckets> portraitSearchBucketsAsyncMemory(
+      String raw) async {
     final normalized = raw.trim().toLowerCase();
     if (normalized.isEmpty) {
       return const HomeUnifiedSearchBuckets(
@@ -222,10 +235,20 @@ class HomeController extends GetxController {
     }
     final cached = _searchBucketsCache[normalized];
     if (cached != null) return cached;
+
+    // Yield before starting heavy loops
+    await Future.delayed(Duration.zero);
+
+    final channels =
+        await _rankedChannelsForQuery(normalized, _kPortraitSearchLimit);
+    final vods = await _rankedVodsForQuery(normalized, _kPortraitSearchLimit);
+    final series =
+        await _rankedSeriesForQuery(normalized, _kPortraitSearchLimit);
+
     final buckets = HomeUnifiedSearchBuckets(
-      channels: _rankedChannelsForQuery(normalized, _kPortraitSearchLimit),
-      vods: _rankedVodsForQuery(normalized, _kPortraitSearchLimit),
-      series: _rankedSeriesForQuery(normalized, _kPortraitSearchLimit),
+      channels: channels,
+      vods: vods,
+      series: series,
     );
     if (_searchBucketsCache.length >= _searchBucketsCacheMaxEntries) {
       _searchBucketsCache.clear();
@@ -254,7 +277,7 @@ class HomeController extends GetxController {
       );
     }
     if (!_ds.isDbBacked) {
-      return portraitSearchBuckets(raw);
+      return await portraitSearchBucketsAsyncMemory(raw);
     }
 
     final scopeKey = _searchBucketsScope(d);
@@ -362,7 +385,9 @@ class HomeController extends GetxController {
     if (_homeCountsScopeKey == scope) return;
     _homeCountsScopeKey = scope;
 
-    final ds = Get.isRegistered<PlaylistDataSource>() ? Get.find<PlaylistDataSource>() : null;
+    final ds = Get.isRegistered<PlaylistDataSource>()
+        ? Get.find<PlaylistDataSource>()
+        : null;
     if (ds != null) {
       computeHomeCardCounts(
         d: d,
@@ -379,19 +404,16 @@ class HomeController extends GetxController {
 
   /// Ana sayfa «Canlı» kartı — gizlenmemiş kanallar.
   int get homeLiveCount {
-    _ensureHomeCountsFresh();
     return homeCardCounts.value?.live ?? 0;
   }
 
   /// Ana sayfa «Film» kartı — gizlenmemiş VOD.
   int get homeFilmsCount {
-    _ensureHomeCountsFresh();
     return homeCardCounts.value?.films ?? 0;
   }
 
   /// Ana sayfa «Film & Dizi» — görünür film + dizi sayısı.
   int get homeRecommendedFilmsCount {
-    _ensureHomeCountsFresh();
     final counts = homeCardCounts.value;
     if (counts != null) {
       return counts.films + counts.series;
@@ -403,7 +425,6 @@ class HomeController extends GetxController {
 
   /// Ana sayfa «Dizi» kartı — gizlenmemiş diziler.
   int get homeSeriesCount {
-    _ensureHomeCountsFresh();
     return homeCardCounts.value?.series ?? 0;
   }
 
@@ -483,7 +504,8 @@ class HomeController extends GetxController {
 
   void globalSearchNavigateToVod(VodItem v) {
     final app = Get.find<AppSettingsService>();
-    if (app.layoutMode.value == AppLayoutMode.tv && Get.isRegistered<TvShellController>()) {
+    if (app.layoutMode.value == AppLayoutMode.tv &&
+        Get.isRegistered<TvShellController>()) {
       Get.find<TvShellController>().openVodFromSearch(v);
       return;
     }
@@ -497,7 +519,8 @@ class HomeController extends GetxController {
 
   void globalSearchNavigateToSeries(SeriesItem s) {
     final app = Get.find<AppSettingsService>();
-    if (app.layoutMode.value == AppLayoutMode.tv && Get.isRegistered<TvShellController>()) {
+    if (app.layoutMode.value == AppLayoutMode.tv &&
+        Get.isRegistered<TvShellController>()) {
       Get.find<TvShellController>().openSeriesFromSearch(s);
       return;
     }
@@ -691,6 +714,7 @@ class HomeController extends GetxController {
   @override
   void onReady() {
     super.onReady();
+    _checkSmartAnnouncements();
     now.value = DateTime.now();
     if (Get.isRegistered<ShowcaseInAppPipService>()) {
       final pip = Get.find<ShowcaseInAppPipService>();
@@ -718,6 +742,67 @@ class HomeController extends GetxController {
     await InAppPipSuggestDialog.maybeShow();
   }
 
+  Future<void> _checkSmartAnnouncements() async {
+    try {
+      final licensing = Get.find<LicensingService>();
+      if (licensing.isPremium.value || !licensing.isTrialActive.value) return;
+
+      final expire = licensing.trialExpirationDate.value;
+      if (expire == null) return;
+
+      final prefs = await SharedPreferences.getInstance();
+      if (prefs.getBool('smart_announcement_shown') == true) return;
+
+      final doc = await FirebaseFirestore.instance
+          .collection('admin_settings')
+          .doc('smart_announcements')
+          .get();
+      if (!doc.exists) return;
+      final data = doc.data() ?? {};
+      if (data['trial_reminder_enabled'] == true) {
+        final hoursLeft = expire.difference(DateTime.now()).inHours;
+        if (hoursLeft <= 24 && hoursLeft > 0) {
+          await prefs.setBool('smart_announcement_shown', true);
+          _showTrialEndingPopup();
+        }
+      }
+    } catch (e) {
+      debugPrint('[HomeController] Error checking smart announcements: $e');
+    }
+  }
+
+  void _showTrialEndingPopup() {
+    Get.dialog(
+      AlertDialog(
+        backgroundColor: const Color(0xFF0F172A),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Bize Şans Verin! 🎉',
+            style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold)),
+        content: const Text(
+          'Deneme sürenizin bitmesine 1 günden az kaldı! Uygulamayı sevdiyseniz, bize bir şans verip tek seferlik ödeme ile ömür boyu kullanmak için şimdi Premium alabilirsiniz.',
+          style: TextStyle(color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Get.back(),
+            child: const Text('Belki Sonra',
+                style: TextStyle(color: Colors.white54)),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Get.back();
+              Get.toNamed(AppRoutes.paywall);
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.blueAccent),
+            child: const Text('Hemen Satın Al',
+                style: TextStyle(
+                    fontWeight: FontWeight.bold, color: Colors.white)),
+          ),
+        ],
+      ),
+    );
+  }
+
   Future<void> _maybeShowPlayStoreRatePrompt() async {
     if (kIsWeb) return;
     if (defaultTargetPlatform != TargetPlatform.android) return;
@@ -728,7 +813,8 @@ class HomeController extends GetxController {
     if (info == null) return;
     final settings = Get.find<AppSettingsService>();
     await settings.ensureLoaded();
-    if (!settings.shouldShowPlayStoreRatePrompt()) return;
+    final build = int.tryParse(info.buildNumber) ?? 0;
+    if (!settings.shouldShowPlayStoreRatePrompt(build)) return;
 
     await Future<void>.delayed(const Duration(milliseconds: 900));
     if (isClosed) return;
@@ -744,7 +830,7 @@ class HomeController extends GetxController {
       if (result == PlayStoreRateDialogResult.rated) {
         await settings.setPlayStoreRateUserRated();
       } else {
-        await settings.setPlayStoreRatePromptShownToday();
+        await settings.setPlayStoreRatePromptShownForBuild(build);
       }
     } catch (e, st) {
       debugPrint('mina_iptv: PlayStore rate dialog: $e\n$st');
@@ -836,7 +922,9 @@ class HomeController extends GetxController {
     final d = data;
     if (d == null) return;
 
-    final ds = Get.isRegistered<PlaylistDataSource>() ? Get.find<PlaylistDataSource>() : null;
+    final ds = Get.isRegistered<PlaylistDataSource>()
+        ? Get.find<PlaylistDataSource>()
+        : null;
     if (ds != null && ds.isDbBacked) {
       ds.channelsForScan(limit: 100).then((list) {
         final pool = <String>[];
@@ -897,21 +985,29 @@ class HomeController extends GetxController {
       seriesPreview.value = null;
       return;
     }
-    final scope = Object.hash(d.hashCode, _cache.lastUpdated.value?.millisecondsSinceEpoch ?? 0);
+    final scope = Object.hash(
+        d.hashCode, _cache.lastUpdated.value?.millisecondsSinceEpoch ?? 0);
     if (_vodPreviewsScopeKey == scope) return;
     _vodPreviewsScopeKey = scope;
 
-    final ds = Get.isRegistered<PlaylistDataSource>() ? Get.find<PlaylistDataSource>() : null;
+    final ds = Get.isRegistered<PlaylistDataSource>()
+        ? Get.find<PlaylistDataSource>()
+        : null;
     if (ds != null && ds.isDbBacked) {
       ds.vodTopRated(limit: 10).then((list) {
-        final hasP = list.where((v) => v.posterUrl != null && v.posterUrl!.isNotEmpty).toList();
+        final hasP = list
+            .where((v) => v.posterUrl != null && v.posterUrl!.isNotEmpty)
+            .toList();
         if (hasP.isNotEmpty) {
           filmsPreview.value = hasP[_stablePick(hasP.length, 2)].posterUrl;
-          recommendedFilmsPreview.value = hasP[_stablePick(hasP.length, 5)].posterUrl;
+          recommendedFilmsPreview.value =
+              hasP[_stablePick(hasP.length, 5)].posterUrl;
         }
       });
       ds.seriesSample(limit: 10).then((list) {
-        final hasP = list.where((s) => s.posterUrl != null && s.posterUrl!.isNotEmpty).toList();
+        final hasP = list
+            .where((s) => s.posterUrl != null && s.posterUrl!.isNotEmpty)
+            .toList();
         if (hasP.isNotEmpty) {
           seriesPreview.value = hasP[_stablePick(hasP.length, 3)].posterUrl;
         }
@@ -919,15 +1015,20 @@ class HomeController extends GetxController {
     } else {
       final vList = d.vod;
       if (vList.isNotEmpty) {
-        final hasP = vList.where((v) => v.posterUrl != null && v.posterUrl!.isNotEmpty).toList();
+        final hasP = vList
+            .where((v) => v.posterUrl != null && v.posterUrl!.isNotEmpty)
+            .toList();
         if (hasP.isNotEmpty) {
           filmsPreview.value = hasP[_stablePick(hasP.length, 2)].posterUrl;
-          recommendedFilmsPreview.value = hasP[_stablePick(hasP.length, 5)].posterUrl;
+          recommendedFilmsPreview.value =
+              hasP[_stablePick(hasP.length, 5)].posterUrl;
         }
       }
       final sList = d.series;
       if (sList.isNotEmpty) {
-        final hasP = sList.where((s) => s.posterUrl != null && s.posterUrl!.isNotEmpty).toList();
+        final hasP = sList
+            .where((s) => s.posterUrl != null && s.posterUrl!.isNotEmpty)
+            .toList();
         if (hasP.isNotEmpty) {
           seriesPreview.value = hasP[_stablePick(hasP.length, 3)].posterUrl;
         }
@@ -986,6 +1087,11 @@ class HomeController extends GetxController {
 
   /// İlk geri: mesaj; kısa süre içinde ikinci geri: çıkışa izin ver (false döner).
   bool tryConsumeBackForExit() {
+    if (Get.isRegistered<TvShellController>()) {
+      Get.find<TvShellController>().onBack();
+      return true;
+    }
+
     final now = DateTime.now();
     if (_lastBackAt == null ||
         now.difference(_lastBackAt!) > _backTwiceWindow) {

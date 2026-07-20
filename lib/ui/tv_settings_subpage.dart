@@ -117,8 +117,14 @@ class _TvSettingsDpadScopeState extends State<TvSettingsDpadScope> {
 
   TvSettingsDpadCoordinator get coordinator => _coordinator;
 
+  int _lastBackHandledMs = 0;
+
   void _popSubpage() {
-    if (Get.isDialogOpen == true) {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    if (now - _lastBackHandledMs < 400) return;
+    _lastBackHandledMs = now;
+
+    if (Get.isDialogOpen == true || Get.isBottomSheetOpen == true) {
       Get.back<void>();
       return;
     }
@@ -234,19 +240,11 @@ Widget tvSettingsDpadWrap(
         return KeyEventResult.ignored;
       }
       if (tvKeyIsBack(event.logicalKey)) {
-        if (Get.isDialogOpen == true) {
-          Get.back<void>();
-          return KeyEventResult.handled;
-        }
         scopeData.onBack();
         return KeyEventResult.handled;
       }
       if (event is KeyDownEvent &&
           event.logicalKey == LogicalKeyboardKey.arrowLeft) {
-        if (Get.isDialogOpen == true) {
-          Get.back<void>();
-          return KeyEventResult.handled;
-        }
         scopeData.onBack();
         return KeyEventResult.handled;
       }

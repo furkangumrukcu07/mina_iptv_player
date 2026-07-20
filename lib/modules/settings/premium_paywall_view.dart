@@ -8,6 +8,7 @@ import '../../core/services/app_settings_service.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/routes/app_routes.dart';
 import '../../core/services/licensing_service.dart';
+import '../../core/services/showcase_in_app_pip_service.dart';
 
 class PremiumPaywallView extends StatefulWidget {
   const PremiumPaywallView({super.key});
@@ -29,11 +30,17 @@ class _PremiumPaywallViewState extends State<PremiumPaywallView> {
   bool _restoring = false;
   bool _signingIn = false;
   bool _retryingDevice = false;
+  bool _buying3Devices = false;
   String? _removingDeviceId;
 
   @override
   void initState() {
     super.initState();
+    // Arka plan ses sızıntısını önlemek için player'ı kapat.
+    if (Get.isRegistered<ShowcaseInAppPipService>()) {
+      Get.find<ShowcaseInAppPipService>().stopAndDispose();
+    }
+    
     unawaited(licensing.refreshRegisteredDevices());
     // TV modundaysa ödeme butonuna varsayılan odaklanmayı ver
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -82,6 +89,25 @@ class _PremiumPaywallViewState extends State<PremiumPaywallView> {
       }
     } finally {
       if (mounted) setState(() => _buying = false);
+    }
+  }
+
+  Future<void> _handleBuy3Devices() async {
+    if (_buying3Devices) return;
+    setState(() => _buying3Devices = true);
+    try {
+      final success = await licensing.buyPlus3DevicesProduct();
+      if (!success && mounted) {
+        Get.snackbar(
+          'paywall.error.title'.tr,
+          'paywall.error.body'.tr,
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.red.withValues(alpha: 0.85),
+          colorText: Colors.white,
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _buying3Devices = false);
     }
   }
 
@@ -199,17 +225,21 @@ class _PremiumPaywallViewState extends State<PremiumPaywallView> {
       body: Container(
         decoration: const BoxDecoration(
           image: DecorationImage(
-            image: AssetImage('assets/images/home_bg.webp'), // Arka plan
+            image: AssetImage('assets/images/home_background.webp'), // Arka plan
             fit: BoxFit.cover,
           ),
         ),
         child: Container(
           color: Colors.black.withValues(alpha: 0.82), // Koyu katman
           child: SafeArea(
-            child: Center(
-              child: SingleChildScrollView(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                return SingleChildScrollView(
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(minHeight: constraints.maxHeight),
+                    child: Center(
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
                   child: ClipRRect(
                     borderRadius: BorderRadius.circular(28),
                     child: BackdropFilter(
@@ -314,23 +344,59 @@ class _PremiumPaywallViewState extends State<PremiumPaywallView> {
                             }),
                             const SizedBox(height: 32),
 
-                            // Premium Özellikler Listesi
-                            _buildFeatureList(cs),
-                            const SizedBox(height: 40),
+                            Obx(() {
+                              if (licensing.deviceLimitExceeded.value) {
+                                return const SizedBox.shrink();
+                              }
+                              return Column(
+                                children: [
+                                  // Premium Özellikler Listesi
+                                  _buildFeatureList(cs),
+                                  const SizedBox(height: 40),
+                                ],
+                              );
+                            }),
 
                             // Eylem Butonları - Mobil ve TV için esnek düzen
                             Obx(() {
                               if (licensing.deviceLimitExceeded.value) {
-                                return _buildActionBtn(
+                                final isLicensed = licensing.isPremium.value || licensing.isGrandfathered.value;
+                                final canBuyMore = isLicensed && licensing.maxDevices.value < 6;
+                                
+                                final retryBtn = _buildActionBtn(
                                   focusNode: _restoreFocus,
                                   label: _retryingDevice
                                       ? 'paywall.button.restoring'.tr
                                       : 'paywall.deviceLimit.retry'.tr,
                                   icon: Icons.refresh_rounded,
-                                  color: cs.primary,
+                                  color: canBuyMore ? Colors.white.withValues(alpha: 0.08) : cs.primary,
                                   onTap: _handleRetryDevice,
                                   isTv: isTv,
                                 );
+                                
+                                if (!canBuyMore) return retryBtn;
+                                
+                                final buyMoreBtn = _buildActionBtn(
+                                  focusNode: _buyFocus,
+                                  label: _buying3Devices ? 'paywall.button.connecting'.tr : 'paywall.button.buy3devices'.tr,
+                                  icon: Icons.add_circle_outline_rounded,
+                                  color: cs.primary,
+                                  onTap: _handleBuy3Devices,
+                                  isTv: isTv,
+                                );
+                                
+                                if (isTv) {
+                                  return Row(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [buyMoreBtn, const SizedBox(width: 16), retryBtn],
+                                  );
+                                } else {
+                                  return Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                                    children: [buyMoreBtn, const SizedBox(height: 12), retryBtn],
+                                  );
+                                }
                               }
                               return _buildActionButtons(cs, isTv);
                             }),
@@ -402,8 +468,11 @@ class _PremiumPaywallViewState extends State<PremiumPaywallView> {
                       ),
                     ),
                   ),
-                ),
-              ),
+                      ),
+                    ),
+                  ),
+                );
+              },
             ),
           ),
         ),

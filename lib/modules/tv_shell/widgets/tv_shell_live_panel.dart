@@ -34,7 +34,7 @@ const int _kEpgHours = 4;
 const int _kEpgHoursCompact = 2;
 
 /// Canlı TV üst önizleme çerçevesi — temel kahraman alanı ölçeği.
-const double _kLivePreviewScale = 1.21;
+const double _kLivePreviewScale = 1.57;
 
 /// EPG yokken üst önizleme alanını genişlet.
 const double _kLivePreviewNoEpgScale = 1.38;
@@ -78,8 +78,8 @@ class _TvShellLiveMetrics {
     if (compact) {
       // Önizleme öncelikli: üst kahraman alanı; kanal listesi kalan yüksekliği doldurur.
       final heroH = ((h * 0.18).clamp(120.0, 160.0) * _kLivePreviewScale)
-          .clamp(145.2, 193.6);
-      final previewW = (heroH * 16 / 9).clamp(170.66, 275.2);
+          .clamp(188.4, 251.2);
+      final previewW = (heroH * 16 / 9).clamp(334.9, 446.5);
       final channelColW = _kHeroPadL + previewW;
       const rowH = 44.0;
       final timelineW = _kEpgHoursCompact * 60 * _kEpgPxPerMinuteCompact;
@@ -95,7 +95,7 @@ class _TvShellLiveMetrics {
       );
     }
     final heroH = ((h * 0.18).clamp(130.0, 170.0) * _kLivePreviewScale)
-        .clamp(157.3, 205.7);
+        .clamp(204.1, 266.9);
     final previewW = heroH * 16 / 9;
     final channelColW = _kHeroPadL + previewW;
     const rowH = 52.0;
@@ -928,92 +928,119 @@ class _TvShellLivePanelState extends State<TvShellLivePanel> {
                   ],
                 );
               }),
-              SizedBox(
-                height: widget.compact ? 24 : 28,
-                child: Row(
-                  children: [
-                    SizedBox(
-                      width: metrics.channelColW,
-                      child: _ChannelColumnHeader(
-                        palette: palette,
-                        compact: widget.compact,
-                      ),
+              Expanded(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(14),
+                    border: Border.all(
+                      color: Colors.white.withValues(alpha: 0.10),
+                      width: 0.8,
                     ),
-                    if (showEpgColumn)
-                      Expanded(
-                        child: ExcludeFocus(
-                          excluding: remoteNav,
-                          child: AnimatedBuilder(
-                            animation: _epgHScroll,
-                            builder: (context, child) {
-                              final scrollOffset = _epgHScroll.hasClients
-                                  ? _epgHScroll.offset
-                                  : 0.0;
-                              return ValueListenableBuilder<int>(
-                                valueListenable: _tickValue,
-                                builder: (context, tick, child) {
-                                  final now = DateTime.now();
-                                  final w0 = _windowStart(now);
-                                  final w1 =
-                                      w0.add(Duration(hours: _kEpgHours));
-                                  final gridW = w1.difference(w0).inMinutes *
-                                      metrics.pxPerMin;
-                                  double xAt(DateTime t) {
-                                    return t.difference(w0).inMinutes *
-                                        metrics.pxPerMin;
-                                  }
-                                  return _EpgTimelineStrip(
-                                    palette: palette,
-                                    windowStart: w0,
-                                    windowEnd: w1,
-                                    gridWidth: gridW,
-                                    stripHeight: widget.compact ? 24 : 28,
-                                    xAt: xAt,
-                                    now: now,
-                                    scrollOffset: scrollOffset,
-                                  );
-                                },
-                              );
-                            },
+                    gradient: LinearGradient(
+                      begin: Alignment.topLeft,
+                      end: Alignment.bottomRight,
+                      colors: [
+                        Colors.white.withValues(alpha: 0.04),
+                        Colors.white.withValues(alpha: 0.01),
+                      ],
+                    ),
+                  ),
+                  child: ClipRRect(
+                    borderRadius: BorderRadius.circular(13),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        SizedBox(
+                          height: widget.compact ? 24 : 28,
+                          child: Row(
+                            children: [
+                              SizedBox(
+                                width: metrics.channelColW,
+                                child: _ChannelColumnHeader(
+                                  palette: palette,
+                                  compact: widget.compact,
+                                ),
+                              ),
+                              if (showEpgColumn)
+                                Expanded(
+                                  child: ExcludeFocus(
+                                    excluding: remoteNav,
+                                    child: AnimatedBuilder(
+                                      animation: _epgHScroll,
+                                      builder: (context, child) {
+                                        final scrollOffset = _epgHScroll.hasClients
+                                            ? _epgHScroll.offset
+                                            : 0.0;
+                                        return ValueListenableBuilder<int>(
+                                          valueListenable: _tickValue,
+                                          builder: (context, tick, child) {
+                                            final now = DateTime.now();
+                                            final w0 = _windowStart(now);
+                                            final w1 =
+                                                w0.add(Duration(hours: _kEpgHours));
+                                            final gridW = w1.difference(w0).inMinutes *
+                                                metrics.pxPerMin;
+                                            double xAt(DateTime t) {
+                                              return t.difference(w0).inMinutes *
+                                                  metrics.pxPerMin;
+                                            }
+                                            return _EpgTimelineStrip(
+                                              palette: palette,
+                                              windowStart: w0,
+                                              windowEnd: w1,
+                                              gridWidth: gridW,
+                                              stripHeight: widget.compact ? 24 : 28,
+                                              xAt: xAt,
+                                              now: now,
+                                              scrollOffset: scrollOffset,
+                                            );
+                                          },
+                                        );
+                                      },
+                                    ),
+                                  ),
+                                ),
+                            ],
                           ),
                         ),
-                      ),
-                  ],
-                ),
-              ),
-              Expanded(
-                child: ClipRect(
-                  child: ValueListenableBuilder<int>(
-                    valueListenable: _tickValue,
-                    builder: (context, tick, child) {
-                      final now = DateTime.now();
-                      final w0 = _windowStart(now);
-                      final w1 = w0.add(Duration(hours: _kEpgHours));
-                      final gridW =
-                          w1.difference(w0).inMinutes * metrics.pxPerMin;
-                      double xAt(DateTime t) {
-                        return t.difference(w0).inMinutes * metrics.pxPerMin;
-                      }
-                      List<EpgProgramme> windowProgrammesFor(Channel ch) =>
-                          epg?.programmesInWindowForLiveChannel(ch, w0, w1) ??
-                          [];
-                      return _buildChannelEpgGrid(
-                        context: context,
-                        palette: palette,
-                        metrics: metrics,
-                        list: list,
-                        epg: epg,
-                        touchScroll: touchScroll,
-                        remoteNav: remoteNav,
-                        showEpgColumn: showEpgColumn,
-                        windowStart: w0,
-                        windowEnd: w1,
-                        gridWidth: gridW,
-                        xAt: xAt,
-                        windowProgrammesFor: windowProgrammesFor,
-                        now: now,
-                      );
-                    },
+                        Expanded(
+                          child: ClipRect(
+                            child: ValueListenableBuilder<int>(
+                              valueListenable: _tickValue,
+                              builder: (context, tick, child) {
+                                final now = DateTime.now();
+                                final w0 = _windowStart(now);
+                                final w1 = w0.add(Duration(hours: _kEpgHours));
+                                final gridW =
+                                    w1.difference(w0).inMinutes * metrics.pxPerMin;
+                                double xAt(DateTime t) {
+                                  return t.difference(w0).inMinutes * metrics.pxPerMin;
+                                }
+                                List<EpgProgramme> windowProgrammesFor(Channel ch) =>
+                                    epg?.programmesInWindowForLiveChannel(ch, w0, w1) ??
+                                    [];
+                                return _buildChannelEpgGrid(
+                                  context: context,
+                                  palette: palette,
+                                  metrics: metrics,
+                                  list: list,
+                                  epg: epg,
+                                  touchScroll: touchScroll,
+                                  remoteNav: remoteNav,
+                                  showEpgColumn: showEpgColumn,
+                                  windowStart: w0,
+                                  windowEnd: w1,
+                                  gridWidth: gridW,
+                                  xAt: xAt,
+                                  windowProgrammesFor: windowProgrammesFor,
+                                  now: now,
+                                );
+                              },
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -1193,34 +1220,33 @@ class _HeroPanel extends StatelessWidget {
             Expanded(
               child: ClipRect(
                 child: hasEpg
-                    ? Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          // Kanal + yayın bilgisi — narin, dinamik çerçeve
-                          Container(
-                            width: double.infinity,
-                            padding: EdgeInsets.fromLTRB(
-                              compact ? 8 : 10,
-                              compact ? 6 : 8,
-                              compact ? 8 : 10,
-                              compact ? 6 : 8,
-                            ),
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(11),
-                              border: Border.all(
-                                color: Colors.white.withValues(alpha: 0.13),
-                                width: 0.85,
-                              ),
-                              gradient: LinearGradient(
-                                begin: Alignment.topLeft,
-                                end: Alignment.bottomRight,
-                                colors: [
-                                  Colors.white.withValues(alpha: 0.075),
-                                  Colors.white.withValues(alpha: 0.02),
-                                ],
-                              ),
-                            ),
-                            child: Row(
+                    ? Container(
+                        width: double.infinity,
+                        padding: EdgeInsets.fromLTRB(
+                          compact ? 8 : 10,
+                          compact ? 6 : 8,
+                          compact ? 8 : 10,
+                          compact ? 8 : 10,
+                        ),
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(11),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.13),
+                            width: 0.85,
+                          ),
+                          gradient: LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: [
+                              Colors.white.withValues(alpha: 0.075),
+                              Colors.white.withValues(alpha: 0.02),
+                            ],
+                          ),
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
                               crossAxisAlignment: CrossAxisAlignment.center,
                               children: [
                                 if (channel != null) ...[
@@ -1273,8 +1299,7 @@ class _HeroPanel extends StatelessWidget {
                                 ),
                               ],
                             ),
-                          ),
-                          const SizedBox(height: 7),
+                            const SizedBox(height: 7),
                           _ModernEpgProgressBar(
                             progress: programme!.progressAt(now),
                             accent: palette.progress,
@@ -1364,7 +1389,8 @@ class _HeroPanel extends StatelessWidget {
                               ],
                             ),
                           ],
-                        ],
+                          ],
+                        ),
                       )
                     : channel == null
                         ? Align(

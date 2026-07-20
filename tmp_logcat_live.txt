@@ -1,0 +1,1226 @@
+07-07 22:37:55.089 D/BetterPlayerSurface(12440): dispose START textureId=25 releasing ExoPlayer + SurfaceProducer
+07-07 22:37:55.093 I/ExoPlayerImpl(12440): Release 2d906d8 [AndroidXMedia3/1.10.1] [courbet, M2101K9AG, Xiaomi, 36] [media3.common, media3.exoplayer, media3.decoder, media3.exoplayer.hls, media3.datasource, media3.extractor]
+07-07 22:37:55.167 I/flutter (12440): mina_iptv: Using cached format for channel 68: hls
+07-07 22:37:55.167 I/flutter (12440): mina_iptv: Playing stream: http://s36.g57s75.com/live/d98t21c29s51/736832/68.m3u8 (Step: 0, XtreamAlt: false)
+07-07 22:37:55.167 I/flutter (12440): mina_iptv: DataSource headers: {User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36, Accept: */*, Icy-MetaData: 1, Referer: http://s36.g57s75.com/}
+07-07 22:37:55.168 I/ExoPlayerImpl(12440): Init 499a7f6 [AndroidXMedia3/1.10.1] [courbet, M2101K9AG, Xiaomi, 36]
+07-07 22:37:55.614 D/BetterPlayerSurface(12440): setDataSource textureId=26: stop+clearMediaItems+new MediaSource (SurfaceProducer unchanged)
+07-07 22:37:57.400 D/AudioTrack(12440): getTimestamp_l(62): device stall time corrected using current time 684793565674
+07-07 22:37:58.153 I/flutter (12440): mina_iptv: Using cached format for channel 69: hls
+07-07 22:37:58.153 I/flutter (12440): mina_iptv: Playing stream: http://s36.g57s75.com/live/d98t21c29s51/736832/69.m3u8 (Step: 0, XtreamAlt: false)
+07-07 22:37:58.153 I/flutter (12440): mina_iptv: DataSource headers: {User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36, Accept: */*, Icy-MetaData: 1, Referer: http://s36.g57s75.com/}
+07-07 22:37:58.588 D/BetterPlayerSurface(12440): setDataSource textureId=26: stop+clearMediaItems+new MediaSource (SurfaceProducer unchanged)
+07-07 22:38:00.340 I/flutter (12440): mina_iptv: Using cached format for channel 71: hls
+07-07 22:38:00.340 I/flutter (12440): mina_iptv: Playing stream: http://s36.g57s75.com/live/d98t21c29s51/736832/71.m3u8 (Step: 0, XtreamAlt: false)
+07-07 22:38:00.340 I/flutter (12440): mina_iptv: DataSource headers: {User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36, Accept: */*, Icy-MetaData: 1, Referer: http://s36.g57s75.com/}
+07-07 22:38:00.376 I/flutter (12440): mina_iptv: stale playback gen after setupDataSource (reuse), skip
+07-07 22:38:00.400 D/AudioTrack(12440): getTimestamp_l(63): device stall time corrected using current time 687793584475
+07-07 22:38:00.648 D/BetterPlayerSurface(12440): setDataSource textureId=26: stop+clearMediaItems+new MediaSource (SurfaceProducer unchanged)
+07-07 22:38:02.114 D/AudioTrack(12440): getTimestamp_l(64): device stall time corrected using current time 689507429995
+07-07 22:38:02.660 I/flutter (12440): mina_iptv: Using cached format for channel 75: hls
+07-07 22:38:02.660 I/flutter (12440): mina_iptv: Playing stream: http://s36.g57s75.com/live/d98t21c29s51/736832/75.m3u8 (Step: 0, XtreamAlt: false)
+07-07 22:38:02.660 I/flutter (12440): mina_iptv: DataSource headers: {User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36, Accept: */*, Icy-MetaData: 1, Referer: http://s36.g57s75.com/}
+07-07 22:38:02.989 D/BetterPlayerSurface(12440): setDataSource textureId=26: stop+clearMediaItems+new MediaSource (SurfaceProducer unchanged)
+07-07 22:38:04.402 D/AudioTrack(12440): getTimestamp_l(65): device stall time corrected using current time 691796109005
+07-07 22:38:05.709 I/flutter (12440): mina_iptv: Using cached format for channel 76: hls
+07-07 22:38:05.709 I/flutter (12440): mina_iptv: Playing stream: http://s36.g57s75.com/live/d98t21c29s51/736832/76.m3u8 (Step: 0, XtreamAlt: false)
+07-07 22:38:05.710 I/flutter (12440): mina_iptv: DataSource headers: {User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36, Accept: */*, Icy-MetaData: 1, Referer: http://s36.g57s75.com/}
+07-07 22:38:06.698 D/BetterPlayerSurface(12440): setDataSource textureId=26: stop+clearMediaItems+new MediaSource (SurfaceProducer unchanged)
+07-07 22:38:09.950 I/flutter (12440): mina_iptv: Using cached format for channel 77: software
+07-07 22:38:09.950 I/flutter (12440): mina_iptv: Playing stream: http://s36.g57s75.com/live/d98t21c29s51/736832/77.m3u8 (Step: 0, XtreamAlt: false)
+07-07 22:38:09.950 I/flutter (12440): mina_iptv: DataSource headers: {User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36, Accept: */*, Icy-MetaData: 1, Referer: http://s36.g57s75.com/}
+07-07 22:38:09.994 I/ExoPlayerImpl(12440): Init b52af03 [AndroidXMedia3/1.10.1] [courbet, M2101K9AG, Xiaomi, 36]
+07-07 22:38:10.000 D/BetterPlayerSurface(12440): dispose START textureId=26 releasing ExoPlayer + SurfaceProducer
+07-07 22:38:10.000 I/ExoPlayerImpl(12440): Release 499a7f6 [AndroidXMedia3/1.10.1] [courbet, M2101K9AG, Xiaomi, 36] [media3.common, media3.exoplayer, media3.decoder, media3.exoplayer.hls, media3.datasource, media3.extractor]
+07-07 22:38:10.269 D/BetterPlayerSurface(12440): setDataSource textureId=27: stop+clearMediaItems+new MediaSource (SurfaceProducer unchanged)
+07-07 22:38:11.719 D/AudioTrack(12440): getTimestamp_l(67): device stall time corrected using current time 699113078742
+07-07 22:38:12.227 D/BetterPlayerSurface(12440): dispose START textureId=27 releasing ExoPlayer + SurfaceProducer
+07-07 22:38:12.229 I/ExoPlayerImpl(12440): Release b52af03 [AndroidXMedia3/1.10.1] [courbet, M2101K9AG, Xiaomi, 36] [media3.common, media3.exoplayer, media3.decoder, media3.exoplayer.hls, media3.datasource, media3.extractor]
+07-07 22:38:12.281 I/flutter (12440): mina_iptv: Using cached format for channel 78: hls
+07-07 22:38:12.281 I/flutter (12440): mina_iptv: Playing stream: http://s36.g57s75.com/live/d98t21c29s51/736832/78.m3u8 (Step: 0, XtreamAlt: false)
+07-07 22:38:12.281 I/flutter (12440): mina_iptv: DataSource headers: {User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36, Accept: */*, Icy-MetaData: 1, Referer: http://s36.g57s75.com/}
+07-07 22:38:12.282 I/ExoPlayerImpl(12440): Init b6f779c [AndroidXMedia3/1.10.1] [courbet, M2101K9AG, Xiaomi, 36]
+07-07 22:38:12.597 D/BetterPlayerSurface(12440): setDataSource textureId=28: stop+clearMediaItems+new MediaSource (SurfaceProducer unchanged)
+07-07 22:38:14.502 I/flutter (12440): mina_iptv: Using cached format for channel 82: ts
+07-07 22:38:14.503 I/flutter (12440): mina_iptv: Playing stream: http://s36.g57s75.com/live/d98t21c29s51/736832/82.m3u8 (Step: 0, XtreamAlt: true)
+07-07 22:38:14.503 I/flutter (12440): mina_iptv: DataSource headers: {User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36, Accept: */*, Icy-MetaData: 1, Referer: http://s36.g57s75.com/}
+07-07 22:38:14.881 D/BetterPlayerSurface(12440): setDataSource textureId=28: stop+clearMediaItems+new MediaSource (SurfaceProducer unchanged)
+07-07 22:38:16.289 D/AudioTrack(12440): getTimestamp_l(69): device stall time corrected using current time 703682276448
+07-07 22:38:16.757 I/flutter (12440): mina_iptv: Using cached format for channel 79: mediakit
+07-07 22:38:16.757 I/flutter (12440): mina_iptv: Playing stream: http://s36.g57s75.com/live/d98t21c29s51/736832/79.m3u8 (Step: 0, XtreamAlt: false)
+07-07 22:38:16.761 D/BetterPlayerSurface(12440): dispose START textureId=28 releasing ExoPlayer + SurfaceProducer
+07-07 22:38:16.780 I/ExoPlayerImpl(12440): Release b6f779c [AndroidXMedia3/1.10.1] [courbet, M2101K9AG, Xiaomi, 36] [media3.common, media3.exoplayer, media3.decoder, media3.exoplayer.hls, media3.datasource, media3.extractor]
+07-07 22:38:19.683 I/flutter (12440): mina_iptv: Playing stream: http://s36.g57s75.com/live/d98t21c29s51/736832/79.m3u8 (Step: 0, XtreamAlt: false)
+07-07 22:38:19.683 I/flutter (12440): mina_iptv: DataSource headers: {User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36, Accept: */*, Icy-MetaData: 1, Referer: http://s36.g57s75.com/}
+07-07 22:38:19.693 I/ExoPlayerImpl(12440): Init 2a303fe [AndroidXMedia3/1.10.1] [courbet, M2101K9AG, Xiaomi, 36]
+07-07 22:38:20.524 D/BetterPlayerSurface(12440): setDataSource textureId=29: stop+clearMediaItems+new MediaSource (SurfaceProducer unchanged)
+07-07 22:38:21.512 W/MediaCodec(12440): Log queueInputBuffer error: 1
+07-07 22:38:21.512 E/MediaCodecVideoRenderer(12440): Video codec error
+07-07 22:38:21.512 E/MediaCodecVideoRenderer(12440):       at androidx.media3.exoplayer.mediacodec.SynchronousMediaCodecBufferEnqueuer.queueInputBuffer(Unknown Source:7)
+07-07 22:38:21.512 E/MediaCodecVideoRenderer(12440):       at androidx.media3.exoplayer.mediacodec.AsynchronousMediaCodecAdapter.queueInputBuffer(Unknown Source:7)
+07-07 22:38:21.512 E/MediaCodecVideoRenderer(12440):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.feedInputBuffer(Unknown Source:480)
+07-07 22:38:21.512 E/MediaCodecVideoRenderer(12440):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.render(Unknown Source:94)
+07-07 22:38:21.512 E/MediaCodecVideoRenderer(12440):       at androidx.media3.exoplayer.video.MediaCodecVideoRenderer.render(Unknown Source:18)
+07-07 22:38:21.512 E/MediaCodecVideoRenderer(12440):       at androidx.media3.exoplayer.RendererHolder.render(Unknown Source:10)
+07-07 22:38:21.512 E/MediaCodecVideoRenderer(12440):       at androidx.media3.exoplayer.ExoPlayerImplInternal.doSomeWork(Unknown Source:115)
+07-07 22:38:21.512 E/MediaCodecVideoRenderer(12440):       at androidx.media3.exoplayer.ExoPlayerImplInternal.handleMessage(Unknown Source:378)
+07-07 22:38:21.513 E/ExoPlayerImplInternal(12440): Playback error
+07-07 22:38:21.513 E/ExoPlayerImplInternal(12440):   androidx.media3.exoplayer.ExoPlaybackException: MediaCodecVideoRenderer error, index=0, format=Format(null, null, video/mp2t, video/avc, avc1.64001E, -1, null, [720, 576, -1.0, ColorInfo(Unset color space, Unset color range, Unset color transfer, false, 8bit Luma, 8bit Chroma)], [-1, -1]), format_supported=YES
+07-07 22:38:21.513 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.BaseRenderer.createRendererException(SourceFile:10)
+07-07 22:38:21.513 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.render(Unknown Source:180)
+07-07 22:38:21.513 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.video.MediaCodecVideoRenderer.render(Unknown Source:18)
+07-07 22:38:21.513 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.RendererHolder.render(Unknown Source:10)
+07-07 22:38:21.513 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.ExoPlayerImplInternal.doSomeWork(Unknown Source:115)
+07-07 22:38:21.513 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.ExoPlayerImplInternal.handleMessage(Unknown Source:378)
+07-07 22:38:21.513 E/ExoPlayerImplInternal(12440):       at android.os.Handler.dispatchMessage(Handler.java:106)
+07-07 22:38:21.513 E/ExoPlayerImplInternal(12440):       at android.os.Looper.dispatchMessage(Looper.java:315)
+07-07 22:38:21.513 E/ExoPlayerImplInternal(12440):       at android.os.Looper.loopOnce(Looper.java:251)
+07-07 22:38:21.513 E/ExoPlayerImplInternal(12440):       at android.os.Looper.loop(Looper.java:349)
+07-07 22:38:21.513 E/ExoPlayerImplInternal(12440):       at android.os.HandlerThread.run(HandlerThread.java:100)
+07-07 22:38:21.513 E/ExoPlayerImplInternal(12440):   Caused by: androidx.media3.exoplayer.video.MediaCodecVideoDecoderException: Decoder failed: c2.qti.avc.decoder
+07-07 22:38:21.513 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.video.MediaCodecVideoRenderer.createDecoderException(Unknown Source:4)
+07-07 22:38:21.513 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.render(Unknown Source:163)
+07-07 22:38:21.513 E/ExoPlayerImplInternal(12440):       ... 9 more
+07-07 22:38:21.513 E/ExoPlayerImplInternal(12440):   Caused by: android.media.MediaCodec$CodecException: 
+07-07 22:38:21.513 E/ExoPlayerImplInternal(12440):       at android.media.MediaCodec.native_queueInputBuffer(Native Method)
+07-07 22:38:21.513 E/ExoPlayerImplInternal(12440):       at android.media.MediaCodec.queueInputBuffer(MediaCodec.java:3171)
+07-07 22:38:21.513 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.mediacodec.SynchronousMediaCodecBufferEnqueuer.queueInputBuffer(Unknown Source:7)
+07-07 22:38:21.513 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.mediacodec.AsynchronousMediaCodecAdapter.queueInputBuffer(Unknown Source:7)
+07-07 22:38:21.513 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.feedInputBuffer(Unknown Source:480)
+07-07 22:38:21.513 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.render(Unknown Source:94)
+07-07 22:38:21.513 E/ExoPlayerImplInternal(12440):       ... 9 more
+07-07 22:38:21.514 E/MediaCodec(12440): Codec reported err 0x80000000/UNKNOWN_ERROR, actionCode 0, while in state 7/FLUSHING
+07-07 22:38:21.515 E/ExoPlayerImplInternal(12440): Disable failed.
+07-07 22:38:21.515 E/ExoPlayerImplInternal(12440):   android.media.MediaCodec$CodecException: 
+07-07 22:38:21.515 E/ExoPlayerImplInternal(12440):       at android.media.MediaCodec.native_flush(Native Method)
+07-07 22:38:21.515 E/ExoPlayerImplInternal(12440):       at android.media.MediaCodec.flush(MediaCodec.java:2843)
+07-07 22:38:21.515 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.mediacodec.AsynchronousMediaCodecAdapter.flush(Unknown Source:7)
+07-07 22:38:21.515 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.flushCodec(Unknown Source:5)
+07-07 22:38:21.515 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.flushOrReleaseCodec(Unknown Source:23)
+07-07 22:38:21.515 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.onDisabled(Unknown Source:23)
+07-07 22:38:21.515 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.video.MediaCodecVideoRenderer.onDisabled(Unknown Source:23)
+07-07 22:38:21.515 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.BaseRenderer.disable(Unknown Source:25)
+07-07 22:38:21.515 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.RendererHolder.disableRenderer(Unknown Source:28)
+07-07 22:38:21.515 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.RendererHolder.disable(Unknown Source:2)
+07-07 22:38:21.515 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.ExoPlayerImplInternal.disableRenderer(Unknown Source:14)
+07-07 22:38:21.515 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.ExoPlayerImplInternal.disableRenderers(Unknown Source:6)
+07-07 22:38:21.515 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.ExoPlayerImplInternal.resetInternal(Unknown Source:43)
+07-07 22:38:21.515 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.ExoPlayerImplInternal.stopInternal(Unknown Source:12)
+07-07 22:38:21.515 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.ExoPlayerImplInternal.handleMessage(Unknown Source:713)
+07-07 22:38:21.515 E/ExoPlayerImplInternal(12440):       at android.os.Handler.dispatchMessage(Handler.java:106)
+07-07 22:38:21.515 E/ExoPlayerImplInternal(12440):       at android.os.Looper.dispatchMessage(Looper.java:315)
+07-07 22:38:21.515 E/ExoPlayerImplInternal(12440):       at android.os.Looper.loopOnce(Looper.java:251)
+07-07 22:38:21.515 E/ExoPlayerImplInternal(12440):       at android.os.Looper.loop(Looper.java:349)
+07-07 22:38:21.515 E/ExoPlayerImplInternal(12440):       at android.os.HandlerThread.run(HandlerThread.java:100)
+07-07 22:38:21.521 I/flutter (12440): mina_iptv: Canlı sessiz takılma → taşıma biçimi değişimi: http://s36.g57s75.com/live/d98t21c29s51/736832/79.ts
+07-07 22:38:21.521 I/flutter (12440): mina_iptv: Canlı hata → önce taşıma biçimi değişimi (HLS↔TS)
+07-07 22:38:21.521 I/flutter (12440): mina_iptv: Playing stream: http://s36.g57s75.com/live/d98t21c29s51/736832/79.ts (Step: 0, XtreamAlt: false)
+07-07 22:38:21.521 I/flutter (12440): mina_iptv: DataSource headers: {User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36, Accept: */*, Icy-MetaData: 1, Referer: http://s36.g57s75.com/}
+07-07 22:38:21.524 I/ExoPlayerImpl(12440): Init 9de5f55 [AndroidXMedia3/1.10.1] [courbet, M2101K9AG, Xiaomi, 36]
+07-07 22:38:21.535 D/BetterPlayerSurface(12440): setDataSource textureId=30: stop+clearMediaItems+new MediaSource (SurfaceProducer unchanged)
+07-07 22:38:22.761 W/MediaCodec(12440): Log queueInputBuffer error: 1
+07-07 22:38:22.762 E/MediaCodecVideoRenderer(12440): Video codec error
+07-07 22:38:22.762 E/MediaCodecVideoRenderer(12440):       at androidx.media3.exoplayer.mediacodec.SynchronousMediaCodecBufferEnqueuer.queueInputBuffer(Unknown Source:7)
+07-07 22:38:22.762 E/MediaCodecVideoRenderer(12440):       at androidx.media3.exoplayer.mediacodec.AsynchronousMediaCodecAdapter.queueInputBuffer(Unknown Source:7)
+07-07 22:38:22.762 E/MediaCodecVideoRenderer(12440):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.feedInputBuffer(Unknown Source:480)
+07-07 22:38:22.762 E/MediaCodecVideoRenderer(12440):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.render(Unknown Source:94)
+07-07 22:38:22.762 E/MediaCodecVideoRenderer(12440):       at androidx.media3.exoplayer.video.MediaCodecVideoRenderer.render(Unknown Source:18)
+07-07 22:38:22.762 E/MediaCodecVideoRenderer(12440):       at androidx.media3.exoplayer.RendererHolder.render(Unknown Source:10)
+07-07 22:38:22.762 E/MediaCodecVideoRenderer(12440):       at androidx.media3.exoplayer.ExoPlayerImplInternal.doSomeWork(Unknown Source:115)
+07-07 22:38:22.762 E/MediaCodecVideoRenderer(12440):       at androidx.media3.exoplayer.ExoPlayerImplInternal.handleMessage(Unknown Source:378)
+07-07 22:38:22.763 E/ExoPlayerImplInternal(12440): Playback error
+07-07 22:38:22.763 E/ExoPlayerImplInternal(12440):   androidx.media3.exoplayer.ExoPlaybackException: MediaCodecVideoRenderer error, index=0, format=Format(1/256, null, video/mp2t, video/avc, avc1.64001E, -1, null, [720, 576, -1.0, ColorInfo(Unset color space, Unset color range, Unset color transfer, false, 8bit Luma, 8bit Chroma)], [-1, -1]), format_supported=YES
+07-07 22:38:22.763 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.BaseRenderer.createRendererException(SourceFile:10)
+07-07 22:38:22.763 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.render(Unknown Source:180)
+07-07 22:38:22.763 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.video.MediaCodecVideoRenderer.render(Unknown Source:18)
+07-07 22:38:22.763 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.RendererHolder.render(Unknown Source:10)
+07-07 22:38:22.763 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.ExoPlayerImplInternal.doSomeWork(Unknown Source:115)
+07-07 22:38:22.763 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.ExoPlayerImplInternal.handleMessage(Unknown Source:378)
+07-07 22:38:22.763 E/ExoPlayerImplInternal(12440):       at android.os.Handler.dispatchMessage(Handler.java:106)
+07-07 22:38:22.763 E/ExoPlayerImplInternal(12440):       at android.os.Looper.dispatchMessage(Looper.java:315)
+07-07 22:38:22.763 E/ExoPlayerImplInternal(12440):       at android.os.Looper.loopOnce(Looper.java:251)
+07-07 22:38:22.763 E/ExoPlayerImplInternal(12440):       at android.os.Looper.loop(Looper.java:349)
+07-07 22:38:22.763 E/ExoPlayerImplInternal(12440):       at android.os.HandlerThread.run(HandlerThread.java:100)
+07-07 22:38:22.763 E/ExoPlayerImplInternal(12440):   Caused by: androidx.media3.exoplayer.video.MediaCodecVideoDecoderException: Decoder failed: c2.qti.avc.decoder
+07-07 22:38:22.763 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.video.MediaCodecVideoRenderer.createDecoderException(Unknown Source:4)
+07-07 22:38:22.763 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.render(Unknown Source:163)
+07-07 22:38:22.763 E/ExoPlayerImplInternal(12440):       ... 9 more
+07-07 22:38:22.763 E/ExoPlayerImplInternal(12440):   Caused by: android.media.MediaCodec$CodecException: 
+07-07 22:38:22.763 E/ExoPlayerImplInternal(12440):       at android.media.MediaCodec.native_queueInputBuffer(Native Method)
+07-07 22:38:22.763 E/ExoPlayerImplInternal(12440):       at android.media.MediaCodec.queueInputBuffer(MediaCodec.java:3171)
+07-07 22:38:22.763 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.mediacodec.SynchronousMediaCodecBufferEnqueuer.queueInputBuffer(Unknown Source:7)
+07-07 22:38:22.763 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.mediacodec.AsynchronousMediaCodecAdapter.queueInputBuffer(Unknown Source:7)
+07-07 22:38:22.763 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.feedInputBuffer(Unknown Source:480)
+07-07 22:38:22.763 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.render(Unknown Source:94)
+07-07 22:38:22.763 E/ExoPlayerImplInternal(12440):       ... 9 more
+07-07 22:38:22.764 E/MediaCodec(12440): Codec reported err 0x80000000/UNKNOWN_ERROR, actionCode 0, while in state 7/FLUSHING
+07-07 22:38:22.766 E/ExoPlayerImplInternal(12440): Disable failed.
+07-07 22:38:22.766 E/ExoPlayerImplInternal(12440):   android.media.MediaCodec$CodecException: 
+07-07 22:38:22.766 E/ExoPlayerImplInternal(12440):       at android.media.MediaCodec.native_flush(Native Method)
+07-07 22:38:22.766 E/ExoPlayerImplInternal(12440):       at android.media.MediaCodec.flush(MediaCodec.java:2843)
+07-07 22:38:22.766 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.mediacodec.AsynchronousMediaCodecAdapter.flush(Unknown Source:7)
+07-07 22:38:22.766 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.flushCodec(Unknown Source:5)
+07-07 22:38:22.766 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.flushOrReleaseCodec(Unknown Source:23)
+07-07 22:38:22.766 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.onDisabled(Unknown Source:23)
+07-07 22:38:22.766 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.video.MediaCodecVideoRenderer.onDisabled(Unknown Source:23)
+07-07 22:38:22.766 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.BaseRenderer.disable(Unknown Source:25)
+07-07 22:38:22.766 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.RendererHolder.disableRenderer(Unknown Source:28)
+07-07 22:38:22.766 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.RendererHolder.disable(Unknown Source:2)
+07-07 22:38:22.766 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.ExoPlayerImplInternal.disableRenderer(Unknown Source:14)
+07-07 22:38:22.766 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.ExoPlayerImplInternal.disableRenderers(Unknown Source:6)
+07-07 22:38:22.766 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.ExoPlayerImplInternal.resetInternal(Unknown Source:43)
+07-07 22:38:22.766 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.ExoPlayerImplInternal.stopInternal(Unknown Source:12)
+07-07 22:38:22.766 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.ExoPlayerImplInternal.handleMessage(Unknown Source:713)
+07-07 22:38:22.766 E/ExoPlayerImplInternal(12440):       at android.os.Handler.dispatchMessage(Handler.java:106)
+07-07 22:38:22.766 E/ExoPlayerImplInternal(12440):       at android.os.Looper.dispatchMessage(Looper.java:315)
+07-07 22:38:22.766 E/ExoPlayerImplInternal(12440):       at android.os.Looper.loopOnce(Looper.java:251)
+07-07 22:38:22.766 E/ExoPlayerImplInternal(12440):       at android.os.Looper.loop(Looper.java:349)
+07-07 22:38:22.766 E/ExoPlayerImplInternal(12440):       at android.os.HandlerThread.run(HandlerThread.java:100)
+07-07 22:38:22.769 I/flutter (12440): mina_iptv: Donanım kod çözücü hatası → ExoPlayer yazılım kod çözücü ile yeniden deneniyor (MediaKit öncesi)
+07-07 22:38:22.770 I/flutter (12440): mina_iptv: Playing stream: http://s36.g57s75.com/live/d98t21c29s51/736832/79.ts (Step: 1, XtreamAlt: false)
+07-07 22:38:22.770 I/flutter (12440): mina_iptv: DataSource headers: {User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36, Accept: */*, Icy-MetaData: 1, Referer: http://s36.g57s75.com/}
+07-07 22:38:22.773 I/ExoPlayerImpl(12440): Init 9fdfe40 [AndroidXMedia3/1.10.1] [courbet, M2101K9AG, Xiaomi, 36]
+07-07 22:38:22.781 D/BetterPlayerSurface(12440): setDataSource textureId=31: stop+clearMediaItems+new MediaSource (SurfaceProducer unchanged)
+07-07 22:38:23.961 D/AudioTrack(12440): getTimestamp_l(71): device stall time corrected using current time 711354465925
+07-07 22:38:25.339 D/BetterPlayerSurface(12440): dispose START textureId=31 releasing ExoPlayer + SurfaceProducer
+07-07 22:38:25.340 I/ExoPlayerImpl(12440): Release 9fdfe40 [AndroidXMedia3/1.10.1] [courbet, M2101K9AG, Xiaomi, 36] [media3.common, media3.exoplayer, media3.decoder, media3.exoplayer.hls, media3.datasource, media3.extractor]
+07-07 22:38:25.399 I/flutter (12440): mina_iptv: Playing stream: http://s36.g57s75.com/live/d98t21c29s51/736832/28438.m3u8 (Step: 0, XtreamAlt: false)
+07-07 22:38:25.399 I/flutter (12440): mina_iptv: DataSource headers: {User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36, Accept: */*, Icy-MetaData: 1, Referer: http://s36.g57s75.com/}
+07-07 22:38:25.400 I/ExoPlayerImpl(12440): Init 409baea [AndroidXMedia3/1.10.1] [courbet, M2101K9AG, Xiaomi, 36]
+07-07 22:38:25.707 D/BetterPlayerSurface(12440): setDataSource textureId=32: stop+clearMediaItems+new MediaSource (SurfaceProducer unchanged)
+07-07 22:38:26.661 W/MediaCodec(12440): Log queueInputBuffer error: 1
+07-07 22:38:26.662 E/MediaCodecVideoRenderer(12440): Video codec error
+07-07 22:38:26.662 E/MediaCodecVideoRenderer(12440):       at androidx.media3.exoplayer.mediacodec.SynchronousMediaCodecBufferEnqueuer.queueInputBuffer(Unknown Source:7)
+07-07 22:38:26.662 E/MediaCodecVideoRenderer(12440):       at androidx.media3.exoplayer.mediacodec.AsynchronousMediaCodecAdapter.queueInputBuffer(Unknown Source:7)
+07-07 22:38:26.662 E/MediaCodecVideoRenderer(12440):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.feedInputBuffer(Unknown Source:480)
+07-07 22:38:26.662 E/MediaCodecVideoRenderer(12440):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.render(Unknown Source:94)
+07-07 22:38:26.662 E/MediaCodecVideoRenderer(12440):       at androidx.media3.exoplayer.video.MediaCodecVideoRenderer.render(Unknown Source:18)
+07-07 22:38:26.662 E/MediaCodecVideoRenderer(12440):       at androidx.media3.exoplayer.RendererHolder.render(Unknown Source:10)
+07-07 22:38:26.662 E/MediaCodecVideoRenderer(12440):       at androidx.media3.exoplayer.ExoPlayerImplInternal.doSomeWork(Unknown Source:115)
+07-07 22:38:26.662 E/MediaCodecVideoRenderer(12440):       at androidx.media3.exoplayer.ExoPlayerImplInternal.handleMessage(Unknown Source:378)
+07-07 22:38:26.662 E/ExoPlayerImplInternal(12440): Playback error
+07-07 22:38:26.662 E/ExoPlayerImplInternal(12440):   androidx.media3.exoplayer.ExoPlaybackException: MediaCodecVideoRenderer error, index=0, format=Format(null, null, video/mp2t, video/avc, avc1.640028, -1, null, [1920, 1080, -1.0, ColorInfo(BT709, Limited range, SDR SMPTE 170M, false, 8bit Luma, 8bit Chroma)], [-1, -1]), format_supported=YES
+07-07 22:38:26.662 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.BaseRenderer.createRendererException(SourceFile:10)
+07-07 22:38:26.662 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.render(Unknown Source:180)
+07-07 22:38:26.662 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.video.MediaCodecVideoRenderer.render(Unknown Source:18)
+07-07 22:38:26.662 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.RendererHolder.render(Unknown Source:10)
+07-07 22:38:26.662 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.ExoPlayerImplInternal.doSomeWork(Unknown Source:115)
+07-07 22:38:26.662 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.ExoPlayerImplInternal.handleMessage(Unknown Source:378)
+07-07 22:38:26.662 E/ExoPlayerImplInternal(12440):       at android.os.Handler.dispatchMessage(Handler.java:106)
+07-07 22:38:26.662 E/ExoPlayerImplInternal(12440):       at android.os.Looper.dispatchMessage(Looper.java:315)
+07-07 22:38:26.662 E/ExoPlayerImplInternal(12440):       at android.os.Looper.loopOnce(Looper.java:251)
+07-07 22:38:26.662 E/ExoPlayerImplInternal(12440):       at android.os.Looper.loop(Looper.java:349)
+07-07 22:38:26.662 E/ExoPlayerImplInternal(12440):       at android.os.HandlerThread.run(HandlerThread.java:100)
+07-07 22:38:26.662 E/ExoPlayerImplInternal(12440):   Caused by: androidx.media3.exoplayer.video.MediaCodecVideoDecoderException: Decoder failed: c2.qti.avc.decoder
+07-07 22:38:26.662 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.video.MediaCodecVideoRenderer.createDecoderException(Unknown Source:4)
+07-07 22:38:26.662 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.render(Unknown Source:163)
+07-07 22:38:26.662 E/ExoPlayerImplInternal(12440):       ... 9 more
+07-07 22:38:26.662 E/ExoPlayerImplInternal(12440):   Caused by: android.media.MediaCodec$CodecException: 
+07-07 22:38:26.662 E/ExoPlayerImplInternal(12440):       at android.media.MediaCodec.native_queueInputBuffer(Native Method)
+07-07 22:38:26.662 E/ExoPlayerImplInternal(12440):       at android.media.MediaCodec.queueInputBuffer(MediaCodec.java:3171)
+07-07 22:38:26.662 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.mediacodec.SynchronousMediaCodecBufferEnqueuer.queueInputBuffer(Unknown Source:7)
+07-07 22:38:26.662 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.mediacodec.AsynchronousMediaCodecAdapter.queueInputBuffer(Unknown Source:7)
+07-07 22:38:26.662 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.feedInputBuffer(Unknown Source:480)
+07-07 22:38:26.662 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.render(Unknown Source:94)
+07-07 22:38:26.662 E/ExoPlayerImplInternal(12440):       ... 9 more
+07-07 22:38:26.663 E/MediaCodec(12440): Codec reported err 0x80000000/UNKNOWN_ERROR, actionCode 0, while in state 7/FLUSHING
+07-07 22:38:26.664 E/ExoPlayerImplInternal(12440): Disable failed.
+07-07 22:38:26.664 E/ExoPlayerImplInternal(12440):   android.media.MediaCodec$CodecException: 
+07-07 22:38:26.664 E/ExoPlayerImplInternal(12440):       at android.media.MediaCodec.native_flush(Native Method)
+07-07 22:38:26.664 E/ExoPlayerImplInternal(12440):       at android.media.MediaCodec.flush(MediaCodec.java:2843)
+07-07 22:38:26.664 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.mediacodec.AsynchronousMediaCodecAdapter.flush(Unknown Source:7)
+07-07 22:38:26.664 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.flushCodec(Unknown Source:5)
+07-07 22:38:26.664 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.flushOrReleaseCodec(Unknown Source:23)
+07-07 22:38:26.664 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.onDisabled(Unknown Source:23)
+07-07 22:38:26.664 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.video.MediaCodecVideoRenderer.onDisabled(Unknown Source:23)
+07-07 22:38:26.664 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.BaseRenderer.disable(Unknown Source:25)
+07-07 22:38:26.664 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.RendererHolder.disableRenderer(Unknown Source:28)
+07-07 22:38:26.664 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.RendererHolder.disable(Unknown Source:2)
+07-07 22:38:26.664 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.ExoPlayerImplInternal.disableRenderer(Unknown Source:14)
+07-07 22:38:26.664 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.ExoPlayerImplInternal.disableRenderers(Unknown Source:6)
+07-07 22:38:26.664 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.ExoPlayerImplInternal.resetInternal(Unknown Source:43)
+07-07 22:38:26.664 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.ExoPlayerImplInternal.stopInternal(Unknown Source:12)
+07-07 22:38:26.664 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.ExoPlayerImplInternal.handleMessage(Unknown Source:713)
+07-07 22:38:26.664 E/ExoPlayerImplInternal(12440):       at android.os.Handler.dispatchMessage(Handler.java:106)
+07-07 22:38:26.664 E/ExoPlayerImplInternal(12440):       at android.os.Looper.dispatchMessage(Looper.java:315)
+07-07 22:38:26.664 E/ExoPlayerImplInternal(12440):       at android.os.Looper.loopOnce(Looper.java:251)
+07-07 22:38:26.664 E/ExoPlayerImplInternal(12440):       at android.os.Looper.loop(Looper.java:349)
+07-07 22:38:26.664 E/ExoPlayerImplInternal(12440):       at android.os.HandlerThread.run(HandlerThread.java:100)
+07-07 22:38:26.671 I/flutter (12440): mina_iptv: Canlı sessiz takılma → taşıma biçimi değişimi: http://s36.g57s75.com/live/d98t21c29s51/736832/28438.ts
+07-07 22:38:26.671 I/flutter (12440): mina_iptv: Canlı hata → önce taşıma biçimi değişimi (HLS↔TS)
+07-07 22:38:26.671 I/flutter (12440): mina_iptv: Playing stream: http://s36.g57s75.com/live/d98t21c29s51/736832/28438.ts (Step: 0, XtreamAlt: false)
+07-07 22:38:26.671 I/flutter (12440): mina_iptv: DataSource headers: {User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36, Accept: */*, Icy-MetaData: 1, Referer: http://s36.g57s75.com/}
+07-07 22:38:26.679 I/ExoPlayerImpl(12440): Init 251d084 [AndroidXMedia3/1.10.1] [courbet, M2101K9AG, Xiaomi, 36]
+07-07 22:38:26.689 D/BetterPlayerSurface(12440): setDataSource textureId=33: stop+clearMediaItems+new MediaSource (SurfaceProducer unchanged)
+07-07 22:38:33.959 I/flutter (12440): mina_iptv: Playing stream: http://s36.g57s75.com/live/d98t21c29s51/736832/88.m3u8 (Step: 0, XtreamAlt: false)
+07-07 22:38:33.960 I/flutter (12440): mina_iptv: DataSource headers: {User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36, Accept: */*, Icy-MetaData: 1, Referer: http://s36.g57s75.com/}
+07-07 22:38:33.961 I/ExoPlayerImpl(12440): Init 481df47 [AndroidXMedia3/1.10.1] [courbet, M2101K9AG, Xiaomi, 36]
+07-07 22:38:34.284 D/BetterPlayerSurface(12440): setDataSource textureId=34: stop+clearMediaItems+new MediaSource (SurfaceProducer unchanged)
+07-07 22:38:43.961 I/flutter (12440): mina_iptv: Canlı Better 10s başlangıçta stabil oynatma yok → hızlı kurtarma
+07-07 22:38:43.961 I/flutter (12440): mina_iptv: Canlı sessiz takılma → taşıma biçimi değişimi: http://s36.g57s75.com/live/d98t21c29s51/736832/88.ts
+07-07 22:38:43.961 I/flutter (12440): mina_iptv: Canlı başlangıç takılması → hızlı HLS↔TS swap
+07-07 22:38:43.961 I/flutter (12440): mina_iptv: Playing stream: http://s36.g57s75.com/live/d98t21c29s51/736832/88.ts (Step: 0, XtreamAlt: false)
+07-07 22:38:43.961 I/flutter (12440): mina_iptv: DataSource headers: {User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36, Accept: */*, Icy-MetaData: 1, Referer: http://s36.g57s75.com/}
+07-07 22:38:43.962 I/ExoPlayerImpl(12440): Init 77fe966 [AndroidXMedia3/1.10.1] [courbet, M2101K9AG, Xiaomi, 36]
+07-07 22:38:43.969 D/BetterPlayerSurface(12440): setDataSource textureId=35: stop+clearMediaItems+new MediaSource (SurfaceProducer unchanged)
+07-07 22:38:44.130 I/flutter (12440): mina_iptv: Playing stream: http://s36.g57s75.com/live/d98t21c29s51/736832/84.m3u8 (Step: 0, XtreamAlt: false)
+07-07 22:38:44.130 I/flutter (12440): mina_iptv: DataSource headers: {User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36, Accept: */*, Icy-MetaData: 1, Referer: http://s36.g57s75.com/}
+07-07 22:38:44.131 I/ExoPlayerImpl(12440): Init f5731d8 [AndroidXMedia3/1.10.1] [courbet, M2101K9AG, Xiaomi, 36]
+07-07 22:38:45.246 D/BetterPlayerSurface(12440): setDataSource textureId=36: stop+clearMediaItems+new MediaSource (SurfaceProducer unchanged)
+07-07 22:38:45.631 W/MediaCodec(12440): Log queueInputBuffer error: 1
+07-07 22:38:45.632 E/MediaCodecVideoRenderer(12440): Video codec error
+07-07 22:38:45.632 E/MediaCodecVideoRenderer(12440):       at androidx.media3.exoplayer.mediacodec.SynchronousMediaCodecBufferEnqueuer.queueInputBuffer(Unknown Source:7)
+07-07 22:38:45.632 E/MediaCodecVideoRenderer(12440):       at androidx.media3.exoplayer.mediacodec.AsynchronousMediaCodecAdapter.queueInputBuffer(Unknown Source:7)
+07-07 22:38:45.632 E/MediaCodecVideoRenderer(12440):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.feedInputBuffer(Unknown Source:480)
+07-07 22:38:45.632 E/MediaCodecVideoRenderer(12440):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.render(Unknown Source:94)
+07-07 22:38:45.632 E/MediaCodecVideoRenderer(12440):       at androidx.media3.exoplayer.video.MediaCodecVideoRenderer.render(Unknown Source:18)
+07-07 22:38:45.632 E/MediaCodecVideoRenderer(12440):       at androidx.media3.exoplayer.RendererHolder.render(Unknown Source:10)
+07-07 22:38:45.632 E/MediaCodecVideoRenderer(12440):       at androidx.media3.exoplayer.ExoPlayerImplInternal.doSomeWork(Unknown Source:115)
+07-07 22:38:45.632 E/MediaCodecVideoRenderer(12440):       at androidx.media3.exoplayer.ExoPlayerImplInternal.handleMessage(Unknown Source:378)
+07-07 22:38:45.633 E/ExoPlayerImplInternal(12440): Playback error
+07-07 22:38:45.633 E/ExoPlayerImplInternal(12440):   androidx.media3.exoplayer.ExoPlaybackException: MediaCodecVideoRenderer error, index=0, format=Format(1/256, null, video/mp2t, video/avc, avc1.640029, -1, null, [1920, 1080, -1.0, ColorInfo(BT709, Limited range, SDR SMPTE 170M, false, 8bit Luma, 8bit Chroma)], [-1, -1]), format_supported=YES
+07-07 22:38:45.633 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.BaseRenderer.createRendererException(SourceFile:10)
+07-07 22:38:45.633 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.render(Unknown Source:180)
+07-07 22:38:45.633 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.video.MediaCodecVideoRenderer.render(Unknown Source:18)
+07-07 22:38:45.633 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.RendererHolder.render(Unknown Source:10)
+07-07 22:38:45.633 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.ExoPlayerImplInternal.doSomeWork(Unknown Source:115)
+07-07 22:38:45.633 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.ExoPlayerImplInternal.handleMessage(Unknown Source:378)
+07-07 22:38:45.633 E/ExoPlayerImplInternal(12440):       at android.os.Handler.dispatchMessage(Handler.java:106)
+07-07 22:38:45.633 E/ExoPlayerImplInternal(12440):       at android.os.Looper.dispatchMessage(Looper.java:315)
+07-07 22:38:45.633 E/ExoPlayerImplInternal(12440):       at android.os.Looper.loopOnce(Looper.java:251)
+07-07 22:38:45.633 E/ExoPlayerImplInternal(12440):       at android.os.Looper.loop(Looper.java:349)
+07-07 22:38:45.633 E/ExoPlayerImplInternal(12440):       at android.os.HandlerThread.run(HandlerThread.java:100)
+07-07 22:38:45.633 E/ExoPlayerImplInternal(12440):   Caused by: androidx.media3.exoplayer.video.MediaCodecVideoDecoderException: Decoder failed: c2.qti.avc.decoder
+07-07 22:38:45.633 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.video.MediaCodecVideoRenderer.createDecoderException(Unknown Source:4)
+07-07 22:38:45.633 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.render(Unknown Source:163)
+07-07 22:38:45.633 E/ExoPlayerImplInternal(12440):       ... 9 more
+07-07 22:38:45.633 E/ExoPlayerImplInternal(12440):   Caused by: android.media.MediaCodec$CodecException: 
+07-07 22:38:45.633 E/ExoPlayerImplInternal(12440):       at android.media.MediaCodec.native_queueInputBuffer(Native Method)
+07-07 22:38:45.633 E/ExoPlayerImplInternal(12440):       at android.media.MediaCodec.queueInputBuffer(MediaCodec.java:3171)
+07-07 22:38:45.633 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.mediacodec.SynchronousMediaCodecBufferEnqueuer.queueInputBuffer(Unknown Source:7)
+07-07 22:38:45.633 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.mediacodec.AsynchronousMediaCodecAdapter.queueInputBuffer(Unknown Source:7)
+07-07 22:38:45.633 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.feedInputBuffer(Unknown Source:480)
+07-07 22:38:45.633 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.render(Unknown Source:94)
+07-07 22:38:45.633 E/ExoPlayerImplInternal(12440):       ... 9 more
+07-07 22:38:45.635 E/MediaCodec(12440): Codec reported err 0x80000000/UNKNOWN_ERROR, actionCode 0, while in state 7/FLUSHING
+07-07 22:38:45.637 E/ExoPlayerImplInternal(12440): Disable failed.
+07-07 22:38:45.637 E/ExoPlayerImplInternal(12440):   android.media.MediaCodec$CodecException: 
+07-07 22:38:45.637 E/ExoPlayerImplInternal(12440):       at android.media.MediaCodec.native_flush(Native Method)
+07-07 22:38:45.637 E/ExoPlayerImplInternal(12440):       at android.media.MediaCodec.flush(MediaCodec.java:2843)
+07-07 22:38:45.637 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.mediacodec.AsynchronousMediaCodecAdapter.flush(Unknown Source:7)
+07-07 22:38:45.637 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.flushCodec(Unknown Source:5)
+07-07 22:38:45.637 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.flushOrReleaseCodec(Unknown Source:23)
+07-07 22:38:45.637 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.onDisabled(Unknown Source:23)
+07-07 22:38:45.637 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.video.MediaCodecVideoRenderer.onDisabled(Unknown Source:23)
+07-07 22:38:45.637 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.BaseRenderer.disable(Unknown Source:25)
+07-07 22:38:45.637 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.RendererHolder.disableRenderer(Unknown Source:28)
+07-07 22:38:45.637 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.RendererHolder.disable(Unknown Source:2)
+07-07 22:38:45.637 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.ExoPlayerImplInternal.disableRenderer(Unknown Source:14)
+07-07 22:38:45.637 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.ExoPlayerImplInternal.disableRenderers(Unknown Source:6)
+07-07 22:38:45.637 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.ExoPlayerImplInternal.resetInternal(Unknown Source:43)
+07-07 22:38:45.637 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.ExoPlayerImplInternal.stopInternal(Unknown Source:12)
+07-07 22:38:45.637 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.ExoPlayerImplInternal.handleMessage(Unknown Source:713)
+07-07 22:38:45.637 E/ExoPlayerImplInternal(12440):       at android.os.Handler.dispatchMessage(Handler.java:106)
+07-07 22:38:45.637 E/ExoPlayerImplInternal(12440):       at android.os.Looper.dispatchMessage(Looper.java:315)
+07-07 22:38:45.637 E/ExoPlayerImplInternal(12440):       at android.os.Looper.loopOnce(Looper.java:251)
+07-07 22:38:45.637 E/ExoPlayerImplInternal(12440):       at android.os.Looper.loop(Looper.java:349)
+07-07 22:38:45.637 E/ExoPlayerImplInternal(12440):       at android.os.HandlerThread.run(HandlerThread.java:100)
+07-07 22:38:45.639 I/flutter (12440): mina_iptv: Canlı sessiz takılma → taşıma biçimi değişimi: http://s36.g57s75.com/live/d98t21c29s51/736832/84.ts
+07-07 22:38:45.639 I/flutter (12440): mina_iptv: Canlı hata → önce taşıma biçimi değişimi (HLS↔TS)
+07-07 22:38:45.640 I/flutter (12440): mina_iptv: Playing stream: http://s36.g57s75.com/live/d98t21c29s51/736832/84.ts (Step: 0, XtreamAlt: false)
+07-07 22:38:45.640 I/flutter (12440): mina_iptv: DataSource headers: {User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36, Accept: */*, Icy-MetaData: 1, Referer: http://s36.g57s75.com/}
+07-07 22:38:45.641 I/ExoPlayerImpl(12440): Init bd07c38 [AndroidXMedia3/1.10.1] [courbet, M2101K9AG, Xiaomi, 36]
+07-07 22:38:45.646 D/BetterPlayerSurface(12440): setDataSource textureId=37: stop+clearMediaItems+new MediaSource (SurfaceProducer unchanged)
+07-07 22:38:47.655 I/flutter (12440): mina_iptv: stale playback gen after setupDataSource (new Better), dispose
+07-07 22:38:47.663 D/BetterPlayerSurface(12440): dispose START textureId=36 releasing ExoPlayer + SurfaceProducer
+07-07 22:38:47.678 I/ExoPlayerImpl(12440): Release f5731d8 [AndroidXMedia3/1.10.1] [courbet, M2101K9AG, Xiaomi, 36] [media3.common, media3.exoplayer, media3.decoder, media3.exoplayer.hls, media3.datasource, media3.extractor]
+07-07 22:38:48.248 D/BetterPlayerSurface(12440): dispose START textureId=37 releasing ExoPlayer + SurfaceProducer
+07-07 22:38:48.250 I/ExoPlayerImpl(12440): Release bd07c38 [AndroidXMedia3/1.10.1] [courbet, M2101K9AG, Xiaomi, 36] [media3.common, media3.exoplayer, media3.decoder, media3.exoplayer.hls, media3.datasource, media3.extractor]
+07-07 22:38:48.319 I/flutter (12440): mina_iptv: Playing stream: http://s36.g57s75.com/live/d98t21c29s51/736832/86.m3u8 (Step: 0, XtreamAlt: false)
+07-07 22:38:48.320 I/flutter (12440): mina_iptv: DataSource headers: {User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36, Accept: */*, Icy-MetaData: 1, Referer: http://s36.g57s75.com/}
+07-07 22:38:48.320 I/ExoPlayerImpl(12440): Init fc4e09c [AndroidXMedia3/1.10.1] [courbet, M2101K9AG, Xiaomi, 36]
+07-07 22:38:48.645 D/BetterPlayerSurface(12440): setDataSource textureId=38: stop+clearMediaItems+new MediaSource (SurfaceProducer unchanged)
+07-07 22:38:49.526 W/MediaCodec(12440): Log queueInputBuffer error: 1
+07-07 22:38:49.527 E/MediaCodecVideoRenderer(12440): Video codec error
+07-07 22:38:49.527 E/MediaCodecVideoRenderer(12440):       at androidx.media3.exoplayer.mediacodec.SynchronousMediaCodecBufferEnqueuer.queueInputBuffer(Unknown Source:7)
+07-07 22:38:49.527 E/MediaCodecVideoRenderer(12440):       at androidx.media3.exoplayer.mediacodec.AsynchronousMediaCodecAdapter.queueInputBuffer(Unknown Source:7)
+07-07 22:38:49.527 E/MediaCodecVideoRenderer(12440):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.feedInputBuffer(Unknown Source:480)
+07-07 22:38:49.527 E/MediaCodecVideoRenderer(12440):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.render(Unknown Source:94)
+07-07 22:38:49.527 E/MediaCodecVideoRenderer(12440):       at androidx.media3.exoplayer.video.MediaCodecVideoRenderer.render(Unknown Source:18)
+07-07 22:38:49.527 E/MediaCodecVideoRenderer(12440):       at androidx.media3.exoplayer.RendererHolder.render(Unknown Source:10)
+07-07 22:38:49.527 E/MediaCodecVideoRenderer(12440):       at androidx.media3.exoplayer.ExoPlayerImplInternal.doSomeWork(Unknown Source:115)
+07-07 22:38:49.527 E/MediaCodecVideoRenderer(12440):       at androidx.media3.exoplayer.ExoPlayerImplInternal.handleMessage(Unknown Source:378)
+07-07 22:38:49.528 E/ExoPlayerImplInternal(12440): Playback error
+07-07 22:38:49.528 E/ExoPlayerImplInternal(12440):   androidx.media3.exoplayer.ExoPlaybackException: MediaCodecVideoRenderer error, index=0, format=Format(null, null, video/mp2t, video/avc, avc1.4D4028, -1, null, [1920, 1080, -1.0, ColorInfo(Unset color space, Unset color range, Unset color transfer, false, 8bit Luma, 8bit Chroma)], [-1, -1]), format_supported=YES
+07-07 22:38:49.528 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.BaseRenderer.createRendererException(SourceFile:10)
+07-07 22:38:49.528 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.render(Unknown Source:180)
+07-07 22:38:49.528 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.video.MediaCodecVideoRenderer.render(Unknown Source:18)
+07-07 22:38:49.528 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.RendererHolder.render(Unknown Source:10)
+07-07 22:38:49.528 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.ExoPlayerImplInternal.doSomeWork(Unknown Source:115)
+07-07 22:38:49.528 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.ExoPlayerImplInternal.handleMessage(Unknown Source:378)
+07-07 22:38:49.528 E/ExoPlayerImplInternal(12440):       at android.os.Handler.dispatchMessage(Handler.java:106)
+07-07 22:38:49.528 E/ExoPlayerImplInternal(12440):       at android.os.Looper.dispatchMessage(Looper.java:315)
+07-07 22:38:49.528 E/ExoPlayerImplInternal(12440):       at android.os.Looper.loopOnce(Looper.java:251)
+07-07 22:38:49.528 E/ExoPlayerImplInternal(12440):       at android.os.Looper.loop(Looper.java:349)
+07-07 22:38:49.528 E/ExoPlayerImplInternal(12440):       at android.os.HandlerThread.run(HandlerThread.java:100)
+07-07 22:38:49.528 E/ExoPlayerImplInternal(12440):   Caused by: androidx.media3.exoplayer.video.MediaCodecVideoDecoderException: Decoder failed: c2.qti.avc.decoder
+07-07 22:38:49.528 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.video.MediaCodecVideoRenderer.createDecoderException(Unknown Source:4)
+07-07 22:38:49.528 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.render(Unknown Source:163)
+07-07 22:38:49.528 E/ExoPlayerImplInternal(12440):       ... 9 more
+07-07 22:38:49.528 E/ExoPlayerImplInternal(12440):   Caused by: android.media.MediaCodec$CodecException: 
+07-07 22:38:49.528 E/ExoPlayerImplInternal(12440):       at android.media.MediaCodec.native_queueInputBuffer(Native Method)
+07-07 22:38:49.528 E/ExoPlayerImplInternal(12440):       at android.media.MediaCodec.queueInputBuffer(MediaCodec.java:3171)
+07-07 22:38:49.528 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.mediacodec.SynchronousMediaCodecBufferEnqueuer.queueInputBuffer(Unknown Source:7)
+07-07 22:38:49.528 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.mediacodec.AsynchronousMediaCodecAdapter.queueInputBuffer(Unknown Source:7)
+07-07 22:38:49.528 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.feedInputBuffer(Unknown Source:480)
+07-07 22:38:49.528 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.render(Unknown Source:94)
+07-07 22:38:49.528 E/ExoPlayerImplInternal(12440):       ... 9 more
+07-07 22:38:49.529 E/MediaCodec(12440): Codec reported err 0x80000000/UNKNOWN_ERROR, actionCode 0, while in state 7/FLUSHING
+07-07 22:38:49.532 E/ExoPlayerImplInternal(12440): Disable failed.
+07-07 22:38:49.532 E/ExoPlayerImplInternal(12440):   android.media.MediaCodec$CodecException: 
+07-07 22:38:49.532 E/ExoPlayerImplInternal(12440):       at android.media.MediaCodec.native_flush(Native Method)
+07-07 22:38:49.532 E/ExoPlayerImplInternal(12440):       at android.media.MediaCodec.flush(MediaCodec.java:2843)
+07-07 22:38:49.532 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.mediacodec.AsynchronousMediaCodecAdapter.flush(Unknown Source:7)
+07-07 22:38:49.532 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.flushCodec(Unknown Source:5)
+07-07 22:38:49.532 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.flushOrReleaseCodec(Unknown Source:23)
+07-07 22:38:49.532 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.onDisabled(Unknown Source:23)
+07-07 22:38:49.532 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.video.MediaCodecVideoRenderer.onDisabled(Unknown Source:23)
+07-07 22:38:49.532 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.BaseRenderer.disable(Unknown Source:25)
+07-07 22:38:49.532 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.RendererHolder.disableRenderer(Unknown Source:28)
+07-07 22:38:49.532 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.RendererHolder.disable(Unknown Source:2)
+07-07 22:38:49.532 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.ExoPlayerImplInternal.disableRenderer(Unknown Source:14)
+07-07 22:38:49.532 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.ExoPlayerImplInternal.disableRenderers(Unknown Source:6)
+07-07 22:38:49.532 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.ExoPlayerImplInternal.resetInternal(Unknown Source:43)
+07-07 22:38:49.532 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.ExoPlayerImplInternal.stopInternal(Unknown Source:12)
+07-07 22:38:49.532 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.ExoPlayerImplInternal.handleMessage(Unknown Source:713)
+07-07 22:38:49.532 E/ExoPlayerImplInternal(12440):       at android.os.Handler.dispatchMessage(Handler.java:106)
+07-07 22:38:49.532 E/ExoPlayerImplInternal(12440):       at android.os.Looper.dispatchMessage(Looper.java:315)
+07-07 22:38:49.532 E/ExoPlayerImplInternal(12440):       at android.os.Looper.loopOnce(Looper.java:251)
+07-07 22:38:49.532 E/ExoPlayerImplInternal(12440):       at android.os.Looper.loop(Looper.java:349)
+07-07 22:38:49.532 E/ExoPlayerImplInternal(12440):       at android.os.HandlerThread.run(HandlerThread.java:100)
+07-07 22:38:49.540 I/flutter (12440): mina_iptv: Canlı sessiz takılma → taşıma biçimi değişimi: http://s36.g57s75.com/live/d98t21c29s51/736832/86.ts
+07-07 22:38:49.540 I/flutter (12440): mina_iptv: Canlı hata → önce taşıma biçimi değişimi (HLS↔TS)
+07-07 22:38:49.540 I/flutter (12440): mina_iptv: Playing stream: http://s36.g57s75.com/live/d98t21c29s51/736832/86.ts (Step: 0, XtreamAlt: false)
+07-07 22:38:49.540 I/flutter (12440): mina_iptv: DataSource headers: {User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36, Accept: */*, Icy-MetaData: 1, Referer: http://s36.g57s75.com/}
+07-07 22:38:49.543 I/ExoPlayerImpl(12440): Init 2f3b1a6 [AndroidXMedia3/1.10.1] [courbet, M2101K9AG, Xiaomi, 36]
+07-07 22:38:49.547 D/BetterPlayerSurface(12440): setDataSource textureId=39: stop+clearMediaItems+new MediaSource (SurfaceProducer unchanged)
+07-07 22:38:54.571 I/flutter (12440): mina_iptv: Using cached format for channel 182: ts
+07-07 22:38:54.572 I/flutter (12440): mina_iptv: Playing stream: http://s36.g57s75.com/live/d98t21c29s51/736832/182.m3u8 (Step: 0, XtreamAlt: true)
+07-07 22:38:54.572 I/flutter (12440): mina_iptv: DataSource headers: {User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36, Accept: */*, Icy-MetaData: 1, Referer: http://s36.g57s75.com/}
+07-07 22:38:54.573 I/ExoPlayerImpl(12440): Init 6973f5a [AndroidXMedia3/1.10.1] [courbet, M2101K9AG, Xiaomi, 36]
+07-07 22:38:54.890 D/BetterPlayerSurface(12440): setDataSource textureId=40: stop+clearMediaItems+new MediaSource (SurfaceProducer unchanged)
+07-07 22:38:56.234 D/AudioTrack(12440): getTimestamp_l(77): device stall time corrected using current time 743627156589
+07-07 22:38:57.261 I/flutter (12440): mina_iptv: Playing stream: http://s36.g57s75.com/live/d98t21c29s51/736832/183.m3u8 (Step: 0, XtreamAlt: false)
+07-07 22:38:57.261 I/flutter (12440): mina_iptv: DataSource headers: {User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36, Accept: */*, Icy-MetaData: 1, Referer: http://s36.g57s75.com/}
+07-07 22:38:58.003 D/BetterPlayerSurface(12440): setDataSource textureId=40: stop+clearMediaItems+new MediaSource (SurfaceProducer unchanged)
+07-07 22:38:58.935 W/MediaCodec(12440): Log queueInputBuffer error: 1
+07-07 22:38:58.935 E/MediaCodecVideoRenderer(12440): Video codec error
+07-07 22:38:58.935 E/MediaCodecVideoRenderer(12440):       at androidx.media3.exoplayer.mediacodec.SynchronousMediaCodecBufferEnqueuer.queueInputBuffer(Unknown Source:7)
+07-07 22:38:58.935 E/MediaCodecVideoRenderer(12440):       at androidx.media3.exoplayer.mediacodec.AsynchronousMediaCodecAdapter.queueInputBuffer(Unknown Source:7)
+07-07 22:38:58.935 E/MediaCodecVideoRenderer(12440):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.feedInputBuffer(Unknown Source:480)
+07-07 22:38:58.935 E/MediaCodecVideoRenderer(12440):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.render(Unknown Source:94)
+07-07 22:38:58.935 E/MediaCodecVideoRenderer(12440):       at androidx.media3.exoplayer.video.MediaCodecVideoRenderer.render(Unknown Source:18)
+07-07 22:38:58.935 E/MediaCodecVideoRenderer(12440):       at androidx.media3.exoplayer.RendererHolder.render(Unknown Source:10)
+07-07 22:38:58.935 E/MediaCodecVideoRenderer(12440):       at androidx.media3.exoplayer.ExoPlayerImplInternal.doSomeWork(Unknown Source:115)
+07-07 22:38:58.935 E/MediaCodecVideoRenderer(12440):       at androidx.media3.exoplayer.ExoPlayerImplInternal.handleMessage(Unknown Source:378)
+07-07 22:38:58.936 E/ExoPlayerImplInternal(12440): Playback error
+07-07 22:38:58.936 E/ExoPlayerImplInternal(12440):   androidx.media3.exoplayer.ExoPlaybackException: MediaCodecVideoRenderer error, index=0, format=Format(null, null, video/mp2t, video/avc, avc1.640028, -1, null, [1920, 1080, -1.0, ColorInfo(BT709, Limited range, SDR SMPTE 170M, false, 8bit Luma, 8bit Chroma)], [-1, -1]), format_supported=YES
+07-07 22:38:58.936 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.BaseRenderer.createRendererException(SourceFile:10)
+07-07 22:38:58.936 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.render(Unknown Source:180)
+07-07 22:38:58.936 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.video.MediaCodecVideoRenderer.render(Unknown Source:18)
+07-07 22:38:58.936 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.RendererHolder.render(Unknown Source:10)
+07-07 22:38:58.936 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.ExoPlayerImplInternal.doSomeWork(Unknown Source:115)
+07-07 22:38:58.936 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.ExoPlayerImplInternal.handleMessage(Unknown Source:378)
+07-07 22:38:58.936 E/ExoPlayerImplInternal(12440):       at android.os.Handler.dispatchMessage(Handler.java:106)
+07-07 22:38:58.936 E/ExoPlayerImplInternal(12440):       at android.os.Looper.dispatchMessage(Looper.java:315)
+07-07 22:38:58.936 E/ExoPlayerImplInternal(12440):       at android.os.Looper.loopOnce(Looper.java:251)
+07-07 22:38:58.936 E/ExoPlayerImplInternal(12440):       at android.os.Looper.loop(Looper.java:349)
+07-07 22:38:58.936 E/ExoPlayerImplInternal(12440):       at android.os.HandlerThread.run(HandlerThread.java:100)
+07-07 22:38:58.936 E/ExoPlayerImplInternal(12440):   Caused by: androidx.media3.exoplayer.video.MediaCodecVideoDecoderException: Decoder failed: c2.qti.avc.decoder
+07-07 22:38:58.936 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.video.MediaCodecVideoRenderer.createDecoderException(Unknown Source:4)
+07-07 22:38:58.936 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.render(Unknown Source:163)
+07-07 22:38:58.936 E/ExoPlayerImplInternal(12440):       ... 9 more
+07-07 22:38:58.936 E/ExoPlayerImplInternal(12440):   Caused by: android.media.MediaCodec$CodecException: 
+07-07 22:38:58.936 E/ExoPlayerImplInternal(12440):       at android.media.MediaCodec.native_queueInputBuffer(Native Method)
+07-07 22:38:58.936 E/ExoPlayerImplInternal(12440):       at android.media.MediaCodec.queueInputBuffer(MediaCodec.java:3171)
+07-07 22:38:58.936 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.mediacodec.SynchronousMediaCodecBufferEnqueuer.queueInputBuffer(Unknown Source:7)
+07-07 22:38:58.936 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.mediacodec.AsynchronousMediaCodecAdapter.queueInputBuffer(Unknown Source:7)
+07-07 22:38:58.936 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.feedInputBuffer(Unknown Source:480)
+07-07 22:38:58.936 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.render(Unknown Source:94)
+07-07 22:38:58.936 E/ExoPlayerImplInternal(12440):       ... 9 more
+07-07 22:38:58.936 E/MediaCodec(12440): Codec reported err 0x80000000/UNKNOWN_ERROR, actionCode 0, while in state 7/FLUSHING
+07-07 22:38:58.937 E/ExoPlayerImplInternal(12440): Disable failed.
+07-07 22:38:58.937 E/ExoPlayerImplInternal(12440):   android.media.MediaCodec$CodecException: 
+07-07 22:38:58.937 E/ExoPlayerImplInternal(12440):       at android.media.MediaCodec.native_flush(Native Method)
+07-07 22:38:58.937 E/ExoPlayerImplInternal(12440):       at android.media.MediaCodec.flush(MediaCodec.java:2843)
+07-07 22:38:58.937 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.mediacodec.AsynchronousMediaCodecAdapter.flush(Unknown Source:7)
+07-07 22:38:58.937 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.flushCodec(Unknown Source:5)
+07-07 22:38:58.937 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.flushOrReleaseCodec(Unknown Source:23)
+07-07 22:38:58.937 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.onDisabled(Unknown Source:23)
+07-07 22:38:58.937 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.video.MediaCodecVideoRenderer.onDisabled(Unknown Source:23)
+07-07 22:38:58.937 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.BaseRenderer.disable(Unknown Source:25)
+07-07 22:38:58.937 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.RendererHolder.disableRenderer(Unknown Source:28)
+07-07 22:38:58.937 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.RendererHolder.disable(Unknown Source:2)
+07-07 22:38:58.937 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.ExoPlayerImplInternal.disableRenderer(Unknown Source:14)
+07-07 22:38:58.937 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.ExoPlayerImplInternal.disableRenderers(Unknown Source:6)
+07-07 22:38:58.937 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.ExoPlayerImplInternal.resetInternal(Unknown Source:43)
+07-07 22:38:58.937 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.ExoPlayerImplInternal.stopInternal(Unknown Source:12)
+07-07 22:38:58.937 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.ExoPlayerImplInternal.handleMessage(Unknown Source:713)
+07-07 22:38:58.937 E/ExoPlayerImplInternal(12440):       at android.os.Handler.dispatchMessage(Handler.java:106)
+07-07 22:38:58.937 E/ExoPlayerImplInternal(12440):       at android.os.Looper.dispatchMessage(Looper.java:315)
+07-07 22:38:58.937 E/ExoPlayerImplInternal(12440):       at android.os.Looper.loopOnce(Looper.java:251)
+07-07 22:38:58.937 E/ExoPlayerImplInternal(12440):       at android.os.Looper.loop(Looper.java:349)
+07-07 22:38:58.937 E/ExoPlayerImplInternal(12440):       at android.os.HandlerThread.run(HandlerThread.java:100)
+07-07 22:38:58.940 I/flutter (12440): mina_iptv: Canlı sessiz takılma → taşıma biçimi değişimi: http://s36.g57s75.com/live/d98t21c29s51/736832/183.ts
+07-07 22:38:58.940 I/flutter (12440): mina_iptv: Canlı hata → önce taşıma biçimi değişimi (HLS↔TS)
+07-07 22:38:58.940 I/flutter (12440): mina_iptv: VideoPlayer error: Video player had error androidx.media3.exoplayer.ExoPlaybackException: MediaCodecVideoRenderer error, index=0, format=Format(null, null, video/mp2t, video/avc, avc1.640028, -1, null, [1920, 1080, -1.0, ColorInfo(BT709, Limited range, SDR SMPTE 170M, false, 8bit Luma, 8bit Chroma)], [-1, -1]), format_supported=YES
+07-07 22:38:58.940 I/flutter (12440): mina_iptv: Donanım kod çözücü hatası → ExoPlayer yazılım kod çözücü ile yeniden deneniyor (MediaKit öncesi)
+07-07 22:38:58.940 I/flutter (12440): mina_iptv: BetterPlayer exception → MediaKit yedek: Video player had error androidx.media3.exoplayer.ExoPlaybackException: MediaCodecVideoRenderer error, index=0, format=Format(null, null, video/mp2t, video/avc, avc1.640028, -1, null, [1920, 1080, -1.0, ColorInfo(BT709, Limited range, SDR SMPTE 170M, false, 8bit Luma, 8bit Chroma)], [-1, -1]), format_supported=YES
+07-07 22:38:58.940 I/flutter (12440): mina_iptv: Playing stream: http://s36.g57s75.com/live/d98t21c29s51/736832/183.ts (Step: 1, XtreamAlt: false)
+07-07 22:38:58.940 I/flutter (12440): mina_iptv: Playing stream: http://s36.g57s75.com/live/d98t21c29s51/736832/183.ts (Step: 1, XtreamAlt: false)
+07-07 22:38:58.949 I/flutter (12440): mina_iptv: Network recovery in 1s (attempt idx 0)
+07-07 22:38:58.950 I/flutter (12440): mina_iptv: Playing stream: http://s36.g57s75.com/live/d98t21c29s51/736832/183.ts (Step: 1, XtreamAlt: false)
+07-07 22:38:58.950 D/BetterPlayerSurface(12440): dispose START textureId=40 releasing ExoPlayer + SurfaceProducer
+07-07 22:38:58.951 I/ExoPlayerImpl(12440): Release 6973f5a [AndroidXMedia3/1.10.1] [courbet, M2101K9AG, Xiaomi, 36] [media3.common, media3.exoplayer, media3.decoder, media3.exoplayer.hls, media3.datasource, media3.extractor]
+07-07 22:39:06.056 I/flutter (12440): mina_iptv: Playing stream: http://s36.g57s75.com/live/d98t21c29s51/736832/183.ts (Step: 1, XtreamAlt: false)
+07-07 22:39:06.056 I/flutter (12440): mina_iptv: DataSource headers: {User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36, Accept: */*, Icy-MetaData: 1, Referer: http://s36.g57s75.com/}
+07-07 22:39:06.057 I/ExoPlayerImpl(12440): Init 7167d32 [AndroidXMedia3/1.10.1] [courbet, M2101K9AG, Xiaomi, 36]
+07-07 22:39:06.068 D/BetterPlayerSurface(12440): setDataSource textureId=41: stop+clearMediaItems+new MediaSource (SurfaceProducer unchanged)
+07-07 22:39:11.423 D/BetterPlayerSurface(12440): dispose START textureId=41 releasing ExoPlayer + SurfaceProducer
+07-07 22:39:11.424 I/ExoPlayerImpl(12440): Release 7167d32 [AndroidXMedia3/1.10.1] [courbet, M2101K9AG, Xiaomi, 36] [media3.common, media3.exoplayer, media3.decoder, media3.exoplayer.hls, media3.datasource, media3.extractor]
+07-07 22:39:11.494 I/flutter (12440): mina_iptv: Using cached format for channel 185: hls
+07-07 22:39:11.494 I/flutter (12440): mina_iptv: Playing stream: http://s36.g57s75.com/live/d98t21c29s51/736832/185.m3u8 (Step: 0, XtreamAlt: false)
+07-07 22:39:11.494 I/flutter (12440): mina_iptv: DataSource headers: {User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36, Accept: */*, Icy-MetaData: 1, Referer: http://s36.g57s75.com/}
+07-07 22:39:11.495 I/ExoPlayerImpl(12440): Init 76d3461 [AndroidXMedia3/1.10.1] [courbet, M2101K9AG, Xiaomi, 36]
+07-07 22:39:11.889 D/BetterPlayerSurface(12440): setDataSource textureId=42: stop+clearMediaItems+new MediaSource (SurfaceProducer unchanged)
+07-07 22:39:13.481 D/AudioTrack(12440): getTimestamp_l(79): device stall time corrected using current time 760874422989
+07-07 22:39:15.769 I/flutter (12440): mina_iptv: Using cached format for channel 184: ts
+07-07 22:39:15.769 I/flutter (12440): mina_iptv: Playing stream: http://s36.g57s75.com/live/d98t21c29s51/736832/184.m3u8 (Step: 0, XtreamAlt: true)
+07-07 22:39:15.769 I/flutter (12440): mina_iptv: DataSource headers: {User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36, Accept: */*, Icy-MetaData: 1, Referer: http://s36.g57s75.com/}
+07-07 22:39:16.125 D/BetterPlayerSurface(12440): setDataSource textureId=42: stop+clearMediaItems+new MediaSource (SurfaceProducer unchanged)
+07-07 22:39:17.683 D/AudioTrack(12440): getTimestamp_l(80): device stall time corrected using current time 765076151060
+07-07 22:39:19.666 I/flutter (12440): mina_iptv: Playing stream: http://s36.g57s75.com/live/d98t21c29s51/736832/200.m3u8 (Step: 0, XtreamAlt: false)
+07-07 22:39:19.667 I/flutter (12440): mina_iptv: DataSource headers: {User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36, Accept: */*, Icy-MetaData: 1, Referer: http://s36.g57s75.com/}
+07-07 22:39:20.272 D/BetterPlayerSurface(12440): setDataSource textureId=42: stop+clearMediaItems+new MediaSource (SurfaceProducer unchanged)
+07-07 22:39:25.929 I/flutter (12440): mina_iptv: Playing stream: http://s36.g57s75.com/live/d98t21c29s51/736832/28437.m3u8 (Step: 0, XtreamAlt: false)
+07-07 22:39:25.929 I/flutter (12440): mina_iptv: DataSource headers: {User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36, Accept: */*, Icy-MetaData: 1, Referer: http://s36.g57s75.com/}
+07-07 22:39:26.251 D/BetterPlayerSurface(12440): setDataSource textureId=42: stop+clearMediaItems+new MediaSource (SurfaceProducer unchanged)
+07-07 22:39:26.252 E/MediaCodec(12440): Codec reported err 0x80000000/UNKNOWN_ERROR, actionCode 0, while in state 7/FLUSHING
+07-07 22:39:26.253 E/ExoPlayerImplInternal(12440): Disable failed.
+07-07 22:39:26.253 E/ExoPlayerImplInternal(12440):   android.media.MediaCodec$CodecException: 
+07-07 22:39:26.253 E/ExoPlayerImplInternal(12440):       at android.media.MediaCodec.native_flush(Native Method)
+07-07 22:39:26.253 E/ExoPlayerImplInternal(12440):       at android.media.MediaCodec.flush(MediaCodec.java:2843)
+07-07 22:39:26.253 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.mediacodec.AsynchronousMediaCodecAdapter.flush(Unknown Source:7)
+07-07 22:39:26.253 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.flushCodec(Unknown Source:5)
+07-07 22:39:26.253 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.flushOrReleaseCodec(Unknown Source:23)
+07-07 22:39:26.253 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.onDisabled(Unknown Source:23)
+07-07 22:39:26.253 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.video.MediaCodecVideoRenderer.onDisabled(Unknown Source:23)
+07-07 22:39:26.253 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.BaseRenderer.disable(Unknown Source:25)
+07-07 22:39:26.253 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.RendererHolder.disableRenderer(Unknown Source:28)
+07-07 22:39:26.253 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.RendererHolder.disable(Unknown Source:2)
+07-07 22:39:26.253 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.ExoPlayerImplInternal.disableRenderer(Unknown Source:14)
+07-07 22:39:26.253 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.ExoPlayerImplInternal.disableRenderers(Unknown Source:6)
+07-07 22:39:26.253 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.ExoPlayerImplInternal.resetInternal(Unknown Source:43)
+07-07 22:39:26.253 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.ExoPlayerImplInternal.stopInternal(Unknown Source:12)
+07-07 22:39:26.253 E/ExoPlayerImplInternal(12440):       at androidx.media3.exoplayer.ExoPlayerImplInternal.handleMessage(Unknown Source:346)
+07-07 22:39:26.253 E/ExoPlayerImplInternal(12440):       at android.os.Handler.dispatchMessage(Handler.java:106)
+07-07 22:39:26.253 E/ExoPlayerImplInternal(12440):       at android.os.Looper.dispatchMessage(Looper.java:315)
+07-07 22:39:26.253 E/ExoPlayerImplInternal(12440):       at android.os.Looper.loopOnce(Looper.java:251)
+07-07 22:39:26.253 E/ExoPlayerImplInternal(12440):       at android.os.Looper.loop(Looper.java:349)
+07-07 22:39:26.253 E/ExoPlayerImplInternal(12440):       at android.os.HandlerThread.run(HandlerThread.java:100)
+07-07 22:39:27.=== SESSION 2 pid=14502 Tue Jul  7 22:42:35 +03 2026 ===
+07-07 22:42:50.872 I/flutter (14502): mina_iptv: boot busy hold timeout (gen 26)
+07-07 22:43:03.284 V/NativeCrypto(14502): Read error: ssl=0xb4000072217faf08: I/O error during system call, Software caused connection abort
+07-07 22:43:03.290 V/NativeCrypto(14502): Write error: ssl=0xb4000072217faf08: I/O error during system call, Broken pipe
+07-07 22:43:03.291 V/NativeCrypto(14502): SSL shutdown failed: ssl=0xb4000072217faf08: I/O error during system call, Success
+07-07 22:43:21.562 I/ImeTracker(14502): com.mina.iptv.mina_iptv_player:7f8a8162: onCancelled at PHASE_CLIENT_ALREADY_HIDDEN
+07-07 22:43:23.333 I/flutter (14502): mina_iptv: Playing stream: http://s36.g57s75.com/live/d98t21c29s51/736832/233.m3u8 (Step: 0, XtreamAlt: false)
+07-07 22:43:23.333 I/flutter (14502): mina_iptv: DataSource headers: {User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36, Accept: */*, Icy-MetaData: 1, Referer: http://s36.g57s75.com/}
+07-07 22:43:23.349 I/ExoPlayerImpl(14502): Init 826a76 [AndroidXMedia3/1.10.1] [courbet, M2101K9AG, Xiaomi, 36]
+07-07 22:43:23.928 D/BetterPlayerSurface(14502): setDataSource textureId=22: stop+clearMediaItems+new MediaSource (SurfaceProducer unchanged)
+07-07 22:43:25.206 I/DMCodecAdapterFactory(14502): Creating an asynchronous MediaCodec adapter for track type video
+07-07 22:43:25.222 I/MediaCodec(14502): MediaCodec will operate in async mode
+07-07 22:43:25.223 I/MediaCodec(14502): [c2.qti.avc.decoder] setting surface generation to 14850077
+07-07 22:43:25.225 D/MediaCodec(14502): keep callback message for reclaim
+07-07 22:43:25.250 I/DMCodecAdapterFactory(14502): Creating an asynchronous MediaCodec adapter for track type audio
+07-07 22:43:25.272 I/MediaCodec(14502): MediaCodec will operate in async mode
+07-07 22:43:25.274 D/MediaCodec(14502): keep callback message for reclaim
+07-07 22:43:28.234 I/flutter (14502): mina_iptv: Playing stream: http://s36.g57s75.com/live/d98t21c29s51/736832/82716.m3u8 (Step: 0, XtreamAlt: false)
+07-07 22:43:28.234 I/flutter (14502): mina_iptv: DataSource headers: {User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36, Accept: */*, Icy-MetaData: 1, Referer: http://s36.g57s75.com/}
+07-07 22:43:28.260 D/MediaCodec(14502): keep callback message for reclaim
+07-07 22:43:28.268 D/MediaCodec(14502): keep callback message for reclaim
+07-07 22:43:28.274 I/MediaCodec(14502): [c2.qti.avc.decoder] setting surface generation to 14850078
+07-07 22:43:28.277 D/CCodecBufferChannel(14502): [c2.qti.avc.decoder#39] MediaCodec discarded an unknown buffer
+07-07 22:43:28.278 D/CCodecBufferChannel(14502): [c2.qti.avc.decoder#39] MediaCodec discarded an unknown buffer
+07-07 22:43:28.278 D/CCodecBufferChannel(14502): [c2.qti.avc.decoder#39] MediaCodec discarded an unknown buffer
+07-07 22:43:28.279 D/CCodecBufferChannel(14502): [c2.qti.avc.decoder#39] MediaCodec discarded an unknown buffer
+07-07 22:43:28.280 D/CCodecBufferChannel(14502): [c2.android.aac.decoder#59] MediaCodec discarded an unknown buffer
+07-07 22:43:28.280 D/CCodecBufferChannel(14502): [c2.android.aac.decoder#59] MediaCodec discarded an unknown buffer
+07-07 22:43:28.280 D/CCodecBufferChannel(14502): [c2.android.aac.decoder#59] MediaCodec discarded an unknown buffer
+07-07 22:43:28.280 D/CCodecBufferChannel(14502): [c2.android.aac.decoder#59] MediaCodec discarded an unknown buffer
+07-07 22:43:28.284 W/MessageQueue(14502): Handler (android.media.MediaCodec$EventHandler) {c28eb8} sending message to a Handler on a dead thread
+07-07 22:43:28.284 W/MessageQueue(14502): java.lang.IllegalStateException: Handler (android.media.MediaCodec$EventHandler) {c28eb8} sending message to a Handler on a dead thread
+07-07 22:43:28.284 W/MessageQueue(14502): 	at android.media.MediaCodec.postEventFromNative(MediaCodec.java:6045)
+07-07 22:43:28.284 W/MessageQueue(14502): Handler (android.media.MediaCodec$EventHandler) {c28eb8} sending message to a Handler on a dead thread
+07-07 22:43:28.284 W/MessageQueue(14502): java.lang.IllegalStateException: Handler (android.media.MediaCodec$EventHandler) {c28eb8} sending message to a Handler on a dead thread
+07-07 22:43:28.284 W/MessageQueue(14502): 	at android.media.MediaCodec.postEventFromNative(MediaCodec.java:6045)
+07-07 22:43:28.284 W/MessageQueue(14502): Handler (android.media.MediaCodec$EventHandler) {c28eb8} sending message to a Handler on a dead thread
+07-07 22:43:28.284 W/MessageQueue(14502): java.lang.IllegalStateException: Handler (android.media.MediaCodec$EventHandler) {c28eb8} sending message to a Handler on a dead thread
+07-07 22:43:28.284 W/MessageQueue(14502): 	at android.media.MediaCodec.postEventFromNative(MediaCodec.java:6045)
+07-07 22:43:28.284 W/MessageQueue(14502): Handler (android.media.MediaCodec$EventHandler) {c28eb8} sending message to a Handler on a dead thread
+07-07 22:43:28.284 W/MessageQueue(14502): java.lang.IllegalStateException: Handler (android.media.MediaCodec$EventHandler) {c28eb8} sending message to a Handler on a dead thread
+07-07 22:43:28.284 W/MessageQueue(14502): 	at android.media.MediaCodec.postEventFromNative(MediaCodec.java:6045)
+07-07 22:43:28.546 D/BetterPlayerSurface(14502): setDataSource textureId=22: stop+clearMediaItems+new MediaSource (SurfaceProducer unchanged)
+07-07 22:43:29.408 I/DMCodecAdapterFactory(14502): Creating an asynchronous MediaCodec adapter for track type video
+07-07 22:43:29.424 I/MediaCodec(14502): MediaCodec will operate in async mode
+07-07 22:43:29.425 I/MediaCodec(14502): [c2.qti.avc.decoder] setting surface generation to 14850079
+07-07 22:43:29.428 D/MediaCodec(14502): keep callback message for reclaim
+07-07 22:43:29.443 I/DMCodecAdapterFactory(14502): Creating an asynchronous MediaCodec adapter for track type audio
+07-07 22:43:29.459 I/MediaCodec(14502): MediaCodec will operate in async mode
+07-07 22:43:29.461 D/MediaCodec(14502): keep callback message for reclaim
+07-07 22:43:30.035 D/AudioTrack(14502): getTimestamp_l(99): device stall time corrected using current time 1017428712110
+07-07 22:43:31.891 I/flutter (14502): mina_iptv: Using cached format for channel 222: software
+07-07 22:43:31.891 I/flutter (14502): mina_iptv: Playing stream: http://s36.g57s75.com/live/d98t21c29s51/736832/222.m3u8 (Step: 0, XtreamAlt: false)
+07-07 22:43:31.891 I/flutter (14502): mina_iptv: DataSource headers: {User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36, Accept: */*, Icy-MetaData: 1, Referer: http://s36.g57s75.com/}
+07-07 22:43:31.915 D/MediaCodec(14502): keep callback message for reclaim
+07-07 22:43:31.918 D/MediaCodec(14502): keep callback message for reclaim
+07-07 22:43:31.920 I/MediaCodec(14502): [c2.qti.avc.decoder] setting surface generation to 14850080
+07-07 22:43:31.924 D/CCodecBufferChannel(14502): [c2.qti.avc.decoder#682] MediaCodec discarded an unknown buffer
+07-07 22:43:31.924 D/CCodecBufferChannel(14502): [c2.qti.avc.decoder#682] MediaCodec discarded an unknown buffer
+07-07 22:43:31.924 D/CCodecBufferChannel(14502): [c2.qti.avc.decoder#682] MediaCodec discarded an unknown buffer
+07-07 22:43:31.925 D/CCodecBufferChannel(14502): [c2.qti.avc.decoder#682] MediaCodec discarded an unknown buffer
+07-07 22:43:31.927 D/CCodecBufferChannel(14502): [c2.android.aac.decoder#770] MediaCodec discarded an unknown buffer
+07-07 22:43:31.927 D/CCodecBufferChannel(14502): [c2.android.aac.decoder#770] MediaCodec discarded an unknown buffer
+07-07 22:43:31.927 D/CCodecBufferChannel(14502): [c2.android.aac.decoder#770] MediaCodec discarded an unknown buffer
+07-07 22:43:31.927 D/CCodecBufferChannel(14502): [c2.android.aac.decoder#770] MediaCodec discarded an unknown buffer
+07-07 22:43:31.936 I/ExoPlayerImpl(14502): Init 5273576 [AndroidXMedia3/1.10.1] [courbet, M2101K9AG, Xiaomi, 36]
+07-07 22:43:31.946 D/BetterPlayerSurface(14502): dispose START textureId=22 releasing ExoPlayer + SurfaceProducer
+07-07 22:43:31.947 I/ExoPlayerImpl(14502): Release 826a76 [AndroidXMedia3/1.10.1] [courbet, M2101K9AG, Xiaomi, 36] [media3.common, media3.exoplayer, media3.decoder, media3.datasource, media3.extractor, media3.exoplayer.hls]
+07-07 22:43:32.945 D/BetterPlayerSurface(14502): setDataSource textureId=23: stop+clearMediaItems+new MediaSource (SurfaceProducer unchanged)
+07-07 22:43:33.768 I/DMCodecAdapterFactory(14502): Creating an asynchronous MediaCodec adapter for track type video
+07-07 22:43:33.787 I/MediaCodec(14502): MediaCodec will operate in async mode
+07-07 22:43:33.788 I/MediaCodec(14502): [c2.android.avc.decoder] setting surface generation to 14850081
+07-07 22:43:33.790 D/MediaCodec(14502): keep callback message for reclaim
+07-07 22:43:33.803 I/DMCodecAdapterFactory(14502): Creating an asynchronous MediaCodec adapter for track type audio
+07-07 22:43:33.822 I/MediaCodec(14502): MediaCodec will operate in async mode
+07-07 22:43:33.824 D/MediaCodec(14502): keep callback message for reclaim
+07-07 22:43:34.395 D/AudioTrack(14502): getTimestamp_l(100): device stall time corrected using current time 1021788178723
+07-07 22:43:35.009 D/MediaCodec(14502): keep callback message for reclaim
+07-07 22:43:35.015 D/MediaCodec(14502): keep callback message for reclaim
+07-07 22:43:35.017 I/MediaCodec(14502): [c2.android.avc.decoder] setting surface generation to 14850082
+07-07 22:43:35.019 D/CCodecBufferChannel(14502): [c2.android.avc.decoder#329] MediaCodec discarded an unknown buffer
+07-07 22:43:35.019 D/CCodecBufferChannel(14502): [c2.android.avc.decoder#329] MediaCodec discarded an unknown buffer
+07-07 22:43:35.019 D/CCodecBufferChannel(14502): [c2.android.avc.decoder#329] MediaCodec discarded an unknown buffer
+07-07 22:43:35.019 D/CCodecBufferChannel(14502): [c2.android.avc.decoder#329] MediaCodec discarded an unknown buffer
+07-07 22:43:35.022 D/CCodecBufferChannel(14502): [c2.android.aac.decoder#105] MediaCodec discarded an unknown buffer
+07-07 22:43:35.023 D/CCodecBufferChannel(14502): [c2.android.aac.decoder#105] MediaCodec discarded an unknown buffer
+07-07 22:43:35.023 D/CCodecBufferChannel(14502): [c2.android.aac.decoder#105] MediaCodec discarded an unknown buffer
+07-07 22:43:35.023 D/CCodecBufferChannel(14502): [c2.android.aac.decoder#105] MediaCodec discarded an unknown buffer
+07-07 22:43:35.024 W/MessageQueue(14502): Handler (android.media.MediaCodec$EventHandler) {c60647d} sending message to a Handler on a dead thread
+07-07 22:43:35.024 W/MessageQueue(14502): java.lang.IllegalStateException: Handler (android.media.MediaCodec$EventHandler) {c60647d} sending message to a Handler on a dead thread
+07-07 22:43:35.024 W/MessageQueue(14502): 	at android.media.MediaCodec.postEventFromNative(MediaCodec.java:6045)
+07-07 22:43:35.024 W/MessageQueue(14502): Handler (android.media.MediaCodec$EventHandler) {c60647d} sending message to a Handler on a dead thread
+07-07 22:43:35.024 W/MessageQueue(14502): java.lang.IllegalStateException: Handler (android.media.MediaCodec$EventHandler) {c60647d} sending message to a Handler on a dead thread
+07-07 22:43:35.024 W/MessageQueue(14502): 	at android.media.MediaCodec.postEventFromNative(MediaCodec.java:6045)
+07-07 22:43:35.025 W/MessageQueue(14502): Handler (android.media.MediaCodec$EventHandler) {c60647d} sending message to a Handler on a dead thread
+07-07 22:43:35.025 W/MessageQueue(14502): java.lang.IllegalStateException: Handler (android.media.MediaCodec$EventHandler) {c60647d} sending message to a Handler on a dead thread
+07-07 22:43:35.025 W/MessageQueue(14502): 	at android.media.MediaCodec.postEventFromNative(MediaCodec.java:6045)
+07-07 22:43:35.025 W/MessageQueue(14502): Handler (android.media.MediaCodec$EventHandler) {c60647d} sending message to a Handler on a dead thread
+07-07 22:43:35.025 W/MessageQueue(14502): java.lang.IllegalStateException: Handler (android.media.MediaCodec$EventHandler) {c60647d} sending message to a Handler on a dead thread
+07-07 22:43:35.025 W/MessageQueue(14502): 	at android.media.MediaCodec.postEventFromNative(MediaCodec.java:6045)
+07-07 22:43:35.042 D/BetterPlayerSurface(14502): dispose START textureId=23 releasing ExoPlayer + SurfaceProducer
+07-07 22:43:35.043 I/ExoPlayerImpl(14502): Release 5273576 [AndroidXMedia3/1.10.1] [courbet, M2101K9AG, Xiaomi, 36] [media3.common, media3.exoplayer, media3.decoder, media3.datasource, media3.extractor, media3.exoplayer.hls]
+07-07 22:43:35.112 I/flutter (14502): mina_iptv: Playing stream: http://s36.g57s75.com/live/d98t21c29s51/736832/219.m3u8 (Step: 0, XtreamAlt: false)
+07-07 22:43:35.113 I/flutter (14502): mina_iptv: DataSource headers: {User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36, Accept: */*, Icy-MetaData: 1, Referer: http://s36.g57s75.com/}
+07-07 22:43:35.115 I/ExoPlayerImpl(14502): Init ffca635 [AndroidXMedia3/1.10.1] [courbet, M2101K9AG, Xiaomi, 36]
+07-07 22:43:35.442 D/BetterPlayerSurface(14502): setDataSource textureId=24: stop+clearMediaItems+new MediaSource (SurfaceProducer unchanged)
+07-07 22:43:40.541 E/ExoPlayerImplInternal(14502): Playback error
+07-07 22:43:40.541 E/ExoPlayerImplInternal(14502):   androidx.media3.exoplayer.ExoPlaybackException: Source error
+07-07 22:43:40.541 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.ExoPlayerImplInternal.handleIoException(Unknown Source:16)
+07-07 22:43:40.541 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.ExoPlayerImplInternal.handleMessage(Unknown Source:447)
+07-07 22:43:40.541 E/ExoPlayerImplInternal(14502):       at android.os.Handler.dispatchMessage(Handler.java:106)
+07-07 22:43:40.541 E/ExoPlayerImplInternal(14502):       at android.os.Looper.dispatchMessage(Looper.java:315)
+07-07 22:43:40.541 E/ExoPlayerImplInternal(14502):       at android.os.Looper.loopOnce(Looper.java:251)
+07-07 22:43:40.541 E/ExoPlayerImplInternal(14502):       at android.os.Looper.loop(Looper.java:349)
+07-07 22:43:40.541 E/ExoPlayerImplInternal(14502):       at android.os.HandlerThread.run(HandlerThread.java:100)
+07-07 22:43:40.541 E/ExoPlayerImplInternal(14502):   Caused by: androidx.media3.datasource.HttpDataSource$InvalidResponseCodeException: Response code: 403
+07-07 22:43:40.541 E/ExoPlayerImplInternal(14502):       at androidx.media3.datasource.DefaultHttpDataSource.open(Unknown Source:267)
+07-07 22:43:40.541 E/ExoPlayerImplInternal(14502):       at androidx.media3.datasource.StatsDataSource.open(Unknown Source:10)
+07-07 22:43:40.541 E/ExoPlayerImplInternal(14502):       at androidx.media3.datasource.DataSourceInputStream.checkOpened(Unknown Source:8)
+07-07 22:43:40.541 E/ExoPlayerImplInternal(14502):       at androidx.media3.datasource.DataSourceInputStream.open(Unknown Source:0)
+07-07 22:43:40.541 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.upstream.ParsingLoadable.load(SourceFile:11)
+07-07 22:43:40.541 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.upstream.Loader$LoadTask.run(Unknown Source:34)
+07-07 22:43:40.541 E/ExoPlayerImplInternal(14502):       at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1154)
+07-07 22:43:40.541 E/ExoPlayerImplInternal(14502):       at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:652)
+07-07 22:43:40.541 E/ExoPlayerImplInternal(14502):       at java.lang.Thread.run(Thread.java:1365)
+07-07 22:43:40.543 I/flutter (14502): mina_iptv: Canlı sessiz takılma → taşıma biçimi değişimi: http://s36.g57s75.com/live/d98t21c29s51/736832/219.ts
+07-07 22:43:40.543 I/flutter (14502): mina_iptv: Canlı hata → önce taşıma biçimi değişimi (HLS↔TS)
+07-07 22:43:40.543 I/flutter (14502): mina_iptv: Playing stream: http://s36.g57s75.com/live/d98t21c29s51/736832/219.ts (Step: 0, XtreamAlt: false)
+07-07 22:43:40.543 I/flutter (14502): mina_iptv: DataSource headers: {User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36, Accept: */*, Icy-MetaData: 1, Referer: http://s36.g57s75.com/}
+07-07 22:43:40.545 I/ExoPlayerImpl(14502): Init 1b09ea0 [AndroidXMedia3/1.10.1] [courbet, M2101K9AG, Xiaomi, 36]
+07-07 22:43:40.550 D/BetterPlayerSurface(14502): setDataSource textureId=25: stop+clearMediaItems+new MediaSource (SurfaceProducer unchanged)
+07-07 22:43:41.213 I/DMCodecAdapterFactory(14502): Creating an asynchronous MediaCodec adapter for track type video
+07-07 22:43:41.228 I/MediaCodec(14502): MediaCodec will operate in async mode
+07-07 22:43:41.230 I/MediaCodec(14502): [c2.qti.avc.decoder] setting surface generation to 14850083
+07-07 22:43:41.232 D/MediaCodec(14502): keep callback message for reclaim
+07-07 22:43:41.252 I/DMCodecAdapterFactory(14502): Creating an asynchronous MediaCodec adapter for track type audio
+07-07 22:43:41.265 I/MediaCodec(14502): MediaCodec will operate in async mode
+07-07 22:43:41.267 D/MediaCodec(14502): keep callback message for reclaim
+07-07 22:43:41.292 W/MediaCodec(14502): Log queueInputBuffer error: 1
+07-07 22:43:41.293 E/MediaCodecVideoRenderer(14502): Video codec error
+07-07 22:43:41.293 E/MediaCodecVideoRenderer(14502):   android.media.MediaCodec$CodecException: 
+07-07 22:43:41.293 E/MediaCodecVideoRenderer(14502):       at android.media.MediaCodec.native_queueInputBuffer(Native Method)
+07-07 22:43:41.293 E/MediaCodecVideoRenderer(14502):       at android.media.MediaCodec.queueInputBuffer(MediaCodec.java:3171)
+07-07 22:43:41.293 E/MediaCodecVideoRenderer(14502):       at androidx.media3.exoplayer.mediacodec.SynchronousMediaCodecBufferEnqueuer.queueInputBuffer(Unknown Source:7)
+07-07 22:43:41.293 E/MediaCodecVideoRenderer(14502):       at androidx.media3.exoplayer.mediacodec.AsynchronousMediaCodecAdapter.queueInputBuffer(Unknown Source:7)
+07-07 22:43:41.293 E/MediaCodecVideoRenderer(14502):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.feedInputBuffer(Unknown Source:480)
+07-07 22:43:41.293 E/MediaCodecVideoRenderer(14502):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.render(Unknown Source:94)
+07-07 22:43:41.293 E/MediaCodecVideoRenderer(14502):       at androidx.media3.exoplayer.video.MediaCodecVideoRenderer.render(Unknown Source:18)
+07-07 22:43:41.293 E/MediaCodecVideoRenderer(14502):       at androidx.media3.exoplayer.RendererHolder.render(Unknown Source:10)
+07-07 22:43:41.293 E/MediaCodecVideoRenderer(14502):       at androidx.media3.exoplayer.ExoPlayerImplInternal.doSomeWork(Unknown Source:115)
+07-07 22:43:41.293 E/MediaCodecVideoRenderer(14502):       at androidx.media3.exoplayer.ExoPlayerImplInternal.handleMessage(Unknown Source:378)
+07-07 22:43:41.293 E/MediaCodecVideoRenderer(14502):       at android.os.Handler.dispatchMessage(Handler.java:106)
+07-07 22:43:41.293 E/MediaCodecVideoRenderer(14502):       at android.os.Looper.dispatchMessage(Looper.java:315)
+07-07 22:43:41.293 E/MediaCodecVideoRenderer(14502):       at android.os.Looper.loopOnce(Looper.java:251)
+07-07 22:43:41.293 E/MediaCodecVideoRenderer(14502):       at android.os.Looper.loop(Looper.java:349)
+07-07 22:43:41.293 E/MediaCodecVideoRenderer(14502):       at android.os.HandlerThread.run(HandlerThread.java:100)
+07-07 22:43:41.294 E/ExoPlayerImplInternal(14502): Playback error
+07-07 22:43:41.294 E/ExoPlayerImplInternal(14502):   androidx.media3.exoplayer.ExoPlaybackException: MediaCodecVideoRenderer error, index=0, format=Format(1/256, null, video/mp2t, video/avc, avc1.640028, -1, null, [1920, 1080, -1.0, ColorInfo(BT709, Limited range, SDR SMPTE 170M, false, 8bit Luma, 8bit Chroma)], [-1, -1]), format_supported=YES
+07-07 22:43:41.294 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.BaseRenderer.createRendererException(SourceFile:10)
+07-07 22:43:41.294 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.render(Unknown Source:180)
+07-07 22:43:41.294 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.video.MediaCodecVideoRenderer.render(Unknown Source:18)
+07-07 22:43:41.294 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.RendererHolder.render(Unknown Source:10)
+07-07 22:43:41.294 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.ExoPlayerImplInternal.doSomeWork(Unknown Source:115)
+07-07 22:43:41.294 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.ExoPlayerImplInternal.handleMessage(Unknown Source:378)
+07-07 22:43:41.294 E/ExoPlayerImplInternal(14502):       at android.os.Handler.dispatchMessage(Handler.java:106)
+07-07 22:43:41.294 E/ExoPlayerImplInternal(14502):       at android.os.Looper.dispatchMessage(Looper.java:315)
+07-07 22:43:41.294 E/ExoPlayerImplInternal(14502):       at android.os.Looper.loopOnce(Looper.java:251)
+07-07 22:43:41.294 E/ExoPlayerImplInternal(14502):       at android.os.Looper.loop(Looper.java:349)
+07-07 22:43:41.294 E/ExoPlayerImplInternal(14502):       at android.os.HandlerThread.run(HandlerThread.java:100)
+07-07 22:43:41.294 E/ExoPlayerImplInternal(14502):   Caused by: androidx.media3.exoplayer.video.MediaCodecVideoDecoderException: Decoder failed: c2.qti.avc.decoder
+07-07 22:43:41.294 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.video.MediaCodecVideoRenderer.createDecoderException(Unknown Source:4)
+07-07 22:43:41.294 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.render(Unknown Source:163)
+07-07 22:43:41.294 E/ExoPlayerImplInternal(14502):       ... 9 more
+07-07 22:43:41.294 E/ExoPlayerImplInternal(14502):   Caused by: android.media.MediaCodec$CodecException: 
+07-07 22:43:41.294 E/ExoPlayerImplInternal(14502):       at android.media.MediaCodec.native_queueInputBuffer(Native Method)
+07-07 22:43:41.294 E/ExoPlayerImplInternal(14502):       at android.media.MediaCodec.queueInputBuffer(MediaCodec.java:3171)
+07-07 22:43:41.294 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.mediacodec.SynchronousMediaCodecBufferEnqueuer.queueInputBuffer(Unknown Source:7)
+07-07 22:43:41.294 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.mediacodec.AsynchronousMediaCodecAdapter.queueInputBuffer(Unknown Source:7)
+07-07 22:43:41.294 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.feedInputBuffer(Unknown Source:480)
+07-07 22:43:41.294 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.render(Unknown Source:94)
+07-07 22:43:41.294 E/ExoPlayerImplInternal(14502):       ... 9 more
+07-07 22:43:41.294 D/CCodecBufferChannel(14502): [c2.qti.avc.decoder#178] MediaCodec discarded an unknown buffer
+07-07 22:43:41.294 D/CCodecBufferChannel(14502): [c2.qti.avc.decoder#178] MediaCodec discarded an unknown buffer
+07-07 22:43:41.295 E/MediaCodec(14502): Codec reported err 0x80000000/UNKNOWN_ERROR, actionCode 0, while in state 7/FLUSHING
+07-07 22:43:41.296 E/ExoPlayerImplInternal(14502): Disable failed.
+07-07 22:43:41.296 E/ExoPlayerImplInternal(14502):   android.media.MediaCodec$CodecException: 
+07-07 22:43:41.296 E/ExoPlayerImplInternal(14502):       at android.media.MediaCodec.native_flush(Native Method)
+07-07 22:43:41.296 E/ExoPlayerImplInternal(14502):       at android.media.MediaCodec.flush(MediaCodec.java:2843)
+07-07 22:43:41.296 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.mediacodec.AsynchronousMediaCodecAdapter.flush(Unknown Source:7)
+07-07 22:43:41.296 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.flushCodec(Unknown Source:5)
+07-07 22:43:41.296 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.flushOrReleaseCodec(Unknown Source:23)
+07-07 22:43:41.296 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.onDisabled(Unknown Source:23)
+07-07 22:43:41.296 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.video.MediaCodecVideoRenderer.onDisabled(Unknown Source:23)
+07-07 22:43:41.296 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.BaseRenderer.disable(Unknown Source:25)
+07-07 22:43:41.296 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.RendererHolder.disableRenderer(Unknown Source:28)
+07-07 22:43:41.296 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.RendererHolder.disable(Unknown Source:2)
+07-07 22:43:41.296 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.ExoPlayerImplInternal.disableRenderer(Unknown Source:14)
+07-07 22:43:41.296 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.ExoPlayerImplInternal.disableRenderers(Unknown Source:6)
+07-07 22:43:41.296 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.ExoPlayerImplInternal.resetInternal(Unknown Source:43)
+07-07 22:43:41.296 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.ExoPlayerImplInternal.stopInternal(Unknown Source:12)
+07-07 22:43:41.296 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.ExoPlayerImplInternal.handleMessage(Unknown Source:713)
+07-07 22:43:41.296 E/ExoPlayerImplInternal(14502):       at android.os.Handler.dispatchMessage(Handler.java:106)
+07-07 22:43:41.296 E/ExoPlayerImplInternal(14502):       at android.os.Looper.dispatchMessage(Looper.java:315)
+07-07 22:43:41.296 E/ExoPlayerImplInternal(14502):       at android.os.Looper.loopOnce(Looper.java:251)
+07-07 22:43:41.296 E/ExoPlayerImplInternal(14502):       at android.os.Looper.loop(Looper.java:349)
+07-07 22:43:41.296 E/ExoPlayerImplInternal(14502):       at android.os.HandlerThread.run(HandlerThread.java:100)
+07-07 22:43:41.296 W/MediaCodec(14502): received FlushCompleted message in state 0/UNINITIALIZED
+07-07 22:43:41.303 I/flutter (14502): mina_iptv: Donanım kod çözücü hatası → ExoPlayer yazılım kod çözücü ile yeniden deneniyor (MediaKit öncesi)
+07-07 22:43:41.303 I/flutter (14502): mina_iptv: Playing stream: http://s36.g57s75.com/live/d98t21c29s51/736832/219.ts (Step: 1, XtreamAlt: false)
+07-07 22:43:41.303 I/flutter (14502): mina_iptv: DataSource headers: {User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36, Accept: */*, Icy-MetaData: 1, Referer: http://s36.g57s75.com/}
+07-07 22:43:41.310 I/ExoPlayerImpl(14502): Init 3e12da6 [AndroidXMedia3/1.10.1] [courbet, M2101K9AG, Xiaomi, 36]
+07-07 22:43:41.321 D/BetterPlayerSurface(14502): setDataSource textureId=26: stop+clearMediaItems+new MediaSource (SurfaceProducer unchanged)
+07-07 22:43:41.909 I/DMCodecAdapterFactory(14502): Creating an asynchronous MediaCodec adapter for track type video
+07-07 22:43:41.926 I/MediaCodec(14502): MediaCodec will operate in async mode
+07-07 22:43:41.927 I/MediaCodec(14502): [c2.android.avc.decoder] setting surface generation to 14850084
+07-07 22:43:41.930 D/MediaCodec(14502): keep callback message for reclaim
+07-07 22:43:41.940 I/DMCodecAdapterFactory(14502): Creating an asynchronous MediaCodec adapter for track type audio
+07-07 22:43:41.955 I/MediaCodec(14502): MediaCodec will operate in async mode
+07-07 22:43:41.957 D/MediaCodec(14502): keep callback message for reclaim
+07-07 22:43:43.272 D/MediaCodec(14502): keep callback message for reclaim
+07-07 22:43:43.275 D/MediaCodec(14502): keep callback message for reclaim
+07-07 22:43:43.277 I/MediaCodec(14502): [c2.android.avc.decoder] setting surface generation to 14850085
+07-07 22:43:43.279 D/CCodecBufferChannel(14502): [c2.android.avc.decoder#472] MediaCodec discarded an unknown buffer
+07-07 22:43:43.279 D/CCodecBufferChannel(14502): [c2.android.avc.decoder#472] MediaCodec discarded an unknown buffer
+07-07 22:43:43.279 D/CCodecBufferChannel(14502): [c2.android.avc.decoder#472] MediaCodec discarded an unknown buffer
+07-07 22:43:43.280 D/CCodecBufferChannel(14502): [c2.android.avc.decoder#472] MediaCodec discarded an unknown buffer
+07-07 22:43:43.283 D/CCodecBufferChannel(14502): [c2.android.aac.decoder#446] MediaCodec discarded an unknown buffer
+07-07 22:43:43.283 D/CCodecBufferChannel(14502): [c2.android.aac.decoder#446] MediaCodec discarded an unknown buffer
+07-07 22:43:43.283 D/CCodecBufferChannel(14502): [c2.android.aac.decoder#446] MediaCodec discarded an unknown buffer
+07-07 22:43:43.283 D/CCodecBufferChannel(14502): [c2.android.aac.decoder#446] MediaCodec discarded an unknown buffer
+07-07 22:43:43.285 W/MessageQueue(14502): Handler (android.media.MediaCodec$EventHandler) {31f39b5} sending message to a Handler on a dead thread
+07-07 22:43:43.285 W/MessageQueue(14502): java.lang.IllegalStateException: Handler (android.media.MediaCodec$EventHandler) {31f39b5} sending message to a Handler on a dead thread
+07-07 22:43:43.285 W/MessageQueue(14502): 	at android.media.MediaCodec.postEventFromNative(MediaCodec.java:6045)
+07-07 22:43:43.285 W/MessageQueue(14502): Handler (android.media.MediaCodec$EventHandler) {31f39b5} sending message to a Handler on a dead thread
+07-07 22:43:43.285 W/MessageQueue(14502): java.lang.IllegalStateException: Handler (android.media.MediaCodec$EventHandler) {31f39b5} sending message to a Handler on a dead thread
+07-07 22:43:43.285 W/MessageQueue(14502): 	at android.media.MediaCodec.postEventFromNative(MediaCodec.java:6045)
+07-07 22:43:43.285 W/MessageQueue(14502): Handler (android.media.MediaCodec$EventHandler) {31f39b5} sending message to a Handler on a dead thread
+07-07 22:43:43.285 W/MessageQueue(14502): java.lang.IllegalStateException: Handler (android.media.MediaCodec$EventHandler) {31f39b5} sending message to a Handler on a dead thread
+07-07 22:43:43.285 W/MessageQueue(14502): 	at android.media.MediaCodec.postEventFromNative(MediaCodec.java:6045)
+07-07 22:43:43.285 W/MessageQueue(14502): Handler (android.media.MediaCodec$EventHandler) {31f39b5} sending message to a Handler on a dead thread
+07-07 22:43:43.285 W/MessageQueue(14502): java.lang.IllegalStateException: Handler (android.media.MediaCodec$EventHandler) {31f39b5} sending message to a Handler on a dead thread
+07-07 22:43:43.285 W/MessageQueue(14502): 	at android.media.MediaCodec.postEventFromNative(MediaCodec.java:6045)
+07-07 22:43:43.296 D/BetterPlayerSurface(14502): dispose START textureId=26 releasing ExoPlayer + SurfaceProducer
+07-07 22:43:43.297 I/ExoPlayerImpl(14502): Release 3e12da6 [AndroidXMedia3/1.10.1] [courbet, M2101K9AG, Xiaomi, 36] [media3.common, media3.exoplayer, media3.decoder, media3.datasource, media3.extractor, media3.exoplayer.hls]
+07-07 22:43:43.360 I/flutter (14502): mina_iptv: Playing stream: http://s36.g57s75.com/live/d98t21c29s51/736832/93684.m3u8 (Step: 0, XtreamAlt: false)
+07-07 22:43:43.360 I/flutter (14502): mina_iptv: DataSource headers: {User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36, Accept: */*, Icy-MetaData: 1, Referer: http://s36.g57s75.com/}
+07-07 22:43:43.362 I/ExoPlayerImpl(14502): Init 7783284 [AndroidXMedia3/1.10.1] [courbet, M2101K9AG, Xiaomi, 36]
+07-07 22:43:43.676 D/BetterPlayerSurface(14502): setDataSource textureId=27: stop+clearMediaItems+new MediaSource (SurfaceProducer unchanged)
+07-07 22:43:44.545 I/DMCodecAdapterFactory(14502): Creating an asynchronous MediaCodec adapter for track type video
+07-07 22:43:44.566 I/MediaCodec(14502): MediaCodec will operate in async mode
+07-07 22:43:44.566 I/MediaCodec(14502): [c2.qti.avc.decoder] setting surface generation to 14850086
+07-07 22:43:44.569 D/MediaCodec(14502): keep callback message for reclaim
+07-07 22:43:44.584 I/DMCodecAdapterFactory(14502): Creating an asynchronous MediaCodec adapter for track type audio
+07-07 22:43:44.597 I/MediaCodec(14502): MediaCodec will operate in async mode
+07-07 22:43:44.599 D/MediaCodec(14502): keep callback message for reclaim
+07-07 22:43:45.138 D/AudioTrack(14502): getTimestamp_l(102): device stall time corrected using current time 1032531937833
+07-07 22:43:46.176 I/flutter (14502): mina_iptv: Playing stream: http://s36.g57s75.com/live/d98t21c29s51/736832/212.m3u8 (Step: 0, XtreamAlt: false)
+07-07 22:43:46.176 I/flutter (14502): mina_iptv: DataSource headers: {User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36, Accept: */*, Icy-MetaData: 1, Referer: http://s36.g57s75.com/}
+07-07 22:43:46.202 D/MediaCodec(14502): keep callback message for reclaim
+07-07 22:43:46.207 D/MediaCodec(14502): keep callback message for reclaim
+07-07 22:43:46.208 I/MediaCodec(14502): [c2.qti.avc.decoder] setting surface generation to 14850087
+07-07 22:43:46.212 D/CCodecBufferChannel(14502): [c2.qti.avc.decoder#764] MediaCodec discarded an unknown buffer
+07-07 22:43:46.212 D/CCodecBufferChannel(14502): [c2.qti.avc.decoder#764] MediaCodec discarded an unknown buffer
+07-07 22:43:46.212 D/CCodecBufferChannel(14502): [c2.qti.avc.decoder#764] MediaCodec discarded an unknown buffer
+07-07 22:43:46.212 D/CCodecBufferChannel(14502): [c2.qti.avc.decoder#764] MediaCodec discarded an unknown buffer
+07-07 22:43:46.215 D/CCodecBufferChannel(14502): [c2.android.aac.decoder#685] MediaCodec discarded an unknown buffer
+07-07 22:43:46.215 D/CCodecBufferChannel(14502): [c2.android.aac.decoder#685] MediaCodec discarded an unknown buffer
+07-07 22:43:46.215 D/CCodecBufferChannel(14502): [c2.android.aac.decoder#685] MediaCodec discarded an unknown buffer
+07-07 22:43:46.215 D/CCodecBufferChannel(14502): [c2.android.aac.decoder#685] MediaCodec discarded an unknown buffer
+07-07 22:43:46.540 D/BetterPlayerSurface(14502): setDataSource textureId=27: stop+clearMediaItems+new MediaSource (SurfaceProducer unchanged)
+07-07 22:43:47.245 I/DMCodecAdapterFactory(14502): Creating an asynchronous MediaCodec adapter for track type video
+07-07 22:43:47.261 I/MediaCodec(14502): MediaCodec will operate in async mode
+07-07 22:43:47.262 I/MediaCodec(14502): [c2.qti.avc.decoder] setting surface generation to 14850088
+07-07 22:43:47.264 D/MediaCodec(14502): keep callback message for reclaim
+07-07 22:43:47.276 I/DMCodecAdapterFactory(14502): Creating an asynchronous MediaCodec adapter for track type audio
+07-07 22:43:47.296 I/MediaCodec(14502): MediaCodec will operate in async mode
+07-07 22:43:47.298 D/MediaCodec(14502): keep callback message for reclaim
+07-07 22:43:47.302 W/LoudnessCodecController(14502): MediaCodec mime type not supported for loudness annotation
+07-07 22:43:47.817 D/AudioTrack(14502): getTimestamp_l(103): device stall time corrected using current time 1035210676582
+07-07 22:43:49.218 I/flutter (14502): mina_iptv: Using cached format for channel 43970: hls
+07-07 22:43:49.218 I/flutter (14502): mina_iptv: Playing stream: http://s36.g57s75.com/live/d98t21c29s51/736832/43970.m3u8 (Step: 0, XtreamAlt: false)
+07-07 22:43:49.218 I/flutter (14502): mina_iptv: DataSource headers: {User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36, Accept: */*, Icy-MetaData: 1, Referer: http://s36.g57s75.com/}
+07-07 22:43:49.229 D/MediaCodec(14502): keep callback message for reclaim
+07-07 22:43:49.235 D/MediaCodec(14502): keep callback message for reclaim
+07-07 22:43:49.236 I/MediaCodec(14502): [c2.qti.avc.decoder] setting surface generation to 14850089
+07-07 22:43:49.238 D/CCodecBufferChannel(14502): [c2.qti.avc.decoder#446] MediaCodec discarded an unknown buffer
+07-07 22:43:49.239 D/CCodecBufferChannel(14502): [c2.qti.avc.decoder#446] MediaCodec discarded an unknown buffer
+07-07 22:43:49.239 D/CCodecBufferChannel(14502): [c2.qti.avc.decoder#446] MediaCodec discarded an unknown buffer
+07-07 22:43:49.239 D/CCodecBufferChannel(14502): [c2.qti.avc.decoder#446] MediaCodec discarded an unknown buffer
+07-07 22:43:49.240 D/CCodecBufferChannel(14502): [c2.android.mp3.decoder#540] MediaCodec discarded an unknown buffer
+07-07 22:43:49.240 D/CCodecBufferChannel(14502): [c2.android.mp3.decoder#540] MediaCodec discarded an unknown buffer
+07-07 22:43:49.240 D/CCodecBufferChannel(14502): [c2.android.mp3.decoder#540] MediaCodec discarded an unknown buffer
+07-07 22:43:49.240 D/CCodecBufferChannel(14502): [c2.android.mp3.decoder#540] MediaCodec discarded an unknown buffer
+07-07 22:43:49.552 D/BetterPlayerSurface(14502): setDataSource textureId=27: stop+clearMediaItems+new MediaSource (SurfaceProducer unchanged)
+07-07 22:43:50.255 I/DMCodecAdapterFactory(14502): Creating an asynchronous MediaCodec adapter for track type video
+07-07 22:43:50.270 I/MediaCodec(14502): MediaCodec will operate in async mode
+07-07 22:43:50.271 I/MediaCodec(14502): [c2.qti.avc.decoder] setting surface generation to 14850090
+07-07 22:43:50.274 D/MediaCodec(14502): keep callback message for reclaim
+07-07 22:43:50.291 I/DMCodecAdapterFactory(14502): Creating an asynchronous MediaCodec adapter for track type audio
+07-07 22:43:50.310 I/MediaCodec(14502): MediaCodec will operate in async mode
+07-07 22:43:50.313 D/MediaCodec(14502): keep callback message for reclaim
+07-07 22:43:50.671 D/AudioTrack(14502): getTimestamp_l(104): device stall time corrected using current time 1038064666842
+07-07 22:43:51.158 I/flutter (14502): mina_iptv: Playing stream: http://s36.g57s75.com/live/d98t21c29s51/736832/83324.m3u8 (Step: 0, XtreamAlt: false)
+07-07 22:43:51.158 I/flutter (14502): mina_iptv: DataSource headers: {User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36, Accept: */*, Icy-MetaData: 1, Referer: http://s36.g57s75.com/}
+07-07 22:43:51.187 D/MediaCodec(14502): keep callback message for reclaim
+07-07 22:43:51.191 D/MediaCodec(14502): keep callback message for reclaim
+07-07 22:43:51.193 I/MediaCodec(14502): [c2.qti.avc.decoder] setting surface generation to 14850091
+07-07 22:43:51.197 D/CCodecBufferChannel(14502): [c2.qti.avc.decoder#707] MediaCodec discarded an unknown buffer
+07-07 22:43:51.197 D/CCodecBufferChannel(14502): [c2.qti.avc.decoder#707] MediaCodec discarded an unknown buffer
+07-07 22:43:51.197 D/CCodecBufferChannel(14502): [c2.qti.avc.decoder#707] MediaCodec discarded an unknown buffer
+07-07 22:43:51.197 D/CCodecBufferChannel(14502): [c2.qti.avc.decoder#707] MediaCodec discarded an unknown buffer
+07-07 22:43:51.198 W/MessageQueue(14502): Handler (android.media.MediaCodec$EventHandler) {53c869e} sending message to a Handler on a dead thread
+07-07 22:43:51.198 W/MessageQueue(14502): java.lang.IllegalStateException: Handler (android.media.MediaCodec$EventHandler) {53c869e} sending message to a Handler on a dead thread
+07-07 22:43:51.198 W/MessageQueue(14502): 	at android.media.MediaCodec.postEventFromNative(MediaCodec.java:6045)
+07-07 22:43:51.198 W/MessageQueue(14502): Handler (android.media.MediaCodec$EventHandler) {53c869e} sending message to a Handler on a dead thread
+07-07 22:43:51.198 W/MessageQueue(14502): java.lang.IllegalStateException: Handler (android.media.MediaCodec$EventHandler) {53c869e} sending message to a Handler on a dead thread
+07-07 22:43:51.198 W/MessageQueue(14502): 	at android.media.MediaCodec.postEventFromNative(MediaCodec.java:6045)
+07-07 22:43:51.198 W/MessageQueue(14502): Handler (android.media.MediaCodec$EventHandler) {53c869e} sending message to a Handler on a dead thread
+07-07 22:43:51.198 W/MessageQueue(14502): java.lang.IllegalStateException: Handler (android.media.MediaCodec$EventHandler) {53c869e} sending message to a Handler on a dead thread
+07-07 22:43:51.198 W/MessageQueue(14502): 	at android.media.MediaCodec.postEventFromNative(MediaCodec.java:6045)
+07-07 22:43:51.198 W/MessageQueue(14502): Handler (android.media.MediaCodec$EventHandler) {53c869e} sending message to a Handler on a dead thread
+07-07 22:43:51.198 W/MessageQueue(14502): java.lang.IllegalStateException: Handler (android.media.MediaCodec$EventHandler) {53c869e} sending message to a Handler on a dead thread
+07-07 22:43:51.198 W/MessageQueue(14502): 	at android.media.MediaCodec.postEventFromNative(MediaCodec.java:6045)
+07-07 22:43:51.199 D/CCodecBufferChannel(14502): [c2.android.aac.decoder#733] MediaCodec discarded an unknown buffer
+07-07 22:43:51.199 D/CCodecBufferChannel(14502): [c2.android.aac.decoder#733] MediaCodec discarded an unknown buffer
+07-07 22:43:51.199 D/CCodecBufferChannel(14502): [c2.android.aac.decoder#733] MediaCodec discarded an unknown buffer
+07-07 22:43:51.199 D/CCodecBufferChannel(14502): [c2.android.aac.decoder#733] MediaCodec discarded an unknown buffer
+07-07 22:43:51.475 D/BetterPlayerSurface(14502): setDataSource textureId=27: stop+clearMediaItems+new MediaSource (SurfaceProducer unchanged)
+07-07 22:43:52.166 I/DMCodecAdapterFactory(14502): Creating an asynchronous MediaCodec adapter for track type video
+07-07 22:43:52.181 I/MediaCodec(14502): MediaCodec will operate in async mode
+07-07 22:43:52.182 I/MediaCodec(14502): [c2.qti.avc.decoder] setting surface generation to 14850092
+07-07 22:43:52.186 D/MediaCodec(14502): keep callback message for reclaim
+07-07 22:43:52.201 I/DMCodecAdapterFactory(14502): Creating an asynchronous MediaCodec adapter for track type audio
+07-07 22:43:52.218 I/MediaCodec(14502): MediaCodec will operate in async mode
+07-07 22:43:52.221 D/MediaCodec(14502): keep callback message for reclaim
+07-07 22:43:52.244 W/MediaCodec(14502): Log queueInputBuffer error: 1
+07-07 22:43:52.245 E/MediaCodecVideoRenderer(14502): Video codec error
+07-07 22:43:52.245 E/MediaCodecVideoRenderer(14502):   android.media.MediaCodec$CodecException: 
+07-07 22:43:52.245 E/MediaCodecVideoRenderer(14502):       at android.media.MediaCodec.native_queueInputBuffer(Native Method)
+07-07 22:43:52.245 E/MediaCodecVideoRenderer(14502):       at android.media.MediaCodec.queueInputBuffer(MediaCodec.java:3171)
+07-07 22:43:52.245 E/MediaCodecVideoRenderer(14502):       at androidx.media3.exoplayer.mediacodec.SynchronousMediaCodecBufferEnqueuer.queueInputBuffer(Unknown Source:7)
+07-07 22:43:52.245 E/MediaCodecVideoRenderer(14502):       at androidx.media3.exoplayer.mediacodec.AsynchronousMediaCodecAdapter.queueInputBuffer(Unknown Source:7)
+07-07 22:43:52.245 E/MediaCodecVideoRenderer(14502):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.feedInputBuffer(Unknown Source:480)
+07-07 22:43:52.245 E/MediaCodecVideoRenderer(14502):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.render(Unknown Source:94)
+07-07 22:43:52.245 E/MediaCodecVideoRenderer(14502):       at androidx.media3.exoplayer.video.MediaCodecVideoRenderer.render(Unknown Source:18)
+07-07 22:43:52.245 E/MediaCodecVideoRenderer(14502):       at androidx.media3.exoplayer.RendererHolder.render(Unknown Source:10)
+07-07 22:43:52.245 E/MediaCodecVideoRenderer(14502):       at androidx.media3.exoplayer.ExoPlayerImplInternal.doSomeWork(Unknown Source:115)
+07-07 22:43:52.245 E/MediaCodecVideoRenderer(14502):       at androidx.media3.exoplayer.ExoPlayerImplInternal.handleMessage(Unknown Source:378)
+07-07 22:43:52.245 E/MediaCodecVideoRenderer(14502):       at android.os.Handler.dispatchMessage(Handler.java:106)
+07-07 22:43:52.245 E/MediaCodecVideoRenderer(14502):       at android.os.Looper.dispatchMessage(Looper.java:315)
+07-07 22:43:52.245 E/MediaCodecVideoRenderer(14502):       at android.os.Looper.loopOnce(Looper.java:251)
+07-07 22:43:52.245 E/MediaCodecVideoRenderer(14502):       at android.os.Looper.loop(Looper.java:349)
+07-07 22:43:52.245 E/MediaCodecVideoRenderer(14502):       at android.os.HandlerThread.run(HandlerThread.java:100)
+07-07 22:43:52.246 E/ExoPlayerImplInternal(14502): Playback error
+07-07 22:43:52.246 E/ExoPlayerImplInternal(14502):   androidx.media3.exoplayer.ExoPlaybackException: MediaCodecVideoRenderer error, index=0, format=Format(null, null, video/mp2t, video/avc, avc1.640028, -1, null, [1920, 1080, -1.0, ColorInfo(BT709, Limited range, SDR SMPTE 170M, false, 8bit Luma, 8bit Chroma)], [-1, -1]), format_supported=YES
+07-07 22:43:52.246 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.BaseRenderer.createRendererException(SourceFile:10)
+07-07 22:43:52.246 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.render(Unknown Source:180)
+07-07 22:43:52.246 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.video.MediaCodecVideoRenderer.render(Unknown Source:18)
+07-07 22:43:52.246 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.RendererHolder.render(Unknown Source:10)
+07-07 22:43:52.246 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.ExoPlayerImplInternal.doSomeWork(Unknown Source:115)
+07-07 22:43:52.246 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.ExoPlayerImplInternal.handleMessage(Unknown Source:378)
+07-07 22:43:52.246 E/ExoPlayerImplInternal(14502):       at android.os.Handler.dispatchMessage(Handler.java:106)
+07-07 22:43:52.246 E/ExoPlayerImplInternal(14502):       at android.os.Looper.dispatchMessage(Looper.java:315)
+07-07 22:43:52.246 E/ExoPlayerImplInternal(14502):       at android.os.Looper.loopOnce(Looper.java:251)
+07-07 22:43:52.246 E/ExoPlayerImplInternal(14502):       at android.os.Looper.loop(Looper.java:349)
+07-07 22:43:52.246 E/ExoPlayerImplInternal(14502):       at android.os.HandlerThread.run(HandlerThread.java:100)
+07-07 22:43:52.246 E/ExoPlayerImplInternal(14502):   Caused by: androidx.media3.exoplayer.video.MediaCodecVideoDecoderException: Decoder failed: c2.qti.avc.decoder
+07-07 22:43:52.246 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.video.MediaCodecVideoRenderer.createDecoderException(Unknown Source:4)
+07-07 22:43:52.246 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.render(Unknown Source:163)
+07-07 22:43:52.246 E/ExoPlayerImplInternal(14502):       ... 9 more
+07-07 22:43:52.246 E/ExoPlayerImplInternal(14502):   Caused by: android.media.MediaCodec$CodecException: 
+07-07 22:43:52.246 E/ExoPlayerImplInternal(14502):       at android.media.MediaCodec.native_queueInputBuffer(Native Method)
+07-07 22:43:52.246 E/ExoPlayerImplInternal(14502):       at android.media.MediaCodec.queueInputBuffer(MediaCodec.java:3171)
+07-07 22:43:52.246 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.mediacodec.SynchronousMediaCodecBufferEnqueuer.queueInputBuffer(Unknown Source:7)
+07-07 22:43:52.246 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.mediacodec.AsynchronousMediaCodecAdapter.queueInputBuffer(Unknown Source:7)
+07-07 22:43:52.246 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.feedInputBuffer(Unknown Source:480)
+07-07 22:43:52.246 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.render(Unknown Source:94)
+07-07 22:43:52.246 E/ExoPlayerImplInternal(14502):       ... 9 more
+07-07 22:43:52.247 E/MediaCodec(14502): Codec reported err 0x80000000/UNKNOWN_ERROR, actionCode 0, while in state 7/FLUSHING
+07-07 22:43:52.248 W/MediaCodec(14502): received FlushCompleted message in state 0/UNINITIALIZED
+07-07 22:43:52.249 E/ExoPlayerImplInternal(14502): Disable failed.
+07-07 22:43:52.249 E/ExoPlayerImplInternal(14502):   android.media.MediaCodec$CodecException: 
+07-07 22:43:52.249 E/ExoPlayerImplInternal(14502):       at android.media.MediaCodec.native_flush(Native Method)
+07-07 22:43:52.249 E/ExoPlayerImplInternal(14502):       at android.media.MediaCodec.flush(MediaCodec.java:2843)
+07-07 22:43:52.249 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.mediacodec.AsynchronousMediaCodecAdapter.flush(Unknown Source:7)
+07-07 22:43:52.249 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.flushCodec(Unknown Source:5)
+07-07 22:43:52.249 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.flushOrReleaseCodec(Unknown Source:23)
+07-07 22:43:52.249 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.onDisabled(Unknown Source:23)
+07-07 22:43:52.249 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.video.MediaCodecVideoRenderer.onDisabled(Unknown Source:23)
+07-07 22:43:52.249 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.BaseRenderer.disable(Unknown Source:25)
+07-07 22:43:52.249 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.RendererHolder.disableRenderer(Unknown Source:28)
+07-07 22:43:52.249 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.RendererHolder.disable(Unknown Source:2)
+07-07 22:43:52.249 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.ExoPlayerImplInternal.disableRenderer(Unknown Source:14)
+07-07 22:43:52.249 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.ExoPlayerImplInternal.disableRenderers(Unknown Source:6)
+07-07 22:43:52.249 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.ExoPlayerImplInternal.resetInternal(Unknown Source:43)
+07-07 22:43:52.249 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.ExoPlayerImplInternal.stopInternal(Unknown Source:12)
+07-07 22:43:52.249 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.ExoPlayerImplInternal.handleMessage(Unknown Source:713)
+07-07 22:43:52.249 E/ExoPlayerImplInternal(14502):       at android.os.Handler.dispatchMessage(Handler.java:106)
+07-07 22:43:52.249 E/ExoPlayerImplInternal(14502):       at android.os.Looper.dispatchMessage(Looper.java:315)
+07-07 22:43:52.249 E/ExoPlayerImplInternal(14502):       at android.os.Looper.loopOnce(Looper.java:251)
+07-07 22:43:52.249 E/ExoPlayerImplInternal(14502):       at android.os.Looper.loop(Looper.java:349)
+07-07 22:43:52.249 E/ExoPlayerImplInternal(14502):       at android.os.HandlerThread.run(HandlerThread.java:100)
+07-07 22:43:52.254 I/flutter (14502): mina_iptv: Canlı sessiz takılma → taşıma biçimi değişimi: http://s36.g57s75.com/live/d98t21c29s51/736832/83324.ts
+07-07 22:43:52.254 I/flutter (14502): mina_iptv: Canlı hata → önce taşıma biçimi değişimi (HLS↔TS)
+07-07 22:43:52.254 I/flutter (14502): mina_iptv: VideoPlayer error: Video player had error androidx.media3.exoplayer.ExoPlaybackException: MediaCodecVideoRenderer error, index=0, format=Format(null, null, video/mp2t, video/avc, avc1.640028, -1, null, [1920, 1080, -1.0, ColorInfo(BT709, Limited range, SDR SMPTE 170M, false, 8bit Luma, 8bit Chroma)], [-1, -1]), format_supported=YES
+07-07 22:43:52.254 I/flutter (14502): mina_iptv: Donanım kod çözücü hatası → ExoPlayer yazılım kod çözücü ile yeniden deneniyor (MediaKit öncesi)
+07-07 22:43:52.254 I/flutter (14502): mina_iptv: BetterPlayer exception → MediaKit yedek: Video player had error androidx.media3.exoplayer.ExoPlaybackException: MediaCodecVideoRenderer error, index=0, format=Format(null, null, video/mp2t, video/avc, avc1.640028, -1, null, [1920, 1080, -1.0, ColorInfo(BT709, Limited range, SDR SMPTE 170M, false, 8bit Luma, 8bit Chroma)], [-1, -1]), format_supported=YES
+07-07 22:43:52.255 I/flutter (14502): mina_iptv: Playing stream: http://s36.g57s75.com/live/d98t21c29s51/736832/83324.ts (Step: 1, XtreamAlt: false)
+07-07 22:43:52.256 I/flutter (14502): mina_iptv: Playing stream: http://s36.g57s75.com/live/d98t21c29s51/736832/83324.ts (Step: 1, XtreamAlt: false)
+07-07 22:43:52.279 I/flutter (14502): mina_iptv: Network recovery in 1s (attempt idx 0)
+07-07 22:43:52.280 I/flutter (14502): mina_iptv: Playing stream: http://s36.g57s75.com/live/d98t21c29s51/736832/83324.ts (Step: 1, XtreamAlt: false)
+07-07 22:43:52.281 D/BetterPlayerSurface(14502): dispose START textureId=27 releasing ExoPlayer + SurfaceProducer
+07-07 22:43:52.282 I/ExoPlayerImpl(14502): Release 7783284 [AndroidXMedia3/1.10.1] [courbet, M2101K9AG, Xiaomi, 36] [media3.common, media3.exoplayer, media3.decoder, media3.datasource, media3.extractor, media3.exoplayer.hls]
+07-07 22:43:52.283 D/MediaCodec(14502): keep callback message for reclaim
+07-07 22:43:52.287 D/CCodecBufferChannel(14502): [c2.android.aac.decoder#136] MediaCodec discarded an unknown buffer
+07-07 22:43:52.287 D/CCodecBufferChannel(14502): [c2.android.aac.decoder#136] MediaCodec discarded an unknown buffer
+07-07 22:43:52.287 D/CCodecBufferChannel(14502): [c2.android.aac.decoder#136] MediaCodec discarded an unknown buffer
+07-07 22:43:52.287 D/CCodecBufferChannel(14502): [c2.android.aac.decoder#136] MediaCodec discarded an unknown buffer
+07-07 22:43:53.994 I/flutter (14502): mina_iptv: Using cached format for channel 86056: ts
+07-07 22:43:53.994 I/flutter (14502): mina_iptv: Playing stream: http://s36.g57s75.com/live/d98t21c29s51/736832/86056.m3u8 (Step: 0, XtreamAlt: true)
+07-07 22:43:53.994 I/flutter (14502): mina_iptv: DataSource headers: {User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36, Accept: */*, Icy-MetaData: 1, Referer: http://s36.g57s75.com/}
+07-07 22:43:53.996 I/ExoPlayerImpl(14502): Init 8c14a75 [AndroidXMedia3/1.10.1] [courbet, M2101K9AG, Xiaomi, 36]
+07-07 22:43:54.721 D/BetterPlayerSurface(14502): setDataSource textureId=28: stop+clearMediaItems+new MediaSource (SurfaceProducer unchanged)
+07-07 22:43:54.969 V/NativeCrypto(14502): Write error: ssl=0xb4000072340f8548: I/O error during system call, Software caused connection abort
+07-07 22:43:54.969 V/NativeCrypto(14502): SSL shutdown failed: ssl=0xb4000072340f8548: I/O error during system call, Success
+07-07 22:43:55.504 E/ExoPlayerImplInternal(14502): Playback error
+07-07 22:43:55.504 E/ExoPlayerImplInternal(14502):   androidx.media3.exoplayer.ExoPlaybackException: Source error
+07-07 22:43:55.504 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.ExoPlayerImplInternal.handleIoException(Unknown Source:16)
+07-07 22:43:55.504 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.ExoPlayerImplInternal.handleMessage(Unknown Source:477)
+07-07 22:43:55.504 E/ExoPlayerImplInternal(14502):       at android.os.Handler.dispatchMessage(Handler.java:106)
+07-07 22:43:55.504 E/ExoPlayerImplInternal(14502):       at android.os.Looper.dispatchMessage(Looper.java:315)
+07-07 22:43:55.504 E/ExoPlayerImplInternal(14502):       at android.os.Looper.loopOnce(Looper.java:251)
+07-07 22:43:55.504 E/ExoPlayerImplInternal(14502):       at android.os.Looper.loop(Looper.java:349)
+07-07 22:43:55.504 E/ExoPlayerImplInternal(14502):       at android.os.HandlerThread.run(HandlerThread.java:100)
+07-07 22:43:55.504 E/ExoPlayerImplInternal(14502):   Caused by: androidx.media3.common.ParserException: Input does not start with the #EXTM3U header. {contentIsMalformed=true, dataType=4}
+07-07 22:43:55.504 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.hls.playlist.HlsPlaylistParser.parse(SourceFile:26)
+07-07 22:43:55.504 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.hls.playlist.HlsPlaylistParser.parse(SourceFile:1)
+07-07 22:43:55.504 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.upstream.ParsingLoadable.load(SourceFile:14)
+07-07 22:43:55.504 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.upstream.Loader$LoadTask.run(Unknown Source:34)
+07-07 22:43:55.504 E/ExoPlayerImplInternal(14502):       at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1154)
+07-07 22:43:55.504 E/ExoPlayerImplInternal(14502):       at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:652)
+07-07 22:43:55.504 E/ExoPlayerImplInternal(14502):       at java.lang.Thread.run(Thread.java:1365)
+07-07 22:43:55.505 I/flutter (14502): mina_iptv: Donanım kod çözücü hatası → ExoPlayer yazılım kod çözücü ile yeniden deneniyor (MediaKit öncesi)
+07-07 22:43:55.505 I/flutter (14502): mina_iptv: Using cached format for channel 86056: ts
+07-07 22:43:55.505 I/flutter (14502): mina_iptv: Playing stream: http://s36.g57s75.com/live/d98t21c29s51/736832/86056.m3u8 (Step: 1, XtreamAlt: true)
+07-07 22:43:55.505 I/flutter (14502): mina_iptv: DataSource headers: {User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36, Accept: */*, Icy-MetaData: 1, Referer: http://s36.g57s75.com/}
+07-07 22:43:55.506 I/ExoPlayerImpl(14502): Init a7c320c [AndroidXMedia3/1.10.1] [courbet, M2101K9AG, Xiaomi, 36]
+07-07 22:43:55.858 D/BetterPlayerSurface(14502): setDataSource textureId=29: stop+clearMediaItems+new MediaSource (SurfaceProducer unchanged)
+07-07 22:43:56.587 E/ExoPlayerImplInternal(14502): Playback error
+07-07 22:43:56.587 E/ExoPlayerImplInternal(14502):   androidx.media3.exoplayer.ExoPlaybackException: Source error
+07-07 22:43:56.587 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.ExoPlayerImplInternal.handleIoException(Unknown Source:16)
+07-07 22:43:56.587 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.ExoPlayerImplInternal.handleMessage(Unknown Source:477)
+07-07 22:43:56.587 E/ExoPlayerImplInternal(14502):       at android.os.Handler.dispatchMessage(Handler.java:106)
+07-07 22:43:56.587 E/ExoPlayerImplInternal(14502):       at android.os.Looper.dispatchMessage(Looper.java:315)
+07-07 22:43:56.587 E/ExoPlayerImplInternal(14502):       at android.os.Looper.loopOnce(Looper.java:251)
+07-07 22:43:56.587 E/ExoPlayerImplInternal(14502):       at android.os.Looper.loop(Looper.java:349)
+07-07 22:43:56.587 E/ExoPlayerImplInternal(14502):       at android.os.HandlerThread.run(HandlerThread.java:100)
+07-07 22:43:56.587 E/ExoPlayerImplInternal(14502):   Caused by: androidx.media3.common.ParserException: Input does not start with the #EXTM3U header. {contentIsMalformed=true, dataType=4}
+07-07 22:43:56.587 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.hls.playlist.HlsPlaylistParser.parse(SourceFile:26)
+07-07 22:43:56.587 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.hls.playlist.HlsPlaylistParser.parse(SourceFile:1)
+07-07 22:43:56.587 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.upstream.ParsingLoadable.load(SourceFile:14)
+07-07 22:43:56.587 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.upstream.Loader$LoadTask.run(Unknown Source:34)
+07-07 22:43:56.587 E/ExoPlayerImplInternal(14502):       at java.util.concurrent.ThreadPoolExecutor.runWorker(ThreadPoolExecutor.java:1154)
+07-07 22:43:56.587 E/ExoPlayerImplInternal(14502):       at java.util.concurrent.ThreadPoolExecutor$Worker.run(ThreadPoolExecutor.java:652)
+07-07 22:43:56.587 E/ExoPlayerImplInternal(14502):       at java.lang.Thread.run(Thread.java:1365)
+07-07 22:43:56.589 I/flutter (14502): mina_iptv: BetterPlayer exception → MediaKit yedek: Video player had error androidx.media3.exoplayer.ExoPlaybackException: Source error
+07-07 22:43:56.589 I/flutter (14502): mina_iptv: Using cached format for channel 86056: ts
+07-07 22:43:56.589 I/flutter (14502): mina_iptv: Playing stream: http://s36.g57s75.com/live/d98t21c29s51/736832/86056.m3u8 (Step: 1, XtreamAlt: true)
+07-07 22:43:57.538 I/flutter (14502): mina_iptv: Playing stream: http://s36.g57s75.com/live/d98t21c29s51/736832/268.m3u8 (Step: 0, XtreamAlt: false)
+07-07 22:43:57.538 I/flutter (14502): mina_iptv: DataSource headers: {User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36, Accept: */*, Icy-MetaData: 1, Referer: http://s36.g57s75.com/}
+07-07 22:43:57.540 I/ExoPlayerImpl(14502): Init 3f06d1a [AndroidXMedia3/1.10.1] [courbet, M2101K9AG, Xiaomi, 36]
+07-07 22:43:57.779 D/BetterPlayerSurface(14502): setDataSource textureId=30: stop+clearMediaItems+new MediaSource (SurfaceProducer unchanged)
+07-07 22:43:58.400 I/DMCodecAdapterFactory(14502): Creating an asynchronous MediaCodec adapter for track type video
+07-07 22:43:58.412 I/MediaCodec(14502): MediaCodec will operate in async mode
+07-07 22:43:58.414 I/MediaCodec(14502): [c2.qti.avc.decoder] setting surface generation to 14850093
+07-07 22:43:58.416 D/MediaCodec(14502): keep callback message for reclaim
+07-07 22:43:58.433 I/DMCodecAdapterFactory(14502): Creating an asynchronous MediaCodec adapter for track type audio
+07-07 22:43:58.449 I/MediaCodec(14502): MediaCodec will operate in async mode
+07-07 22:43:58.451 D/MediaCodec(14502): keep callback message for reclaim
+07-07 22:44:06.422 I/flutter (14502): mina_iptv: Playing stream: http://s36.g57s75.com/live/d98t21c29s51/736832/256.m3u8 (Step: 0, XtreamAlt: false)
+07-07 22:44:06.422 I/flutter (14502): mina_iptv: DataSource headers: {User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36, Accept: */*, Icy-MetaData: 1, Referer: http://s36.g57s75.com/}
+07-07 22:44:06.424 I/ExoPlayerImpl(14502): Init b8dc7b8 [AndroidXMedia3/1.10.1] [courbet, M2101K9AG, Xiaomi, 36]
+07-07 22:44:06.785 D/BetterPlayerSurface(14502): setDataSource textureId=31: stop+clearMediaItems+new MediaSource (SurfaceProducer unchanged)
+07-07 22:44:08.638 I/DMCodecAdapterFactory(14502): Creating an asynchronous MediaCodec adapter for track type video
+07-07 22:44:08.662 I/MediaCodec(14502): MediaCodec will operate in async mode
+07-07 22:44:08.663 I/MediaCodec(14502): [c2.qti.avc.decoder] setting surface generation to 14850094
+07-07 22:44:08.666 D/MediaCodec(14502): keep callback message for reclaim
+07-07 22:44:08.679 I/DMCodecAdapterFactory(14502): Creating an asynchronous MediaCodec adapter for track type audio
+07-07 22:44:08.696 I/MediaCodec(14502): MediaCodec will operate in async mode
+07-07 22:44:08.699 D/MediaCodec(14502): keep callback message for reclaim
+07-07 22:44:10.125 I/flutter (14502): mina_iptv: Playing stream: http://s36.g57s75.com/live/d98t21c29s51/736832/257.m3u8 (Step: 0, XtreamAlt: false)
+07-07 22:44:10.125 I/flutter (14502): mina_iptv: DataSource headers: {User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36, Accept: */*, Icy-MetaData: 1, Referer: http://s36.g57s75.com/}
+07-07 22:44:10.142 D/MediaCodec(14502): keep callback message for reclaim
+07-07 22:44:10.146 D/MediaCodec(14502): keep callback message for reclaim
+07-07 22:44:10.147 I/MediaCodec(14502): [c2.qti.avc.decoder] setting surface generation to 14850095
+07-07 22:44:10.151 D/CCodecBufferChannel(14502): [c2.qti.avc.decoder#896] MediaCodec discarded an unknown buffer
+07-07 22:44:10.151 D/CCodecBufferChannel(14502): [c2.qti.avc.decoder#896] MediaCodec discarded an unknown buffer
+07-07 22:44:10.152 D/CCodecBufferChannel(14502): [c2.qti.avc.decoder#896] MediaCodec discarded an unknown buffer
+07-07 22:44:10.152 D/CCodecBufferChannel(14502): [c2.qti.avc.decoder#896] MediaCodec discarded an unknown buffer
+07-07 22:44:10.154 D/CCodecBufferChannel(14502): [c2.android.aac.decoder#281] MediaCodec discarded an unknown buffer
+07-07 22:44:10.154 D/CCodecBufferChannel(14502): [c2.android.aac.decoder#281] MediaCodec discarded an unknown buffer
+07-07 22:44:10.154 D/CCodecBufferChannel(14502): [c2.android.aac.decoder#281] MediaCodec discarded an unknown buffer
+07-07 22:44:10.154 D/CCodecBufferChannel(14502): [c2.android.aac.decoder#281] MediaCodec discarded an unknown buffer
+07-07 22:44:10.429 D/BetterPlayerSurface(14502): setDataSource textureId=31: stop+clearMediaItems+new MediaSource (SurfaceProducer unchanged)
+07-07 22:44:11.633 I/DMCodecAdapterFactory(14502): Creating an asynchronous MediaCodec adapter for track type video
+07-07 22:44:11.651 I/MediaCodec(14502): MediaCodec will operate in async mode
+07-07 22:44:11.652 I/MediaCodec(14502): [c2.qti.avc.decoder] setting surface generation to 14850096
+07-07 22:44:11.655 D/MediaCodec(14502): keep callback message for reclaim
+07-07 22:44:11.668 I/DMCodecAdapterFactory(14502): Creating an asynchronous MediaCodec adapter for track type audio
+07-07 22:44:11.686 I/MediaCodec(14502): MediaCodec will operate in async mode
+07-07 22:44:11.689 D/MediaCodec(14502): keep callback message for reclaim
+07-07 22:44:11.714 W/MediaCodec(14502): Log queueInputBuffer error: 1
+07-07 22:44:11.715 E/MediaCodecVideoRenderer(14502): Video codec error
+07-07 22:44:11.715 E/MediaCodecVideoRenderer(14502):   android.media.MediaCodec$CodecException: 
+07-07 22:44:11.715 E/MediaCodecVideoRenderer(14502):       at android.media.MediaCodec.native_queueInputBuffer(Native Method)
+07-07 22:44:11.715 E/MediaCodecVideoRenderer(14502):       at android.media.MediaCodec.queueInputBuffer(MediaCodec.java:3171)
+07-07 22:44:11.715 E/MediaCodecVideoRenderer(14502):       at androidx.media3.exoplayer.mediacodec.SynchronousMediaCodecBufferEnqueuer.queueInputBuffer(Unknown Source:7)
+07-07 22:44:11.715 E/MediaCodecVideoRenderer(14502):       at androidx.media3.exoplayer.mediacodec.AsynchronousMediaCodecAdapter.queueInputBuffer(Unknown Source:7)
+07-07 22:44:11.715 E/MediaCodecVideoRenderer(14502):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.feedInputBuffer(Unknown Source:480)
+07-07 22:44:11.715 E/MediaCodecVideoRenderer(14502):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.render(Unknown Source:94)
+07-07 22:44:11.715 E/MediaCodecVideoRenderer(14502):       at androidx.media3.exoplayer.video.MediaCodecVideoRenderer.render(Unknown Source:18)
+07-07 22:44:11.715 E/MediaCodecVideoRenderer(14502):       at androidx.media3.exoplayer.RendererHolder.render(Unknown Source:10)
+07-07 22:44:11.715 E/MediaCodecVideoRenderer(14502):       at androidx.media3.exoplayer.ExoPlayerImplInternal.doSomeWork(Unknown Source:115)
+07-07 22:44:11.715 E/MediaCodecVideoRenderer(14502):       at androidx.media3.exoplayer.ExoPlayerImplInternal.handleMessage(Unknown Source:378)
+07-07 22:44:11.715 E/MediaCodecVideoRenderer(14502):       at android.os.Handler.dispatchMessage(Handler.java:106)
+07-07 22:44:11.715 E/MediaCodecVideoRenderer(14502):       at android.os.Looper.dispatchMessage(Looper.java:315)
+07-07 22:44:11.715 E/MediaCodecVideoRenderer(14502):       at android.os.Looper.loopOnce(Looper.java:251)
+07-07 22:44:11.715 E/MediaCodecVideoRenderer(14502):       at android.os.Looper.loop(Looper.java:349)
+07-07 22:44:11.715 E/MediaCodecVideoRenderer(14502):       at android.os.HandlerThread.run(HandlerThread.java:100)
+07-07 22:44:11.716 E/ExoPlayerImplInternal(14502): Playback error
+07-07 22:44:11.716 E/ExoPlayerImplInternal(14502):   androidx.media3.exoplayer.ExoPlaybackException: MediaCodecVideoRenderer error, index=0, format=Format(null, null, video/mp2t, video/avc, avc1.4D4028, -1, null, [1920, 1080, -1.0, ColorInfo(BT709, Limited range, SDR SMPTE 170M, false, 8bit Luma, 8bit Chroma)], [-1, -1]), format_supported=YES
+07-07 22:44:11.716 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.BaseRenderer.createRendererException(SourceFile:10)
+07-07 22:44:11.716 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.render(Unknown Source:180)
+07-07 22:44:11.716 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.video.MediaCodecVideoRenderer.render(Unknown Source:18)
+07-07 22:44:11.716 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.RendererHolder.render(Unknown Source:10)
+07-07 22:44:11.716 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.ExoPlayerImplInternal.doSomeWork(Unknown Source:115)
+07-07 22:44:11.716 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.ExoPlayerImplInternal.handleMessage(Unknown Source:378)
+07-07 22:44:11.716 E/ExoPlayerImplInternal(14502):       at android.os.Handler.dispatchMessage(Handler.java:106)
+07-07 22:44:11.716 E/ExoPlayerImplInternal(14502):       at android.os.Looper.dispatchMessage(Looper.java:315)
+07-07 22:44:11.716 E/ExoPlayerImplInternal(14502):       at android.os.Looper.loopOnce(Looper.java:251)
+07-07 22:44:11.716 E/ExoPlayerImplInternal(14502):       at android.os.Looper.loop(Looper.java:349)
+07-07 22:44:11.716 E/ExoPlayerImplInternal(14502):       at android.os.HandlerThread.run(HandlerThread.java:100)
+07-07 22:44:11.716 E/ExoPlayerImplInternal(14502):   Caused by: androidx.media3.exoplayer.video.MediaCodecVideoDecoderException: Decoder failed: c2.qti.avc.decoder
+07-07 22:44:11.716 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.video.MediaCodecVideoRenderer.createDecoderException(Unknown Source:4)
+07-07 22:44:11.716 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.render(Unknown Source:163)
+07-07 22:44:11.716 E/ExoPlayerImplInternal(14502):       ... 9 more
+07-07 22:44:11.716 E/ExoPlayerImplInternal(14502):   Caused by: android.media.MediaCodec$CodecException: 
+07-07 22:44:11.716 E/ExoPlayerImplInternal(14502):       at android.media.MediaCodec.native_queueInputBuffer(Native Method)
+07-07 22:44:11.716 E/ExoPlayerImplInternal(14502):       at android.media.MediaCodec.queueInputBuffer(MediaCodec.java:3171)
+07-07 22:44:11.716 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.mediacodec.SynchronousMediaCodecBufferEnqueuer.queueInputBuffer(Unknown Source:7)
+07-07 22:44:11.716 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.mediacodec.AsynchronousMediaCodecAdapter.queueInputBuffer(Unknown Source:7)
+07-07 22:44:11.716 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.feedInputBuffer(Unknown Source:480)
+07-07 22:44:11.716 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.render(Unknown Source:94)
+07-07 22:44:11.716 E/ExoPlayerImplInternal(14502):       ... 9 more
+07-07 22:44:11.717 D/CCodecBufferChannel(14502): [c2.qti.avc.decoder#716] MediaCodec discarded an unknown buffer
+07-07 22:44:11.717 D/CCodecBufferChannel(14502): [c2.qti.avc.decoder#716] MediaCodec discarded an unknown buffer
+07-07 22:44:11.717 E/MediaCodec(14502): Codec reported err 0x80000000/UNKNOWN_ERROR, actionCode 0, while in state 7/FLUSHING
+07-07 22:44:11.718 W/MediaCodec(14502): received FlushCompleted message in state 0/UNINITIALIZED
+07-07 22:44:11.719 E/ExoPlayerImplInternal(14502): Disable failed.
+07-07 22:44:11.719 E/ExoPlayerImplInternal(14502):   android.media.MediaCodec$CodecException: 
+07-07 22:44:11.719 E/ExoPlayerImplInternal(14502):       at android.media.MediaCodec.native_flush(Native Method)
+07-07 22:44:11.719 E/ExoPlayerImplInternal(14502):       at android.media.MediaCodec.flush(MediaCodec.java:2843)
+07-07 22:44:11.719 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.mediacodec.AsynchronousMediaCodecAdapter.flush(Unknown Source:7)
+07-07 22:44:11.719 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.flushCodec(Unknown Source:5)
+07-07 22:44:11.719 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.flushOrReleaseCodec(Unknown Source:23)
+07-07 22:44:11.719 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.onDisabled(Unknown Source:23)
+07-07 22:44:11.719 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.video.MediaCodecVideoRenderer.onDisabled(Unknown Source:23)
+07-07 22:44:11.719 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.BaseRenderer.disable(Unknown Source:25)
+07-07 22:44:11.719 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.RendererHolder.disableRenderer(Unknown Source:28)
+07-07 22:44:11.719 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.RendererHolder.disable(Unknown Source:2)
+07-07 22:44:11.719 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.ExoPlayerImplInternal.disableRenderer(Unknown Source:14)
+07-07 22:44:11.719 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.ExoPlayerImplInternal.disableRenderers(Unknown Source:6)
+07-07 22:44:11.719 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.ExoPlayerImplInternal.resetInternal(Unknown Source:43)
+07-07 22:44:11.719 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.ExoPlayerImplInternal.stopInternal(Unknown Source:12)
+07-07 22:44:11.719 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.ExoPlayerImplInternal.handleMessage(Unknown Source:713)
+07-07 22:44:11.719 E/ExoPlayerImplInternal(14502):       at android.os.Handler.dispatchMessage(Handler.java:106)
+07-07 22:44:11.719 E/ExoPlayerImplInternal(14502):       at android.os.Looper.dispatchMessage(Looper.java:315)
+07-07 22:44:11.719 E/ExoPlayerImplInternal(14502):       at android.os.Looper.loopOnce(Looper.java:251)
+07-07 22:44:11.719 E/ExoPlayerImplInternal(14502):       at android.os.Looper.loop(Looper.java:349)
+07-07 22:44:11.719 E/ExoPlayerImplInternal(14502):       at android.os.HandlerThread.run(HandlerThread.java:100)
+07-07 22:44:11.724 I/flutter (14502): mina_iptv: Canlı sessiz takılma → taşıma biçimi değişimi: http://s36.g57s75.com/live/d98t21c29s51/736832/257.ts
+07-07 22:44:11.724 I/flutter (14502): mina_iptv: Canlı hata → önce taşıma biçimi değişimi (HLS↔TS)
+07-07 22:44:11.724 I/flutter (14502): mina_iptv: VideoPlayer error: Video player had error androidx.media3.exoplayer.ExoPlaybackException: MediaCodecVideoRenderer error, index=0, format=Format(null, null, video/mp2t, video/avc, avc1.4D4028, -1, null, [1920, 1080, -1.0, ColorInfo(BT709, Limited range, SDR SMPTE 170M, false, 8bit Luma, 8bit Chroma)], [-1, -1]), format_supported=YES
+07-07 22:44:11.724 I/flutter (14502): mina_iptv: Donanım kod çözücü hatası → ExoPlayer yazılım kod çözücü ile yeniden deneniyor (MediaKit öncesi)
+07-07 22:44:11.724 I/flutter (14502): mina_iptv: BetterPlayer exception → MediaKit yedek: Video player had error androidx.media3.exoplayer.ExoPlaybackException: MediaCodecVideoRenderer error, index=0, format=Format(null, null, video/mp2t, video/avc, avc1.4D4028, -1, null, [1920, 1080, -1.0, ColorInfo(BT709, Limited range, SDR SMPTE 170M, false, 8bit Luma, 8bit Chroma)], [-1, -1]), format_supported=YES
+07-07 22:44:11.725 I/flutter (14502): mina_iptv: Playing stream: http://s36.g57s75.com/live/d98t21c29s51/736832/257.ts (Step: 1, XtreamAlt: false)
+07-07 22:44:11.725 I/flutter (14502): mina_iptv: Playing stream: http://s36.g57s75.com/live/d98t21c29s51/736832/257.ts (Step: 1, XtreamAlt: false)
+07-07 22:44:11.747 I/flutter (14502): mina_iptv: Network recovery in 1s (attempt idx 0)
+07-07 22:44:11.748 I/flutter (14502): mina_iptv: Playing stream: http://s36.g57s75.com/live/d98t21c29s51/736832/257.ts (Step: 1, XtreamAlt: false)
+07-07 22:44:11.751 D/BetterPlayerSurface(14502): dispose START textureId=31 releasing ExoPlayer + SurfaceProducer
+07-07 22:44:11.755 I/ExoPlayerImpl(14502): Release b8dc7b8 [AndroidXMedia3/1.10.1] [courbet, M2101K9AG, Xiaomi, 36] [media3.common, media3.exoplayer, media3.decoder, media3.datasource, media3.extractor, media3.exoplayer.hls]
+07-07 22:44:11.756 D/MediaCodec(14502): keep callback message for reclaim
+07-07 22:44:11.760 D/CCodecBufferChannel(14502): [c2.android.aac.decoder#189] MediaCodec discarded an unknown buffer
+07-07 22:44:11.760 D/CCodecBufferChannel(14502): [c2.android.aac.decoder#189] MediaCodec discarded an unknown buffer
+07-07 22:44:11.761 D/CCodecBufferChannel(14502): [c2.android.aac.decoder#189] MediaCodec discarded an unknown buffer
+07-07 22:44:11.761 D/CCodecBufferChannel(14502): [c2.android.aac.decoder#189] MediaCodec discarded an unknown buffer
+07-07 22:44:16.593 I/flutter (14502): mina_iptv: Playing stream: http://s36.g57s75.com/live/d98t21c29s51/736832/258.m3u8 (Step: 0, XtreamAlt: false)
+07-07 22:44:16.593 I/flutter (14502): mina_iptv: DataSource headers: {User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36, Accept: */*, Icy-MetaData: 1, Referer: http://s36.g57s75.com/}
+07-07 22:44:16.595 I/ExoPlayerImpl(14502): Init 5405a2d [AndroidXMedia3/1.10.1] [courbet, M2101K9AG, Xiaomi, 36]
+07-07 22:44:16.940 D/BetterPlayerSurface(14502): setDataSource textureId=32: stop+clearMediaItems+new MediaSource (SurfaceProducer unchanged)
+07-07 22:44:18.013 I/DMCodecAdapterFactory(14502): Creating an asynchronous MediaCodec adapter for track type video
+07-07 22:44:18.027 I/MediaCodec(14502): MediaCodec will operate in async mode
+07-07 22:44:18.028 I/MediaCodec(14502): [c2.qti.avc.decoder] setting surface generation to 14850097
+07-07 22:44:18.030 D/MediaCodec(14502): keep callback message for reclaim
+07-07 22:44:18.045 I/DMCodecAdapterFactory(14502): Creating an asynchronous MediaCodec adapter for track type audio
+07-07 22:44:18.061 I/MediaCodec(14502): MediaCodec will operate in async mode
+07-07 22:44:18.064 D/MediaCodec(14502): keep callback message for reclaim
+07-07 22:44:18.085 W/MediaCodec(14502): Log queueInputBuffer error: 1
+07-07 22:44:18.086 E/MediaCodecVideoRenderer(14502): Video codec error
+07-07 22:44:18.086 E/MediaCodecVideoRenderer(14502):   android.media.MediaCodec$CodecException: 
+07-07 22:44:18.086 E/MediaCodecVideoRenderer(14502):       at android.media.MediaCodec.native_queueInputBuffer(Native Method)
+07-07 22:44:18.086 E/MediaCodecVideoRenderer(14502):       at android.media.MediaCodec.queueInputBuffer(MediaCodec.java:3171)
+07-07 22:44:18.086 E/MediaCodecVideoRenderer(14502):       at androidx.media3.exoplayer.mediacodec.SynchronousMediaCodecBufferEnqueuer.queueInputBuffer(Unknown Source:7)
+07-07 22:44:18.086 E/MediaCodecVideoRenderer(14502):       at androidx.media3.exoplayer.mediacodec.AsynchronousMediaCodecAdapter.queueInputBuffer(Unknown Source:7)
+07-07 22:44:18.086 E/MediaCodecVideoRenderer(14502):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.feedInputBuffer(Unknown Source:480)
+07-07 22:44:18.086 E/MediaCodecVideoRenderer(14502):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.render(Unknown Source:94)
+07-07 22:44:18.086 E/MediaCodecVideoRenderer(14502):       at androidx.media3.exoplayer.video.MediaCodecVideoRenderer.render(Unknown Source:18)
+07-07 22:44:18.086 E/MediaCodecVideoRenderer(14502):       at androidx.media3.exoplayer.RendererHolder.render(Unknown Source:10)
+07-07 22:44:18.086 E/MediaCodecVideoRenderer(14502):       at androidx.media3.exoplayer.ExoPlayerImplInternal.doSomeWork(Unknown Source:115)
+07-07 22:44:18.086 E/MediaCodecVideoRenderer(14502):       at androidx.media3.exoplayer.ExoPlayerImplInternal.handleMessage(Unknown Source:378)
+07-07 22:44:18.086 E/MediaCodecVideoRenderer(14502):       at android.os.Handler.dispatchMessage(Handler.java:106)
+07-07 22:44:18.086 E/MediaCodecVideoRenderer(14502):       at android.os.Looper.dispatchMessage(Looper.java:315)
+07-07 22:44:18.086 E/MediaCodecVideoRenderer(14502):       at android.os.Looper.loopOnce(Looper.java:251)
+07-07 22:44:18.086 E/MediaCodecVideoRenderer(14502):       at android.os.Looper.loop(Looper.java:349)
+07-07 22:44:18.086 E/MediaCodecVideoRenderer(14502):       at android.os.HandlerThread.run(HandlerThread.java:100)
+07-07 22:44:18.086 E/ExoPlayerImplInternal(14502): Playback error
+07-07 22:44:18.086 E/ExoPlayerImplInternal(14502):   androidx.media3.exoplayer.ExoPlaybackException: MediaCodecVideoRenderer error, index=0, format=Format(null, null, video/mp2t, video/avc, avc1.4D4028, -1, null, [1920, 1080, -1.0, ColorInfo(BT709, Limited range, SDR SMPTE 170M, false, 8bit Luma, 8bit Chroma)], [-1, -1]), format_supported=YES
+07-07 22:44:18.086 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.BaseRenderer.createRendererException(SourceFile:10)
+07-07 22:44:18.086 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.render(Unknown Source:180)
+07-07 22:44:18.086 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.video.MediaCodecVideoRenderer.render(Unknown Source:18)
+07-07 22:44:18.086 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.RendererHolder.render(Unknown Source:10)
+07-07 22:44:18.086 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.ExoPlayerImplInternal.doSomeWork(Unknown Source:115)
+07-07 22:44:18.086 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.ExoPlayerImplInternal.handleMessage(Unknown Source:378)
+07-07 22:44:18.086 E/ExoPlayerImplInternal(14502):       at android.os.Handler.dispatchMessage(Handler.java:106)
+07-07 22:44:18.086 E/ExoPlayerImplInternal(14502):       at android.os.Looper.dispatchMessage(Looper.java:315)
+07-07 22:44:18.086 E/ExoPlayerImplInternal(14502):       at android.os.Looper.loopOnce(Looper.java:251)
+07-07 22:44:18.086 E/ExoPlayerImplInternal(14502):       at android.os.Looper.loop(Looper.java:349)
+07-07 22:44:18.086 E/ExoPlayerImplInternal(14502):       at android.os.HandlerThread.run(HandlerThread.java:100)
+07-07 22:44:18.086 E/ExoPlayerImplInternal(14502):   Caused by: androidx.media3.exoplayer.video.MediaCodecVideoDecoderException: Decoder failed: c2.qti.avc.decoder
+07-07 22:44:18.086 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.video.MediaCodecVideoRenderer.createDecoderException(Unknown Source:4)
+07-07 22:44:18.086 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.render(Unknown Source:163)
+07-07 22:44:18.086 E/ExoPlayerImplInternal(14502):       ... 9 more
+07-07 22:44:18.086 E/ExoPlayerImplInternal(14502):   Caused by: android.media.MediaCodec$CodecException: 
+07-07 22:44:18.086 E/ExoPlayerImplInternal(14502):       at android.media.MediaCodec.native_queueInputBuffer(Native Method)
+07-07 22:44:18.086 E/ExoPlayerImplInternal(14502):       at android.media.MediaCodec.queueInputBuffer(MediaCodec.java:3171)
+07-07 22:44:18.086 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.mediacodec.SynchronousMediaCodecBufferEnqueuer.queueInputBuffer(Unknown Source:7)
+07-07 22:44:18.086 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.mediacodec.AsynchronousMediaCodecAdapter.queueInputBuffer(Unknown Source:7)
+07-07 22:44:18.086 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.feedInputBuffer(Unknown Source:480)
+07-07 22:44:18.086 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.render(Unknown Source:94)
+07-07 22:44:18.086 E/ExoPlayerImplInternal(14502):       ... 9 more
+07-07 22:44:18.088 E/MediaCodec(14502): Codec reported err 0x80000000/UNKNOWN_ERROR, actionCode 0, while in state 7/FLUSHING
+07-07 22:44:18.088 W/MediaCodec(14502): received FlushCompleted message in state 0/UNINITIALIZED
+07-07 22:44:18.089 E/ExoPlayerImplInternal(14502): Disable failed.
+07-07 22:44:18.089 E/ExoPlayerImplInternal(14502):   android.media.MediaCodec$CodecException: 
+07-07 22:44:18.089 E/ExoPlayerImplInternal(14502):       at android.media.MediaCodec.native_flush(Native Method)
+07-07 22:44:18.089 E/ExoPlayerImplInternal(14502):       at android.media.MediaCodec.flush(MediaCodec.java:2843)
+07-07 22:44:18.089 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.mediacodec.AsynchronousMediaCodecAdapter.flush(Unknown Source:7)
+07-07 22:44:18.089 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.flushCodec(Unknown Source:5)
+07-07 22:44:18.089 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.flushOrReleaseCodec(Unknown Source:23)
+07-07 22:44:18.089 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.mediacodec.MediaCodecRenderer.onDisabled(Unknown Source:23)
+07-07 22:44:18.089 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.video.MediaCodecVideoRenderer.onDisabled(Unknown Source:23)
+07-07 22:44:18.089 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.BaseRenderer.disable(Unknown Source:25)
+07-07 22:44:18.089 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.RendererHolder.disableRenderer(Unknown Source:28)
+07-07 22:44:18.089 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.RendererHolder.disable(Unknown Source:2)
+07-07 22:44:18.089 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.ExoPlayerImplInternal.disableRenderer(Unknown Source:14)
+07-07 22:44:18.089 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.ExoPlayerImplInternal.disableRenderers(Unknown Source:6)
+07-07 22:44:18.089 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.ExoPlayerImplInternal.resetInternal(Unknown Source:43)
+07-07 22:44:18.089 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.ExoPlayerImplInternal.stopInternal(Unknown Source:12)
+07-07 22:44:18.089 E/ExoPlayerImplInternal(14502):       at androidx.media3.exoplayer.ExoPlayerImplInternal.handleMessage(Unknown Source:713)
+07-07 22:44:18.089 E/ExoPlayerImplInternal(14502):       at android.os.Handler.dispatchMessage(Handler.java:106)
+07-07 22:44:18.089 E/ExoPlayerImplInternal(14502):       at android.os.Looper.dispatchMessage(Looper.java:315)
+07-07 22:44:18.089 E/ExoPlayerImplInternal(14502):       at android.os.Looper.loopOnce(Looper.java:251)
+07-07 22:44:18.089 E/ExoPlayerImplInternal(14502):       at android.os.Looper.loop(Looper.java:349)
+07-07 22:44:18.089 E/ExoPlayerImplInternal(14502):       at android.os.HandlerThread.run(HandlerThread.java:100)
+07-07 22:44:18.091 I/flutter (14502): mina_iptv: Canlı sessiz takılma → taşıma biçimi değişimi: http://s36.g57s75.com/live/d98t21c29s51/736832/258.ts
+07-07 22:44:18.091 I/flutter (14502): mina_iptv: Canlı hata → önce taşıma biçimi değişimi (HLS↔TS)
+07-07 22:44:18.091 I/flutter (14502): mina_iptv: Playing stream: http://s36.g57s75.com/live/d98t21c29s51/736832/258.ts (Step: 0, XtreamAlt: false)
+07-07 22:44:18.092 I/flutter (14502): mina_iptv: DataSource headers: {User-Agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36, Accept: */*, Icy-MetaData: 1, Referer: http://s36.g57s75.com/}
+07-07 22:44:18.093 I/ExoPlayerImpl(14502): Init 797f6c5 [AndroidXMedia3/1.10.1] [courbet, M2101K9AG, Xiaomi, 36]
+07-07 22:44:18.101 D/BetterPlayerSurface(14502): setDataSource textureId=33: stop+clearMediaItems+new MediaSource (SurfaceProducer unchanged)
+07-07 22:44:18.823 I/DMCodecAdapterFactory(14502): Creating an asynchronous MediaCodec adapter for track type video
+07-07 22:44:18.849 I/MediaCodec(14502): MediaCodec will operate in async mode
+07-07 22:44:18.850 I/MediaCodec(14502): [c2.qti.avc.decoder] setting surface generation to 14850098
+07-07 22:44:18.852 D/MediaCodec(14502): keep callback message for reclaim
+07-07 22:44:18.868 I/DMCodecAdapterFactory(14502): Creating an asynchronous MediaCodec adapter for track type audio
+07-07 22:44:18.879 I/MediaCodec(14502): MediaCodec will operate in async mode
+07-07 22:44:18.883 D/MediaCodec(14502): keep callback message for reclaim
+07-07 22:44:28.093 I/flutter (14502): mina_iptv: Canlı Better 10s başlangıçta stabil oynatma yok → hızlı kurtarma
+07-07 22:44:28.093 I/flutter (14502): mina_iptv: Canlı başlangıç açılmadı (swap da çözmedi) → MediaKit yedek
+07-07 22:44:28.093 I/flutter (14502): mina_iptv: Playing stream: http://s36.g57s75.com/live/d98t21c29s51/736832/258.ts (Step: 0, XtreamAlt: false)
+07-07 22:44:44.502 V/NativeCrypto(14502): SSL shutdown failed: ssl=0xb40000720931cdc8: I/O error during system call, Software caused connection abort
+07-07 22:45:13.094 I/flutter (14502): mina_iptv: boot busy hold timeout (gen 51)
+07-07 22:45:18.254 I/ImeTracker(14502): com.mina.iptv.mina_iptv_player:c54ca2e5: onCancelled at PHASE_CLIENT_ALREADY_HIDDEN
+07-07 22:45:24.353 V/NativeCrypto(14502): Read error: ssl=0xb40000721d675608: I/O error during system call, Software caused connection abort
+07-07 22:45:24.361 V/NativeCrypto(14502): Write error: ssl=0xb40000721d675608: I/O error during system call, Broken pipe
+07-07 22:45:24.364 V/NativeCrypto(14502): SSL shutdown failed: ssl=0xb40000721d675608: I/O error during system call, Success

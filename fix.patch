@@ -1,0 +1,12 @@
+--- lib/modules/tv_shell/widgets/tv_shell_live_panel.dart
++++ lib/modules/tv_shell/widgets/tv_shell_live_panel.dart
+@@ -1364,7 +1364,8 @@
+                               ],
+                             ),
+                           ],
+-                          ],
+                         ),
++                      ),
+                       )
+                     : channel == null
+                         ? Align(

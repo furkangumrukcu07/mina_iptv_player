@@ -4,6 +4,7 @@ import 'package:get/get.dart';
 import '../../../core/home/film_dizi_catalog.dart';
 import '../../../core/home/recommended_films_catalog.dart';
 import '../../../core/home/series_name_grouping.dart';
+import '../../../core/home/trend_catalog.dart';
 import '../../../core/layout/app_layout_mode.dart' show filmDiziRemoteNavEnabled;
 import '../../../core/services/app_settings_service.dart';
 import '../../../ui/tv_dpad_focus.dart';
@@ -65,6 +66,13 @@ class FilmDiziPosterCard extends StatelessWidget {
   /// TV kabuğu listelerinde kalp / izleme rozeti gibi reaktif katmanları gizle.
   final bool minimalOverlays;
 
+  bool get _isNew {
+    final added = vod?.addedUnix ?? series?.addedUnix;
+    if (added == null || added <= 0) return false;
+    final date = DateTime.fromMillisecondsSinceEpoch(added * 1000);
+    return DateTime.now().difference(date).inDays <= 7;
+  }
+
   @override
   Widget build(BuildContext context) {
     final title = vod != null
@@ -96,6 +104,13 @@ class FilmDiziPosterCard extends StatelessWidget {
                         right: 4,
                         bottom: 4,
                         child: _VodRatingBadge(vod: vod!),
+                      )
+                    else if (series != null)
+                      Positioned(
+                        left: 4,
+                        right: 4,
+                        bottom: 4,
+                        child: _SeriesRatingBadge(series: series!),
                       ),
                     if (!minimalOverlays)
                       Positioned(
@@ -113,7 +128,6 @@ class FilmDiziPosterCard extends StatelessWidget {
                                   accent: accent,
                                 )),
                       ),
-                    if (!minimalOverlays)
                       Positioned(
                         top: 4,
                         left: 4,
@@ -123,30 +137,38 @@ class FilmDiziPosterCard extends StatelessWidget {
                           accent: accent,
                         ),
                       ),
+                    if (_isNew)
+                      const Positioned(
+                        top: 4,
+                        left: 4,
+                        child: _NewBadge(),
+                      ),
                   ],
                 );
 
     if (enableDpadFocus) {
-      posterTile = Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(10),
+      if (remote) {
+        posterTile = TvDpadFocus(
+          onActivate: onTap,
+          borderRadius: 10,
+          scaleOnFocus: 1.06,
+          tvFocusStyle: true,
+          tvFocusFill: false,
+          showFocusRing: false,
+          ensureVisibleOnFocus: ensureVisibleOnFocus,
           child: posterTile,
-        ),
-      );
-    }
-    if (remote && enableDpadFocus) {
-      final posterContent = posterTile;
-      posterTile = TvDpadFocus(
-        onActivate: onTap,
-        borderRadius: 10,
-        scaleOnFocus: 1.06,
-        tvFocusStyle: true,
-        tvFocusFill: false,
-        showFocusRing: false,
-        ensureVisibleOnFocus: ensureVisibleOnFocus,
-        child: posterContent,
+        );
+      } else {
+        posterTile = _HoverScaleShimmer(
+          onTap: onTap,
+          child: posterTile,
+        );
+      }
+    } else {
+      posterTile = GestureDetector(
+        onTap: onTap,
+        behavior: HitTestBehavior.opaque,
+        child: posterTile,
       );
     }
 
@@ -226,9 +248,134 @@ class _WatchProgressBadge extends StatelessWidget {
   }
 }
 
-/// VOD posterinde IMDB puan rozeti. Puan güncellemesi için kart başına ayrı
-/// [Obx] kullanılmaz — yüzlerce posterde `revision` dinleyicisi stack overflow
-/// ve OOM'a yol açıyordu; üst gövde tek seferde yeniden çizilir.
+class _NewBadge extends StatelessWidget {
+  const _NewBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+      decoration: BoxDecoration(
+        color: const Color(0xFFE50914), // Netflix red
+        borderRadius: BorderRadius.circular(4),
+        boxShadow: const [
+          BoxShadow(
+            color: Colors.black45,
+            blurRadius: 4,
+            offset: Offset(0, 2),
+          ),
+        ],
+      ),
+      child: const Text(
+        'YENİ',
+        style: TextStyle(
+          color: Colors.white,
+          fontSize: 9.5,
+          fontWeight: FontWeight.w900,
+          letterSpacing: 0.5,
+        ),
+      ),
+    );
+  }
+}
+
+class _HoverScaleShimmer extends StatefulWidget {
+  const _HoverScaleShimmer({
+    required this.child,
+    required this.onTap,
+  });
+
+  final Widget child;
+  final VoidCallback onTap;
+
+  @override
+  State<_HoverScaleShimmer> createState() => _HoverScaleShimmerState();
+}
+
+class _HoverScaleShimmerState extends State<_HoverScaleShimmer>
+    with SingleTickerProviderStateMixin {
+  bool _isHovered = false;
+  late AnimationController _shimmerCtrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _shimmerCtrl = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1200),
+    );
+  }
+
+  @override
+  void dispose() {
+    _shimmerCtrl.dispose();
+    super.dispose();
+  }
+
+  void _setHover(bool hovered) {
+    if (hovered != _isHovered) {
+      setState(() => _isHovered = hovered);
+      if (hovered) {
+        _shimmerCtrl.forward(from: 0.0);
+      } else {
+        _shimmerCtrl.stop();
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      onEnter: (_) => _setHover(true),
+      onExit: (_) => _setHover(false),
+      child: GestureDetector(
+        onTap: widget.onTap,
+        behavior: HitTestBehavior.opaque,
+        child: AnimatedScale(
+          scale: _isHovered ? 1.05 : 1.0,
+          duration: const Duration(milliseconds: 250),
+          curve: Curves.easeOutCubic,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              widget.child,
+              if (_isHovered)
+                AnimatedBuilder(
+                  animation: _shimmerCtrl,
+                  builder: (ctx, _) {
+                    final value = _shimmerCtrl.value;
+                    return Positioned.fill(
+                      child: IgnorePointer(
+                        child: DecoratedBox(
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(10),
+                            gradient: LinearGradient(
+                              begin: Alignment(-2.0 + value * 4, -1.0),
+                              end: Alignment(0.0 + value * 4, 1.0),
+                              colors: [
+                                Colors.white.withValues(alpha: 0.0),
+                                Colors.white.withValues(alpha: 0.25),
+                                Colors.white.withValues(alpha: 0.0),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// VOD posterinde IMDB puan rozeti. Puan güncellemesi için Obx ile yerel çizim
+/// yapılarak üst listelerin tamamen rebuild olması engellenir (Jank önleme).
+/// VOD posterinde IMDB puan rozeti. Puan güncellemesi için Obx ile yerel çizim
+/// yapılarak üst listelerin tamamen rebuild olması engellenir (Jank önleme).
 class _VodRatingBadge extends StatelessWidget {
   const _VodRatingBadge({required this.vod});
 
@@ -236,9 +383,28 @@ class _VodRatingBadge extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final rating = RecommendedFilmsRatingCache.effectiveRating(vod);
-    if (rating <= 0) return const SizedBox.shrink();
-    return _ImdbRatingPill(rating: rating);
+    return Obx(() {
+      RecommendedFilmsRatingCache.revision.value;
+      final rating = RecommendedFilmsRatingCache.effectiveRating(vod);
+      if (rating <= 0) return const SizedBox.shrink();
+      return _ImdbRatingPill(rating: rating);
+    });
+  }
+}
+
+class _SeriesRatingBadge extends StatelessWidget {
+  const _SeriesRatingBadge({required this.series});
+
+  final SeriesItem series;
+
+  @override
+  Widget build(BuildContext context) {
+    return Obx(() {
+      SeriesRatingCache.revision.value;
+      final rating = SeriesRatingCache.effectiveRating(series);
+      if (rating <= 0) return const SizedBox.shrink();
+      return _ImdbRatingPill(rating: rating);
+    });
   }
 }
 

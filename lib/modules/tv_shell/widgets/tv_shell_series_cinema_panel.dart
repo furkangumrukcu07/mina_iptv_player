@@ -1,11 +1,14 @@
 import 'dart:async' show unawaited;
 
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 
 import '../../../core/home/film_dizi_vod_meta.dart';
 import '../../../core/theme/app_scroll_physics.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import '../../../../ui/auto_scroll_text.dart';
 import '../../../domain/entities/movie_model.dart';
 import '../../../domain/entities/series.dart';
 import '../../../domain/entities/series_episode_option.dart';
@@ -31,12 +34,6 @@ String? _cinemaBackdropImage(SeriesItem series, MovieModel? omdb) {
   final poster = omdb?.tmdbPoster ?? omdb?.poster ?? series.posterUrl;
   final t = poster?.trim();
   return (t != null && t.isNotEmpty) ? t : null;
-}
-
-String? _castLine(MovieModel? omdb) {
-  final cast = omdb?.cast;
-  if (cast == null || cast.isEmpty) return null;
-  return cast.take(8).map((c) => c.name).join(', ');
 }
 
 /// Kategori seçildi: tam ekran sinematik dizi gezintisi + sezon/bölüm katmanı.
@@ -280,6 +277,7 @@ class _TvShellSeriesCinemaPanelState extends State<TvShellSeriesCinemaPanel> {
           final focusedEp =
               episodes.isEmpty ? null : episodes[epFocused];
           final epLoading = widget.shell.seriesEpisodesLoading.value;
+          final cast = FilmDiziSeriesMetaLabels.castMembers(omdb);
           const seasonChipW = 108.0;
           final episodeCardW = _episodeCardWidth(context);
           final episodeCardH = _episodeCardHeight;
@@ -351,19 +349,24 @@ class _TvShellSeriesCinemaPanelState extends State<TvShellSeriesCinemaPanel> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Expanded(
-                          child: TvShellContentCrossfade(
-                            contentKey:
-                                '${series?.id ?? 0}_${focusedEp?.channel.id ?? 0}_$pinned',
-                            child: _SeriesCinemaInfoBlock(
-                              palette: palette,
-                              series: series,
-                              omdb: omdb,
-                              xtream: xtream,
-                              loading: loading,
-                              pinned: pinned,
-                              focusedEpisode: pinned ? focusedEp : null,
-                              seasonCount: seasons.length,
-                              episodeCount: widget.shell.seriesEpisodes.length,
+                          child: Padding(
+                            padding: EdgeInsets.only(
+                              right: (pinned && series != null && cast.isNotEmpty) ? 220.0 : 0.0,
+                            ),
+                            child: TvShellContentCrossfade(
+                              contentKey:
+                                  '${series?.id ?? 0}_${focusedEp?.channel.id ?? 0}_$pinned',
+                              child: _SeriesCinemaInfoBlock(
+                                palette: palette,
+                                series: series,
+                                omdb: omdb,
+                                xtream: xtream,
+                                loading: loading,
+                                pinned: pinned,
+                                focusedEpisode: pinned ? focusedEp : null,
+                                seasonCount: seasons.length,
+                                episodeCount: widget.shell.seriesEpisodes.length,
+                              ),
                             ),
                           ),
                         ),
@@ -383,6 +386,14 @@ class _TvShellSeriesCinemaPanelState extends State<TvShellSeriesCinemaPanel> {
                     ),
                   ),
                 ),
+                if (pinned && series != null && cast.isNotEmpty)
+                  Positioned(
+                    top: 80 + MediaQuery.paddingOf(context).top,
+                    right: 22,
+                    bottom: 170,
+                    width: 220,
+                    child: _AutoScrollCastList(cast: cast),
+                  ),
                 Positioned(
                   left: 0,
                   right: 0,
@@ -814,16 +825,7 @@ class _SeriesCinemaInfoBlock extends StatelessWidget {
     final tmdb = FilmDiziSeriesMetaLabels.tmdbRatingLabel(omdb);
     final year =
         FilmDiziSeriesMetaLabels.releaseYear(series!, omdb, xtream);
-    final country = FilmDiziSeriesMetaLabels.countryLabel(omdb);
-    final rated = FilmDiziSeriesMetaLabels.ratedLabel(omdb);
-    final language = FilmDiziSeriesMetaLabels.languageLabel(omdb);
-    final genres = FilmDiziSeriesMetaLabels.genreLabels(omdb, xtream);
-    final techPills =
-        FilmDiziSeriesMetaLabels.techPills(series!, focusedEpisode);
     final cast = FilmDiziSeriesMetaLabels.castMembers(omdb);
-    final castLine = cast.isEmpty
-        ? _castLine(omdb)
-        : cast.map((c) => c.name).join(', ');
     final seriesPlot = FilmDiziSeriesMetaLabels.plotText(series!, omdb, xtream) ??
         '';
     final epPlot = focusedEpisode?.plot?.trim() ?? '';
@@ -853,151 +855,159 @@ class _SeriesCinemaInfoBlock extends StatelessWidget {
           ),
         ],
         const SizedBox(height: 10),
-        Wrap(
-          spacing: 8,
-          runSpacing: 6,
-          crossAxisAlignment: WrapCrossAlignment.center,
-          children: [
-            if (imdb != null)
-              _CinemaMetaChip(
-                palette: palette,
-                label: 'IMDb $imdb',
-                filled: true,
-                icon: Icons.star_rounded,
-              ),
-            if (tmdb != null)
-              _CinemaMetaChip(
-                palette: palette,
-                label: 'TMDB $tmdb',
-                icon: Icons.star_outline_rounded,
-              ),
-            if (year != null) _CinemaMetaChip(palette: palette, label: year),
-            if (country != null)
-              _CinemaMetaChip(
-                palette: palette,
-                label: country,
-                icon: Icons.public_rounded,
-              ),
-            if (rated != null)
-              _CinemaMetaChip(
-                palette: palette,
-                label: rated,
-                icon: Icons.local_movies_outlined,
-              ),
-            if (language != null)
-              _CinemaMetaChip(
-                palette: palette,
-                label: language,
-                icon: Icons.translate_rounded,
-              ),
-            if (!pinned && seasonCount > 0)
-              _CinemaMetaChip(
-                palette: palette,
-                label: 'browse.series.seasonCount'
-                    .trParams({'n': '$seasonCount'}),
-                icon: Icons.layers_outlined,
-              ),
-            if (!pinned && episodeCount > 0)
-              _CinemaMetaChip(
-                palette: palette,
-                label: 'filmDizi.series.episodeCount'
-                    .trParams({'n': '$episodeCount'}),
-                icon: Icons.playlist_play_rounded,
-              ),
-            if (loading)
-              SizedBox(
-                width: 18,
-                height: 18,
-                child: CircularProgressIndicator(
-                  strokeWidth: 2,
-                  color: palette.accent,
-                ),
-              ),
-            for (final genre in genres)
-              _CinemaMetaChip(palette: palette, label: genre),
-            for (final pill in techPills)
-              _CinemaMetaChip(
-                palette: palette,
-                label: pill.label,
-                filled: pill.highlight,
-              ),
-          ],
-        ),
-        if (castLine != null && castLine.isNotEmpty && !pinned) ...[
-          const SizedBox(height: 10),
-          Text(
-            '${'filmDizi.cast'.tr}: $castLine',
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: palette.mutedStyle(size: 12.5).copyWith(height: 1.35),
-          ),
-        ],
         if (pinned && plot.isNotEmpty) ...[
-          const SizedBox(height: 14),
-          Text(
-            plot,
-            maxLines: 8,
-            overflow: TextOverflow.ellipsis,
-            style: palette.bodyStyle(size: 10.125, weight: FontWeight.w500)
-                .copyWith(
-              color: palette.body.withValues(alpha: 0.92),
-              height: 1.42,
+          SizedBox(
+            height: (MediaQuery.sizeOf(context).height * 0.15)
+                .clamp(60.0, 120.0),
+            child: AutoScrollVerticalText(
+              text: plot,
+              maxVisibleLines: 6,
+              style: palette.bodyStyle(size: 11.5, weight: FontWeight.w500)
+                  .copyWith(
+                color: palette.body.withValues(alpha: 0.92),
+                height: 1.45,
+              ),
             ),
           ),
+          const SizedBox(height: 16),
         ] else if (!pinned && plot.isNotEmpty) ...[
-          const SizedBox(height: 10),
           Text(
             plot,
-            maxLines: 3,
+            maxLines: 4,
             overflow: TextOverflow.ellipsis,
-            style: palette.mutedStyle(size: 9).copyWith(height: 1.35),
+            style: palette.mutedStyle(size: 10.5).copyWith(height: 1.4),
           ),
+          const SizedBox(height: 16),
         ],
+        _CinemaGlassMetadataBar(
+          palette: palette,
+          rating: imdb ?? tmdb,
+          year: year,
+          runtime: 'S: $seasonCount  E: $episodeCount',
+          audioSubtitle: FilmDiziVodMetaLabels.audioSubtitleLabel(omdb, null),
+        ),
       ],
     );
   }
 }
 
-class _CinemaMetaChip extends StatelessWidget {
-  const _CinemaMetaChip({
-    required this.palette,
-    required this.label,
-    this.filled = false,
-    this.icon,
-  });
+class _AutoScrollCastList extends StatefulWidget {
+  const _AutoScrollCastList({required this.cast});
+  final List<CastMember> cast;
 
-  final TvShellPalette palette;
-  final String label;
-  final bool filled;
-  final IconData? icon;
+  @override
+  State<_AutoScrollCastList> createState() => _AutoScrollCastListState();
+}
+
+class _AutoScrollCastListState extends State<_AutoScrollCastList> {
+  final ScrollController _scrollController = ScrollController();
+  Timer? _timer;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      _startAutoScroll();
+    });
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _startAutoScroll() {
+    _timer?.cancel();
+    _timer = Timer.periodic(const Duration(milliseconds: 200), (timer) {
+      if (!mounted || !_scrollController.hasClients) return;
+      
+      final newOffset = _scrollController.offset + 6.0;
+      _scrollController.jumpTo(newOffset);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(8),
-        color: filled
-            ? const Color(0xFFEAB308)
-            : Colors.white.withValues(alpha: 0.12),
-        border: filled
-            ? null
-            : Border.all(color: Colors.white.withValues(alpha: 0.22)),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (icon != null) ...[
-            Icon(icon, size: 14, color: filled ? Colors.black : palette.body),
-            const SizedBox(width: 4),
-          ],
-          Text(
-            label,
-            style: palette.bodyStyle(size: 12, weight: FontWeight.w700).copyWith(
-                  color: filled ? Colors.black : palette.body,
+    if (widget.cast.isEmpty) return const SizedBox.shrink();
+    return ShaderMask(
+      shaderCallback: (Rect bounds) {
+        return const LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [Colors.transparent, Colors.white, Colors.white, Colors.transparent],
+          stops: [0.0, 0.05, 0.95, 1.0],
+        ).createShader(bounds);
+      },
+      blendMode: BlendMode.dstIn,
+      child: ListView.builder(
+        controller: _scrollController,
+        physics: const NeverScrollableScrollPhysics(),
+        padding: const EdgeInsets.only(top: 10, bottom: 50),
+        itemBuilder: (context, i) {
+          final index = i % widget.cast.length;
+          final member = widget.cast[index];
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 12),
+            child: Container(
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(alpha: 0.25),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: Colors.white.withValues(alpha: 0.15),
+                width: 0.85,
+              ),
+            ),
+            padding: const EdgeInsets.all(8.0),
+            child: Row(
+              children: [
+                CircleAvatar(
+                  radius: 24,
+                  backgroundColor: Colors.white.withValues(alpha: 0.1),
+                  backgroundImage: member.profilePath != null
+                      ? CachedNetworkImageProvider(member.profilePath!)
+                      : null,
+                  child: member.profilePath == null
+                      ? const Icon(Icons.person, color: Colors.white38, size: 24)
+                      : null,
                 ),
-          ),
-        ],
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        member.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                      if (member.character != null &&
+                          member.character!.trim().isNotEmpty) ...[
+                        const SizedBox(height: 2),
+                        Text(
+                          member.character!.trim(),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            color: Colors.white.withValues(alpha: 0.6),
+                            fontSize: 10,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ));
+        },
       ),
     );
   }
@@ -1167,7 +1177,7 @@ class _SeasonChipState extends State<_SeasonChip> {
       child: AnimatedContainer(
         duration: TvShellMotion.rowSelectDuration,
         curve: TvShellMotion.panelCurve,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         decoration: widget.selected
             ? BoxDecoration(
                 borderRadius: BorderRadius.circular(10),
@@ -1177,7 +1187,7 @@ class _SeasonChipState extends State<_SeasonChip> {
         child: Text(
           widget.label,
           style: widget.palette.bodyStyle(
-            size: 13,
+            size: 11.5,
             weight: FontWeight.w700,
           ).copyWith(
             color: widget.selected
@@ -1448,6 +1458,102 @@ class _SeriesCinemaPosterTileState extends State<_SeriesCinemaPosterTile> {
         enableDpadFocus: false,
         minimalOverlays: true,
         onTap: widget.onOpen,
+      ),
+    );
+  }
+}
+
+class _CinemaGlassMetadataBar extends StatelessWidget {
+  const _CinemaGlassMetadataBar({
+    required this.palette,
+    required this.rating,
+    required this.year,
+    required this.runtime,
+    required this.audioSubtitle,
+  });
+
+  final TvShellPalette palette;
+  final String? rating;
+  final String? year;
+  final String? runtime;
+  final String? audioSubtitle;
+
+  Widget _buildDivider() {
+    return Container(
+      width: 1,
+      height: 28,
+      color: Colors.white.withValues(alpha: 0.2),
+    );
+  }
+
+  Widget _buildCol(String title, String value, IconData icon) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(title, style: palette.mutedStyle(size: 10)),
+        const SizedBox(height: 4),
+        Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (title == 'Değerlendirme') ...[
+              Text(value, style: palette.titleStyle(size: 14)),
+              const SizedBox(width: 4),
+              Icon(icon, color: palette.accent, size: 14),
+            ] else ...[
+              Icon(icon, color: Colors.white.withValues(alpha: 0.7), size: 14),
+              const SizedBox(width: 4),
+              Text(
+                value.length > 20 ? '${value.substring(0, 18)}...' : value,
+                style: palette.bodyStyle(size: 12, weight: FontWeight.w600),
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ]
+          ],
+        )
+      ],
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(12),
+        color: Colors.black.withValues(alpha: 0.25),
+        border: Border.all(
+          color: Colors.white.withValues(alpha: 0.15),
+          width: 0.85,
+        ),
+        gradient: LinearGradient(
+          begin: Alignment.topLeft,
+          end: Alignment.bottomRight,
+          colors: [
+            Colors.white.withValues(alpha: 0.08),
+            Colors.white.withValues(alpha: 0.02),
+          ],
+        ),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: [
+          Expanded(child: _buildCol('Değerlendirme', rating ?? 'N/A', Icons.star_rounded)),
+          _buildDivider(),
+          const SizedBox(width: 16),
+          Expanded(child: _buildCol('Yıl', year ?? 'N/A', Icons.calendar_today_rounded)),
+          _buildDivider(),
+          const SizedBox(width: 16),
+          Expanded(child: _buildCol('Süre', runtime ?? 'N/A', Icons.schedule_rounded)),
+          _buildDivider(),
+          const SizedBox(width: 16),
+          Expanded(
+            flex: 2,
+            child: _buildCol('Ses/Altyazı', audioSubtitle ?? 'Belirtilmemiş', Icons.closed_caption_rounded),
+          ),
+        ],
       ),
     );
   }

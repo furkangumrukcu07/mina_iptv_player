@@ -290,9 +290,9 @@ class _DownloadRow extends StatelessWidget {
     );
   }
 
-  void _play(DownloadItem item) {
+  Future<void> _play(DownloadItem item) async {
     final f = File(item.localPath);
-    if (!f.existsSync()) {
+    if (!await f.exists()) {
       Get.snackbar('downloads.error.fileMissing'.tr, item.localPath);
       return;
     }

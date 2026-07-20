@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 
@@ -15,6 +17,7 @@ Future<void> showRecommendedFilmsCategorySearchSheet(
       TextEditingController(text: controller.searchQuery.value);
   final focus = FocusNode();
   final cs = Theme.of(context).colorScheme;
+  Timer? debounce;
 
   await showModalBottomSheet<void>(
     context: context,
@@ -95,8 +98,11 @@ Future<void> showRecommendedFilmsCategorySearchSheet(
                                 ),
                               ),
                               onChanged: (v) {
-                                controller.setSearchQuery(v);
-                                setSheetState(() {});
+                                if (debounce?.isActive ?? false) debounce!.cancel();
+                                debounce = Timer(const Duration(milliseconds: 400), () {
+                                  controller.setSearchQuery(v);
+                                  setSheetState(() {});
+                                });
                               },
                               onSubmitted: (_) =>
                                   Navigator.of(sheetCtx).pop(),
@@ -126,6 +132,7 @@ Future<void> showRecommendedFilmsCategorySearchSheet(
     },
   );
 
+  debounce?.cancel();
   textController.dispose();
   focus.dispose();
 }

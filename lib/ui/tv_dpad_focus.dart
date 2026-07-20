@@ -339,7 +339,7 @@ class _TvDpadFocusState extends State<TvDpadFocus> {
             );
           }
           final useGlow = _useGlow;
-          return AnimatedContainer(
+          Widget container = AnimatedContainer(
             duration: tuning.duration,
             curve: Curves.easeOutCubic,
             decoration: BoxDecoration(
@@ -365,6 +365,16 @@ class _TvDpadFocusState extends State<TvDpadFocus> {
             ),
             child: body,
           );
+
+          if (widget.onActivate != null) {
+            container = GestureDetector(
+              onTap: widget.onActivate,
+              behavior: HitTestBehavior.opaque,
+              child: container,
+            );
+          }
+
+          return container;
         },
       ),
     );
