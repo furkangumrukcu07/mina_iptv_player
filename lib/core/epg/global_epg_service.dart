@@ -234,7 +234,8 @@ class GlobalEpgService extends GetxService {
 
       if (countries.isEmpty) {
         debugPrint('mina_iptv: Global EPG - No countries detected, using fallback');
-        await _downloadAndMergeEpg(['guide'], channels);
+        final fallback = Get.locale?.languageCode ?? 'tr';
+        await _downloadAndMergeEpg([fallback], channels);
       } else {
         await _downloadAndMergeEpg(countries.toList(), channels);
       }
