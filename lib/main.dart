@@ -96,8 +96,9 @@ Future<void> main() async {
           final errorStr = details.exceptionAsString();
           if (details.silent || 
               errorStr.contains('Invalid image data') ||
-              errorStr.contains('Failed to load font')) {
-            // Ignore silent errors, image loading errors, and Google Fonts network errors.
+              errorStr.contains('Failed to load font') ||
+              errorStr.contains('Unknown textureId')) {
+            // Ignore silent errors, image loading errors, font network errors, and video player texture race conditions.
             return;
           }
           FirebaseCrashlytics.instance.recordFlutterFatalError(details);
