@@ -226,8 +226,8 @@ class _AdminGlobalSettingsViewState extends State<AdminGlobalSettingsView> {
                       value: _liveBufferSeconds?.toString() ?? '',
                       items: {
                         '': 'Mevcut Durumu Koru (Değiştirme)',
-                        '0': '0 Saniye',
-                        '2': '2 Saniye (Önerilen)',
+                        '0': '0 Sn (Oto/Dinamik Ağ Adaptasyonu)',
+                        '2': '2 Saniye',
                         '3': '3 Saniye',
                         '5': '5 Saniye',
                         '10': '10 Saniye',

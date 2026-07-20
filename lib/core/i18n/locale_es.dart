@@ -1745,6 +1745,7 @@ const Map<String, String> kLocalePartialEs = {
   'settings.tile.layout': 'Diseño',
   'settings.tile.liveBuffer': 'Baja latencia (búfer)',
   'settings.tile.liveBuffer.sub': '@n s',
+  'settings.tile.liveBuffer.auto': 'Auto',
   'settings.tile.adaptiveQuality': 'Techo de calidad HLS',
   'settings.dialog.adaptiveQualityTitle': 'Flujos multicalidad (HLS)',
   'settings.adaptiveQuality.optionAuto':
@@ -1862,6 +1863,7 @@ const Map<String, String> kLocalePartialEs = {
   'settings.dialog.xmltv.label': 'URL EPG',
   'settings.dialog.bufferTitle': 'Búfer de emisión en vivo',
   'settings.dialog.bufferSlider': '@n s',
+  'settings.dialog.bufferSlider.auto': 'Auto (Dynamic)',
   'settings.dialog.changelogTitle': 'Novedades',
   'settings.dialog.changelogBody':
       'v1.9.16\n• Ajustes: selector Better Player / MediaKit más claro\n• Nuevo menú de fuente global de la app\n• Fuentes: Sony, Roboto, Noto Sans y Monospace\n• Mejoras de foco D-pad en TV para el selector\n\nMás detalles en CHANGELOG.md.\n',

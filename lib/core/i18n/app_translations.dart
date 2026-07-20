@@ -1368,6 +1368,7 @@ const Map<String, String> _tr = {
   'settings.tile.layout': 'Yerleşim',
   'settings.tile.liveBuffer': 'Düşük Gecikme (Buffer)',
   'settings.tile.liveBuffer.sub': '@n saniye',
+  'settings.tile.liveBuffer.auto': 'Otomatik',
   'settings.tile.volumeBoost': 'Ses Yükseltici',
   'settings.tile.volumeBoost.off': 'Kapalı — sistem ses seviyesi (max %100)',
   'settings.tile.volumeBoost.sub':
@@ -1970,6 +1971,7 @@ const Map<String, String> _tr = {
   'settings.backup.restoredSummary':
       '@prefs ayar, @sec gizli alan ve @m3u yerel playlist geri yüklendi.',
   'settings.dialog.bufferSlider': '@n saniye',
+  'settings.dialog.bufferSlider.auto': 'Otomatik (Dinamik Ağ Adaptasyonu)',
   'settings.dialog.changelogTitle': 'Sürüm notları',
   'settings.dialog.adminButton': 'Yönetici',
   'settings.dialog.adminTitle': 'Yönetici',
@@ -3889,6 +3891,7 @@ const Map<String, String> _en = {
   'settings.tile.layout': 'Layout',
   'settings.tile.liveBuffer': 'Low latency (buffer)',
   'settings.tile.liveBuffer.sub': '@n seconds',
+  'settings.tile.liveBuffer.auto': 'Auto',
   'settings.tile.volumeBoost': 'Volume booster',
   'settings.tile.volumeBoost.off': 'Off — system volume (max 100%)',
   'settings.tile.volumeBoost.sub':
@@ -4483,6 +4486,7 @@ const Map<String, String> _en = {
   'settings.backup.restoredSummary':
       'Restored @prefs settings, @sec secure entries and @m3u local playlists.',
   'settings.dialog.bufferSlider': '@n seconds',
+  'settings.dialog.bufferSlider.auto': 'Auto (Dynamic)',
   'settings.dialog.changelogTitle': 'Release notes',
   'settings.dialog.adminButton': 'Administrator',
   'settings.dialog.adminTitle': 'Administrator',

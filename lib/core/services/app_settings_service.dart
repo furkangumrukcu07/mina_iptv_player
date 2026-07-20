@@ -67,8 +67,8 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
   static const _kVideoFitVod = 'mina_settings_video_fit_vod_v1';
 
   /// Kayıt yoksa veya sıfırlamada kullanılan canlı yayın tamponu (saniye).
-  /// Düşük gecikme için varsayılan 2 sn (IPTV canlı yayın standardı).
-  static const defaultLiveBufferSeconds = 3;
+  /// Düşük gecikme için varsayılan 0 (Otomatik Dinamik Ağ Adaptasyonu).
+  static const defaultLiveBufferSeconds = 0;
 
   /// Eski varsayılan (3 sn) → yeni varsayılan (2 sn) tek seferlik geçiş için
   /// önceki varsayılan değer; yalnızca buna dokunmamış kullanıcılar düşürülür.

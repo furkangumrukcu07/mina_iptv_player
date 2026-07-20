@@ -212,9 +212,11 @@ class PlaybackSettingsView extends StatelessWidget {
                             tvDpadIndex: 8,
                             icon: Icons.speed_rounded,
                             title: 'settings.tile.liveBuffer'.tr,
-                            subtitle: 'settings.tile.liveBuffer.sub'.trParams({
-                              'n': '${settings.liveBufferSeconds.value}',
-                            }),
+                            subtitle: settings.liveBufferSeconds.value == 0
+                                ? 'settings.tile.liveBuffer.auto'.tr
+                                : 'settings.tile.liveBuffer.sub'.trParams({
+                                    'n': '${settings.liveBufferSeconds.value}',
+                                  }),
                             primary: primary,
                             onTap: controller.showLiveBufferDialog,
                             trailing: const Icon(

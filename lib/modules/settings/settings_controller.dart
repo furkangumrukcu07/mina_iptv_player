@@ -1867,7 +1867,9 @@ class SettingsController extends GetxController {
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
                     Text(
-                      'settings.dialog.bufferSlider'.trParams({'n': '$local'}),
+                      local == 0
+                          ? 'settings.dialog.bufferSlider.auto'.tr
+                          : 'settings.dialog.bufferSlider'.trParams({'n': '$local'}),
                     ),
                     const SizedBox(height: 8),
                     if (remoteNav) ...[
