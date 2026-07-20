@@ -6,6 +6,7 @@ import 'package:get/get.dart';
 import '../../data/local/epg_snapshot_keys.dart';
 import '../../data/local/epg_snapshot_store.dart';
 import '../../data/remote/xtream_api.dart';
+import '../../domain/entities/channel.dart';
 import '../../domain/entities/m3u_result.dart';
 import '../../domain/entities/playlist_source.dart';
 import '../../domain/repositories/playlist_repository.dart';
@@ -17,6 +18,7 @@ import 'app_settings_service.dart';
 import 'epg_service.dart';
 import 'network_reachability.dart';
 import 'playlist_cache_service.dart';
+import 'playlist_data_source.dart';
 
 /// Ağır EPG ağ yüklemesi: mobil/tablet'te ana ekran sonrası; TV'de canlı TV /
 /// EPG Mix açılınca ([ensureTvLazyLoad]).
@@ -125,18 +127,23 @@ class EpgDeferredLoadService extends GetxService {
     required bool m3uXmltvNeedsNetwork,
   }) async {
     final cacheKey = EpgSnapshotKeys.logicalKeyFor(source, _app);
+    List<Channel> liveChannels = result.channels;
+    if (liveChannels.isEmpty && Get.isRegistered<PlaylistDataSource>()) {
+      liveChannels = await Get.find<PlaylistDataSource>().channelsPageAll();
+    }
+
     if (source is M3uSource) {
       if (Get.isRegistered<GlobalEpgService>()) {
         debugPrint('mina_iptv: Deferred global EPG load…');
         await Get.find<GlobalEpgService>()
-            .loadGlobalEpgForChannels(result.channels);
+            .loadGlobalEpgForChannels(liveChannels);
       }
       if (m3uXmltvNeedsNetwork) {
         await _loadM3uXmltvEpgFromNetwork(cacheKey);
       }
       await _epg.applyM3uXmltvChannelMappings(
         cacheKey: cacheKey,
-        liveChannels: result.channels,
+        liveChannels: liveChannels,
       );
     } else if (source is XtreamSource) {
       final mode = _app.xtreamEpgSourceMode.value;
@@ -168,7 +175,7 @@ class EpgDeferredLoadService extends GetxService {
         try {
           debugPrint('mina_iptv: Xtream — global EPG (mode=$mode)…');
           await Get.find<GlobalEpgService>()
-              .loadGlobalEpgForChannels(result.channels);
+              .loadGlobalEpgForChannels(liveChannels);
         } catch (e) {
           debugPrint('mina_iptv: Global EPG fallback failed: $e');
         }

@@ -202,7 +202,7 @@ class GlobalEpgService extends GetxService {
     }
 
     EpgPerfTelemetry.globalLoadStarted++;
-    final fut = _runLoadGlobalEpgForChannels(channels, fp);
+    final fut = _runLoadGlobalEpgForChannels(channels, fp, force: force);
     _inflightLoad = fut;
     return fut.whenComplete(() {
       _inflightLoad = null;
@@ -213,8 +213,9 @@ class GlobalEpgService extends GetxService {
 
   Future<void> _runLoadGlobalEpgForChannels(
     List<Channel> channels,
-    int fp,
-  ) async {
+    int fp, {
+    bool force = false,
+  }) async {
     try {
       isLoading.value = true;
 
@@ -224,7 +225,7 @@ class GlobalEpgService extends GetxService {
       final app = Get.find<AppSettingsService>();
       final stats = await getDatabaseStats();
       final hasDb = (stats['channels'] ?? 0) > 0;
-      if (!app.shouldRefreshGlobalEpgFromNetwork(hasPersistedSqliteData: hasDb)) {
+      if (!force && !app.shouldRefreshGlobalEpgFromNetwork(hasPersistedSqliteData: hasDb)) {
         if (app.lastGlobalEpgFetchMs.value <= 0 && hasDb) {
           await app.markGlobalEpgFetchedOk();
         }

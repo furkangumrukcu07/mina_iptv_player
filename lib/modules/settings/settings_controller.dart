@@ -246,13 +246,25 @@ class SettingsController extends GetxController {
                 await Get.find<PlaylistDataSource>().channelsPageAll();
             if (liveChannels.isNotEmpty) {
               await Get.find<GlobalEpgService>()
-                  .loadGlobalEpgForChannels(liveChannels);
+                  .loadGlobalEpgForChannels(liveChannels, force: true);
             }
           } catch (e) {
             debugPrint('mina_iptv: Global EPG fallback (refresh) failed: $e');
           }
         }
       } else if (source is M3uSource) {
+        if (Get.isRegistered<GlobalEpgService>()) {
+          try {
+            final liveChannels =
+                await Get.find<PlaylistDataSource>().channelsPageAll();
+            if (liveChannels.isNotEmpty) {
+              await Get.find<GlobalEpgService>()
+                  .loadGlobalEpgForChannels(liveChannels, force: true);
+            }
+          } catch (e) {
+            debugPrint('mina_iptv: Global EPG fallback (refresh) failed: $e');
+          }
+        }
         final urls = _app.m3uEpgFetchUrls;
         if (urls.isNotEmpty) {
           await epg.loadEpgFirstSuccessful(urls);
