@@ -47,6 +47,7 @@ abstract final class _ShellDpad {
   static const account = 16;
   static const subscription = 17;
   static const admin = 18;
+  static const performance = 19;
 }
 
 class SettingsView extends GetView<SettingsController> {

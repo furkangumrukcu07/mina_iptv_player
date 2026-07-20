@@ -6,9 +6,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'dart:async';
 
-import '../../core/theme/glass_appearance.dart';
 import '../../ui/tv_dpad_focus.dart';
-import 'settings_controller.dart';
 import '../../core/i18n/app_locale.dart';
 
 class PerformanceSettingsController extends GetxController {
@@ -90,7 +88,6 @@ class PerformanceSettingsController extends GetxController {
   void runRamMaintenance() {
     PaintingBinding.instance.imageCache.clear();
     PaintingBinding.instance.imageCache.clearLiveImages();
-    SystemChannels.system.invokeMethod('System.memoryPressure');
     
     Get.snackbar(
       'settings.performance.ramCleaned.title'.tr,
@@ -165,8 +162,12 @@ class PerformanceSettingsView extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 12),
-            GlassContainer(
+            Container(
               padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.white10,
+                borderRadius: BorderRadius.circular(16),
+              ),
               child: Column(
                 children: [
                   _InfoRow(
@@ -196,7 +197,6 @@ class PerformanceSettingsView extends StatelessWidget {
             ),
             const SizedBox(height: 12),
             _ActionTile(
-              tvDpadIndex: 1,
               title: 'performance.ram.clean'.tr,
               subtitle: 'performance.ram.clean.desc'.tr,
               buttonText: 'performance.action.run'.tr,
@@ -205,7 +205,6 @@ class PerformanceSettingsView extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             Obx(() => _ActionTile(
-                  tvDpadIndex: 2,
                   title: 'performance.storage.clean'.tr,
                   subtitle: controller.isCalculatingStorage.value
                       ? 'performance.storage.calc'.tr
@@ -267,7 +266,6 @@ class _InfoRow extends StatelessWidget {
 }
 
 class _ActionTile extends StatelessWidget {
-  final int tvDpadIndex;
   final String title;
   final String subtitle;
   final String buttonText;
@@ -276,7 +274,6 @@ class _ActionTile extends StatelessWidget {
   final bool isLoading;
 
   const _ActionTile({
-    required this.tvDpadIndex,
     required this.title,
     required this.subtitle,
     required this.buttonText,
@@ -288,67 +285,64 @@ class _ActionTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return TvFocusableInkWell(
-      tvDpadIndex: tvDpadIndex,
       onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
-      builder: (context, focused) {
-        return GlassContainer(
-          padding: const EdgeInsets.all(16),
-          border: Border.all(
-            color: focused ? primary : Colors.white12,
-            width: focused ? 2 : 1,
-          ),
-          child: Row(
-            children: [
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      title,
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 16,
-                        fontWeight: FontWeight.bold,
-                      ),
+      borderRadius: 16,
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white10,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      subtitle,
-                      style: const TextStyle(
-                        color: Colors.white54,
-                        fontSize: 13,
-                      ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(
+                      color: Colors.white54,
+                      fontSize: 13,
                     ),
-                  ],
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 16),
+            if (isLoading)
+              const SizedBox(
+                width: 24,
+                height: 24,
+                child: CircularProgressIndicator(strokeWidth: 2),
+              )
+            else
+              ElevatedButton(
+                onPressed: onTap,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: primary,
+                  foregroundColor: Colors.black,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                ),
+                child: Text(
+                  buttonText,
+                  style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
               ),
-              const SizedBox(width: 16),
-              if (isLoading)
-                const SizedBox(
-                  width: 24,
-                  height: 24,
-                  child: CircularProgressIndicator(strokeWidth: 2),
-                )
-              else
-                ElevatedButton(
-                  onPressed: onTap,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: primary,
-                    foregroundColor: Colors.black,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(8),
-                    ),
-                  ),
-                  child: Text(
-                    buttonText,
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                ),
-            ],
-          ),
-        );
-      },
+          ],
+        ),
+      ),
     );
   }
 }
