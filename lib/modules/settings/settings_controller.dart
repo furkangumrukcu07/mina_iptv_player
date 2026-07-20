@@ -1845,7 +1845,7 @@ class SettingsController extends GetxController {
   }
 
   void openPerformanceSettings() {
-    Get.toNamed('/settings/performance');
+    Get.toNamed(AppRoutes.performanceSettings);
   }
 
   Future<void> showLiveBufferDialog() async {
