@@ -123,8 +123,9 @@ class SystemVolumeService extends GetxService with WidgetsBindingObserver {
             )),
       );
 
-      final overlay =
-          Get.overlayContext != null ? Overlay.of(Get.overlayContext!) : null;
+      final overlay = Get.overlayContext != null
+          ? Overlay.maybeOf(Get.overlayContext!)
+          : null;
 
       if (overlay != null) {
         overlay.insert(_overlayEntry!);
