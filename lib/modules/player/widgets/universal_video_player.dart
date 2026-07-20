@@ -467,8 +467,6 @@ class _UniversalVideoPlayerState extends State<UniversalVideoPlayer> {
     if (p != null) {
       await (widget.onMediaKitPlayerChanged?.call(null) ?? Future.value());
       try {
-        p.pause();
-        p.stop();
         await p.dispose();
       } catch (e) {
         debugPrint('mina_iptv: media_kit dispose error: $e');
