@@ -137,7 +137,9 @@ class SystemVolumeService extends GetxService with WidgetsBindingObserver {
       _showOsd.value = false;
       Future.delayed(const Duration(milliseconds: 300), () {
         if (!_showOsd.value) {
-          _overlayEntry?.remove();
+          if (_overlayEntry?.mounted ?? false) {
+            _overlayEntry?.remove();
+          }
           _overlayEntry = null;
         }
       });
@@ -152,7 +154,9 @@ class SystemVolumeService extends GetxService with WidgetsBindingObserver {
     // Uygulama kapanırken sistem barını geri aç
     FlutterVolumeController.updateShowSystemUI(true);
     _osdTimer?.cancel();
-    _overlayEntry?.remove();
+    if (_overlayEntry?.mounted ?? false) {
+      _overlayEntry?.remove();
+    }
     super.onClose();
   }
 
