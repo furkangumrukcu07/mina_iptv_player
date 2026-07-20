@@ -91,8 +91,17 @@ Future<void> main() async {
     if (gFirebaseReady) {
       AdminAnalyticsService.incrementDailyOpens();
       try {
-        FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
+        final originalOnError = FlutterError.onError;
+        FlutterError.onError = (FlutterErrorDetails details) {
+          if (details.silent || details.exceptionAsString().contains('Invalid image data')) {
+            // Ignore silent errors and image loading errors to prevent them from causing false fatal crashes.
+            return;
+          }
+          FirebaseCrashlytics.instance.recordFlutterFatalError(details);
+          originalOnError?.call(details);
+        };
         PlatformDispatcher.instance.onError = (error, stack) {
+          if (error.toString().contains('Invalid image data')) return true;
           FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
           return true;
         };
