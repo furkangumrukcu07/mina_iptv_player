@@ -35,6 +35,7 @@ import '../../core/services/favorites_service.dart';
 import '../../core/services/iptv_logo_cache_service.dart';
 import '../../core/services/mina_telemetry_service.dart';
 import '../../core/services/playlist_cache_service.dart';
+import '../../core/services/playlist_data_source.dart';
 import '../../core/services/watch_progress_service.dart';
 import '../../services/user_history_service.dart';
 import '../home/widgets/ai_recommendations_strip.dart';
