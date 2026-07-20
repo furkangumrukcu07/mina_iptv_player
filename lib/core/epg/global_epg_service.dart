@@ -294,7 +294,18 @@ class GlobalEpgService extends GetxService {
       
       // Gzip decompress if needed
       final isGzip = url.endsWith('.gz') || (raw.length >= 2 && raw[0] == 0x1f && raw[1] == 0x8b);
-      final xmlBytes = isGzip ? gzip.decode(raw) : raw;
+      List<int> xmlBytes;
+      if (isGzip) {
+        try {
+          xmlBytes = gzip.decode(raw);
+        } catch (e) {
+          // If it fails to decode, it might have been auto-decompressed by Dio due to Content-Encoding headers.
+          xmlBytes = raw;
+        }
+      } else {
+        xmlBytes = raw;
+      }
+      
       final xmlString = utf8.decode(xmlBytes, allowMalformed: true);
       
       // Parse XML (isolate'da chunked)

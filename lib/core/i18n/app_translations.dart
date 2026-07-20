@@ -1413,31 +1413,31 @@ const Map<String, String> _tr = {
   'settings.epg.offset.pick': 'Ofset seçin',
   'settings.epg.manageSources': 'EPG kaynaklarını yönet',
   'settings.epg.manageSources.sub': 'XMLTV URL ve kanal eşleştirme',
-  // EPG Kaynağı (Xtream / GitHub yedek) seçim tile + dialog
+  // EPG Kaynağı (Xtream / EPGShare01 yedek) seçim tile + dialog
   'settings.epg.sourcePref.title': 'EPG Kaynağı',
   'settings.epg.sourcePref.body':
-      'Canlı TV rehberi nereden gelsin? Xtream sunucusu EPG döndürmüyorsa veya boş/eski veri veriyorsa GitHub yedeği kullanılabilir.',
+      'Canlı TV rehberi nereden gelsin? Xtream sunucusu EPG döndürmüyorsa veya boş/eski veri veriyorsa EPGShare01 (Topluluk) yedeği kullanılabilir.',
   'settings.epg.sourcePref.badge.auto': 'OTOMATİK',
   'settings.epg.sourcePref.badge.xtream': 'XTREAM',
-  'settings.epg.sourcePref.badge.github': 'GITHUB',
+  'settings.epg.sourcePref.badge.github': 'EPGSHARE',
   'settings.epg.sourcePref.sub.xtreamOk': 'Xtream sunucusundan EPG çekiliyor.',
   'settings.epg.sourcePref.sub.xtreamOnlyFail':
-      'Xtream sunucusu EPG göndermedi. GitHub yedeği seçmeyi deneyin.',
-  'settings.epg.sourcePref.sub.githubOk': 'GitHub yedek EPG aktif.',
-  'settings.epg.sourcePref.sub.githubLoading': 'GitHub yedek yükleniyor…',
+      'Xtream sunucusu EPG göndermedi. EPGShare01 yedeği seçmeyi deneyin.',
+  'settings.epg.sourcePref.sub.githubOk': 'EPGShare01 yedek EPG aktif.',
+  'settings.epg.sourcePref.sub.githubLoading': 'EPGShare01 yedek yükleniyor…',
   'settings.epg.sourcePref.sub.githubFallback':
-      'Xtream EPG vermedi; GitHub yedek devreye girdi.',
-  'settings.epg.sourcePref.sub.both': 'Xtream + GitHub yedek birlikte aktif.',
+      'Xtream EPG vermedi; EPGShare01 yedek devreye girdi.',
+  'settings.epg.sourcePref.sub.both': 'Xtream + EPGShare01 yedek birlikte aktif.',
   'settings.epg.sourcePref.sub.autoLoading': 'EPG yükleniyor…',
   'settings.epg.sourcePref.optAuto.title': 'Otomatik (önerilen)',
   'settings.epg.sourcePref.optAuto.desc':
-      'Önce Xtream sunucusu, kanal eşleşmesi olmayanlar için GitHub yedek.',
+      'Önce Xtream sunucusu, kanal eşleşmesi olmayanlar için EPGShare01 yedek.',
   'settings.epg.sourcePref.optXtream.title': 'Sadece Xtream sunucusu',
   'settings.epg.sourcePref.optXtream.desc':
-      'GitHub yedek kullanılmaz. Sunucu EPG göndermezse kanallarda program bilgisi olmaz.',
-  'settings.epg.sourcePref.optGithub.title': 'Sadece GitHub yedek',
+      'EPGShare01 yedek kullanılmaz. Sunucu EPG göndermezse kanallarda program bilgisi olmaz.',
+  'settings.epg.sourcePref.optGithub.title': 'Sadece EPGShare01 yedek',
   'settings.epg.sourcePref.optGithub.desc':
-      'Xtream EPG isteği yapılmaz; doğrudan iptv-org / globetvapp tabanlı topluluk rehberi kullanılır.',
+      'Xtream EPG isteği yapılmaz; doğrudan epgshare01.online tabanlı topluluk rehberi kullanılır.',
   'settings.epg.source.title': 'EPG kaynağını düzenle',
   'settings.epg.source.urlLabel': 'URL XMLTV',
   'settings.epg.source.urlHint':
