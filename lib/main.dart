@@ -93,8 +93,11 @@ Future<void> main() async {
       try {
         final originalOnError = FlutterError.onError;
         FlutterError.onError = (FlutterErrorDetails details) {
-          if (details.silent || details.exceptionAsString().contains('Invalid image data')) {
-            // Ignore silent errors and image loading errors to prevent them from causing false fatal crashes.
+          final errorStr = details.exceptionAsString();
+          if (details.silent || 
+              errorStr.contains('Invalid image data') ||
+              errorStr.contains('Failed to load font')) {
+            // Ignore silent errors, image loading errors, and Google Fonts network errors.
             return;
           }
           FirebaseCrashlytics.instance.recordFlutterFatalError(details);
