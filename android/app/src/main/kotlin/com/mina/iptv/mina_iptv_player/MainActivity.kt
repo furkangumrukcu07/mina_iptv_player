@@ -169,6 +169,22 @@ class MainActivity : FlutterFragmentActivity() {
                         result.error("UNAVAILABLE", "Could not get first install time: ${e.message}", null)
                     }
                 }
+                "getMemoryClass" -> {
+                    try {
+                        val am = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+                        result.success(am.memoryClass)
+                    } catch (e: Exception) {
+                        result.success(null)
+                    }
+                }
+                "getLargeMemoryClass" -> {
+                    try {
+                        val am = getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+                        result.success(am.largeMemoryClass)
+                    } catch (e: Exception) {
+                        result.success(null)
+                    }
+                }
                 else -> result.notImplemented()
             }
         }

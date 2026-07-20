@@ -45,6 +45,7 @@ import '../../modules/settings/backup_restore_view.dart';
 import '../../modules/settings/cloud_sync_view.dart';
 import '../../modules/settings/profiles/profiles_view.dart';
 import '../../modules/settings/channel_category_layout_view.dart';
+import '../../modules/settings/performance_settings_view.dart';
 import '../../modules/settings/playback_settings_view.dart';
 import '../../modules/settings/other_tools_view.dart';
 import '../../modules/settings/contact_us_view.dart';
@@ -243,6 +244,12 @@ abstract final class AppPages {
     GetPage(
       name: AppRoutes.playbackSettings,
       page: PlaybackSettingsView.new,
+      transition: PageTransitionBuilder.getTransition(),
+      transitionDuration: PageTransitionBuilder.duration,
+    ),
+    GetPage(
+      name: AppRoutes.performanceSettings,
+      page: PerformanceSettingsView.new,
       transition: PageTransitionBuilder.getTransition(),
       transitionDuration: PageTransitionBuilder.duration,
     ),

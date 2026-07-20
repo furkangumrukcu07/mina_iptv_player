@@ -28,6 +28,7 @@ abstract final class AppRoutes {
   static const cloudSync = '/cloud-sync';
   static const channelCategoryLayout = '/channel-category-layout';
   static const playbackSettings = '/playback-settings';
+  static const performanceSettings = '/performance-settings';
   static const otherTools = '/other-tools';
   static const contactUs = '/contact-us';
   static const faq = '/faq';

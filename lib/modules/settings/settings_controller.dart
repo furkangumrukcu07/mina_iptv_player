@@ -1844,6 +1844,10 @@ class SettingsController extends GetxController {
     await eq_dialog.showEqualizerDialog(ctx);
   }
 
+  void openPerformanceSettings() {
+    Get.toNamed('/settings/performance');
+  }
+
   Future<void> showLiveBufferDialog() async {
     final ctx = Get.context;
     if (ctx == null) return;

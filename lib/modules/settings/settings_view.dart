@@ -276,6 +276,18 @@ class SettingsView extends GetView<SettingsController> {
                                     iconColor: primary,
                                     onTap: controller.openPlaybackSettings,
                                   ),
+                                  _GlassTile(
+                                    index: idx(),
+                                    shellDpadIndex: _ShellDpad.performance,
+                                    title: 'settings.tile.performance'.tr,
+                                    subtitle: Text(
+                                      'performance.ram.clean.desc'.tr,
+                                      style: _subtitleStyle,
+                                    ),
+                                    icon: Icons.speed_rounded,
+                                    iconColor: primary,
+                                    onTap: controller.openPerformanceSettings,
+                                  ),
                                   if (controller.app.layoutMode.value == AppLayoutMode.tv)
                                     _GlassTile(
                                       index: idx(),
