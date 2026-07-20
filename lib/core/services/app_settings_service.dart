@@ -2637,7 +2637,7 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
   String get effectiveM3uXmltvUrl {
     final c = xmltvUrl.value.trim();
     if (c.isNotEmpty) return c;
-    return IptvOrgEpg.defaultWorldGuideUrl;
+    return IptvOrgEpg.defaultGuideCandidates().first;
   }
 
   /// M3U XMLTV indirmesi için URL listesi: özel tek adres veya varsayılan iptv-org adayları.
