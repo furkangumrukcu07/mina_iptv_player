@@ -116,7 +116,11 @@ class _AdminOrdersViewState extends State<AdminOrdersView> {
     final source = order['source'] as String?;
     final productId = order['productId'] as String?;
     if (source == 'play') {
-      if (productId != null && productId.contains('plus')) {
+      if (productId == 'mina_buy_coffee') {
+        return 'Kahve Ismarlandı ☕';
+      } else if (productId == 'mina_total_6devices') {
+        return '+3 Ek Cihaz';
+      } else if (productId != null && productId.contains('plus')) {
         return 'Premium Plus';
       }
       return 'Premium';
