@@ -6,8 +6,12 @@ import 'package:path_provider/path_provider.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'dart:async';
 
+import '../../core/layout/app_layout_mode.dart';
+import '../../core/services/app_settings_service.dart';
+import '../../ui/settings_glass_panel.dart';
+import '../../ui/themed_settings_background.dart';
 import '../../ui/tv_dpad_focus.dart';
-import '../../core/i18n/app_locale.dart';
+import '../../ui/tv_settings_subpage.dart';
 
 class PerformanceSettingsController extends GetxController {
   final usedMemoryMb = 0.obs;
@@ -141,84 +145,101 @@ class PerformanceSettingsView extends StatelessWidget {
     final primary = Theme.of(context).colorScheme.primary;
 
     return Scaffold(
-      backgroundColor: Colors.transparent,
-      appBar: AppBar(
-        title: Text('settings.tile.performance'.tr),
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24.0),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'settings.performance.device'.tr.toUpperCase(),
-              style: TextStyle(
-                color: primary,
-                fontWeight: FontWeight.bold,
-                fontSize: 14,
-                letterSpacing: 1.2,
-              ),
-            ),
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.white10,
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: Column(
-                children: [
-                  _InfoRow(
-                    label: 'performance.ram.used'.tr,
-                    valueStream: controller.usedMemoryMb,
-                    suffix: ' MB',
+      backgroundColor: Colors.black,
+      body: ThemedSettingsBackground(
+        child: SafeArea(
+          child: SettingsGlassPanel(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                tvSettingsSubpageHeader(
+                  context,
+                  'settings.tile.performance'.tr,
+                ),
+                Expanded(
+                  child: ListView(
+                    padding: const EdgeInsets.fromLTRB(14, 0, 14, 24),
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.only(left: 8, bottom: 12, top: 8),
+                        child: Text(
+                          'settings.performance.device'.tr.toUpperCase(),
+                          style: TextStyle(
+                            color: primary,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                            letterSpacing: 1.2,
+                          ),
+                        ),
+                      ),
+                      Container(
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(alpha: 0.05),
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(
+                            color: Colors.white.withValues(alpha: 0.08),
+                            width: 1,
+                          ),
+                        ),
+                        child: Column(
+                          children: [
+                            _InfoRow(
+                              label: 'performance.ram.used'.tr,
+                              valueStream: controller.usedMemoryMb,
+                              suffix: ' MB',
+                            ),
+                            const Divider(color: Colors.white12, height: 24),
+                            _InfoRow(
+                              label: 'performance.ram.limit'.tr,
+                              valueStream: controller.maxMemoryMb,
+                              suffix: ' MB',
+                              placeholder: 'Bilinmiyor',
+                            ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 32),
+                      Padding(
+                        padding: const EdgeInsets.only(left: 8, bottom: 12),
+                        child: Text(
+                          'settings.performance.maintenance'.tr.toUpperCase(),
+                          style: TextStyle(
+                            color: primary,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                            letterSpacing: 1.2,
+                          ),
+                        ),
+                      ),
+                      _ActionTile(
+                        title: 'performance.ram.clean'.tr,
+                        subtitle: 'performance.ram.clean.desc'.tr,
+                        buttonText: 'performance.action.run'.tr,
+                        primary: primary,
+                        onTap: controller.runRamMaintenance,
+                      ),
+                      const SizedBox(height: 16),
+                      Obx(() => _ActionTile(
+                            title: 'performance.storage.clean'.tr,
+                            subtitle: controller.isCalculatingStorage.value
+                                ? 'performance.storage.calc'.tr
+                                : 'performance.storage.clean.desc'.trParams({
+                                    'n': controller.storageCacheMb.value.toStringAsFixed(2),
+                                  }),
+                            buttonText: 'performance.action.clean'.tr,
+                            primary: primary,
+                            isLoading: controller.isCleaningStorage.value,
+                            onTap: controller.isCalculatingStorage.value
+                                ? null
+                                : controller.cleanStorageCache,
+                          )),
+                    ],
                   ),
-                  const Divider(color: Colors.white12, height: 24),
-                  _InfoRow(
-                    label: 'performance.ram.limit'.tr,
-                    valueStream: controller.maxMemoryMb,
-                    suffix: ' MB',
-                    placeholder: 'Bilinmiyor',
-                  ),
-                ],
-              ),
+                ),
+              ],
             ),
-            const SizedBox(height: 32),
-            Text(
-              'settings.performance.maintenance'.tr.toUpperCase(),
-              style: TextStyle(
-                color: primary,
-                fontWeight: FontWeight.bold,
-                fontSize: 14,
-                letterSpacing: 1.2,
-              ),
-            ),
-            const SizedBox(height: 12),
-            _ActionTile(
-              title: 'performance.ram.clean'.tr,
-              subtitle: 'performance.ram.clean.desc'.tr,
-              buttonText: 'performance.action.run'.tr,
-              primary: primary,
-              onTap: controller.runRamMaintenance,
-            ),
-            const SizedBox(height: 16),
-            Obx(() => _ActionTile(
-                  title: 'performance.storage.clean'.tr,
-                  subtitle: controller.isCalculatingStorage.value
-                      ? 'performance.storage.calc'.tr
-                      : 'performance.storage.clean.desc'.trParams({
-                          'n': controller.storageCacheMb.value.toStringAsFixed(2),
-                        }),
-                  buttonText: 'performance.action.clean'.tr,
-                  primary: primary,
-                  isLoading: controller.isCleaningStorage.value,
-                  onTap: controller.isCalculatingStorage.value
-                      ? null
-                      : controller.cleanStorageCache,
-                )),
-          ],
+          ),
         ),
       ),
     );
@@ -290,8 +311,12 @@ class _ActionTile extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: Colors.white10,
+          color: Colors.white.withValues(alpha: 0.05),
           borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.08),
+            width: 1,
+          ),
         ),
         child: Row(
           children: [
@@ -307,7 +332,7 @@ class _ActionTile extends StatelessWidget {
                       fontWeight: FontWeight.bold,
                     ),
                   ),
-                  const SizedBox(height: 4),
+                  const SizedBox(height: 6),
                   Text(
                     subtitle,
                     style: const TextStyle(
@@ -329,10 +354,13 @@ class _ActionTile extends StatelessWidget {
               ElevatedButton(
                 onPressed: onTap,
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: primary,
-                  foregroundColor: Colors.black,
+                  backgroundColor: primary.withValues(alpha: 0.15),
+                  foregroundColor: primary,
+                  elevation: 0,
+                  shadowColor: Colors.transparent,
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(12),
+                    side: BorderSide(color: primary.withValues(alpha: 0.3)),
                   ),
                 ),
                 child: Text(
