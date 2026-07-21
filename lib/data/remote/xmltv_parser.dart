@@ -30,7 +30,22 @@ Map<String, dynamic> parseXmlTvBytesIsolate(Map<String, dynamic> args) {
 void parseXmlTvChunkedIsolate(Map<String, dynamic> args) {
   final sendPort = args['sendPort'] as SendPort;
   try {
-    final String xmlContent = args['xmlString'] as String;
+    String xmlContent;
+    if (args.containsKey('xmlString')) {
+      xmlContent = args['xmlString'] as String;
+    } else {
+      final raw = args['bytes'] as List<int>;
+      final isGz = args['isGz'] as bool;
+      List<int> xmlBytes = raw;
+      if (isGz || (raw.length >= 2 && raw[0] == 0x1f && raw[1] == 0x8b)) {
+        try {
+          xmlBytes = GZipDecoder().decodeBytes(raw);
+        } catch (e) {
+          // ignore
+        }
+      }
+      xmlContent = utf8.decode(xmlBytes, allowMalformed: true);
+    }
     final result = XmlTvParser.instance.parse(xmlContent);
     final channels = result['channels'] as Map<String, EpgChannel>;
     final programmes = result['programmes'] as Map<String, List<EpgProgramme>>;
