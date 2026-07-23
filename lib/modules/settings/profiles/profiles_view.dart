@@ -226,8 +226,14 @@ class _ProfilesViewState extends State<ProfilesView> {
     final settings = Get.find<AppSettingsService>();
     final remote = remoteNavForScreenLayout(context, settings.layoutMode.value);
 
-    return Scaffold(
-      backgroundColor: Colors.black,
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        Get.back<void>();
+      },
+      child: Scaffold(
+        backgroundColor: Colors.black,
       body: FocusTraversalGroup(
         policy: OrderedTraversalPolicy(),
         child: ThemedSettingsBackground(
@@ -318,6 +324,7 @@ class _ProfilesViewState extends State<ProfilesView> {
           ),
         ),
       ),
+    ),
     );
   }
 }

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:get/get.dart';
@@ -30,6 +32,9 @@ class _HomeCardOrderEditorViewState extends State<HomeCardOrderEditorView> {
   /// (göz toggle'ı ile geri açılınca aynı pozisyonda kalır).
   late Set<HomeCategoryCardId> _hidden;
 
+  /// Hızlı DPAD tuş basımlarını önlemek için debounce
+  Timer? _debounceTimer;
+
   @override
   void initState() {
     super.initState();
@@ -43,24 +48,41 @@ class _HomeCardOrderEditorViewState extends State<HomeCardOrderEditorView> {
     _hidden = Set<HomeCategoryCardId>.from(app.homeCategoryCardHidden);
   }
 
+  @override
+  void dispose() {
+    _debounceTimer?.cancel();
+    super.dispose();
+  }
+
   void _move(int index, int delta) {
     final j = index + delta;
     if (j < 0 || j >= _order.length) return;
-    setState(() {
-      final t = _order[index];
-      _order[index] = _order[j];
-      _order[j] = t;
+    
+    _debounceTimer?.cancel();
+    _debounceTimer = Timer(const Duration(milliseconds: 50), () {
+      if (mounted) {
+        setState(() {
+          final t = _order[index];
+          _order[index] = _order[j];
+          _order[j] = t;
+        });
+      }
     });
   }
 
   /// Satırdaki göz ikonuna basıldığında kartı gizler veya geri açar.
   /// Kullanıcı kaydetmedikçe [AppSettingsService]'e yansımaz.
   void _toggleHidden(HomeCategoryCardId id) {
-    setState(() {
-      if (_hidden.contains(id)) {
-        _hidden.remove(id);
-      } else {
-        _hidden.add(id);
+    _debounceTimer?.cancel();
+    _debounceTimer = Timer(const Duration(milliseconds: 50), () {
+      if (mounted) {
+        setState(() {
+          if (_hidden.contains(id)) {
+            _hidden.remove(id);
+          } else {
+            _hidden.add(id);
+          }
+        });
       }
     });
   }
@@ -94,8 +116,14 @@ class _HomeCardOrderEditorViewState extends State<HomeCardOrderEditorView> {
     final settings = Get.find<AppSettingsService>();
     final tv = settings.layoutMode.value == AppLayoutMode.tv;
 
-    return Scaffold(
-      backgroundColor: Colors.black,
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        Get.back<void>();
+      },
+      child: Scaffold(
+        backgroundColor: Colors.black,
       body: FocusTraversalGroup(
         policy: OrderedTraversalPolicy(),
         child: ThemedSettingsBackground(
@@ -169,6 +197,7 @@ class _HomeCardOrderEditorViewState extends State<HomeCardOrderEditorView> {
           ),
         ),
       ),
+    ),
     );
   }
 }

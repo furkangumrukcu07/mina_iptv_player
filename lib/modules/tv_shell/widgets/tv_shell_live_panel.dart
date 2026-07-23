@@ -250,8 +250,8 @@ class _TvShellLivePanelState extends State<TvShellLivePanel> {
   }
 
   void _pruneOutofViewportFocusNodes(int centerIndex, int listLength) {
-    final minKeep = (centerIndex - 25).clamp(0, listLength);
-    final maxKeep = (centerIndex + 25).clamp(0, listLength);
+    final minKeep = (centerIndex - 10).clamp(0, listLength);
+    final maxKeep = (centerIndex + 10).clamp(0, listLength);
 
     final channelKeys = _channelFocusNodes.keys.toList();
     for (final k in channelKeys) {
@@ -482,7 +482,7 @@ class _TvShellLivePanelState extends State<TvShellLivePanel> {
         _programmaticRowNav = false;
         return;
       }
-      if (attempt > 10) {
+      if (attempt > 30) {
         finishNav();
         return;
       }
@@ -508,7 +508,22 @@ class _TvShellLivePanelState extends State<TvShellLivePanel> {
     if (node.hasFocus) {
       finishNav();
     } else {
-      requestFocusOnce();
+      // İlk denemeyi bir sonraki frame'de başlat — ListView'ın
+      // scroll sonrası hedef satır widget'ını oluşturması için.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || gen != _rowNavGen) {
+          _programmaticRowNav = false;
+          return;
+        }
+        if (node.canRequestFocus) {
+          node.requestFocus();
+        }
+        if (node.hasFocus) {
+          finishNav();
+          return;
+        }
+        requestFocusOnce();
+      });
     }
   }
 
@@ -652,7 +667,7 @@ class _TvShellLivePanelState extends State<TvShellLivePanel> {
           },
           child: ListView.builder(
             controller: _listScroll,
-            cacheExtent: remoteNav ? metrics.rowH * 10 : 250,
+            cacheExtent: remoteNav ? metrics.rowH * 20 : 250,
             physics: touchScroll
                 ? const BouncingScrollPhysics(
                     parent: AlwaysScrollableScrollPhysics(),
@@ -1052,6 +1067,31 @@ class _TvShellLivePanelState extends State<TvShellLivePanel> {
               focusNode: widget.shell.liveChannelsFocusNode,
               canRequestFocus: false,
               skipTraversal: true,
+              onKeyEvent: (node, event) {
+                if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
+                  return KeyEventResult.ignored;
+                }
+                // Satır odağı yoksa ok tuşlarını panel düzeyinde yakala.
+                if (_focusedRowIndexFromNodes() != null) {
+                  return KeyEventResult.ignored;
+                }
+                final k = event.logicalKey;
+                if (k == LogicalKeyboardKey.arrowUp ||
+                    k == LogicalKeyboardKey.arrowDown) {
+                  final channels = widget.channels.filteredChannels;
+                  if (channels.isEmpty) return KeyEventResult.ignored;
+                  final delta =
+                      k == LogicalKeyboardKey.arrowUp ? -1 : 1;
+                  _nudgeBrowseRow(delta);
+                  return KeyEventResult.handled;
+                }
+                if (k == LogicalKeyboardKey.arrowLeft ||
+                    tvKeyIsBack(k)) {
+                  widget.shell.onLeftFromLiveBrowse();
+                  return KeyEventResult.handled;
+                }
+                return KeyEventResult.ignored;
+              },
               child: panel,
             );
           }
@@ -1071,6 +1111,7 @@ class _TvShellLivePanelState extends State<TvShellLivePanel> {
               if (event.logicalKey == LogicalKeyboardKey.arrowRight) {
                 return KeyEventResult.handled;
               }
+              // Satır odağı yoksa dikey gezinmeyi panel düzeyinde devral.
               if (_focusedRowIndexFromNodes() == null) {
                 final vertical = _handlePanelVerticalNav(event);
                 if (vertical == KeyEventResult.handled) {

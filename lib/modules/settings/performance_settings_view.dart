@@ -6,12 +6,12 @@ import 'package:path_provider/path_provider.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'dart:async';
 
-import '../../core/layout/app_layout_mode.dart';
 import '../../core/services/app_settings_service.dart';
 import '../../ui/settings_glass_panel.dart';
 import '../../ui/themed_settings_background.dart';
 import '../../ui/tv_dpad_focus.dart';
 import '../../ui/tv_settings_subpage.dart';
+import '../../ui/glass_overlays.dart';
 
 class PerformanceSettingsController extends GetxController {
   final usedMemoryMb = 0.obs;
@@ -56,6 +56,109 @@ class PerformanceSettingsController extends GetxController {
         debugPrint('Error fetching max memory: $e');
       }
     }
+  }
+
+  void showImageCacheLimitDialog(BuildContext context) {
+    final settings = Get.find<AppSettingsService>();
+
+    showDialog<int>(
+      context: context,
+      builder: (c) => GlassAlertDialog(
+        scrollable: false,
+        title: Text('performance.image.cache.limit'.tr),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            GlassDialogListPanel(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _buildLimitOption(c, settings, 0, 'performance.cache.limit.auto'.tr),
+                  _buildLimitOption(c, settings, 50, 'performance.cache.limit.low'.tr),
+                  _buildLimitOption(c, settings, 150, 'performance.cache.limit.medium'.tr),
+                  _buildLimitOption(c, settings, 300, 'performance.cache.limit.high'.tr),
+                  _buildLimitOption(c, settings, 512, 'performance.cache.limit.max'.tr),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          GlassDialogActionButton(
+            label: 'common.cancel'.tr,
+            onPressed: () => Navigator.pop(c),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLimitOption(BuildContext dialogCtx, AppSettingsService settings, int val, String label) {
+    return Obx(() {
+      final selected = settings.imageMemoryCacheLimitMb.value == val;
+      return GlassListTile(
+        dense: true,
+        title: Text(label),
+        trailing: selected ? const Icon(Icons.check_rounded, color: Colors.white) : null,
+        selected: selected,
+        onTap: () async {
+          await settings.setImageMemoryCacheLimitMb(val);
+          Navigator.pop(dialogCtx);
+        },
+      );
+    });
+  }
+
+  void showAutoCleanIntervalDialog(BuildContext context) {
+    final settings = Get.find<AppSettingsService>();
+
+    showDialog<String>(
+      context: context,
+      builder: (c) => GlassAlertDialog(
+        scrollable: false,
+        title: Text('performance.storage.autoclean'.tr),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            GlassDialogListPanel(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _buildIntervalOption(c, settings, 'off', 'performance.cache.interval.off'.tr),
+                  _buildIntervalOption(c, settings, 'everyLaunch', 'performance.cache.interval.everyLaunch'.tr),
+                  _buildIntervalOption(c, settings, 'weekly', 'performance.cache.interval.weekly'.tr),
+                  _buildIntervalOption(c, settings, 'monthly', 'performance.cache.interval.monthly'.tr),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          GlassDialogActionButton(
+            label: 'common.cancel'.tr,
+            onPressed: () => Navigator.pop(c),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildIntervalOption(BuildContext dialogCtx, AppSettingsService settings, String val, String label) {
+    return Obx(() {
+      final selected = settings.autoCleanCacheInterval.value == val;
+      return GlassListTile(
+        dense: true,
+        title: Text(label),
+        trailing: selected ? const Icon(Icons.check_rounded, color: Colors.white) : null,
+        selected: selected,
+        onTap: () async {
+          await settings.setAutoCleanCacheInterval(val);
+          Navigator.pop(dialogCtx);
+        },
+      );
+    });
   }
 
   Future<void> _calculateStorageCache() async {
@@ -144,18 +247,24 @@ class PerformanceSettingsView extends StatelessWidget {
     final controller = Get.put(PerformanceSettingsController());
     final primary = Theme.of(context).colorScheme.primary;
 
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: ThemedSettingsBackground(
-        child: SafeArea(
-          child: SettingsGlassPanel(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                tvSettingsSubpageHeader(
-                  context,
-                  'settings.tile.performance'.tr,
-                ),
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        Get.back<void>();
+      },
+      child: Scaffold(
+        backgroundColor: Colors.black,
+        body: ThemedSettingsBackground(
+          child: SafeArea(
+            child: SettingsGlassPanel(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  tvSettingsSubpageHeader(
+                    context,
+                    'settings.tile.performance'.tr,
+                  ),
                 Expanded(
                   child: ListView(
                     padding: const EdgeInsets.fromLTRB(14, 0, 14, 24),
@@ -203,6 +312,60 @@ class PerformanceSettingsView extends StatelessWidget {
                       Padding(
                         padding: const EdgeInsets.only(left: 8, bottom: 12),
                         child: Text(
+                          'settings.performance.cacheSettings'.tr.toUpperCase(),
+                          style: TextStyle(
+                            color: primary,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                            letterSpacing: 1.2,
+                          ),
+                        ),
+                      ),
+                      Obx(() {
+                        final settings = Get.find<AppSettingsService>();
+                        final limitVal = settings.imageMemoryCacheLimitMb.value;
+                        String limitText = '';
+                        if (limitVal == 0) {
+                          limitText = 'performance.cache.limit.auto'.tr;
+                        } else if (limitVal == 512) {
+                          limitText = 'performance.cache.limit.max'.tr;
+                        } else {
+                          limitText = '$limitVal MB';
+                        }
+                        return _SelectionTile(
+                          title: 'performance.image.cache.limit'.tr,
+                          subtitle: 'performance.image.cache.limit.desc'.tr,
+                          valueText: limitText,
+                          primary: primary,
+                          onTap: () => controller.showImageCacheLimitDialog(context),
+                        );
+                      }),
+                      const SizedBox(height: 16),
+                      Obx(() {
+                        final settings = Get.find<AppSettingsService>();
+                        final interval = settings.autoCleanCacheInterval.value;
+                        String intervalText = '';
+                        if (interval == 'off') {
+                          intervalText = 'performance.cache.interval.off'.tr;
+                        } else if (interval == 'everyLaunch') {
+                          intervalText = 'performance.cache.interval.everyLaunch'.tr;
+                        } else if (interval == 'weekly') {
+                          intervalText = 'performance.cache.interval.weekly'.tr;
+                        } else if (interval == 'monthly') {
+                          intervalText = 'performance.cache.interval.monthly'.tr;
+                        }
+                        return _SelectionTile(
+                          title: 'performance.storage.autoclean'.tr,
+                          subtitle: 'performance.storage.autoclean.desc'.tr,
+                          valueText: intervalText,
+                          primary: primary,
+                          onTap: () => controller.showAutoCleanIntervalDialog(context),
+                        );
+                      }),
+                      const SizedBox(height: 32),
+                      Padding(
+                        padding: const EdgeInsets.only(left: 8, bottom: 12),
+                        child: Text(
                           'settings.performance.maintenance'.tr.toUpperCase(),
                           style: TextStyle(
                             color: primary,
@@ -242,6 +405,7 @@ class PerformanceSettingsView extends StatelessWidget {
           ),
         ),
       ),
+    ),
     );
   }
 }
@@ -368,6 +532,87 @@ class _ActionTile extends StatelessWidget {
                   style: const TextStyle(fontWeight: FontWeight.bold),
                 ),
               ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _SelectionTile extends StatelessWidget {
+  final String title;
+  final String subtitle;
+  final String valueText;
+  final Color primary;
+  final VoidCallback onTap;
+
+  const _SelectionTile({
+    required this.title,
+    required this.subtitle,
+    required this.valueText,
+    required this.primary,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return TvFocusableInkWell(
+      onTap: onTap,
+      borderRadius: 16,
+      child: Container(
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white.withValues(alpha: 0.05),
+          borderRadius: BorderRadius.circular(16),
+          border: Border.all(
+            color: Colors.white.withValues(alpha: 0.08),
+            width: 1,
+          ),
+        ),
+        child: Row(
+          children: [
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(
+                      color: Colors.white54,
+                      fontSize: 13,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 16),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Text(
+                  valueText,
+                  style: TextStyle(
+                    color: primary,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
+                  ),
+                ),
+                const SizedBox(width: 4),
+                const Icon(
+                  Icons.chevron_right_rounded,
+                  color: Colors.white70,
+                ),
+              ],
+            ),
           ],
         ),
       ),

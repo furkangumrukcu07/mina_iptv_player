@@ -31,23 +31,24 @@ abstract final class _ShellDpad {
   static const playlist = 0;
   static const channelLayout = 1;
   static const homeSettings = 2;
-  static const playback = 3;
-  static const keyMapping = 4;
-  static const refresh = 5;
-  static const theme = 6;
-  static const otherTools = 7;
-  static const language = 8;
-  static const profiles = 9;
-  static const cloud = 10;
-  static const downloads = 11;
-  static const clearAll = 12;
-  static const about = 13;
-  static const contact = 14;
-  static const setup = 15;
-  static const account = 16;
-  static const subscription = 17;
-  static const admin = 18;
-  static const performance = 19;
+  static const railSettings = 3;
+  static const playback = 4;
+  static const performance = 5;
+  static const keyMapping = 6;
+  static const refresh = 7;
+  static const theme = 8;
+  static const otherTools = 9;
+  static const language = 10;
+  static const profiles = 11;
+  static const cloud = 12;
+  static const downloads = 13;
+  static const clearAll = 14;
+  static const about = 15;
+  static const contact = 16;
+  static const setup = 17;
+  static const account = 18;
+  static const subscription = 19;
+  static const admin = 20;
 }
 
 class SettingsView extends GetView<SettingsController> {
@@ -246,18 +247,34 @@ class SettingsView extends GetView<SettingsController> {
                                     onTap:
                                         controller.openChannelCategoryLayout,
                                   ),
-                                  _GlassTile(
-                                    index: idx(),
-                                    shellDpadIndex: _ShellDpad.homeSettings,
-                                    title: 'settings.tile.homeSettings'.tr,
-                                    subtitle: Text(
-                                      'settings.tile.homeSettings.sub'.tr,
-                                      style: _subtitleStyle,
+                                  // TV modunda ana ekran ayarları gizlenir —
+                                  // TV kabuğu kendi yerleşimini yönetir.
+                                  if (controller.app.layoutMode.value != AppLayoutMode.tv)
+                                    _GlassTile(
+                                      index: idx(),
+                                      shellDpadIndex: _ShellDpad.homeSettings,
+                                      title: 'settings.tile.homeSettings'.tr,
+                                      subtitle: Text(
+                                        'settings.tile.homeSettings.sub'.tr,
+                                        style: _subtitleStyle,
+                                      ),
+                                      icon: Icons.dashboard_customize_rounded,
+                                      iconColor: primary,
+                                      onTap: controller.openHomeSettings,
                                     ),
-                                    icon: Icons.dashboard_customize_rounded,
-                                    iconColor: primary,
-                                    onTap: controller.openHomeSettings,
-                                  ),
+                                  if (controller.app.layoutMode.value == AppLayoutMode.tv)
+                                    _GlassTile(
+                                      index: idx(),
+                                      shellDpadIndex: _ShellDpad.railSettings,
+                                      title: 'settings.tile.railSettings'.tr,
+                                      subtitle: Text(
+                                        'settings.tile.railSettings.sub'.tr,
+                                        style: _subtitleStyle,
+                                      ),
+                                      icon: Icons.view_sidebar_rounded,
+                                      iconColor: primary,
+                                      onTap: controller.openRailSettings,
+                                    ),
                                   // «Oynatma Ayarları» kullanıcı tarafından
                                   // 4. sıraya çekildi — sık erişilen
                                   // playback / OSD / canlı skor / Smart Route
@@ -1086,6 +1103,9 @@ class _GlassTileState extends State<_GlassTile> {
           if (event is! KeyDownEvent && event is! KeyRepeatEvent) {
             return KeyEventResult.ignored;
           }
+          if (event is KeyDownEvent && event.logicalKey == LogicalKeyboardKey.goBack) {
+            return KeyEventResult.ignored;
+          }
           if (tvKeyIsBack(event.logicalKey)) {
             shell.onRemoteLeft();
             return KeyEventResult.handled;
@@ -1206,6 +1226,9 @@ class _TvShellSettingsScrollBack extends StatelessWidget {
       skipTraversal: true,
       onKeyEvent: (node, event) {
         if (event is! KeyDownEvent) return KeyEventResult.ignored;
+        if (event.logicalKey == LogicalKeyboardKey.goBack) {
+          return KeyEventResult.ignored;
+        }
         if (tvKeyIsBack(event.logicalKey) ||
             event.logicalKey == LogicalKeyboardKey.arrowLeft) {
           onBack();

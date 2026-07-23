@@ -12,7 +12,13 @@ class PrivacyPolicyView extends StatelessWidget {
   Widget build(BuildContext context) {
     final primary = Theme.of(context).colorScheme.primary;
 
-    return Scaffold(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        Get.back<void>();
+      },
+      child: Scaffold(
       backgroundColor: Colors.black,
       body: ThemedSettingsBackground(
         child: SafeArea(
@@ -90,6 +96,7 @@ class PrivacyPolicyView extends StatelessWidget {
           ),
         ),
       ),
+    ),
     );
   }
 

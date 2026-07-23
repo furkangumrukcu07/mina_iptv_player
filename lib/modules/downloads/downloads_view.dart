@@ -30,7 +30,13 @@ class DownloadsView extends StatelessWidget {
       context,
       Get.find<AppSettingsService>().layoutMode.value,
     );
-    return Scaffold(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        Get.back<void>();
+      },
+      child: Scaffold(
       backgroundColor: Colors.transparent,
       extendBodyBehindAppBar: true,
       appBar: AppBar(
@@ -91,6 +97,7 @@ class DownloadsView extends StatelessWidget {
           );
         }),
       ),
+    ),
     );
   }
 }

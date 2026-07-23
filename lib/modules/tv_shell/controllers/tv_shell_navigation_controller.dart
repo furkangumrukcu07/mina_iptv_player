@@ -606,6 +606,11 @@ extension TvShellNavigationController on TvShellController {
       ExitConfirmDialog.showIfNeeded();
     }
   }
+  /// Oynatıcıdan tam ekrandan çıkarken TvShell'e dönüldüğünde oluşabilecek
+  /// hayalet "Geri" tuşu tetiklemelerini önlemek için kullanılır.
+  void preventGhostBackAfterPlayerPop() {
+    _lastBackCoalesceMs = DateTime.now().millisecondsSinceEpoch + 500;
+  }
 
   void onBack() {
     final now = DateTime.now().millisecondsSinceEpoch;
@@ -618,18 +623,39 @@ extension TvShellNavigationController on TvShellController {
       Get.back<void>();
       return;
     }
+    // Navigator yığınında pop yapılabilecek bir sayfa varsa (alt sayfa açık)
+    // TV kabuğu mantığına düşmeden önce onu kapat.
+    // ÖNEMLİ: Yalnızca mevcut route'un üzerinde ekstra bir yığın varsa pop et;
+    // aksi takdirde TV kabuğu navigasyonu devreye girer.
+    // GetX navigator'ına doğrudan erişim — KM2 Plus gibi TV box'larda
+    // Get.overlayContext / Get.context bazen hatalı navigator döndürebilir.
+    final getxNav = Get.key.currentState;
+    if (getxNav != null && getxNav.canPop()) {
+      getxNav.pop();
+      return;
+    }
     final ctx = Get.overlayContext ?? Get.context;
     if (ctx != null) {
-      final nav = Navigator.of(ctx);
-      if (nav.canPop()) {
-        nav.pop();
+      final rootNav = Navigator.of(ctx, rootNavigator: true);
+      if (rootNav.canPop()) {
+        rootNav.pop();
         return;
       }
     }
 
+    // Settings panelindeyken ve alt sayfa açık değilken:
+    // Rail odaklanmamışsa her zaman settings paneline geri dön, uygulamadan çıkma.
+    if (phase.value == TvShellPhase.categories &&
+        selectedSection.value == TvShellSection.settings &&
+        !isRailFocused) {
+      if (now - _lastBackHandledMs < 450) return;
+      _lastBackHandledMs = now;
+      onLeftFromSettingsPanel();
+      return;
+    }
+
     // Ana ekran / rail: doğrudan çıkış (onay veya Android TV'de anında kapat).
-    if (phase.value == TvShellPhase.liveContent ||
-        phase.value == TvShellPhase.rail) {
+    if (phase.value == TvShellPhase.rail) {
       _requestTvShellExit();
       return;
     }
@@ -656,7 +682,15 @@ extension TvShellNavigationController on TvShellController {
         }
         return;
       case TvShellPhase.liveContent:
-        // Üstte debounce'suz ele alınır.
+        // Kanal listesindeyken geri → önce kategorilere dön, çıkma.
+        // Kullanıcı rail'e odaklansa bile, liveContent phase'inden çıkış
+        // yerine kategorilere dönülür (rail zaten ana menü).
+        channels.tvShellLiveActive.value = false;
+        channels.tvShellLiveBrowseActive.value = true;
+        phase.value = TvShellPhase.categories;
+        railExpanded.value = true;
+        final liveNode = railFocusNodes[selectedSection.value];
+        if (liveNode != null) scheduleTvFocusRestore(liveNode);
         return;
       case TvShellPhase.categories:
         if (selectedSection.value == TvShellSection.live &&
@@ -717,10 +751,14 @@ extension TvShellNavigationController on TvShellController {
             return;
           }
         }
-        if (!railExpanded.value) {
+        if (!isRailFocused) {
           railExpanded.value = true;
           final node = railFocusNodes[selectedSection.value];
           if (node != null) scheduleTvFocusRestore(node);
+        } else if (selectedSection.value == TvShellSection.settings) {
+          // Settings panelinde rail odaklıysa bile çıkma —
+          // KM2Plus gibi cihazlarda güvenlik için panele geri dön.
+          onLeftFromSettingsPanel();
         } else {
           _requestTvShellExit();
         }
