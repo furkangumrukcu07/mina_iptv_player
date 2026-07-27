@@ -48,11 +48,9 @@ abstract final class SlotPlaylistSnapshotStore {
     final f = _file(dir, slot);
     if (!await f.exists()) return null;
     try {
-      final bytes = await f.readAsBytes();
-      if (bytes.isEmpty) return null;
-      return decodeMergedPlaylistSnapshotFromBytes(expectedKey, bytes);
+      return decodeMergedPlaylistSnapshotFromFilePath(expectedKey, f.path);
     } catch (e) {
-      debugPrint('mina_iptv: slot $slot snapshot read failed: $e');
+      if (kDebugMode) debugPrint('mina_iptv: slot $slot snapshot read failed: $e');
       return null;
     }
   }
@@ -65,7 +63,7 @@ abstract final class SlotPlaylistSnapshotStore {
       final tmp = File('${f.path}.tmp');
       if (await tmp.exists()) await tmp.delete();
     } catch (e) {
-      debugPrint('mina_iptv: slot $slot snapshot delete failed: $e');
+      if (kDebugMode) debugPrint('mina_iptv: slot $slot snapshot delete failed: $e');
     }
   }
 }

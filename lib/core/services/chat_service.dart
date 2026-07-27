@@ -16,6 +16,7 @@ import 'auth_service.dart';
 import 'firebase_bootstrap.dart';
 import '../routes/app_routes.dart';
 import 'licensing_service.dart';
+import '../util/firestore_timeout.dart';
 
 /// Tek bir sohbet odası (uygulamanın desteklediği bir yerelleştirme dili).
 @immutable
@@ -344,7 +345,7 @@ class ChatService extends GetxService with WidgetsBindingObserver {
       await _roomRef(langCode).add(data);
       return true;
     } catch (e) {
-      debugPrint('[ChatService] sendMessage error: $e');
+      if (kDebugMode) debugPrint('[ChatService] sendMessage error: $e');
       return false;
     }
   }
@@ -355,14 +356,14 @@ class ChatService extends GetxService with WidgetsBindingObserver {
   Future<ChatMessage?> fetchLastMessage(String langCode) async {
     if (!gFirebaseReady) return null;
     try {
-      final snap = await _roomRef(langCode)
+      final snap = await withFirestoreTimeout(_roomRef(langCode)
           .orderBy('timestamp', descending: true)
           .limit(1)
-          .get();
+          .get());
       if (snap.docs.isEmpty) return null;
       return ChatMessage.fromDoc(snap.docs.first);
     } catch (e) {
-      debugPrint('[ChatService] fetchLastMessage error: $e');
+      if (kDebugMode) debugPrint('[ChatService] fetchLastMessage error: $e');
       return null;
     }
   }
@@ -383,7 +384,7 @@ class ChatService extends GetxService with WidgetsBindingObserver {
       await _roomRef(langCode).doc(message.id).delete();
       return true;
     } catch (e) {
-      debugPrint('[ChatService] deleteMessage error: $e');
+      if (kDebugMode) debugPrint('[ChatService] deleteMessage error: $e');
       return false;
     }
   }
@@ -447,7 +448,7 @@ class ChatService extends GetxService with WidgetsBindingObserver {
     batch.set(msgRef, msgData);
     batch.set(threadRef, metaData, SetOptions(merge: true));
 
-    await batch.commit();
+    await withFirestoreTimeout(batch.commit());
   }
 
   /// Admin'in birden fazla kullanıcıya tek seferde mesaj atmasını sağlar.
@@ -462,7 +463,7 @@ class ChatService extends GetxService with WidgetsBindingObserver {
 
     for (final uid in targetUids) {
       if (opCount >= 490) { // Firestore batch limit is 500
-        await batch.commit();
+        await withFirestoreTimeout(batch.commit());
         batch = db.batch();
         opCount = 0;
       }
@@ -492,7 +493,7 @@ class ChatService extends GetxService with WidgetsBindingObserver {
     }
 
     if (opCount > 0) {
-      await batch.commit();
+      await withFirestoreTimeout(batch.commit());
     }
   }
 
@@ -585,7 +586,7 @@ class ChatService extends GetxService with WidgetsBindingObserver {
           .set(meta, SetOptions(merge: true));
       return true;
     } catch (e) {
-      debugPrint('[ChatService] sendSupportMessage error: $e');
+      if (kDebugMode) debugPrint('[ChatService] sendSupportMessage error: $e');
       return false;
     }
   }
@@ -599,7 +600,7 @@ class ChatService extends GetxService with WidgetsBindingObserver {
           .set({'status': status}, SetOptions(merge: true));
       return true;
     } catch (e) {
-      debugPrint('[ChatService] markThreadStatus error: $e');
+      if (kDebugMode) debugPrint('[ChatService] markThreadStatus error: $e');
       return false;
     }
   }
@@ -615,7 +616,7 @@ class ChatService extends GetxService with WidgetsBindingObserver {
       await _supportMessagesRef(userUid).doc(message.id).delete();
       return true;
     } catch (e) {
-      debugPrint('[ChatService] deleteSupportMessage error: $e');
+      if (kDebugMode) debugPrint('[ChatService] deleteSupportMessage error: $e');
       return false;
     }
   }
@@ -647,7 +648,7 @@ class ChatService extends GetxService with WidgetsBindingObserver {
       await _supportThreadsRef().doc(userUid).delete();
       return true;
     } catch (e) {
-      debugPrint('[ChatService] deleteSupportThread error: $e');
+      if (kDebugMode) debugPrint('[ChatService] deleteSupportThread error: $e');
       return false;
     }
   }
@@ -738,7 +739,7 @@ class ChatService extends GetxService with WidgetsBindingObserver {
           title = translatedTitle.text;
           message = translatedMsg.text;
         } catch (e) {
-          debugPrint('Translation error: $e');
+          if (kDebugMode) debugPrint('Translation error: $e');
         }
       }
 
@@ -892,7 +893,7 @@ class ChatService extends GetxService with WidgetsBindingObserver {
         );
       }
     }, onError: (e) {
-      debugPrint('[ChatService] Announcements stream error: $e');
+      if (kDebugMode) debugPrint('[ChatService] Announcements stream error: $e');
     });
   }
 
@@ -937,7 +938,7 @@ class ChatService extends GetxService with WidgetsBindingObserver {
           btnText = (await translator.translate(btnText, from: 'tr', to: localeCode)).text;
           closeText = (await translator.translate(closeText, from: 'tr', to: localeCode)).text;
         } catch (e) {
-          debugPrint('Smart Trial Translation error: $e');
+          if (kDebugMode) debugPrint('Smart Trial Translation error: $e');
         }
       }
 
@@ -1003,7 +1004,7 @@ class ChatService extends GetxService with WidgetsBindingObserver {
         barrierDismissible: true,
       );
     } catch (e) {
-      debugPrint('[ChatService] Smart Trial Announcement Error: $e');
+      if (kDebugMode) debugPrint('[ChatService] Smart Trial Announcement Error: $e');
     }
   }
 
@@ -1104,7 +1105,7 @@ class ChatService extends GetxService with WidgetsBindingObserver {
           unreadMessages.value = 0;
         }
       }, onError: (e) {
-        debugPrint('[ChatService] Unread messages stream error: $e');
+        if (kDebugMode) debugPrint('[ChatService] Unread messages stream error: $e');
         unreadMessages.value = 0;
       });
     } else {
@@ -1211,7 +1212,7 @@ class ChatService extends GetxService with WidgetsBindingObserver {
 
       await _presenceRef().doc(uid).set(data, SetOptions(merge: true));
     } catch (e) {
-      debugPrint('[ChatService] presence beat error: $e');
+      if (kDebugMode) debugPrint('[ChatService] presence beat error: $e');
     }
     if (!_presenceActive || epoch != _presenceEpoch) return;
     if (_chatCountInterest > 0) {
@@ -1247,7 +1248,7 @@ class ChatService extends GetxService with WidgetsBindingObserver {
       }
       onlineCount.value = n;
     } catch (e) {
-      debugPrint('[ChatService] online count error: $e');
+      if (kDebugMode) debugPrint('[ChatService] online count error: $e');
       // Yedek: aggregate count (indeks / kurallar uygunsa).
       try {
         final cutoff = Timestamp.fromDate(
@@ -1259,7 +1260,7 @@ class ChatService extends GetxService with WidgetsBindingObserver {
             .get(source: AggregateSource.server);
         if (agg.count != null) onlineCount.value = agg.count!;
       } catch (e2) {
-        debugPrint('[ChatService] online count fallback error: $e2');
+        if (kDebugMode) debugPrint('[ChatService] online count fallback error: $e2');
       }
     }
   }

@@ -38,11 +38,9 @@ abstract final class PlaylistSnapshotStore {
     final f = _file(dir);
     if (!await f.exists()) return null;
     try {
-      final bytes = await f.readAsBytes();
-      if (bytes.isEmpty) return null;
-      return decodeMergedPlaylistSnapshotFromBytes(expectedKey, bytes);
+      return decodeMergedPlaylistSnapshotFromFilePath(expectedKey, f.path);
     } catch (e) {
-      debugPrint('mina_iptv: snapshot read failed: $e');
+      if (kDebugMode) debugPrint('mina_iptv: snapshot read failed: $e');
       return null;
     }
   }
@@ -55,7 +53,7 @@ abstract final class PlaylistSnapshotStore {
       final tmp = File('${f.path}.tmp');
       if (await tmp.exists()) await tmp.delete();
     } catch (e) {
-      debugPrint('mina_iptv: snapshot delete failed: $e');
+      if (kDebugMode) debugPrint('mina_iptv: snapshot delete failed: $e');
     }
   }
 }

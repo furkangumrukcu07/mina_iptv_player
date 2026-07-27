@@ -2,12 +2,14 @@ part of '../tv_shell_controller.dart';
 
 extension TvShellContentController on TvShellController {
   void enterVodFilmDetail() {
+    _flushVodFocusedIndex();
     if (focusedVodContentItem == null) return;
     vodContentPinned.value = true;
     unawaited(_loadVodTrailersForFocused());
   }
 
   void enterSeriesDetail() {
+    _flushVodFocusedIndex();
     if (focusedSeriesContentItem == null) return;
     vodContentPinned.value = true;
     _scheduleSeriesOmdb(focusedSeriesContentItem!);
@@ -80,29 +82,49 @@ extension TvShellContentController on TvShellController {
     seriesFocusedEpisodeIndex.value = index;
   }
 
+  /// Bekleyen debounce timer'ını hemen uygula. `enterSeriesDetail()` ve
+  /// `enterVodFilmDetail()` gibi detay sayfalarının doğru indeksi okuması için
+  /// çağrılır.
+  void _flushVodFocusedIndex() {
+    final pending = _vodFocusedIndexPending;
+    if (pending != null && _vodFocusedIndexDebounce != null) {
+      _vodFocusedIndexDebounce!.cancel();
+      _vodFocusedIndexDebounce = null;
+      _vodFocusedIndexPending = null;
+      vodFocusedIndex.value = pending;
+    }
+  }
+
   void setVodFocusedIndex(int index) {
     if (vodFocusedIndex.value == index) return;
     if (phase.value == TvShellPhase.vodContent && vodContentPinned.value) {
       return;
     }
-    vodFocusedIndex.value = index;
-    if (_isSeriesSection) {
-      final items = phase.value == TvShellPhase.vodContent
-          ? _seriesContentItems
-          : _seriesPreviewItems;
-      if (index >= 0 && index < items.length) {
-        _scheduleSeriesOmdb(items[index]);
+    
+    // Debounce to reduce Obx rebuilds
+    _vodFocusedIndexDebounce?.cancel();
+    _vodFocusedIndexPending = index;
+    _vodFocusedIndexDebounce = Timer(const Duration(milliseconds: 16), () {
+      _vodFocusedIndexPending = null;
+      vodFocusedIndex.value = index;
+      if (_isSeriesSection) {
+        final items = phase.value == TvShellPhase.vodContent
+            ? _seriesContentItems
+            : _seriesPreviewItems;
+        if (index >= 0 && index < items.length) {
+          _scheduleSeriesOmdb(items[index]);
+        }
+        _maybeLoadMoreSeriesAtIndex(index);
+      } else {
+        final items = phase.value == TvShellPhase.vodContent
+            ? _vodContentItems
+            : _vodPreviewItems;
+        if (index >= 0 && index < items.length) {
+          _scheduleVodOmdb(items[index]);
+        }
+        _maybeLoadMoreVodAtIndex(index);
       }
-      _maybeLoadMoreSeriesAtIndex(index);
-    } else {
-      final items = phase.value == TvShellPhase.vodContent
-          ? _vodContentItems
-          : _vodPreviewItems;
-      if (index >= 0 && index < items.length) {
-        _scheduleVodOmdb(items[index]);
-      }
-      _maybeLoadMoreVodAtIndex(index);
-    }
+    });
   }
 
   /// Dokunmatik kaydırma sonuna yaklaşınca sonraki sayfayı yükle.

@@ -65,7 +65,7 @@ class PlaybackSettingsView extends StatelessWidget {
                       physics: AppScrollPhysics.list(),
                       padding: const EdgeInsets.fromLTRB(12, 4, 12, 16),
                       children: [
-                        if (Platform.isAndroid) ...[
+                        if (Platform.isAndroid || Platform.isIOS) ...[
                           Obx(() {
                             final liveName =
                                 _playbackEngineLabel(settings.livePlaybackEngine.value);

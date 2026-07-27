@@ -93,7 +93,7 @@ class SearchHistoryService extends GetxService {
         historyFor(scope).assignAll(cleaned);
       }
     } catch (e) {
-      debugPrint('SearchHistoryService: load failed: $e');
+      if (kDebugMode) debugPrint('SearchHistoryService: load failed: $e');
     } finally {
       _loaded = true;
       _loading = null;
@@ -153,7 +153,7 @@ class SearchHistoryService extends GetxService {
         historyFor(scope).toList(growable: false),
       );
     } catch (e) {
-      debugPrint('SearchHistoryService: persist($scope) failed: $e');
+      if (kDebugMode) debugPrint('SearchHistoryService: persist($scope) failed: $e');
     }
   }
 }

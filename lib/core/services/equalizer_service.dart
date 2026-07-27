@@ -142,7 +142,7 @@ class EqualizerService extends GetxService {
       preampDb.value =
           (p.getDouble(_kPrefsPreamp) ?? 0.0).clamp(kMinGainDb, kMaxGainDb);
     } catch (e) {
-      debugPrint('EqualizerService: load failed: $e');
+      if (kDebugMode) debugPrint('EqualizerService: load failed: $e');
     } finally {
       _loaded = true;
       _loading = null;
@@ -195,7 +195,7 @@ class EqualizerService extends GetxService {
         unawaited(_applyToAndroidNative());
       });
     } catch (e) {
-      debugPrint('EqualizerService: native probe failed: $e');
+      if (kDebugMode) debugPrint('EqualizerService: native probe failed: $e');
       nativeAndroidSupported.value = false;
     }
   }
@@ -237,7 +237,7 @@ class EqualizerService extends GetxService {
         'bandLevelsMb': levelsMb,
       });
     } catch (e) {
-      debugPrint('EqualizerService: native apply failed: $e');
+      if (kDebugMode) debugPrint('EqualizerService: native apply failed: $e');
     }
   }
 
@@ -317,7 +317,7 @@ class EqualizerService extends GetxService {
       final p = await SharedPreferences.getInstance();
       await p.setBool(key, v);
     } catch (e) {
-      debugPrint('EqualizerService: persist flag failed: $e');
+      if (kDebugMode) debugPrint('EqualizerService: persist flag failed: $e');
     }
   }
 
@@ -332,7 +332,7 @@ class EqualizerService extends GetxService {
       );
       await p.setDouble(_kPrefsPreamp, preampDb.value);
     } catch (e) {
-      debugPrint('EqualizerService: persist failed: $e');
+      if (kDebugMode) debugPrint('EqualizerService: persist failed: $e');
     }
   }
 
@@ -355,7 +355,7 @@ class EqualizerService extends GetxService {
       final chain = _buildFilterChain();
       await plat.setProperty('af', chain);
     } catch (e) {
-      debugPrint('EqualizerService: applyToMediaKit failed: $e');
+      if (kDebugMode) debugPrint('EqualizerService: applyToMediaKit failed: $e');
     }
   }
 

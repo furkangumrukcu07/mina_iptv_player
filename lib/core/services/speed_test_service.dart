@@ -140,7 +140,7 @@ class SpeedTestService extends GetxService {
 
     } catch (e) {
       _errorMessage.value = 'settings.speed_test.error.test_failed'.trParams({'error': e.toString()});
-      debugPrint('Speed test error: $e');
+      if (kDebugMode) debugPrint('Speed test error: $e');
       return null;
     } finally {
       _isTesting.value = false;

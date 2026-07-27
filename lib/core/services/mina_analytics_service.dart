@@ -84,13 +84,13 @@ class MinaAnalyticsService extends GetxService {
             _blob = _AnalyticsBlob.fromJson(map);
           }
         } catch (e) {
-          debugPrint('mina_iptv: analytics decode error: $e');
+          if (kDebugMode) debugPrint('mina_iptv: analytics decode error: $e');
         }
       }
       _loaded = true;
       version.value = version.value + 1;
     } catch (e) {
-      debugPrint('mina_iptv: analytics load error: $e');
+      if (kDebugMode) debugPrint('mina_iptv: analytics load error: $e');
       _loaded = true;
     } finally {
       _loading?.complete();
@@ -104,7 +104,7 @@ class MinaAnalyticsService extends GetxService {
       final prefs = await SharedPreferences.getInstance();
       await prefs.setBool(_kEnabledKey, v);
     } catch (e) {
-      debugPrint('mina_iptv: analytics setEnabled error: $e');
+      if (kDebugMode) debugPrint('mina_iptv: analytics setEnabled error: $e');
     }
   }
 
@@ -181,7 +181,7 @@ class MinaAnalyticsService extends GetxService {
       await prefs.setString(_kKey, raw);
       version.value = version.value + 1;
     } catch (e) {
-      debugPrint('mina_iptv: analytics flush error: $e');
+      if (kDebugMode) debugPrint('mina_iptv: analytics flush error: $e');
     }
   }
 
@@ -195,7 +195,7 @@ class MinaAnalyticsService extends GetxService {
       await prefs.remove(_kKey);
       version.value = version.value + 1;
     } catch (e) {
-      debugPrint('mina_iptv: analytics clear error: $e');
+      if (kDebugMode) debugPrint('mina_iptv: analytics clear error: $e');
     }
   }
 

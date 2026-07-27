@@ -8,6 +8,6 @@ Future<void> applyMediaKitMpvPurpleFixOptions(NativePlayer plat) async {
     await plat.setProperty('colormatrix', 'auto');
     await plat.setProperty('sws-scaler', 'fast-bilinear');
   } catch (e, st) {
-    debugPrint('mina_iptv: MediaKit purple-fix (sw decode) options: $e\n$st');
+    if (kDebugMode) debugPrint('mina_iptv: MediaKit purple-fix (sw decode) options: $e\n$st');
   }
 }

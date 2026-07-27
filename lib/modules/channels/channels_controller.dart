@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
@@ -6,6 +7,7 @@ import 'package:get/get.dart';
 import '../../core/layout/app_layout_mode.dart';
 import '../../core/player/playback_engine_kind.dart';
 import '../../core/home/tv_home_layout_mode.dart';
+import '../../core/player/media_kit_lock.dart';
 import '../../core/routes/app_routes.dart';
 import '../../core/services/active_playlist_service.dart';
 import '../../core/services/app_settings_service.dart';
@@ -78,7 +80,7 @@ static const int kChannelListFastBatch = 50;
 
 static const int _kChannelListFastBatch = kChannelListFastBatch;
 
-static const int _kVisibleChannelExpandLead = 40;
+static const int _kVisibleChannelExpandLead = 20;
 
 static const int _kVisibleChannelSearchCap = 500;
 
@@ -181,6 +183,8 @@ Timer? _clock;
 Timer? _precacheDebounce;
 
 Timer? _previewDebounce;
+
+Timer? _previewAutoDisposeTimer;
 
 Timer? _tvCategoryChannelsApplyDebounce;
 
@@ -445,6 +449,7 @@ void _handleAppLifecycleStateChanged(AppLifecycleState state) {
     _playerActiveWorker?.dispose();
     _precacheDebounce?.cancel();
     _previewDebounce?.cancel();
+    _previewAutoDisposeTimer?.cancel();
     _tvCategoryChannelsApplyDebounce?.cancel();
     _searchDebounceWorker?.dispose();
     _cacheWorker?.dispose();

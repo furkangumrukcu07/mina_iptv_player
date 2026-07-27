@@ -302,14 +302,14 @@ class StalkerApi {
         try {
           await _handshakeAt(dio, url);
           _loadUrl = url;
-          debugPrint(
+          if (kDebugMode) debugPrint(
             'mina_iptv: Stalker handshake ok → $url '
             '(preset=${preset.storageId}, link=${linkType.storageId})',
           );
           return;
         } catch (e) {
           lastError = e;
-          debugPrint(
+          if (kDebugMode) debugPrint(
             'mina_iptv: Stalker handshake fail at $url '
             'preset=${preset.storageId}: $e',
           );
@@ -455,7 +455,7 @@ class StalkerApi {
         },
       );
     } catch (e) {
-      debugPrint('mina_iptv: Stalker do_auth optional fail: $e');
+      if (kDebugMode) debugPrint('mina_iptv: Stalker do_auth optional fail: $e');
     }
   }
 
@@ -500,7 +500,7 @@ class StalkerApi {
       }
       return const [];
     } catch (e) {
-      debugPrint('Stalker getCategories error for $type: $e');
+      if (kDebugMode) debugPrint('Stalker getCategories error for $type: $e');
       return const [];
     }
   }
@@ -560,7 +560,7 @@ class StalkerApi {
 
       return (items: items, total: total, pageSize: pageSize);
     } catch (e) {
-      debugPrint('Stalker getOrderedListPage error for $type p=$page: $e');
+      if (kDebugMode) debugPrint('Stalker getOrderedListPage error for $type p=$page: $e');
       return (items: const <Map<String, dynamic>>[], total: 0, pageSize: 14);
     }
   }
@@ -643,7 +643,7 @@ class StalkerApi {
             absorb(items);
           }
         } catch (e) {
-          debugPrint(
+          if (kDebugMode) debugPrint(
             'mina_iptv: Stalker parallel genre fetch fail → sequential: $e',
           );
           forceSequential = true;
@@ -695,7 +695,7 @@ class StalkerApi {
         ];
       }
     } catch (e) {
-      debugPrint('Stalker get_all_channels error: $e');
+      if (kDebugMode) debugPrint('Stalker get_all_channels error: $e');
     }
     return const [];
   }
@@ -729,7 +729,7 @@ class StalkerApi {
       }
       return _stripStreamCmd(raw);
     } catch (e) {
-      debugPrint('Stalker createLink error: $e');
+      if (kDebugMode) debugPrint('Stalker createLink error: $e');
       return null;
     }
   }

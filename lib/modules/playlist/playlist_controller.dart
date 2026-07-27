@@ -4,6 +4,7 @@ import 'dart:io';
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:get/get.dart';
 
 import '../../core/constants/playlist_storage.dart';
@@ -935,7 +936,7 @@ https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.m
                 // Panel `player_api.php`'yi kısıtlıyor (boş kanal/film/dizi)
                 // ama `get.php` (ham M3U) dolu olabilir. Dönüşümü iptal et,
                 // aşağıda ham M3U yoluna düş — "içerikler eksik" önlenir.
-                debugPrint(
+                if (kDebugMode) debugPrint(
                   '[playlist] Xtream conversion returned empty for '
                   '${converted.baseUrl} → falling back to raw M3U',
                 );
@@ -949,7 +950,7 @@ https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.m
                 );
               }
             } catch (e) {
-              debugPrint(
+              if (kDebugMode) debugPrint(
                 '[playlist] Xtream sniff failed for ${converted.baseUrl}, '
                 'falling back to raw M3U: $e',
               );
@@ -1095,7 +1096,7 @@ https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.m
                   password: converted2.password,
                 );
                 if (_isXtreamResultEmpty(res.result)) {
-                  debugPrint(
+                  if (kDebugMode) debugPrint(
                     '[playlist] Secondary Xtream conversion empty for '
                     '${converted2.baseUrl} → raw M3U fallback',
                   );
@@ -1107,7 +1108,7 @@ https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.m
                   );
                 }
               } catch (e) {
-                debugPrint(
+                if (kDebugMode) debugPrint(
                   '[playlist] Secondary Xtream sniff failed for '
                   '${converted2.baseUrl}, falling back to raw M3U: $e',
                 );

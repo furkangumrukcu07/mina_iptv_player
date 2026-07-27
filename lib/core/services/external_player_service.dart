@@ -160,7 +160,7 @@ class ExternalPlayerService extends GetxService {
       }
       return out;
     } on PlatformException catch (e) {
-      debugPrint('mina_iptv: external_player list (android): $e');
+      if (kDebugMode) debugPrint('mina_iptv: external_player list (android): $e');
       return const <ExternalPlayerApp>[];
     }
   }
@@ -237,7 +237,7 @@ class ExternalPlayerService extends GetxService {
       });
       return ok ?? false;
     } on PlatformException catch (e) {
-      debugPrint('mina_iptv: external_player launch (android): $e');
+      if (kDebugMode) debugPrint('mina_iptv: external_player launch (android): $e');
       return false;
     }
   }
@@ -278,7 +278,7 @@ class ExternalPlayerService extends GetxService {
           if (ok) return true;
         }
       } catch (e) {
-        debugPrint('mina_iptv: external_player launch (ios) ${c.id}: $e');
+        if (kDebugMode) debugPrint('mina_iptv: external_player launch (ios) ${c.id}: $e');
       }
     }
     return false;

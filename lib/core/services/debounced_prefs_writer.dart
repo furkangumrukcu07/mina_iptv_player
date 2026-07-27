@@ -85,7 +85,7 @@ class DebouncedPrefsWriter {
         }
       }
     } catch (e, st) {
-      debugPrint('mina_iptv: DebouncedPrefsWriter flush error: $e\n$st');
+      if (kDebugMode) debugPrint('mina_iptv: DebouncedPrefsWriter flush error: $e\n$st');
     } finally {
       if (!done.isCompleted) done.complete();
       _inFlight = null;

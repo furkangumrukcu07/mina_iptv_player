@@ -144,16 +144,16 @@ class AndroidPlaybackSocHints {
     return playbackSegment;
   }
 
-  /// MediaKit VOD demuxer ileri tamponu (MiB). RAM bilinmiyorsa temkinli 32.
+  /// MediaKit VOD demuxer ileri tamponu (MiB). RAM bilinmiyorsa temkinli 24.
   static int vodDemuxerForwardMiB() {
     final ramB = _totalRamBytes;
     const giB = 1024 * 1024 * 1024;
-    if (ramB == null) return 32;
+    if (ramB == null) return 24;
     if (ramB >= 4 * giB) return 96;
     if (ramB >= 3 * giB) return 64;
-    if (ramB >= 2 * giB) return budgetTvBoxSoc ? 36 : 48;
-    if (ramB < oneGiBRamClassMaxBytes) return 24;
-    return 32;
+    if (ramB >= 2 * giB) return budgetTvBoxSoc ? 16 : 24;
+    if (ramB < oneGiBRamClassMaxBytes) return 12;
+    return 16;
   }
 
   /// Canlı MediaKit mpv tampon kademesi — RAM’e göre (1 GiB / 2 GiB / varsayılan).
@@ -178,15 +178,15 @@ class AndroidPlaybackSocHints {
           );
         default:
           return MediaKitLiveMpvBufferStep(
-            cacheSizeKiB: 24576,
-            demuxerMaxBytes: 24 * 1024 * 1024,
-            demuxerMaxBackBytes: 12 * 1024 * 1024,
+            cacheSizeKiB: 16384,
+            demuxerMaxBytes: 12 * 1024 * 1024,
+            demuxerMaxBackBytes: 6 * 1024 * 1024,
           );
       }
     }
 
     if (ram != null && ram >= 2 * giB && ram < 3 * giB) {
-      // Ucuz 2 GiB kutular (X96/T95/H618): dar tampon — RAM yine sınırlı.
+      // 2 GiB kutular (X96/T95/H618/KM2 Plus): dar tampon — RAM sınırlı (donma/GC önleme).
       if (budgetTvBoxSoc) {
         switch (s) {
           case 0:
@@ -197,38 +197,38 @@ class AndroidPlaybackSocHints {
             );
           case 1:
             return MediaKitLiveMpvBufferStep(
-              cacheSizeKiB: 12288,
-              demuxerMaxBytes: 18 * 1024 * 1024,
-              demuxerMaxBackBytes: 8 * 1024 * 1024,
+              cacheSizeKiB: 8192,
+              demuxerMaxBytes: 10 * 1024 * 1024,
+              demuxerMaxBackBytes: 4 * 1024 * 1024,
             );
           default:
             return MediaKitLiveMpvBufferStep(
-              cacheSizeKiB: 32768,
-              demuxerMaxBytes: 32 * 1024 * 1024,
-              demuxerMaxBackBytes: 16 * 1024 * 1024,
+              cacheSizeKiB: 16384,
+              demuxerMaxBytes: 14 * 1024 * 1024,
+              demuxerMaxBackBytes: 8 * 1024 * 1024,
             );
         }
       }
-      // Düşük segment smart TV (TCL/Philips/Toshiba MTK): geniş başlangıç tamponu.
+      // Düşük segment smart TV (TCL/Philips/Toshiba MTK): dengeli tampon.
       if (lowEndSmartTvLike) {
         switch (s) {
           case 0:
             return MediaKitLiveMpvBufferStep(
-              cacheSizeKiB: 6144,
-              demuxerMaxBytes: 6 * 1024 * 1024,
-              demuxerMaxBackBytes: 3 * 1024 * 1024,
+              cacheSizeKiB: 4096,
+              demuxerMaxBytes: 4 * 1024 * 1024,
+              demuxerMaxBackBytes: 2 * 1024 * 1024,
             );
           case 1:
             return MediaKitLiveMpvBufferStep(
-              cacheSizeKiB: 20480,
-              demuxerMaxBytes: 28 * 1024 * 1024,
-              demuxerMaxBackBytes: 14 * 1024 * 1024,
+              cacheSizeKiB: 12288,
+              demuxerMaxBytes: 12 * 1024 * 1024,
+              demuxerMaxBackBytes: 6 * 1024 * 1024,
             );
           default:
             return MediaKitLiveMpvBufferStep(
-              cacheSizeKiB: 49152,
-              demuxerMaxBytes: 44 * 1024 * 1024,
-              demuxerMaxBackBytes: 22 * 1024 * 1024,
+              cacheSizeKiB: 20480,
+              demuxerMaxBytes: 16 * 1024 * 1024,
+              demuxerMaxBackBytes: 8 * 1024 * 1024,
             );
         }
       }
@@ -241,15 +241,15 @@ class AndroidPlaybackSocHints {
           );
         case 1:
           return MediaKitLiveMpvBufferStep(
-            cacheSizeKiB: 16384,
-            demuxerMaxBytes: 24 * 1024 * 1024,
-            demuxerMaxBackBytes: 12 * 1024 * 1024,
+            cacheSizeKiB: 12288,
+            demuxerMaxBytes: 12 * 1024 * 1024,
+            demuxerMaxBackBytes: 6 * 1024 * 1024,
           );
         default:
           return MediaKitLiveMpvBufferStep(
-            cacheSizeKiB: 49152,
-            demuxerMaxBytes: 48 * 1024 * 1024,
-            demuxerMaxBackBytes: 24 * 1024 * 1024,
+            cacheSizeKiB: 20480,
+            demuxerMaxBytes: 16 * 1024 * 1024,
+            demuxerMaxBackBytes: 8 * 1024 * 1024,
           );
       }
     }
@@ -458,7 +458,7 @@ class AndroidPlaybackSocHints {
         if (_androidTv == true && _iptvBufferForPlaybackMs < 4500) {
           _iptvBufferForPlaybackMs = 4500;
         }
-        debugPrint(
+        if (kDebugMode) debugPrint(
           'mina_iptv: playback segment=${_segment.name} '
           'ram=${ram != null ? "${(ram / (1024 * 1024 * 1024)).toStringAsFixed(1)}GiB" : "?"} '
           'cores=${cores ?? "?"} weakMpv=$_weakMpvDevice '

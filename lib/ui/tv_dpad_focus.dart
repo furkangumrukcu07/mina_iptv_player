@@ -107,6 +107,16 @@ bool tvKeyIsBack(LogicalKeyboardKey key) =>
     key == LogicalKeyboardKey.escape ||
     key == LogicalKeyboardKey.gameButtonB;
 
+int _lastTvSettingsBackMs = 0;
+bool tvSettingsShouldThrottleBack() {
+  final now = DateTime.now().millisecondsSinceEpoch;
+  if (now - _lastTvSettingsBackMs < 500) {
+    return true;
+  }
+  _lastTvSettingsBackMs = now;
+  return false;
+}
+
 /// TV odak hedeflerine yön tuşları ile atlama + OK ile [onActivate].
 KeyEventResult tvHandleDpadKeys(
   KeyEvent event, {

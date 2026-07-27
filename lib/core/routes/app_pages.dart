@@ -41,6 +41,7 @@ import '../../modules/downloads/downloads_view.dart';
 import '../../modules/settings/data_usage_view.dart';
 import '../../modules/settings/home_card_order_editor_view.dart';
 import '../../modules/settings/home_settings_view.dart';
+import '../../modules/settings/rail_settings_view.dart';
 import '../../modules/settings/backup_restore_view.dart';
 import '../../modules/settings/cloud_sync_view.dart';
 import '../../modules/settings/profiles/profiles_view.dart';
@@ -54,6 +55,8 @@ import '../../modules/settings/subtitle_options_view.dart';
 import '../../modules/settings/xtream_category_hide_view.dart';
 import '../../modules/settings/tv_key_mapping_settings_view.dart';
 import '../../modules/settings/premium_paywall_view.dart';
+import '../../modules/settings/privacy_policy_view.dart';
+import '../../modules/settings/other_apps_view.dart';
 import '../../modules/splash/splash_binding.dart';
 import '../../modules/splash/splash_view.dart';
 import '../../modules/mina_analytics/mina_analytics_binding.dart';
@@ -224,6 +227,12 @@ abstract final class AppPages {
       transitionDuration: PageTransitionBuilder.duration,
     ),
     GetPage(
+      name: AppRoutes.railSettings,
+      page: RailSettingsView.new,
+      transition: PageTransitionBuilder.getTransition(),
+      transitionDuration: PageTransitionBuilder.duration,
+    ),
+    GetPage(
       name: AppRoutes.backupRestore,
       page: BackupRestoreView.new,
       transition: PageTransitionBuilder.getTransition(),
@@ -326,6 +335,18 @@ abstract final class AppPages {
       page: PremiumPaywallView.new,
       transition: Transition.fadeIn,
       transitionDuration: const Duration(milliseconds: 200),
+    ),
+    GetPage(
+      name: AppRoutes.privacyPolicy,
+      page: PrivacyPolicyView.new,
+      transition: PageTransitionBuilder.getTransition(),
+      transitionDuration: PageTransitionBuilder.duration,
+    ),
+    GetPage(
+      name: AppRoutes.otherApps,
+      page: OtherAppsView.new,
+      transition: PageTransitionBuilder.getTransition(),
+      transitionDuration: PageTransitionBuilder.duration,
     ),
   ];
 }

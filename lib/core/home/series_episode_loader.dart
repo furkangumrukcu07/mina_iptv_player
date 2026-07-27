@@ -35,9 +35,9 @@ abstract final class SeriesEpisodeLoader {
       );
       xtreamMeta = detail;
       xtreamList = List<SeriesEpisodeOption>.from(detail.episodes);
-      debugPrint('[SeriesEpisodeLoader] Xtream episodes loaded: ${xtreamList.length} for series ${series.name} (id: ${series.id})');
+      if (kDebugMode) debugPrint('[SeriesEpisodeLoader] Xtream episodes loaded: ${xtreamList.length} for series ${series.name} (id: ${series.id})');
     } catch (e) {
-      debugPrint('[SeriesEpisodeLoader] Xtream API failed for ${series.name} (id: ${series.id}): $e');
+      if (kDebugMode) debugPrint('[SeriesEpisodeLoader] Xtream API failed for ${series.name} (id: ${series.id}): $e');
       // Xtream uç noktası kapalı / yanlış series_id — M3U yedeğine düş.
     }
 
@@ -50,26 +50,26 @@ abstract final class SeriesEpisodeLoader {
           seriesCluster: seriesCluster,
           displayTitle: displayTitle,
         );
-        debugPrint('[SeriesEpisodeLoader] M3U episodes loaded: ${m3uList.length} for series ${series.name}');
+        if (kDebugMode) debugPrint('[SeriesEpisodeLoader] M3U episodes loaded: ${m3uList.length} for series ${series.name}');
         for (var i = 0; i < m3uList.length; i++) {
           final e = m3uList[i];
-          debugPrint('[SeriesEpisodeLoader] M3U ep $i: S${e.season}E${e.episodeNumber} → "${e.displayTitle}"');
+          if (kDebugMode) debugPrint('[SeriesEpisodeLoader] M3U ep $i: S${e.season}E${e.episodeNumber} → "${e.displayTitle}"');
         }
       } catch (e) {
-        debugPrint('[SeriesEpisodeLoader] M3U fallback failed for ${series.name}: $e');
+        if (kDebugMode) debugPrint('[SeriesEpisodeLoader] M3U fallback failed for ${series.name}: $e');
         // DB genişletme hatası — Xtream sonucu varsa onu kullan.
       }
     }
 
     final list = _mergeEpisodeLists(xtreamList, m3uList);
-    debugPrint('[SeriesEpisodeLoader] Total merged episodes: ${list.length} for ${series.name}');
+    if (kDebugMode) debugPrint('[SeriesEpisodeLoader] Total merged episodes: ${list.length} for ${series.name}');
     for (var i = 0; i < list.length; i++) {
       final e = list[i];
-      debugPrint('[SeriesEpisodeLoader] Merged ep $i: S${e.season}E${e.episodeNumber} → "${e.displayTitle}"');
+      if (kDebugMode) debugPrint('[SeriesEpisodeLoader] Merged ep $i: S${e.season}E${e.episodeNumber} → "${e.displayTitle}"');
     }
 
     if (list.isEmpty) {
-      debugPrint('[SeriesEpisodeLoader] No episodes found for ${series.name} (id: ${series.id})');
+      if (kDebugMode) debugPrint('[SeriesEpisodeLoader] No episodes found for ${series.name} (id: ${series.id})');
       return (
         episodes: <SeriesEpisodeOption>[],
         xtreamMeta: xtreamMeta,
@@ -93,7 +93,7 @@ abstract final class SeriesEpisodeLoader {
 
     void put(SeriesEpisodeOption e) {
       final slot = _slotKey(e);
-      debugPrint('[SeriesEpisodeLoader] Putting episode: slot="$slot", title="${e.displayTitle}"');
+      if (kDebugMode) debugPrint('[SeriesEpisodeLoader] Putting episode: slot="$slot", title="${e.displayTitle}"');
       final cur = bySlot[slot];
       if (cur == null) {
         bySlot[slot] = e;
@@ -109,7 +109,7 @@ abstract final class SeriesEpisodeLoader {
       put(e);
     }
 
-    debugPrint('[SeriesEpisodeLoader] After merge, ${bySlot.length} unique slots');
+    if (kDebugMode) debugPrint('[SeriesEpisodeLoader] After merge, ${bySlot.length} unique slots');
     return _sortedCopy(bySlot.values);
   }
 
@@ -170,9 +170,9 @@ abstract final class SeriesEpisodeLoader {
     } else {
       cluster = seed;
     }
-    debugPrint('[SeriesEpisodeLoader] Expanded cluster size: ${cluster.length} for $title');
+    if (kDebugMode) debugPrint('[SeriesEpisodeLoader] Expanded cluster size: ${cluster.length} for $title');
     for (var i = 0; i < cluster.length; i++) {
-      debugPrint('[SeriesEpisodeLoader] Cluster item $i: "${cluster[i].name}"');
+      if (kDebugMode) debugPrint('[SeriesEpisodeLoader] Cluster item $i: "${cluster[i].name}"');
     }
     if (cluster.isEmpty) return [];
     return SeriesNameGrouping.buildM3uEpisodeOptions(cluster);

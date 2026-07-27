@@ -393,8 +393,13 @@ List<Channel> get visibleChannels {
     if (_memChannelIdPoolKey != cacheKey || _memChannelIdPool == null) {
       _memChannelIdPool = _buildMemChannelIdPool(id, d, base);
       _memChannelIdPoolKey = cacheKey;
-      _memChannelWindowEnd = TvShellListWindow.memChannelInitialWindow
-          .clamp(0, _memChannelIdPool!.length);
+      // Small playlists: load all channels upfront for smooth scroll
+      if (_memChannelIdPool!.length <= TvShellListWindow.memChannelSmallPlaylistThreshold) {
+        _memChannelWindowEnd = _memChannelIdPool!.length;
+      } else {
+        _memChannelWindowEnd = TvShellListWindow.memChannelInitialWindow
+            .clamp(0, _memChannelIdPool!.length);
+      }
       if (_shouldAvoidRamFullScan(this) &&
           (_memChannelIdPool!.length >= kRamFullScanChannelCap ||
               d.channels.length > kRamFullScanChannelCap)) {
@@ -1289,18 +1294,21 @@ void _schedulePreview(Channel channel) {
       clearStreamPreview();
     }
     final delay = tvShellLivePreviewActive
-        ? const Duration(milliseconds: 280)
+        ? const Duration(milliseconds: 1500)
         : (remote ? ChannelsController._previewFocusHoldDelayTv : ChannelsController._previewFocusHoldDelay);
     _previewDebounce = Timer(delay, () {
       if (!_previewEnabled) return;
       _startPreview(channel);
     });
+    // Önizleme otomatik durdurma kaldırıldı — kullanıcı farklı kanala
+    // geçene veya tam ekran açana kadar önizleme devam etmeli.
+    // clearStreamPreview() kanal değişiminde zaten çağrılır.
   }
 
 bool get _previewEnabled => _app.streamPreviewEnabled.value;
 
 /// Ayarlardan önizleme kapatılınca veya devre dışıyken oynatıcıyı temizler.
-  void clearStreamPreview() {
+  Future<void> clearStreamPreview() async {
     _previewDebounce?.cancel();
     _previewDebounce = null;
     _previewLoadGeneration++;
@@ -1319,7 +1327,7 @@ bool get _previewEnabled => _app.streamPreviewEnabled.value;
       previewPlayerMediaKit = null;
       previewVideoMediaKit = null;
       if (oldMk != null) {
-        unawaited(() async {
+        await MinaMediaKitLock.synchronized(() async {
           try {
             await oldMk.setVolume(0);
             await oldMk.pause();
@@ -1328,7 +1336,7 @@ bool get _previewEnabled => _app.streamPreviewEnabled.value;
           try {
             await oldMk.dispose();
           } catch (_) {}
-        }());
+        });
       }
     } catch (_) {}
     isPreviewLoading.value = false;
@@ -1449,7 +1457,7 @@ Future<void> _startPreview(Channel channel) async {
       previewPlayerMediaKit = null;
       previewVideoMediaKit = null;
       if (oldMk != null) {
-        unawaited(() async {
+        await MinaMediaKitLock.synchronized(() async {
           try {
             await oldMk.setVolume(0);
             await oldMk.pause();
@@ -1458,7 +1466,7 @@ Future<void> _startPreview(Channel channel) async {
           try {
             await oldMk.dispose();
           } catch (_) {}
-        }());
+        });
       }
     } catch (_) {}
 
@@ -1485,29 +1493,47 @@ Future<void> _startPreview(Channel channel) async {
 
     final previewEngine =
         live ? _app.livePlaybackEngine.value : _app.vodPlaybackEngine.value;
-    final useMediaKitForPreview = previewEngine == PlaybackEngineKind.mediaKit;
+    final useMediaKitForPreview =
+        previewEngine == PlaybackEngineKind.mediaKit;
     if (useMediaKitForPreview) {
       for (final url in urls) {
         if (gen != _previewLoadGeneration) return;
         try {
-          final player = Player(configuration: const PlayerConfiguration(
-            // Önizleme yüzeyi küçük — tam canlı tampon gereksiz (RAM/ısınma).
-            bufferSize: 4 * 1024 * 1024,
-            logLevel: MPVLogLevel.error,
-          ));
-          final videoController = VideoController(
-            player,
-            configuration: const VideoControllerConfiguration(
-              enableHardwareAcceleration: true,
-            ),
-          );
-          await videoController.platform.future;
+          Player? player;
+          VideoController? videoController;
+          await MinaMediaKitLock.synchronized(() async {
+            if (gen != _previewLoadGeneration) return;
+            player = Player(configuration: const PlayerConfiguration(
+              bufferSize: 4 * 1024 * 1024,
+              logLevel: MPVLogLevel.error,
+            ));
+            
+            if (Platform.isMacOS) {
+              await Future<void>.delayed(const Duration(milliseconds: 200));
+            }
+            
+            videoController = VideoController(
+              player!,
+              configuration: VideoControllerConfiguration(
+                enableHardwareAcceleration: !Platform.isMacOS,
+              ),
+            );
+            await videoController!.platform.future;
+            
+            if (Platform.isMacOS) {
+              await Future<void>.delayed(const Duration(milliseconds: 500));
+            }
+          });
+          if (player == null || videoController == null) return;
+          final p = player!;
           if (gen != _previewLoadGeneration) {
-            await player.dispose();
+            unawaited(MinaMediaKitLock.synchronized(() async {
+              try { await p.dispose(); } catch (_) {}
+            }));
             return;
           }
           final headers = IptvPlaybackDefaults.headersForStreamUrl(url);
-          await player.open(
+          await p.open(
             Media(
               url,
               httpHeaders: headers.isEmpty ? null : Map<String, String>.from(headers),
@@ -1515,13 +1541,15 @@ Future<void> _startPreview(Channel channel) async {
             play: true,
           );
           try {
-            await player.setVolume(0);
+            await p.setVolume(audible ? 100.0 : 0.0);
           } catch (_) {}
           if (gen != _previewLoadGeneration) {
-            await player.dispose();
+            await MinaMediaKitLock.synchronized(() async {
+              try { await p.dispose(); } catch (_) {}
+            });
             return;
           }
-          previewPlayerMediaKit = player;
+          previewPlayerMediaKit = p;
           previewVideoMediaKit = videoController;
           previewedChannel = channel;
           _lastPreviewedChannelId = channel.id;
@@ -1707,9 +1735,17 @@ void openChannel(Channel channel) {
     // TV: liste satırındaki FocusNode (özellikle ilk kanal) üst rotada odakta kalabiliyor;
     // oynatıcıda OSD/kumanda çalışmıyor. Önce bırak, sonra bir tick sonra rota aç.
     FocusManager.instance.primaryFocus?.unfocus();
-    Future<void>.microtask(
-      () => Get.toNamed(AppRoutes.player, arguments: channel),
-    );
+    Future<void>.microtask(() async {
+      await clearStreamPreview();
+      await Get.toNamed(AppRoutes.player, arguments: channel);
+      if (_app.layoutMode.value == AppLayoutMode.tv) {
+        final list = filteredChannels;
+        final index = list.indexWhere((c) => c.id == channel.id);
+        if (index >= 0) {
+          focusTvShellChannelRow(index);
+        }
+      }
+    });
   }
 
 Future<void> _restoreLastSelection() async {

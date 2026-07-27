@@ -1,3 +1,5 @@
+import 'dart:io';
+
 /// Sayfa geçiş efekti. Kullanıcı Ayarlar > Ana Ekran > Geçiş Efekti
 /// ekranından seçer. TV layout'unda bu seçenek gösterilmez.
 ///
@@ -35,10 +37,14 @@ enum PageTransitionEffect {
           'homeSettings.transitionEffect.jelly.sub',
       };
 
-  /// Tanınmayan / `null` storage değerini varsayılan [ios]'a çevirir.
+  /// Tanınmayan / `null` storage değerini varsayılan değere çevirir.
+  /// iOS cihazlarda varsayılan `fadeScale` (Yumuşak), diğerlerinde `ios` (sağdan sola).
   static PageTransitionEffect fromStorageKey(String? raw) {
     for (final m in values) {
       if (m.storageKey == raw) return m;
+    }
+    if (Platform.isIOS) {
+      return PageTransitionEffect.fadeScale;
     }
     return PageTransitionEffect.ios;
   }

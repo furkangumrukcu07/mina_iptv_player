@@ -21,7 +21,7 @@ class DeviceMemoryService extends GetxService {
     if (defaultTargetPlatform == TargetPlatform.android) {
       _totalMemoryMb = await _getAndroidTotalMemoryMb();
     }
-    debugPrint('[DeviceMemory] Total RAM: ${_totalMemoryMb > 0 ? "$_totalMemoryMb MB" : "Unknown"} | isLow: $isLowMemoryDevice');
+    if (kDebugMode) debugPrint('[DeviceMemory] Total RAM: ${_totalMemoryMb > 0 ? "$_totalMemoryMb MB" : "Unknown"} | isLow: $isLowMemoryDevice');
     return this;
   }
 
@@ -41,7 +41,7 @@ class DeviceMemoryService extends GetxService {
         }
       }
     } catch (e) {
-      debugPrint('[DeviceMemory] Failed to read /proc/meminfo: $e');
+      if (kDebugMode) debugPrint('[DeviceMemory] Failed to read /proc/meminfo: $e');
     }
     return -1;
   }

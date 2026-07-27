@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
@@ -141,6 +142,81 @@ DecodedEpgSnapshot? _decodeAndBuildEpgSnapshot(String json) {
 
 Future<DecodedEpgSnapshot?> decodeAndBuildEpgSnapshotInIsolate(String json) {
   return compute(_decodeAndBuildEpgSnapshot, json);
+}
+
+Future<DecodedEpgSnapshot?> decodeAndBuildEpgSnapshotFromFilePath(
+  String expectedKey,
+  String filePath,
+) async {
+  return compute(_decodeAndBuildEpgSnapshotFromFileIsolate, [expectedKey, filePath]);
+}
+
+DecodedEpgSnapshot? _decodeAndBuildEpgSnapshotFromFileIsolate(List<dynamic> args) {
+  final expectedKey = args[0] as String;
+  final filePath = args[1] as String;
+  try {
+    final file = File(filePath);
+    if (!file.existsSync()) return null;
+    final bytes = file.readAsBytesSync();
+    if (bytes.isEmpty) return null;
+    final jsonStr = utf8.decode(bytes);
+    
+    final root = _decodeEpgSnapshotJson(jsonStr);
+    if (root == null) return null;
+    if ((root['v'] as num?)?.toInt() != kEpgSnapshotFormatVersion) return null;
+    if (root['key'] as String != expectedKey) return null;
+
+    final chRaw = root['channels'];
+    final prRaw = root['programmes'];
+    if (chRaw is! Map || prRaw is! Map) return null;
+
+    final channels = <String, EpgChannel>{};
+    chRaw.forEach((k, v) {
+      if (k is! String || v is! Map) return;
+      final m = Map<String, dynamic>.from(v);
+      final id = m['id'] as String? ?? '';
+      if (id.isEmpty) return;
+      channels[k] = EpgChannel(
+        id: id,
+        name: m['name'] as String? ?? '',
+        logoUrl: m['logoUrl'] as String?,
+      );
+    });
+
+    final programmes = <String, List<EpgProgramme>>{};
+    prRaw.forEach((k, v) {
+      if (k is! String || v is! List) return;
+      final list = <EpgProgramme>[];
+      for (final item in v) {
+        if (item is! Map) continue;
+        final m = Map<String, dynamic>.from(item);
+        final start = DateTime.tryParse(m['start'] as String? ?? '');
+        final end = DateTime.tryParse(m['end'] as String? ?? '');
+        if (start == null || end == null) continue;
+        list.add(
+          EpgProgramme(
+            channelId: m['channelId'] as String? ?? k,
+            start: start,
+            end: end,
+            title: m['title'] as String? ?? '',
+            description: m['description'] as String?,
+          ),
+        );
+      }
+      if (list.isEmpty) return;
+      list.sort((a, b) => a.start.compareTo(b.start));
+      programmes[k] = list;
+    });
+
+    return DecodedEpgSnapshot(
+      key: expectedKey,
+      savedAtMs: (root['savedAtMs'] as num?)?.toInt(),
+      channels: channels,
+      programmes: programmes,
+    );
+  } catch (_) {
+    return null;
+  }
 }
 
 /// [root] doğrulandıktan sonra entity haritaları üretir.

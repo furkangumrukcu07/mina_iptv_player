@@ -161,7 +161,7 @@ class AdaptiveHapticsService extends GetxService {
       }
     } catch (e) {
       if (kDebugMode) {
-        debugPrint('mina_iptv: adaptive haptic fallback skipped: $e');
+        if (kDebugMode) debugPrint('mina_iptv: adaptive haptic fallback skipped: $e');
       }
     }
   }

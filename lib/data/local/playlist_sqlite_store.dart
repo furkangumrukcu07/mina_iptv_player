@@ -32,10 +32,10 @@ abstract final class PlaylistSqliteStore {
   static const _tMeta = 'pl_meta';
 
   /// Batch commit aralığı — bellek tepe noktasını düşük tutar. JNI LocalRef
-  /// limitlerini aşmamak için 250 olarak ayarlandı (Flutter MethodChannel'dan
+  /// limitlerini aşmamak için 1000 olarak ayarlandı (Flutter MethodChannel'dan
   /// gönderilen devasa haritalar Android JNI tarafında NewLocalRef taşmalarına
   /// sebep oluyordu). Her commit sonrası UI'a bir kez nefes verilir.
-  static const int _kInsertChunk = 250;
+  static const int _kInsertChunk = 1000;
 
   static Future<Database> _open() async {
     if (_db != null) return _db!;
@@ -328,7 +328,7 @@ CREATE TABLE $_tMeta (
       final db = await _open();
       await _deleteRows(db, sourceKey);
     } catch (e) {
-      debugPrint('mina_iptv: playlist SQLite deleteSource failed: $e');
+      if (kDebugMode) debugPrint('mina_iptv: playlist SQLite deleteSource failed: $e');
     }
   }
 
@@ -346,7 +346,7 @@ CREATE TABLE $_tMeta (
         }
       }
     } catch (e) {
-      debugPrint('mina_iptv: playlist SQLite distinctSourceKeys failed: $e');
+      if (kDebugMode) debugPrint('mina_iptv: playlist SQLite distinctSourceKeys failed: $e');
     }
     return keys;
   }
@@ -367,10 +367,10 @@ CREATE TABLE $_tMeta (
         removed++;
       }
       if (removed > 0) {
-        debugPrint('mina_iptv: playlist SQLite pruned $removed orphan source(s)');
+        if (kDebugMode) debugPrint('mina_iptv: playlist SQLite pruned $removed orphan source(s)');
       }
     } catch (e) {
-      debugPrint('mina_iptv: playlist SQLite pruneExcept failed: $e');
+      if (kDebugMode) debugPrint('mina_iptv: playlist SQLite pruneExcept failed: $e');
     }
     return removed;
   }
@@ -1213,7 +1213,7 @@ class PlaylistDbWriter {
     await b.commit(noResult: true);
 
     if (kDebugMode) {
-      debugPrint(
+      if (kDebugMode) debugPrint(
         'mina_iptv: playlist SQLite write ok ($_sourceKey, '
         '$_channelIndex ch / $_vodIndex vod / $_seriesIndex series)',
       );

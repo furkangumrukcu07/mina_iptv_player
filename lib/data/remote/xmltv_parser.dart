@@ -19,7 +19,7 @@ Map<String, dynamic> parseXmlTvBytesIsolate(Map<String, dynamic> args) {
     try {
       xmlBytes = GZipDecoder().decodeBytes(raw);
     } catch (e) {
-      debugPrint('EPG gzip decode failed inside Isolate: $e');
+      if (kDebugMode) debugPrint('EPG gzip decode failed inside Isolate: $e');
     }
   }
 
@@ -170,7 +170,7 @@ class XmlTvParser {
       // Offset yok: çoğu kaynak yerel/UTC tek zaman dilimi — yerel göster.
       return DateTime(year, month, day, hour, minute, second);
     } catch (e) {
-      debugPrint('mina_iptv: Error parsing XMLTV date $dateStr: $e');
+      if (kDebugMode) debugPrint('mina_iptv: Error parsing XMLTV date $dateStr: $e');
       return null;
     }
   }

@@ -19,7 +19,7 @@ class AppImageCacheService extends GetxService {
   // logo payı IptvLogoCacheService.maxCacheBytes ile ayrıca sınırlanır).
   // flutter_cache_manager byte değil obje adedi limiti sunduğundan, ortalama
   // ~100 KB poster için ~800 obje ≈ 80 MB olarak ayarlanır.
-  static const int cacheMaxObjects = 800;
+  static const int cacheMaxObjects = 350; // Reduced to limit memory usage
 
   static const String _urlIndexKey = 'app_image_cache.url_index.v1';
   static const String _etagIndexKey = 'app_image_cache.etag_index.v1';

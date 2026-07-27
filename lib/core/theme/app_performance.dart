@@ -96,8 +96,19 @@ abstract final class AppPerformance {
 
   /// [applyImageCacheLimits]'i ayar servisinden (düşük-donanım + TV düzeni)
   /// türeterek uygular. Tek noktadan doğru tavanı seçer.
-  static void applyImageCacheLimitsFor(AppSettingsService settings) =>
-      applyImageCacheLimits(isLowEndMode(settings), tv: isTvLayout(settings));
+  static void applyImageCacheLimitsFor(AppSettingsService settings) {
+    final userLimit = settings.imageMemoryCacheLimitMb.value;
+    if (userLimit > 0) {
+      final cache = PaintingBinding.instance.imageCache;
+      final int bytes = userLimit * 1024 * 1024;
+      // 1 MB handles around 5 average logos/posters (conservative estimation).
+      final int count = (userLimit * 5).clamp(100, 3000);
+      cache.maximumSizeBytes = bytes;
+      cache.maximumSize = count;
+      return;
+    }
+    applyImageCacheLimits(isLowEndMode(settings), tv: isTvLayout(settings));
+  }
 
   /// TV düzeni (platform bağımsız): kullanıcı yerleşim modu = TV. Tüm
   /// gerçek zamanlı blur bu modda zorla kapatılır (mobil/tablet etkilenmez).

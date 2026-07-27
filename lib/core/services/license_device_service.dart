@@ -54,7 +54,7 @@ class LicenseDeviceService {
     try {
       secureId = await _secureStorage.read(key: _storageKey);
     } catch (e) {
-      debugPrint('[LicenseDeviceService] secure read failed: $e');
+      if (kDebugMode) debugPrint('[LicenseDeviceService] secure read failed: $e');
     }
 
     final prefsId = prefs.getString(_storageKey);
@@ -73,7 +73,7 @@ class LicenseDeviceService {
       try {
         await _secureStorage.write(key: _storageKey, value: prefsId);
       } catch (e) {
-        debugPrint('[LicenseDeviceService] secure restore failed: $e');
+        if (kDebugMode) debugPrint('[LicenseDeviceService] secure restore failed: $e');
       }
       return prefsId;
     }
@@ -85,7 +85,7 @@ class LicenseDeviceService {
     try {
       await _secureStorage.write(key: _storageKey, value: generated);
     } catch (e) {
-      debugPrint('[LicenseDeviceService] secure write failed: $e');
+      if (kDebugMode) debugPrint('[LicenseDeviceService] secure write failed: $e');
     }
     await prefs.setString(_storageKey, generated);
 
@@ -113,7 +113,7 @@ class LicenseDeviceService {
         if (id.isNotEmpty && id != 'unknown') return 'mina_$id';
       }
     } catch (e) {
-      debugPrint('[LicenseDeviceService] error fetching hardware ID: $e');
+      if (kDebugMode) debugPrint('[LicenseDeviceService] error fetching hardware ID: $e');
     }
     return _generateRandomDeviceId();
   }
@@ -142,7 +142,7 @@ class LicenseDeviceService {
         if (name.isNotEmpty) return name;
       }
     } catch (e) {
-      debugPrint('[LicenseDeviceService] device label error: $e');
+      if (kDebugMode) debugPrint('[LicenseDeviceService] device label error: $e');
     }
     return 'Cihaz';
   }
@@ -190,7 +190,7 @@ class LicenseDeviceService {
           maxDevices: maxDevices,
         );
       }
-      debugPrint(
+      if (kDebugMode) debugPrint(
         '[LicenseDeviceService] register failed: ${e.code} ${e.message}',
       );
       return LicenseDeviceRegistrationResult(
@@ -200,7 +200,7 @@ class LicenseDeviceService {
         errorMessage: e.message,
       );
     } catch (e) {
-      debugPrint('[LicenseDeviceService] register error: $e');
+      if (kDebugMode) debugPrint('[LicenseDeviceService] register error: $e');
       return LicenseDeviceRegistrationResult(
         registered: false,
         deviceLimitExceeded: false,
@@ -220,7 +220,7 @@ class LicenseDeviceService {
       final data = Map<String, dynamic>.from(result.data);
       return parseDevices(data['devices']);
     } catch (e) {
-      debugPrint('[LicenseDeviceService] listDevices error: $e');
+      if (kDebugMode) debugPrint('[LicenseDeviceService] listDevices error: $e');
       return const [];
     }
   }
@@ -234,7 +234,7 @@ class LicenseDeviceService {
       await callable.call<Map<String, dynamic>>({'deviceId': deviceId});
       return true;
     } catch (e) {
-      debugPrint('[LicenseDeviceService] removeDevice error: $e');
+      if (kDebugMode) debugPrint('[LicenseDeviceService] removeDevice error: $e');
       return false;
     }
   }

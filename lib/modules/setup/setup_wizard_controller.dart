@@ -17,20 +17,19 @@ import '../playlist/playlist_controller.dart';
 class SetupWizardController extends GetxController {
   final pageIndex = 0.obs;
   static const int totalPages = 8;
-  static const int tvTotalPages = 6;
+  static const int tvTotalPages = 5;
 
   static int pageCountFor(bool tv) => tv ? tvTotalPages : totalPages;
 
   static String stepKeyFor(int index, {required bool tv}) {
     if (tv) {
       return switch (index) {
-        0 => 'setup.stepLayoutMode',
-        1 => 'setup.stepTheme',
-        2 => 'setup.stepPlayer',
-        3 => 'setup.stepPerformance',
-        4 => 'setup.stepAppFont',
-        5 => 'setup.stepSource',
-        _ => 'setup.stepLayoutMode',
+        0 => 'setup.stepTheme',
+        1 => 'setup.stepPlayer',
+        2 => 'setup.stepPerformance',
+        3 => 'setup.stepAppFont',
+        4 => 'setup.stepSource',
+        _ => 'setup.stepTheme',
       };
     }
     return switch (index) {

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_volume_controller/flutter_volume_controller.dart';
 import 'package:get/get.dart';
 
@@ -39,7 +40,7 @@ class SystemVolumeService extends GetxService with WidgetsBindingObserver {
     try {
       await FlutterVolumeController.updateShowSystemUI(false);
     } catch (e) {
-      debugPrint('SystemVolumeService: Failed to hide system UI: $e');
+      if (kDebugMode) debugPrint('SystemVolumeService: Failed to hide system UI: $e');
     }
 
     // 2. Mevcut ses seviyesini al
@@ -49,7 +50,7 @@ class SystemVolumeService extends GetxService with WidgetsBindingObserver {
         _systemVolume.value = volume.clamp(0.0, 1.0);
       }
     } catch (e) {
-      debugPrint('SystemVolumeService: Failed to get initial volume: $e');
+      if (kDebugMode) debugPrint('SystemVolumeService: Failed to get initial volume: $e');
     }
 
     // 3. Ses değişikliklerini dinle
@@ -100,7 +101,7 @@ class SystemVolumeService extends GetxService with WidgetsBindingObserver {
         }
       }
     } catch (e) {
-      debugPrint('SystemVolumeService: Sync failed: $e');
+      if (kDebugMode) debugPrint('SystemVolumeService: Sync failed: $e');
     }
   }
 
@@ -123,28 +124,33 @@ class SystemVolumeService extends GetxService with WidgetsBindingObserver {
             )),
       );
 
-      final overlay = Get.overlayContext != null
-          ? Overlay.maybeOf(Get.overlayContext!)
-          : null;
-
-      if (overlay != null) {
-        overlay.insert(_overlayEntry!);
-      } else {
-        _overlayEntry = null;
+            // Safely insert overlay only if overlay context is available
+      if (Get.overlayContext == null) {
+        if (kDebugMode) debugPrint('SystemVolumeService: No overlay context, OSD skipped.');
+        return;
       }
-    }
-
-    _osdTimer = Timer(const Duration(milliseconds: 2000), () {
-      _showOsd.value = false;
-      Future.delayed(const Duration(milliseconds: 300), () {
-        if (!_showOsd.value) {
-          if (_overlayEntry?.mounted ?? false) {
-            _overlayEntry?.remove();
-          }
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final overlay = Overlay.maybeOf(Get.overlayContext!);
+        if (overlay != null && _overlayEntry != null) {
+          overlay.insert(_overlayEntry!);
+        } else {
           _overlayEntry = null;
         }
       });
-    });
+
+      // Hide OSD after delay and safely remove overlay
+      _osdTimer = Timer(const Duration(milliseconds: 2000), () {
+        _showOsd.value = false;
+        Future.delayed(const Duration(milliseconds: 300), () {
+          if (!_showOsd.value) {
+            if (_overlayEntry?.mounted ?? false) {
+              _overlayEntry?.remove();
+            }
+            _overlayEntry = null;
+          }
+        });
+      });
+    }
   }
 
   @override
@@ -170,7 +176,7 @@ class SystemVolumeService extends GetxService with WidgetsBindingObserver {
       await FlutterVolumeController.setVolume(clampedValue);
       _systemVolume.value = clampedValue;
     } catch (e) {
-      debugPrint('SystemVolumeService: Set volume failed: $e');
+      if (kDebugMode) debugPrint('SystemVolumeService: Set volume failed: $e');
     }
   }
 

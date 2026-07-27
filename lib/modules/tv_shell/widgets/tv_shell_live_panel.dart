@@ -250,8 +250,11 @@ class _TvShellLivePanelState extends State<TvShellLivePanel> {
   }
 
   void _pruneOutofViewportFocusNodes(int centerIndex, int listLength) {
-    final minKeep = (centerIndex - 10).clamp(0, listLength);
-    final maxKeep = (centerIndex + 10).clamp(0, listLength);
+    // Genişletilmiş aralık: cacheExtent (40 satır) ile uyumlu olması için
+    // ±45 aralığı tutulur. Bu, viewport dışına kısa süreli çıkışlarda
+    // focus node'ların sürekli dispose/recreate edilmesini önler.
+    final minKeep = (centerIndex - 45).clamp(0, listLength);
+    final maxKeep = (centerIndex + 45).clamp(0, listLength);
 
     final channelKeys = _channelFocusNodes.keys.toList();
     for (final k in channelKeys) {
@@ -612,6 +615,7 @@ class _TvShellLivePanelState extends State<TvShellLivePanel> {
       return KeyEventResult.handled;
     }
     if (tvKeyIsBack(k)) {
+      widget.shell.markBackHandled();
       widget.shell.onLeftFromLiveBrowse();
       return KeyEventResult.handled;
     }
@@ -667,7 +671,7 @@ class _TvShellLivePanelState extends State<TvShellLivePanel> {
           },
           child: ListView.builder(
             controller: _listScroll,
-            cacheExtent: remoteNav ? metrics.rowH * 20 : 250,
+            cacheExtent: remoteNav ? metrics.rowH * 40 : 250,
             physics: touchScroll
                 ? const BouncingScrollPhysics(
                     parent: AlwaysScrollableScrollPhysics(),
@@ -725,6 +729,10 @@ class _TvShellLivePanelState extends State<TvShellLivePanel> {
                       ? widget.shell.onLeftFromLiveBrowse
                       : widget.shell.onLeftFromLiveContent,
                   onSelect: () {
+                    // Mouse tıklama: focus'u da tıklanan kanala taşı.
+                    if (remoteNav) {
+                      _channelFocusFor(index).requestFocus();
+                    }
                     if (widget.channels.selectedChannel.value?.id == ch.id) {
                       return;
                     }
@@ -800,10 +808,11 @@ class _TvShellLivePanelState extends State<TvShellLivePanel> {
                                     child: ValueListenableBuilder<int>(
                                       valueListenable: _tickValue,
                                       builder: (context, tick, child) {
-                                        return ListView.builder(
-                                          controller: _epgVScroll,
-                                          primary: false,
-                                          physics: touchScroll
+                                         return ListView.builder(
+                                           controller: _epgVScroll,
+                                           primary: false,
+                                           cacheExtent: remoteNav ? metrics.rowH * 40 : 250,
+                                           physics: touchScroll
                                               ? const BouncingScrollPhysics(
                                                   parent:
                                                       AlwaysScrollableScrollPhysics(),
@@ -1087,6 +1096,9 @@ class _TvShellLivePanelState extends State<TvShellLivePanel> {
                 }
                 if (k == LogicalKeyboardKey.arrowLeft ||
                     tvKeyIsBack(k)) {
+                  if (tvKeyIsBack(k)) {
+                    widget.shell.markBackHandled();
+                  }
                   widget.shell.onLeftFromLiveBrowse();
                   return KeyEventResult.handled;
                 }

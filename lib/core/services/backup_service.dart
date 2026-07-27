@@ -177,7 +177,7 @@ class BackupService {
         if (v != null && v.isNotEmpty) secureMap[k] = v;
       }
     } catch (e) {
-      debugPrint('BackupService: secure readAll failed, fallback: $e');
+      if (kDebugMode) debugPrint('BackupService: secure readAll failed, fallback: $e');
       for (final k in _secureKeys) {
         try {
           final v = await _storage.read(key: k);
@@ -228,7 +228,7 @@ class BackupService {
       await f.parent.create(recursive: true);
       await f.writeAsString(content, flush: true);
     } catch (e) {
-      debugPrint('BackupService: local M3U write failed: $e');
+      if (kDebugMode) debugPrint('BackupService: local M3U write failed: $e');
     }
   }
 
@@ -331,7 +331,7 @@ class BackupService {
           );
       }
     } catch (e, st) {
-      debugPrint('BackupService.export failed: $e\n$st');
+      if (kDebugMode) debugPrint('BackupService.export failed: $e\n$st');
       return BackupShareResult.failure(e.toString());
     }
   }
@@ -376,7 +376,7 @@ class BackupService {
     } on BackupFormatException catch (e) {
       return BackupImportResult.failure(e.message);
     } catch (e, st) {
-      debugPrint('BackupService.import failed: $e\n$st');
+      if (kDebugMode) debugPrint('BackupService.import failed: $e\n$st');
       return BackupImportResult.failure(e.toString());
     }
   }
@@ -454,7 +454,7 @@ class BackupService {
               break;
           }
         } catch (e) {
-          debugPrint('BackupService: skip key=$key err=$e');
+          if (kDebugMode) debugPrint('BackupService: skip key=$key err=$e');
         }
       }
     }
@@ -473,7 +473,7 @@ class BackupService {
             await _storage.delete(key: k);
           }
         } catch (e) {
-          debugPrint('BackupService: secure write failed $k err=$e');
+          if (kDebugMode) debugPrint('BackupService: secure write failed $k err=$e');
         }
       }
     }
@@ -515,7 +515,7 @@ class BackupService {
         final f = File('${dir.path}/${_localM3uFileNameForSlot(slot)}');
         if (await f.exists()) await f.delete();
       } catch (e) {
-        debugPrint('BackupService: local M3U cleanup slot=$slot err=$e');
+        if (kDebugMode) debugPrint('BackupService: local M3U cleanup slot=$slot err=$e');
       }
     }
 
@@ -526,7 +526,7 @@ class BackupService {
       createdAt: _parseCreatedAt(data['createdAt']),
     );
     } catch (e, st) {
-      debugPrint('BackupService._applyBackupJson failed: $e\n$st');
+      if (kDebugMode) debugPrint('BackupService._applyBackupJson failed: $e\n$st');
       rethrow;
     }
   }

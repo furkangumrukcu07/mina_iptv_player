@@ -185,9 +185,15 @@ class _TvShellSeriesCinemaPanelState extends State<TvShellSeriesCinemaPanel> {
 
   void _focusEpisodeIfReady() {
     if (!widget.shell.vodContentPinned.value) return;
-    if (widget.shell.seriesEpisodesLoading.value) return;
+    if (widget.shell.seriesEpisodesLoading.value) {
+      scheduleTvFocusRestore(_favFocus);
+      return;
+    }
     final seasons = widget.shell.seriesSeasons;
-    if (seasons.isEmpty) return;
+    if (seasons.isEmpty) {
+      scheduleTvFocusRestore(_favFocus);
+      return;
+    }
     if (!mounted) return;
     const seasonChipW = 108.0;
     final episodeCardW = _episodeCardWidth(context);
@@ -199,7 +205,10 @@ class _TvShellSeriesCinemaPanelState extends State<TvShellSeriesCinemaPanel> {
     }
 
     final episodes = widget.shell.seriesEpisodesInSeason;
-    if (episodes.isEmpty) return;
+    if (episodes.isEmpty) {
+      scheduleTvFocusRestore(_favFocus);
+      return;
+    }
 
     var epIdx = widget.shell.seriesFocusedEpisodeIndex.value;
     epIdx = epIdx.clamp(0, episodes.length - 1);
@@ -406,9 +415,11 @@ class _TvShellSeriesCinemaPanelState extends State<TvShellSeriesCinemaPanel> {
                       children: [
                         TvShellPerf.maybeSlide(
                           hidden: pinned,
-                          child: IgnorePointer(
-                            ignoring: pinned,
-                            child: Column(
+                          child: ExcludeFocus(
+                            excluding: pinned,
+                            child: IgnorePointer(
+                              ignoring: pinned,
+                              child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.stretch,
                                 mainAxisSize: MainAxisSize.min,
                                 children: [
@@ -504,6 +515,7 @@ class _TvShellSeriesCinemaPanelState extends State<TvShellSeriesCinemaPanel> {
                               ),
                             ),
                           ),
+                        ),
                           AnimatedOpacity(
                             opacity: pinned ? 1 : 0,
                             duration: const Duration(milliseconds: 280),

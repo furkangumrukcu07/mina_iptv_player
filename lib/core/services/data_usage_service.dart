@@ -169,10 +169,10 @@ class DataUsageService extends GetxService {
       final tx = (res['txBytes'] as num?)?.toInt() ?? 0;
       return _NativeStats(rxBytes: rx, txBytes: tx);
     } on PlatformException catch (e) {
-      debugPrint('mina_iptv: data_usage native error: $e');
+      if (kDebugMode) debugPrint('mina_iptv: data_usage native error: $e');
       return null;
     } catch (e) {
-      debugPrint('mina_iptv: data_usage unknown error: $e');
+      if (kDebugMode) debugPrint('mina_iptv: data_usage unknown error: $e');
       return null;
     }
   }

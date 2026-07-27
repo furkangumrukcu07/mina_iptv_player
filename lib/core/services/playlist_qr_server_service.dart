@@ -58,14 +58,14 @@ class PlaylistQrServerService {
     _sub = server.listen(
       _handleRequest,
       onError: (e, st) {
-        debugPrint('mina_iptv: qr server error: $e');
+        if (kDebugMode) debugPrint('mina_iptv: qr server error: $e');
       },
       cancelOnError: false,
     );
 
     // 3. Otomatik kapanma sayacı.
     _autoShutdown = Timer(timeout, () {
-      debugPrint('mina_iptv: qr server timed out, stopping');
+      if (kDebugMode) debugPrint('mina_iptv: qr server timed out, stopping');
       stop();
     });
 
@@ -85,7 +85,7 @@ class PlaylistQrServerService {
       try {
         await s.close(force: true);
       } catch (e) {
-        debugPrint('mina_iptv: qr server close error: $e');
+        if (kDebugMode) debugPrint('mina_iptv: qr server close error: $e');
       }
     }
   }
@@ -104,7 +104,7 @@ class PlaylistQrServerService {
         return wifiIp;
       }
     } catch (e) {
-      debugPrint('mina_iptv: getWifiIP failed: $e');
+      if (kDebugMode) debugPrint('mina_iptv: getWifiIP failed: $e');
     }
     // Fallback: tüm interface'leri tarayıp ilk gerçek IPv4'ü al.
     try {
@@ -123,7 +123,7 @@ class PlaylistQrServerService {
         }
       }
     } catch (e) {
-      debugPrint('mina_iptv: NetworkInterface.list failed: $e');
+      if (kDebugMode) debugPrint('mina_iptv: NetworkInterface.list failed: $e');
     }
     return null;
   }
@@ -157,7 +157,7 @@ class PlaylistQrServerService {
       req.response.write('Not Found');
       await req.response.close();
     } catch (e) {
-      debugPrint('mina_iptv: qr server handle error: $e');
+      if (kDebugMode) debugPrint('mina_iptv: qr server handle error: $e');
       try {
         req.response.statusCode = 500;
         await req.response.close();

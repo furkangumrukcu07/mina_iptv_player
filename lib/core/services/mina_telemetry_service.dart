@@ -47,11 +47,15 @@ class MinaTelemetryService extends GetxService {
           : 3500;
       await Future<void>.delayed(Duration(milliseconds: delayMs));
       
+      final settings = Get.find<AppSettingsService>();
+      final isTvOrTablet = settings.layoutMode.value == AppLayoutMode.tv ||
+          settings.layoutMode.value == AppLayoutMode.tablet;
+
       _analytics = _analyticsOverride ?? FirebaseAnalytics.instance;
-      await _analytics!.setAnalyticsCollectionEnabled(true);
+      await _analytics!.setAnalyticsCollectionEnabled(!isTvOrTablet);
       await _loadDeviceModel();
     } catch (e) {
-      debugPrint('mina_iptv: Telemetry init hata: $e');
+      if (kDebugMode) debugPrint('mina_iptv: Telemetry init hata: $e');
       _analytics = null;
     }
     return this;
@@ -68,7 +72,7 @@ class MinaTelemetryService extends GetxService {
         _deviceModel = '${iosInfo.model} ${iosInfo.systemVersion}';
       }
     } catch (e) {
-      debugPrint('mina_iptv: Device model alınamadı: $e');
+      if (kDebugMode) debugPrint('mina_iptv: Device model alınamadı: $e');
     }
   }
 
@@ -93,7 +97,7 @@ class MinaTelemetryService extends GetxService {
         },
       );
     } catch (e) {
-      debugPrint('mina_iptv: Telemetry snapshot hata: $e');
+      if (kDebugMode) debugPrint('mina_iptv: Telemetry snapshot hata: $e');
     }
   }
 
@@ -190,7 +194,7 @@ class MinaTelemetryService extends GetxService {
         parameters: params,
       );
     } catch (e) {
-      debugPrint('mina_iptv: Purchase log hata: $e');
+      if (kDebugMode) debugPrint('mina_iptv: Purchase log hata: $e');
     }
   }
 

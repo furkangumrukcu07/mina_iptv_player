@@ -87,7 +87,7 @@ class OmdbService extends GetxService {
         }
       }
     } catch (e) {
-      debugPrint('TMDB API error: $e');
+      if (kDebugMode) debugPrint('TMDB API error: $e');
     }
     return null;
   }
@@ -120,7 +120,7 @@ class OmdbService extends GetxService {
         return data;
       }
     } catch (e) {
-      debugPrint('OMDB API error (by ID): $e');
+      if (kDebugMode) debugPrint('OMDB API error (by ID): $e');
     }
 
     return null;
@@ -175,7 +175,7 @@ class OmdbService extends GetxService {
         }
       }
     } catch (e) {
-      debugPrint('OMDB API error (by title fallback): $e');
+      if (kDebugMode) debugPrint('OMDB API error (by title fallback): $e');
     }
 
     return null;

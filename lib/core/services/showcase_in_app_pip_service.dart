@@ -1,4 +1,5 @@
 import 'dart:async' show unawaited;
+import 'dart:io';
 
 import 'package:better_player_plus/better_player_plus.dart';
 import 'package:flutter/foundation.dart';
@@ -11,6 +12,7 @@ import 'package:media_kit_video/media_kit_video.dart';
 import '../layout/app_layout_mode.dart';
 import '../player/iptv_playback_defaults.dart';
 import '../player/playback_engine_kind.dart';
+import '../player/media_kit_lock.dart';
 import '../player/video_player_engine.dart';
 import '../routes/app_routes.dart';
 import '../../domain/entities/channel.dart';
@@ -216,21 +218,22 @@ class ShowcaseInAppPipService extends GetxService {
 
   /// Oynatıcı route kapanmadan motorları servise devralır.
   Future<bool> acceptHandoffFrom(PlayerController ctrl) async {
+    if (Platform.isMacOS) return false;
     final settings = Get.find<AppSettingsService>();
     if (!settings.isShowcaseInAppPipEffectivelyEnabled) {
-      debugPrint(
+      if (kDebugMode) debugPrint(
         'mina_iptv: in-app pip handoff skipped '
         '(setting off or live MediaKit primary)',
       );
       return false;
     }
     if (!ctrl.showcaseInAppPipHandoff) {
-      debugPrint('mina_iptv: in-app pip handoff skipped (route flag off)');
+      if (kDebugMode) debugPrint('mina_iptv: in-app pip handoff skipped (route flag off)');
       return false;
     }
 
     if (!ctrl.playbackEligibleForShowcaseHandoff()) {
-      debugPrint('mina_iptv: showcase pip handoff skipped (playback not eligible)');
+      if (kDebugMode) debugPrint('mina_iptv: showcase pip handoff skipped (playback not eligible)');
       return false;
     }
 
@@ -240,7 +243,7 @@ class ShowcaseInAppPipService extends GetxService {
     final sessionKey = _sessionKeyForChannel(args.channel);
     if (sessionKey == _suppressNextHandoffForSessionKey) {
       _suppressNextHandoffForSessionKey = null;
-      debugPrint(
+      if (kDebugMode) debugPrint(
         'mina_iptv: in-app pip handoff skipped (same session after pip reopen)',
       );
       return false;
@@ -292,7 +295,7 @@ class ShowcaseInAppPipService extends GetxService {
     active.value = true;
     _showHomeOverlayAfterHandoff();
 
-    debugPrint(
+    if (kDebugMode) debugPrint(
       'mina_iptv: showcase in-app pip handoff ok (${engine.storageValue})',
     );
     return true;
@@ -342,7 +345,7 @@ class ShowcaseInAppPipService extends GetxService {
 
     // Dialog/BottomSheet açıksa onlara dokunma, orphan fullscreen değildir veya altında kalmıştır.
     if (Get.isDialogOpen == true || Get.isBottomSheetOpen == true) {
-      debugPrint('mina_iptv: showcase pip orphaned fullscreen pop skipped due to open dialog');
+      if (kDebugMode) debugPrint('mina_iptv: showcase pip orphaned fullscreen pop skipped due to open dialog');
       return;
     }
 
@@ -350,12 +353,12 @@ class ShowcaseInAppPipService extends GetxService {
       final root = Navigator.of(ctx, rootNavigator: true);
       if (root.canPop()) {
         root.pop();
-        debugPrint(
+        if (kDebugMode) debugPrint(
           'mina_iptv: showcase pip popped orphaned better fullscreen route',
         );
       }
     } catch (e, st) {
-      debugPrint(
+      if (kDebugMode) debugPrint(
         'mina_iptv: showcase pip orphaned fullscreen pop failed: $e\n$st',
       );
     }
@@ -388,14 +391,14 @@ class ShowcaseInAppPipService extends GetxService {
           }
           success = true;
         } catch (e, st) {
-          debugPrint(
+          if (kDebugMode) debugPrint(
             'mina_iptv: showcase pip better surface refresh#$attempt: $e\n$st',
           );
         }
       }
 
       final mk = _mediaKitPlayer;
-      if (mk != null) {
+      if (mk != null && !Platform.isMacOS) {
         try {
           if (_mediaKitVideo == null) {
             _mediaKitVideo = VideoController(
@@ -409,7 +412,7 @@ class ShowcaseInAppPipService extends GetxService {
           }
           success = true;
         } catch (e, st) {
-          debugPrint(
+          if (kDebugMode) debugPrint(
             'mina_iptv: showcase pip mediaKit surface refresh#$attempt: $e\n$st',
           );
         }
@@ -420,7 +423,7 @@ class ShowcaseInAppPipService extends GetxService {
     }
 
     ensureOverlayVisibleOnHome();
-    debugPrint(
+    if (kDebugMode) debugPrint(
       'mina_iptv: showcase in-app pip surface refresh done '
       '(engine=${_handoffEngine.storageValue}, epoch=${surfaceEpoch.value})',
     );
@@ -432,11 +435,11 @@ class ShowcaseInAppPipService extends GetxService {
 
   /// Yeni [PlayerController] açılışında motorları geri verir; [_boot] atlanır.
   Future<bool> tryRestoreInto(PlayerController ctrl) async {
-    if (!active.value || _args == null) return false;
+    if (Platform.isMacOS || !active.value || _args == null) return false;
 
     final ch = ctrl.channel.value;
     if (!_channelsMatchForRestore(ch, _args!.channel)) {
-      debugPrint(
+      if (kDebugMode) debugPrint(
         'mina_iptv: showcase pip restore skipped (channel mismatch id=${ch.id})',
       );
       await stopAndDispose();
@@ -457,7 +460,7 @@ class ShowcaseInAppPipService extends GetxService {
           try {
             await _mediaKitVideo!.platform.future;
           } catch (e, st) {
-            debugPrint(
+            if (kDebugMode) debugPrint(
               'mina_iptv: showcase pip mk video controller ready: $e\n$st',
             );
           }
@@ -474,7 +477,7 @@ class ShowcaseInAppPipService extends GetxService {
     }
 
     if (!restored) {
-      debugPrint(
+      if (kDebugMode) debugPrint(
         'mina_iptv: showcase pip restore failed (engine=${_handoffEngine.storageValue})',
       );
       _reopenedFromPipBubble = false;
@@ -483,7 +486,7 @@ class ShowcaseInAppPipService extends GetxService {
     }
 
     _releaseOwnershipWithoutDispose();
-    debugPrint('mina_iptv: showcase pip restore ok (${_handoffEngine.storageValue})');
+    if (kDebugMode) debugPrint('mina_iptv: showcase pip restore ok (${_handoffEngine.storageValue})');
     return true;
   }
 
@@ -556,20 +559,24 @@ class ShowcaseInAppPipService extends GetxService {
         await b.pause();
         b.dispose(forceDispose: true);
       } catch (e, st) {
-        debugPrint('mina_iptv: showcase in-app pip better dispose: $e\n$st');
+        if (kDebugMode) debugPrint('mina_iptv: showcase in-app pip better dispose: $e\n$st');
       }
     }
 
     final mk = _mediaKitPlayer;
     _mediaKitPlayer = null;
     if (mk != null) {
-      try {
-        await mk.pause();
-        await mk.stop();
-        await mk.dispose();
-      } catch (e, st) {
-        debugPrint('mina_iptv: showcase in-app pip mediaKit dispose: $e\n$st');
-      }
+      await MinaMediaKitLock.synchronized(() async {
+        try {
+          await mk.pause();
+          await mk.stop();
+          if (!Platform.isMacOS) {
+            await mk.dispose();
+          }
+        } catch (e, st) {
+          if (kDebugMode) debugPrint('mina_iptv: showcase in-app pip mediaKit dispose: $e\n$st');
+        }
+      });
     }
   }
 

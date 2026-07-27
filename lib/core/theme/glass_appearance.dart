@@ -11,9 +11,6 @@ abstract final class GlassThemeLabels {
   /// (`blackdikey` / `blackyatay`) ve neredeyse opak siyah paneller.
   static const amoledBlack = 'Amoled Black';
 
-  /// Açık cam / blur; arka plan varsayılan portre/yatay görsellerle ([AppTheme]).
-  static const glassmorphism = 'Glassmorphism';
-
   /// Kömür yüzey, mor vurgu, düz kartlar; özel arka plan görseli.
   static const darkFlat = 'Dark Flat';
 
@@ -36,14 +33,6 @@ abstract final class GlassThemeLabels {
   /// duvar kağıdı (dikey/yatay). Eski TV box / zayıf cihazlar için sade tema.
   static const tvLite = 'TV Lite';
 
-  /// iOS 27 "Liquid Glass": çok saydam damla cam panelleri, iOS mavisi vurgu,
-  /// büyük yuvarlatılmış köşeler; akışkan cam damla duvar kağıdı (dikey/yatay).
-  static const ios27 = 'IOS 27';
-
-  /// macOS 26 Tahoe "Mac Tema": Apple koyu cam panelleri, Apple mavisi vurgu,
-  /// 20px köşeler, Tahoe akışkan dalga duvar kağıdı.
-  static const macTema = 'Mac Tema';
-
   /// Tasarım C: Canlı zeminli, MacOS (Apple) tarzı buzlu cam tasarımı.
   /// İsim: Trabzon. Özellikleri: Yüksek blur, şeffaf kartlar, mesh gradient arka plan.
   static const trabzon = 'Trabzon';
@@ -55,15 +44,12 @@ abstract final class GlassThemeLabels {
     varsayilan,
     koyuCam,
     amoledBlack,
-    glassmorphism,
     minaGlass,
     flyUi,
     semcTheme,
     darkFlat,
     flatBlack,
     glassGri,
-    ios27,
-    macTema,
     trabzon,
   ];
 
@@ -73,7 +59,6 @@ abstract final class GlassThemeLabels {
   /// TV düzeninde seçilemez / gösterilmez temalar.
   static const Set<String> tvExcludedThemeLabels = {
     varsayilan,
-    glassmorphism,
     minaGlass,
     flyUi,
   };
@@ -108,7 +93,6 @@ final class GlassAppearance {
   const GlassAppearance._({
     required this.isDarkGlass,
     required this.isAmoledBlack,
-    required this.isGlassmorphism,
     required this.isDarkFlat,
     required this.isFlatBlack,
     required this.isGlassGri,
@@ -116,8 +100,6 @@ final class GlassAppearance {
     required this.isSemc,
     required this.isFlyUi,
     required this.isTvLite,
-    required this.isIos27,
-    required this.isMacTema,
     required this.isTrabzon,
   });
 
@@ -149,7 +131,6 @@ final class GlassAppearance {
 
   final bool isDarkGlass;
   final bool isAmoledBlack;
-  final bool isGlassmorphism;
   final bool isDarkFlat;
   final bool isFlatBlack;
   final bool isGlassGri;
@@ -157,9 +138,11 @@ final class GlassAppearance {
   final bool isSemc;
   final bool isFlyUi;
   final bool isTvLite;
-  final bool isIos27;
-  final bool isMacTema;
   final bool isTrabzon;
+
+  bool get isGlassmorphism => false;
+  bool get isIos27 => false;
+  bool get isMacTema => false;
 
   /// Buzlu beyaz cam ailesi (Flyme / Glassmorphism / Mina Glass).
   bool get _isFrostedGlass => isGlassmorphism || isMinaGlass || isFlyUi;
@@ -175,18 +158,13 @@ final class GlassAppearance {
 
   factory GlassAppearance.fromLabel(String themeLabel) {
     final amoled = themeLabel == GlassThemeLabels.amoledBlack;
-    final mac = themeLabel == GlassThemeLabels.macTema;
     final trab = themeLabel == GlassThemeLabels.trabzon;
     return GlassAppearance._(
       // AMOLED, koyu cam ailesini miras alır; ek olarak [isAmoledBlack]
       // override'ları ile saf siyah panellere dönüşür.
-      // iOS 27 da koyu cam dilini taban alır.
       isDarkGlass: themeLabel == GlassThemeLabels.koyuCam ||
-          amoled ||
-          themeLabel == GlassThemeLabels.ios27 ||
-          mac,
+          amoled,
       isAmoledBlack: amoled,
-      isGlassmorphism: themeLabel == GlassThemeLabels.glassmorphism,
       isDarkFlat: themeLabel == GlassThemeLabels.darkFlat,
       isFlatBlack: themeLabel == GlassThemeLabels.flatBlack,
       isGlassGri: themeLabel == GlassThemeLabels.glassGri,
@@ -194,8 +172,6 @@ final class GlassAppearance {
       isSemc: themeLabel == GlassThemeLabels.semcTheme,
       isFlyUi: themeLabel == GlassThemeLabels.flyUi,
       isTvLite: themeLabel == GlassThemeLabels.tvLite,
-      isIos27: themeLabel == GlassThemeLabels.ios27,
-      isMacTema: mac,
       isTrabzon: trab,
     );
   }
@@ -205,7 +181,6 @@ final class GlassAppearance {
     return const GlassAppearance._(
       isDarkGlass: true,
       isAmoledBlack: false,
-      isGlassmorphism: false,
       isDarkFlat: false,
       isFlatBlack: false,
       isGlassGri: false,
@@ -213,8 +188,6 @@ final class GlassAppearance {
       isSemc: false,
       isFlyUi: false,
       isTvLite: false,
-      isIos27: false,
-      isMacTema: false,
       isTrabzon: false,
     );
   }

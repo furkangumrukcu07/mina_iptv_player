@@ -58,7 +58,7 @@ class PlaylistSqliteBackfillService extends GetxService {
       if (!await PlaylistSqliteStore.hasData(dbKey)) return;
       await _notifyActiveSlotIfNeeded(dbKey: dbKey, forSlot: forSlot);
     } catch (e, st) {
-      debugPrint('mina_iptv: SQLite backfill failed ($dbKey): $e\n$st');
+      if (kDebugMode) debugPrint('mina_iptv: SQLite backfill failed ($dbKey): $e\n$st');
     }
   }
 

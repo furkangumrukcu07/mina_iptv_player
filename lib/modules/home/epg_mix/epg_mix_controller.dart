@@ -121,7 +121,7 @@ class EpgMixController extends GetxController {
   Future<void> _playReplay(EpgMixEntry entry) async {
     final src = await _xtreamSource();
     if (src == null) {
-      debugPrint(
+      if (kDebugMode) debugPrint(
         'mina_iptv: replay playback aborted — no Xtream source found in any '
         'of the active playlist slots (live URL fallback also skipped).',
       );
@@ -151,7 +151,7 @@ class EpgMixController extends GetxController {
       template: template,
     );
     if (url == null || url.isEmpty) {
-      debugPrint(
+      if (kDebugMode) debugPrint(
         'mina_iptv: replay URL build failed for channel=${entry.channel.id} '
         '"${entry.channel.name}" programme="${entry.programme.title}" '
         'template="$template" src.base="${src.baseUrl}"',
@@ -162,7 +162,7 @@ class EpgMixController extends GetxController {
       );
       return;
     }
-    debugPrint(
+    if (kDebugMode) debugPrint(
       'mina_iptv: replay → $url '
       '(programme="${entry.programme.title}" '
       'start=${entry.programme.start.toIso8601String()} '
@@ -230,7 +230,7 @@ class EpgMixController extends GetxController {
         final sniffed = M3uXtreamSniffer.toXtreamSource(firstM3u.url);
         if (sniffed != null) {
           _cachedXtreamSource = sniffed;
-          debugPrint(
+          if (kDebugMode) debugPrint(
             'mina_iptv: replay using sniffed Xtream creds from M3U URL '
             '(base=${sniffed.baseUrl}).',
           );
@@ -239,7 +239,7 @@ class EpgMixController extends GetxController {
       }
       _cachedXtreamSource = null;
     } catch (e, st) {
-      debugPrint('mina_iptv: replay source resolve failed: $e\n$st');
+      if (kDebugMode) debugPrint('mina_iptv: replay source resolve failed: $e\n$st');
       _cachedXtreamSource = null;
     } finally {
       _xtreamSourceLoading = null;

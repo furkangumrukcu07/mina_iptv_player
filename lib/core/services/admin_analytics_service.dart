@@ -1,4 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../util/firestore_timeout.dart';
 import 'package:flutter/foundation.dart';
 import 'package:intl/intl.dart';
 import 'package:get/get.dart';
@@ -20,12 +21,12 @@ class AdminAnalyticsService {
       
       final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
       final docRef = FirebaseFirestore.instance.collection('admin_stats').doc(today);
-      await docRef.set({
+      await withFirestoreTimeout(docRef.set({
         'opens': FieldValue.increment(1),
         'lastUpdated': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
+      }, SetOptions(merge: true)));
     } catch (e) {
-      debugPrint('[AdminAnalytics] incrementDailyOpens error: $e');
+      if (kDebugMode) debugPrint('[AdminAnalytics] incrementDailyOpens error: $e');
     }
   }
 
@@ -39,12 +40,12 @@ class AdminAnalyticsService {
       
       final today = DateFormat('yyyy-MM-dd').format(DateTime.now());
       final docRef = FirebaseFirestore.instance.collection('admin_stats').doc(today);
-      await docRef.set({
-        'new_users': FieldValue.increment(1),
-        'lastUpdated': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
+      await withFirestoreTimeout(docRef.set({
+          'new_users': FieldValue.increment(1),
+          'lastUpdated': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true)));
     } catch (e) {
-      debugPrint('[AdminAnalytics] incrementNewUsers error: $e');
+      if (kDebugMode) debugPrint('[AdminAnalytics] incrementNewUsers error: $e');
     }
   }
 }

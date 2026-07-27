@@ -307,7 +307,7 @@ class FilmDiziSeriesDetailController extends GetxController {
       }
       return n;
     } catch (e) {
-      debugPrint('[episodeTmdbName] Error: $e');
+      if (kDebugMode) debugPrint('[episodeTmdbName] Error: $e');
       return null;
     }
   }
@@ -319,7 +319,7 @@ class FilmDiziSeriesDetailController extends GetxController {
       if (ov == null || ov.isEmpty) return null;
       return ov;
     } catch (e) {
-      debugPrint('[episodeTmdbOverview] Error: $e');
+      if (kDebugMode) debugPrint('[episodeTmdbOverview] Error: $e');
       return null;
     }
   }
@@ -426,32 +426,32 @@ class FilmDiziSeriesDetailController extends GetxController {
 
     // Debug: Episode season distribution
     final seasonGroups = <int, List<SeriesEpisodeOption>>{};
-    debugPrint('[FilmDiziSeriesDetailController] All loaded episodes:');
+    if (kDebugMode) debugPrint('[FilmDiziSeriesDetailController] All loaded episodes:');
     for (int i = 0; i < loaded.episodes.length; i++) {
       final ep = loaded.episodes[i];
-      debugPrint(
+      if (kDebugMode) debugPrint(
           '[FilmDiziSeriesDetailController]  $i: S${ep.season}E${ep.episodeNumber} (channelId: ${ep.channel.id}, title: ${ep.channel.name})');
       seasonGroups.putIfAbsent(ep.season, () => []).add(ep);
     }
     final seasonInfo = seasonGroups.entries
         .map((e) => 'S${e.key}: ${e.value.length}')
         .join(', ');
-    debugPrint(
+    if (kDebugMode) debugPrint(
         '[FilmDiziSeriesDetailController] Loaded ${loaded.episodes.length} episodes with season distribution: $seasonInfo');
 
     if (loaded.errorKey != null) {
       episodesError.value = loaded.errorKey!.tr;
     }
     final ss = seasons;
-    debugPrint('[FilmDiziSeriesDetailController] Available seasons: $ss');
+    if (kDebugMode) debugPrint('[FilmDiziSeriesDetailController] Available seasons: $ss');
     selectedSeason.value = ss.isNotEmpty ? ss.first : null;
-    debugPrint(
+    if (kDebugMode) debugPrint(
         '[FilmDiziSeriesDetailController] Selected season: ${selectedSeason.value}');
-    debugPrint(
+    if (kDebugMode) debugPrint(
         '[FilmDiziSeriesDetailController] Episodes in selected season: ${episodesInSeason.length}');
     for (int i = 0; i < episodesInSeason.length; i++) {
       final ep = episodesInSeason[i];
-      debugPrint(
+      if (kDebugMode) debugPrint(
           '[FilmDiziSeriesDetailController]  Season ${selectedSeason.value} ep $i: S${ep.season}E${ep.episodeNumber} (${ep.channel.name})');
     }
     episodesLoading.value = false;

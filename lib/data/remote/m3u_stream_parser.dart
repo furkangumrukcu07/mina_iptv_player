@@ -221,14 +221,14 @@ class M3uStreamParser {
     // hataları kullanıcı bildirmeden loglardan yakalamak için.
     final dropped = extinfSeen - emitted;
     if (dropped > 0) {
-      debugPrint(
+      if (kDebugMode) debugPrint(
         'mina_iptv: ⚠️ m3u parse drop — extinf=$extinfSeen emitted=$emitted '
         'dropped=$dropped (URL eşleşmeyen giriş) '
         'live=${channelCats.length}cat vod=${vodCats.length}cat '
         'series=${seriesCats.length}cat',
       );
     } else {
-      debugPrint(
+      if (kDebugMode) debugPrint(
         'mina_iptv: m3u parse ok — extinf=$extinfSeen emitted=$emitted',
       );
     }

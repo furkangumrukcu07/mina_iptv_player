@@ -1799,6 +1799,7 @@ extension PlayerPlaybackController on PlayerController {
   /// [VideoController] yüzeyi hazır olduktan sonra, [open] öncesi çağrılır; Android’de `vo`/`wid`
   /// sırasına burada dokunulmaz (media_kit çıktı yöneticisi).
   Future<void> applyMediaKitLibmpvPlaybackOptions(Player player) async {
+    if (Platform.isMacOS) return;
     final plat = player.platform;
     if (plat is! NativePlayer) return;
     Future<void> setMpvOpt(String key, String value) async {

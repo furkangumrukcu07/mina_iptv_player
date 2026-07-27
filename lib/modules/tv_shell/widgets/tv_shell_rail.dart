@@ -85,14 +85,17 @@ class TvShellRail extends StatelessWidget {
       builder: (context, palette) {
         return Obx(() {
           Get.find<AppSettingsService>().languageCode.value;
-          final wrappedEnabled =
-              Get.find<AppSettingsService>().minaWrappedEnabled.value;
-          final expanded = controller.railExpanded.value;
-          final w = expanded
-              ? _railExpandedWidth(context, palette)
-              : _kRailCollapsedWidth;
+          final settings = Get.find<AppSettingsService>();
+          final wrappedEnabled = settings.minaWrappedEnabled.value && settings.showTvRailWrapper.value;
+          final sections = _railSections(
+            wrappedEnabled: wrappedEnabled,
+            showPlaylists: settings.showTvRailPlaylists.value,
+            showRepeat: settings.showTvRailRepeat.value,
+            showContinueWatching: settings.showTvRailContinueWatching.value,
+          );
 
-          final sections = _railSections(wrappedEnabled);
+          final expanded = controller.railExpanded.value;
+          final w = expanded ? _railExpandedWidth(context, palette) : _kRailCollapsedWidth;
 
           Widget content = Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -155,10 +158,21 @@ class TvShellRail extends StatelessWidget {
     );
   }
 
-  static List<TvShellSection> _railSections(bool wrappedEnabled) => [
-        ...TvShellSection.mainItems,
+  static List<TvShellSection> _railSections({
+    required bool wrappedEnabled,
+    required bool showPlaylists,
+    required bool showRepeat,
+    required bool showContinueWatching,
+  }) =>
+      [
+        TvShellSection.search,
+        TvShellSection.live,
+        TvShellSection.movies,
+        TvShellSection.series,
+        if (showContinueWatching) TvShellSection.continueWatching,
+        if (showPlaylists) TvShellSection.playlists,
         if (wrappedEnabled) TvShellSection.wrapper,
-        TvShellSection.repeat,
+        if (showRepeat) TvShellSection.repeat,
         TvShellSection.settings,
       ];
 

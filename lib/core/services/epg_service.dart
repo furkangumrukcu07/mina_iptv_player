@@ -132,11 +132,11 @@ class EpgService extends GetxService {
     bool markXtreamSuccess = false,
   }) async {
     try {
-      final raw = await EpgSnapshotStore.readRaw(logicalKey);
-      if (raw == null) return false;
+      final path = await EpgSnapshotStore.getSnapshotFilePath(logicalKey);
+      if (path == null) return false;
       // Çöz + entity + sıralama TAMAMI isolate'te → ana iş parçacığı bloke
       // olmaz (splash imleci donmaz).
-      final decoded = await decodeAndBuildEpgSnapshotInIsolate(raw);
+      final decoded = await decodeAndBuildEpgSnapshotFromFilePath(logicalKey, path);
       if (decoded == null) return false;
       if (decoded.key != logicalKey) return false;
       final savedAt = decoded.savedAtMs;
@@ -157,12 +157,12 @@ class EpgService extends GetxService {
       }
 
       loadGeneration.value++;
-      debugPrint(
+      if (kDebugMode) debugPrint(
         'mina_iptv: EPG restored from disk cache (${_channels.length} ch, ${_programmes.length} stream keys, age ${age ~/ 1000}s)',
       );
       return true;
     } catch (e) {
-      debugPrint('mina_iptv: EPG cache restore failed: $e');
+      if (kDebugMode) debugPrint('mina_iptv: EPG cache restore failed: $e');
       return false;
     }
   }
@@ -173,9 +173,9 @@ class EpgService extends GetxService {
     bool markXtreamSuccess = false,
   }) async {
     try {
-      final raw = await EpgSnapshotStore.readRaw(logicalKey);
-      if (raw == null) return false;
-      final decoded = await decodeAndBuildEpgSnapshotInIsolate(raw);
+      final path = await EpgSnapshotStore.getSnapshotFilePath(logicalKey);
+      if (path == null) return false;
+      final decoded = await decodeAndBuildEpgSnapshotFromFilePath(logicalKey, path);
       if (decoded == null) return false;
       if (decoded.key != logicalKey) return false;
       if (!decoded.hasData) return false;
@@ -190,12 +190,12 @@ class EpgService extends GetxService {
       }
 
       loadGeneration.value++;
-      debugPrint(
+      if (kDebugMode) debugPrint(
         'mina_iptv: EPG restored from disk (ignoring TTL, ${_channels.length} ch)',
       );
       return true;
     } catch (e) {
-      debugPrint('mina_iptv: EPG stale cache restore failed: $e');
+      if (kDebugMode) debugPrint('mina_iptv: EPG stale cache restore failed: $e');
       return false;
     }
   }
@@ -225,7 +225,7 @@ class EpgService extends GetxService {
       );
       final json = await encodeEpgSnapshotInIsolate(map);
       await EpgSnapshotStore.write(logicalKey, json);
-      debugPrint('mina_iptv: EPG snapshot saved (${_programmes.length} stream keys)');
+      if (kDebugMode) debugPrint('mina_iptv: EPG snapshot saved (${_programmes.length} stream keys)');
       unawaited(
         EpgSqliteStore.replaceSnapshot(
           sourceKey: logicalKey,
@@ -238,7 +238,7 @@ class EpgService extends GetxService {
         ),
       );
     } catch (e) {
-      debugPrint('mina_iptv: EPG snapshot save failed: $e');
+      if (kDebugMode) debugPrint('mina_iptv: EPG snapshot save failed: $e');
     }
   }
 
@@ -257,7 +257,7 @@ class EpgService extends GetxService {
         ),
       );
     } catch (e) {
-      debugPrint('mina_iptv: EPG SQLite mirror failed: $e');
+      if (kDebugMode) debugPrint('mina_iptv: EPG SQLite mirror failed: $e');
     }
   }
 
@@ -321,7 +321,7 @@ class EpgService extends GetxService {
         Map<String, String>.from(_m3uStreamUrlToXmlId),
       );
     } catch (e, st) {
-      debugPrint('mina_iptv: M3U XMLTV mapping failed: $e\n$st');
+      if (kDebugMode) debugPrint('mina_iptv: M3U XMLTV mapping failed: $e\n$st');
     }
   }
 
@@ -355,14 +355,14 @@ class EpgService extends GetxService {
     try {
       for (final url in list) {
         try {
-          debugPrint('mina_iptv: EPG candidate trying: $url');
+          if (kDebugMode) debugPrint('mina_iptv: EPG candidate trying: $url');
           await _fetchAndApplyXmlTv(url);
           if (hasLoadedGuideData()) {
-            debugPrint('mina_iptv: EPG candidate success: $url');
+            if (kDebugMode) debugPrint('mina_iptv: EPG candidate success: $url');
             return;
           }
         } catch (e) {
-          debugPrint('mina_iptv: EPG candidate failed ($url): $e');
+          if (kDebugMode) debugPrint('mina_iptv: EPG candidate failed ($url): $e');
         }
       }
     } finally {
@@ -427,7 +427,7 @@ class EpgService extends GetxService {
     } else {
       EpgPerfTelemetry.loadGenerationSkipped++;
     }
-    debugPrint(
+    if (kDebugMode) debugPrint(
       'mina_iptv: EPG loaded. Channels: ${_channels.length}, '
       'prog keys: ${_programmes.length}'
       '${keysetChanged ? '' : ' (no change, gen kept)'} · ${EpgPerfTelemetry.summaryLine()}',
@@ -812,7 +812,7 @@ class EpgService extends GetxService {
     if (streams > 0) {
       loadGeneration.value++;
     }
-    debugPrint(
+    if (kDebugMode) debugPrint(
       'mina_iptv: Xtream API EPG merged: $streams streams, $programmes programmes',
     );
   }
@@ -841,7 +841,7 @@ class EpgService extends GetxService {
         fp == _lastXtreamFingerprint &&
         now - _lastXtreamLoadAtMs < _kXtreamLoadThrottleMs) {
       final ageSec = ((now - _lastXtreamLoadAtMs) / 1000).toStringAsFixed(1);
-      debugPrint('mina_iptv: Xtream EPG - skip (throttled, age ${ageSec}s)');
+      if (kDebugMode) debugPrint('mina_iptv: Xtream EPG - skip (throttled, age ${ageSec}s)');
       EpgPerfTelemetry.xtreamLoadThrottled++;
       return Future<void>.value();
     }
@@ -870,27 +870,27 @@ class EpgService extends GetxService {
       // gövde döndürüyor; bunu hata saymıyoruz — `xmltv.php` yedektir.
       apiOk = apiStreams > 0;
       if (apiStreams == 0) {
-        debugPrint(
+        if (kDebugMode) debugPrint(
           'mina_iptv: get_all_live_epg: no stream EPG from panel '
           '(action unsupported or empty) — using xmltv.php',
         );
       }
     } catch (e, st) {
-      debugPrint('mina_iptv: get_all_live_epg failed (non-fatal): $e\n$st');
+      if (kDebugMode) debugPrint('mina_iptv: get_all_live_epg failed (non-fatal): $e\n$st');
       errors.add('get_all_live_epg: $e');
     }
 
     try {
       final url = api.xmlTvUrl;
-      debugPrint('mina_iptv: Xtream panel XMLTV: $url');
+      if (kDebugMode) debugPrint('mina_iptv: Xtream panel XMLTV: $url');
       await _fetchAndApplyXmlTv(url);
-      debugPrint(
+      if (kDebugMode) debugPrint(
         'mina_iptv: Xtream EPG done — api streams: $apiStreams, '
         'prog keys: ${_programmes.length}, xmltv channels: ${_channels.length}',
       );
       xmltvOk = true;
     } catch (e, st) {
-      debugPrint('mina_iptv: Xtream panel XMLTV failed (non-fatal): $e\n$st');
+      if (kDebugMode) debugPrint('mina_iptv: Xtream panel XMLTV failed (non-fatal): $e\n$st');
       errors.add('xmltv.php: $e');
     }
 
@@ -916,7 +916,7 @@ class EpgService extends GetxService {
       final globalEpgService = Get.find<GlobalEpgService>();
       await globalEpgService.loadGlobalEpgForChannels(channels);
     } catch (e, st) {
-      debugPrint('mina_iptv: Global EPG failed (non-fatal): $e\n$st');
+      if (kDebugMode) debugPrint('mina_iptv: Global EPG failed (non-fatal): $e\n$st');
     }
   }
 

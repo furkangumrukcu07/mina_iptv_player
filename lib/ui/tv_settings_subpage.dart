@@ -117,12 +117,8 @@ class _TvSettingsDpadScopeState extends State<TvSettingsDpadScope> {
 
   TvSettingsDpadCoordinator get coordinator => _coordinator;
 
-  int _lastBackHandledMs = 0;
-
   void _popSubpage() {
-    final now = DateTime.now().millisecondsSinceEpoch;
-    if (now - _lastBackHandledMs < 400) return;
-    _lastBackHandledMs = now;
+    if (tvSettingsShouldThrottleBack()) return;
 
     if (Get.isDialogOpen == true || Get.isBottomSheetOpen == true) {
       Get.back<void>();
@@ -162,7 +158,7 @@ class _TvSettingsDpadScopeState extends State<TvSettingsDpadScope> {
         skipTraversal: true,
         onKeyEvent: (node, event) {
           if (event is! KeyDownEvent) return KeyEventResult.ignored;
-          if (tvKeyIsBack(event.logicalKey)) {
+          if (tvKeyIsBack(event.logicalKey) || event.logicalKey == LogicalKeyboardKey.arrowLeft) {
             _popSubpage();
             return KeyEventResult.handled;
           }

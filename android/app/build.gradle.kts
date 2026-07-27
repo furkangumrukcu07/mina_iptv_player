@@ -76,6 +76,9 @@ if (playIntegrityDartSegments.isNotEmpty()) {
 
 android {
     namespace = "com.mina.iptv.mina_iptv_player"
+    firebaseCrashlytics {
+        mappingFileUploadEnabled = false
+    }
     compileSdk = flutter.compileSdkVersion
     ndkVersion = flutter.ndkVersion
 
@@ -133,6 +136,9 @@ android {
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
             )
+        firebaseCrashlytics {
+            mappingFileUploadEnabled = false
+        }
         }
     }
 
@@ -176,5 +182,11 @@ dependencies {
         file("../../packages/better_player_plus/android/third_party/decoder_ffmpeg/decoder-ffmpeg-release.aar"),
     ).firstOrNull { it.isFile }?.let { aar ->
         implementation(files(aar))
+    }
+}
+
+tasks.whenTaskAdded {
+    if (name.startsWith("uploadCrashlyticsMappingFile")) {
+        enabled = false
     }
 }

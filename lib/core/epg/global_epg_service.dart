@@ -90,9 +90,9 @@ class GlobalEpgService extends GetxService {
         final xmlId = row['xml_channel_id'] as String;
         _channelNameToXmlId[name.toLowerCase()] = xmlId;
       }
-      debugPrint('mina_iptv: Global EPG - Cache warmed up with ${_channelNameToXmlId.length} names');
+      if (kDebugMode) debugPrint('mina_iptv: Global EPG - Cache warmed up with ${_channelNameToXmlId.length} names');
     } catch (e) {
-      debugPrint('mina_iptv: Global EPG - Cache warmup failed: $e');
+      if (kDebugMode) debugPrint('mina_iptv: Global EPG - Cache warmup failed: $e');
     }
   }
 
@@ -167,7 +167,7 @@ class GlobalEpgService extends GetxService {
       }
     }
 
-    debugPrint('mina_iptv: Global EPG - Detected countries: ${detectedCountries.join(', ')}');
+    if (kDebugMode) debugPrint('mina_iptv: Global EPG - Detected countries: ${detectedCountries.join(', ')}');
     return detectedCountries;
   }
 
@@ -193,7 +193,7 @@ class GlobalEpgService extends GetxService {
     if (!force &&
         fp == _lastLoadFingerprint &&
         now - _lastLoadAtMs < _loadThrottleMs) {
-      debugPrint(
+      if (kDebugMode) debugPrint(
         'mina_iptv: Global EPG - skip (throttled, age '
         '${((now - _lastLoadAtMs) / 1000).toStringAsFixed(1)}s)',
       );
@@ -234,7 +234,7 @@ class GlobalEpgService extends GetxService {
       }
 
       if (countries.isEmpty) {
-        debugPrint('mina_iptv: Global EPG - No countries detected, using fallback');
+        if (kDebugMode) debugPrint('mina_iptv: Global EPG - No countries detected, using fallback');
         final fallback = Get.locale?.languageCode ?? 'tr';
         await _downloadAndMergeEpg([fallback], channels);
       } else {
@@ -242,7 +242,7 @@ class GlobalEpgService extends GetxService {
       }
       await app.markGlobalEpgFetchedOk();
     } catch (e, st) {
-      debugPrint('mina_iptv: Global EPG load failed: $e\n$st');
+      if (kDebugMode) debugPrint('mina_iptv: Global EPG load failed: $e\n$st');
     } finally {
       isLoading.value = false;
       loadGeneration.value++;
@@ -275,7 +275,7 @@ class GlobalEpgService extends GetxService {
     // Veritabanını güncelle
     await _mergeEpgDataToDatabase(allValidResults, channels);
 
-    debugPrint(
+    if (kDebugMode) debugPrint(
       'mina_iptv: Global EPG - Merged ${allValidResults.length}/$urlAttempts '
       'sources OK · ${EpgPerfTelemetry.summaryLine()}',
     );
@@ -285,7 +285,7 @@ class GlobalEpgService extends GetxService {
   Future<EpgData?> _downloadSingleUrlEpg(String countryCode, String url, Semaphore semaphore) async {
     await semaphore.acquire();
     try {
-      debugPrint('mina_iptv: Global EPG - Downloading: $url');
+      if (kDebugMode) debugPrint('mina_iptv: Global EPG - Downloading: $url');
       
       final response = await _dio.get<List<int>>(
         url,
@@ -335,7 +335,7 @@ class GlobalEpgService extends GetxService {
       
     } catch (e) {
       // Tek satır; 404 beklenen aynalar için tam stack basılmaz ([F2]).
-      debugPrint(
+      if (kDebugMode) debugPrint(
         'mina_iptv: Global EPG - source failed ($countryCode): '
         '${e is DioException ? 'HTTP ${e.response?.statusCode ?? '?'}' : e.runtimeType}',
       );
@@ -434,7 +434,7 @@ class GlobalEpgService extends GetxService {
     // Playlist kanallarını veritabanından bulup belleğe yükle
     await fetchProgrammesForPlaylist(channels);
 
-    debugPrint('mina_iptv: Global EPG - Database updated successfully');
+    if (kDebugMode) debugPrint('mina_iptv: Global EPG - Database updated successfully');
   }
 
   /// Playlist'teki kanalları veritabanında arayıp programlarını belleğe çeker.
@@ -469,7 +469,7 @@ class GlobalEpgService extends GetxService {
       _channelNameToXmlId.clear();
       _memoryProgrammeCache.clear();
       loadGeneration.value++;
-      debugPrint(
+      if (kDebugMode) debugPrint(
         'mina_iptv: Global EPG - Memory cache populated with 0 channels (no playlist names)',
       );
       return;
@@ -577,7 +577,7 @@ class GlobalEpgService extends GetxService {
     } else {
       EpgPerfTelemetry.loadGenerationSkipped++;
     }
-    debugPrint(
+    if (kDebugMode) debugPrint(
       'mina_iptv: Global EPG - Memory cache populated with $chCount channels'
       '${changed ? '' : ' (no change, gen kept)'}',
     );
@@ -625,7 +625,7 @@ CREATE TABLE global_epg_programme (
       },
     );
     
-    debugPrint('mina_iptv: Global EPG - Database initialized at $path');
+    if (kDebugMode) debugPrint('mina_iptv: Global EPG - Database initialized at $path');
   }
 
   /// Belirli bir kanal için programları getir
@@ -662,7 +662,7 @@ CREATE TABLE global_epg_programme (
       await txn.delete('global_epg_channel');
     });
     
-    debugPrint('mina_iptv: Global EPG - Database cleared');
+    if (kDebugMode) debugPrint('mina_iptv: Global EPG - Database cleared');
   }
 
   /// Veritabanı istatistikleri
@@ -697,7 +697,7 @@ CREATE TABLE global_epg_programme (
       final rawString = await file.readAsString();
       return await compute(_parseNormMapIsolate, {'raw': rawString, 'key': normMapKey});
     } catch (e) {
-      debugPrint('mina_iptv: Global EPG - norm map disk read failed: $e');
+      if (kDebugMode) debugPrint('mina_iptv: Global EPG - norm map disk read failed: $e');
       return null;
     }
   }
@@ -711,7 +711,7 @@ CREATE TABLE global_epg_programme (
       final payload = await compute(_encodeNormMapIsolate, {'key': normMapKey, 'map': map});
       await file.writeAsString(payload);
     } catch (e) {
-      debugPrint('mina_iptv: Global EPG - norm map disk write failed: $e');
+      if (kDebugMode) debugPrint('mina_iptv: Global EPG - norm map disk write failed: $e');
     }
   }
 

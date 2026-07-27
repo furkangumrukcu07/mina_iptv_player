@@ -70,7 +70,7 @@ class EpgDeferredLoadService extends GetxService {
         m3uXmltvNeedsNetwork: m3uXmltvNeedsNetwork,
       );
     } catch (e) {
-      debugPrint('mina_iptv: Deferred EPG load error: $e');
+      if (kDebugMode) debugPrint('mina_iptv: Deferred EPG load error: $e');
     } finally {
       Get.find<AppBootstrapService>().releaseHomeEpgWidgets();
     }
@@ -82,10 +82,10 @@ class EpgDeferredLoadService extends GetxService {
     if (_tvLoadFuture != null) return _tvLoadFuture!;
     final pending = _tvPending ?? await _resolveTvPendingFallback();
     if (pending == null) {
-      debugPrint('mina_iptv: TV lazy EPG — no pending context, skip');
+      if (kDebugMode) debugPrint('mina_iptv: TV lazy EPG — no pending context, skip');
       return;
     }
-    debugPrint('mina_iptv: TV lazy EPG load start');
+    if (kDebugMode) debugPrint('mina_iptv: TV lazy EPG load start');
     _tvLoadFuture = _runHeavyNetworkLoad(
       source: pending.source,
       result: pending.result,
@@ -94,7 +94,7 @@ class EpgDeferredLoadService extends GetxService {
     ).whenComplete(() {
       _tvLoadCompleted = true;
       Get.find<AppBootstrapService>().releaseHomeEpgWidgets();
-      debugPrint('mina_iptv: TV lazy EPG load done');
+      if (kDebugMode) debugPrint('mina_iptv: TV lazy EPG load done');
     });
     return _tvLoadFuture!;
   }
@@ -134,7 +134,7 @@ class EpgDeferredLoadService extends GetxService {
 
     if (source is M3uSource) {
       if (Get.isRegistered<GlobalEpgService>()) {
-        debugPrint('mina_iptv: Deferred global EPG load…');
+        if (kDebugMode) debugPrint('mina_iptv: Deferred global EPG load…');
         await Get.find<GlobalEpgService>()
             .loadGlobalEpgForChannels(liveChannels);
       }
@@ -151,7 +151,7 @@ class EpgDeferredLoadService extends GetxService {
       final allowGithub = mode != XtreamEpgSourceMode.xtreamOnly;
 
       if (allowXtream && !xtreamEpgNeedsNetwork) {
-        debugPrint(
+        if (kDebugMode) debugPrint(
           'mina_iptv: Deferred Xtream EPG skipped (fresh disk snapshot)',
         );
       }
@@ -161,11 +161,11 @@ class EpgDeferredLoadService extends GetxService {
           username: source.username,
           password: source.password,
         );
-        debugPrint('mina_iptv: Deferred Xtream EPG load (mode=$mode)…');
+        if (kDebugMode) debugPrint('mina_iptv: Deferred Xtream EPG load (mode=$mode)…');
         try {
           await _epg.loadXtreamAllLiveEpg(api);
         } catch (e) {
-          debugPrint('mina_iptv: Xtream EPG fatal: $e');
+          if (kDebugMode) debugPrint('mina_iptv: Xtream EPG fatal: $e');
         }
         if (_epg.hasLoadedGuideData() && cacheKey != null) {
           await _epg.persistSnapshotToDisk(cacheKey);
@@ -173,11 +173,11 @@ class EpgDeferredLoadService extends GetxService {
       }
       if (allowGithub && Get.isRegistered<GlobalEpgService>()) {
         try {
-          debugPrint('mina_iptv: Xtream — global EPG (mode=$mode)…');
+          if (kDebugMode) debugPrint('mina_iptv: Xtream — global EPG (mode=$mode)…');
           await Get.find<GlobalEpgService>()
               .loadGlobalEpgForChannels(liveChannels);
         } catch (e) {
-          debugPrint('mina_iptv: Global EPG fallback failed: $e');
+          if (kDebugMode) debugPrint('mina_iptv: Global EPG fallback failed: $e');
         }
       }
     }
@@ -194,7 +194,7 @@ class EpgDeferredLoadService extends GetxService {
     if (!networkByPolicy || !online) return;
 
     try {
-      debugPrint('mina_iptv: M3U EPG ağ indirme → ${urls.join(' | ')}');
+      if (kDebugMode) debugPrint('mina_iptv: M3U EPG ağ indirme → ${urls.join(' | ')}');
       await _epg.loadEpgFirstSuccessful(urls);
       if (_epg.hasLoadedGuideData()) {
         await _app.markM3uEpgFetchedOk();
@@ -203,7 +203,7 @@ class EpgDeferredLoadService extends GetxService {
         }
       }
     } catch (e) {
-      debugPrint('mina_iptv: M3U EPG ağ indirme hatası: $e');
+      if (kDebugMode) debugPrint('mina_iptv: M3U EPG ağ indirme hatası: $e');
     }
   }
 }

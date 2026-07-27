@@ -1,9 +1,13 @@
 import 'dart:async' show unawaited;
+import 'dart:io' show Platform;
+import 'package:flutter/gestures.dart' show kSecondaryMouseButton;
+import 'modules/tv_shell/tv_shell_controller.dart';
 
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:get/get.dart';
 import 'package:intl/date_symbol_data_local.dart';
@@ -49,11 +53,19 @@ Future<void> main() async {
   // EncryptedSharedPreferences + Keystore soğuk init'i arka planda başlat;
   // UI etkileşiminde ilk containsKey/read ANR üretmesin.
   final secureStorageWarm = MinaSecureStorage.warmUp();
-  MediaKit.ensureInitialized();
+  try {
+    MediaKit.ensureInitialized();
+  } catch (e) {
+    if (kDebugMode) debugPrint('mina_iptv: MediaKit.ensureInitialized error: $e');
+  }
 
-  Workmanager().initialize(
-    callbackDispatcher,
-  );
+  if (Platform.isAndroid || Platform.isIOS) {
+    try {
+      Workmanager().initialize(
+        callbackDispatcher,
+      );
+    } catch (_) {}
+  }
 
   await maybeInitSentry(() async {
     await Future.wait<void>([
@@ -79,11 +91,14 @@ Future<void> main() async {
     Get.put<AppInstallSourceService>(installSource, permanent: true);
     Get.put<IntegrityService>(IntegrityService(), permanent: true);
     if (kDebugMode) {
-      debugPrint(
+      if (kDebugMode) debugPrint(
         'mina_iptv: installer=${installSource.installerPackageName ?? "(null)"} '
         '→ ${installSource.describeInstaller()}',
       );
     }
+
+    // SoC ipuçlarını Firebase'den önce yükle ki TV tespiti yapılabilsin.
+    await AndroidPlaybackSocHints.ensureLoaded();
 
     // Firebase'i korumalı başlat: yapılandırma yoksa sessizce atlanır,
     // uygulama normal akışına devam eder (çökmez).
@@ -105,7 +120,7 @@ Future<void> main() async {
           originalOnError?.call(details);
         };
         PlatformDispatcher.instance.onError = (error, stack) {
-          if (error.toString().contains('Invalid image data')) return true;
+          if (error.toString().contains('Invalid image data') || error.toString().contains('Unknown textureId')) return true;
           FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
           return true;
         };
@@ -120,6 +135,24 @@ Future<void> main() async {
 
     final settings = AppSettingsService();
     await settings.ensureLoaded();
+
+    // TV/Tablet modunda Crashlytics arka plan veri toplamasını kapat (Performans Optimizasyonu)
+    // NOT: Crash debugging için geçici olarak açıldı
+    /*
+    if (gFirebaseReady) {
+      final isTvOrTablet = settings.layoutMode.value == AppLayoutMode.tv ||
+          settings.layoutMode.value == AppLayoutMode.tablet;
+      if (isTvOrTablet) {
+        try {
+          await FirebaseCrashlytics.instance.setCrashlyticsCollectionEnabled(false);
+          if (kDebugMode) {
+            debugPrint('mina_iptv: Firebase Crashlytics collection disabled dynamically on TV/Tablet');
+          }
+        } catch (_) {}
+      }
+    }
+    */
+
     // Flutter image cache limitlerini cihaza göre hemen uygula: düşük-donanım
     // modu veya TV düzeni daha düşük tavan alır (poster/logo decode baskısını
     // azaltır, uzun süreli yayında OOM riskini düşürür).
@@ -134,7 +167,6 @@ Future<void> main() async {
 
     Get.put<GlobalEpgService>(GlobalEpgService(), permanent: true);
     Get.put<HomeEpgCatalogCache>(HomeEpgCatalogCache(), permanent: true);
-    await AndroidPlaybackSocHints.ensureLoaded();
     // Google yedeği başka bir cihazda geri yüklendiyse (örn. telefon yedeği TV
     // box'ta), cihaza özel donanım kararlarımızın eski cihaz değerleriyle
     // ezilmemesi için zorlama bayraklarını bu cihaza göre uzlaştır. maybeForce*
@@ -263,7 +295,7 @@ class MinaIptvApp extends StatelessWidget {
                   child: child!,
                 );
               },
-              child: AdaptiveHapticScrollScope(child: wrapped),
+                child: _DesktopBackGestures(child: AdaptiveHapticScrollScope(child: wrapped)),
             );
           },
         );
@@ -271,6 +303,78 @@ class MinaIptvApp extends StatelessWidget {
     );
     });
   }
+}
+
+/// macOS/Desktop: ESC tuşu ve sağ tık ile geri gitme desteği.
+///
+/// Uygulama genelinde tüm route'larda çalışır. ESC tuşu `Navigator.maybePop()`
+/// tetikler; böylece ayarlar alt sayfaları gibi `TvShellView` dışındaki
+/// route'larda da ESC ile geri dönülebilir. Mouse sağ tık da aynı işlevi görür.
+class _DesktopBackGestures extends StatelessWidget {
+  const _DesktopBackGestures({required this.child});
+  final Widget child;
+
+  static bool get _isDesktop {
+    try {
+      return Platform.isMacOS || Platform.isLinux || Platform.isWindows;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  void _handleBack(BuildContext context) {
+    // Açık dialog varsa onu kapat.
+    if (Get.isDialogOpen == true || Get.isBottomSheetOpen == true) {
+      Get.back<void>();
+      return;
+    }
+    
+    // Önce GetX'in güncel rotasına bak. Eğer alt bir sayfadaysak (örneğin ayarlar) Get.back() yap.
+    final currentRoute = Get.currentRoute;
+    if (currentRoute != '/home' && currentRoute != '/' && currentRoute != '/tv-shell') {
+      Get.back<void>();
+      return;
+    }
+
+    // Ana sayfadaysak ve TvShell aktifse kendi onBack() metodunu tetikle
+    if (Get.isRegistered<TvShellController>()) {
+      Get.find<TvShellController>().onBack();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (!_isDesktop) return child;
+
+    return Listener(
+      behavior: HitTestBehavior.translucent,
+      onPointerDown: (event) {
+        if (event.buttons == kSecondaryMouseButton) {
+          _handleBack(context);
+        }
+      },
+      child: Shortcuts(
+        shortcuts: const {
+          SingleActivator(LogicalKeyboardKey.escape): _GlobalBackIntent(),
+        },
+        child: Actions(
+          actions: {
+            _GlobalBackIntent: CallbackAction<_GlobalBackIntent>(
+              onInvoke: (_) {
+                _handleBack(context);
+                return null;
+              },
+            ),
+          },
+          child: child,
+        ),
+      ),
+    );
+  }
+}
+
+class _GlobalBackIntent extends Intent {
+  const _GlobalBackIntent();
 }
 
 @pragma('vm:entry-point')
@@ -282,15 +386,15 @@ void callbackDispatcher() {
       final prefs = await SharedPreferences.getInstance();
       final activeSlot = prefs.getInt('mina_active_playlist_slot') ?? 1;
 
-      debugPrint('BackgroundSync: Starting silent sync for slot $activeSlot...');
+      if (kDebugMode) debugPrint('BackgroundSync: Starting silent sync for slot $activeSlot...');
       final repo = PlaylistRepositoryImpl();
       final result = await repo.loadSlotPlaylist(activeSlot);
       if (result != null) {
-        debugPrint('BackgroundSync: Silent sync completed. Channels: ${result.channels.length}');
+        if (kDebugMode) debugPrint('BackgroundSync: Silent sync completed. Channels: ${result.channels.length}');
         return true;
       }
     } catch (e) {
-      debugPrint('BackgroundSync: Silent sync failed: $e');
+      if (kDebugMode) debugPrint('BackgroundSync: Silent sync failed: $e');
     }
     return false;
   });

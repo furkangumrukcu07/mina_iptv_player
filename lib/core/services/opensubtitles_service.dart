@@ -53,7 +53,7 @@ class OpenSubtitlesService extends GetxService {
         isLoggedIn.value = true;
       }
     } catch (e) {
-      debugPrint('OpenSubtitles restore: $e');
+      if (kDebugMode) debugPrint('OpenSubtitles restore: $e');
     }
   }
 
@@ -94,7 +94,7 @@ class OpenSubtitlesService extends GetxService {
       }
       return 'settings.opensubtitles.errorLogin'.tr;
     } catch (e) {
-      debugPrint('OpenSubtitles login: $e');
+      if (kDebugMode) debugPrint('OpenSubtitles login: $e');
       return 'settings.opensubtitles.errorLogin'.tr;
     } finally {
       isBusy.value = false;

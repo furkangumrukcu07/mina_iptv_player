@@ -10,6 +10,7 @@ import '../../../core/services/app_settings_service.dart';
 import '../../../ui/tv_dpad_focus.dart';
 import 'tv_shell_palette.dart';
 import 'tv_shell_perf.dart';
+import '../tv_shell_controller.dart';
 
 /// TV kabuğunda kumanda/D-pad odak sarmalayıcısı gerekli mi?
 bool tvShellUsesRemoteNav(BuildContext context) {
@@ -193,6 +194,9 @@ class TvShellInteractive extends StatelessWidget {
             onRemoteLeft != null &&
             event is! KeyRepeatEvent &&
             tvKeyIsBack(k)) {
+          if (Get.isRegistered<TvShellController>()) {
+            Get.find<TvShellController>().markBackHandled();
+          }
           onRemoteLeft!();
           return KeyEventResult.handled;
         }

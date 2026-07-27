@@ -66,19 +66,19 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
                     options.headers['User-Agent'] =
                         _effectiveDownloadUserAgent();
                   }
-                  debugPrint('🌐 HTTP Request: ${options.method} ${options.uri}');
-                  debugPrint('📦 Headers: ${options.headers}');
+                  if (kDebugMode) debugPrint('🌐 HTTP Request: ${options.method} ${options.uri}');
+                  if (kDebugMode) debugPrint('📦 Headers: ${options.headers}');
                   return handler.next(options);
                 },
                 onResponse: (response, handler) {
                   final startTime = response.requestOptions.extra['startTime'] as DateTime?;
                   final duration = startTime != null ? DateTime.now().difference(startTime).inMilliseconds : 'N/A';
-                  debugPrint('✅ HTTP Response: ${response.statusCode} ${response.requestOptions.uri}');
-                  debugPrint('⏱️ Duration: ${duration}ms');
+                  if (kDebugMode) debugPrint('✅ HTTP Response: ${response.statusCode} ${response.requestOptions.uri}');
+                  if (kDebugMode) debugPrint('⏱️ Duration: ${duration}ms');
                   return handler.next(response);
                 },
                 onError: (error, handler) {
-                  debugPrint('❌ HTTP Error: ${error.message} ${error.requestOptions.uri}');
+                  if (kDebugMode) debugPrint('❌ HTTP Error: ${error.message} ${error.requestOptions.uri}');
                   return handler.next(error);
                 },
               ),
@@ -645,7 +645,7 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
       return deduped;
     } catch (e) {
       if (kDebugMode) {
-        debugPrint('mina_iptv: chunked live streams failed, fallback: $e');
+        if (kDebugMode) debugPrint('mina_iptv: chunked live streams failed, fallback: $e');
       }
       return api.getLiveStreams(_dio);
     }
@@ -827,7 +827,7 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
         ));
       }
 
-      debugPrint(
+      if (kDebugMode) debugPrint(
         'mina_iptv: Stalker catalog live=${channels.length} '
         'vod=${vod.length} series=${series.length} '
         'load=${api.resolvedLoadUrl}',
@@ -1264,7 +1264,7 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
       }
       return null;
     } catch (e) {
-      debugPrint('[PlaylistRepositoryImpl] Keystore error reading slot $slot: $e. Clearing corrupted storage.');
+      if (kDebugMode) debugPrint('[PlaylistRepositoryImpl] Keystore error reading slot $slot: $e. Clearing corrupted storage.');
       try {
         await _storage.deleteAll();
       } catch (_) {}
@@ -1474,7 +1474,7 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
       final slim = merged.vod.isEmpty && merged.series.isEmpty;
       await PlaylistSnapshotStore.write(key, merged, slim: slim);
     } catch (e) {
-      debugPrint('mina_iptv: persist merged snapshot: $e');
+      if (kDebugMode) debugPrint('mina_iptv: persist merged snapshot: $e');
     }
   }
 
@@ -1486,7 +1486,7 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
       final key = await _mergedSnapshotKeyAll(active);
       return PlaylistSnapshotStore.tryRead(key);
     } catch (e) {
-      debugPrint('mina_iptv: restore merged snapshot: $e');
+      if (kDebugMode) debugPrint('mina_iptv: restore merged snapshot: $e');
       return null;
     }
   }
@@ -1538,7 +1538,7 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
         );
       }
     } catch (e) {
-      debugPrint('mina_iptv: persist slot $slot snapshot: $e');
+      if (kDebugMode) debugPrint('mina_iptv: persist slot $slot snapshot: $e');
     }
   }
 
@@ -1576,14 +1576,14 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
         return snap.slimForSqliteCache();
       }
       if (hasLists) {
-        debugPrint(
+        if (kDebugMode) debugPrint(
           'mina_iptv: restore slot $slot — SQLite empty, skip RAM fallback',
         );
         return null;
       }
       return snap;
     } catch (e) {
-      debugPrint('mina_iptv: restore slot $slot snapshot: $e');
+      if (kDebugMode) debugPrint('mina_iptv: restore slot $slot snapshot: $e');
       return null;
     }
   }
@@ -1622,7 +1622,7 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
       if (mergedKey != null && mergedKey.isNotEmpty) keep.add(mergedKey);
       await PlaylistSqliteStore.pruneExcept(keep);
     } catch (e) {
-      debugPrint('mina_iptv: prune orphan playlist db sources failed: $e');
+      if (kDebugMode) debugPrint('mina_iptv: prune orphan playlist db sources failed: $e');
     }
   }
 
@@ -1878,7 +1878,7 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
     } catch (e) {
       // Storage hatasında "aktif" varsay — kullanıcı içeriği görmeye
       // devam etsin; sessizce log'la.
-      debugPrint('mina_iptv: isSlotDisabled($slot) failed: $e');
+      if (kDebugMode) debugPrint('mina_iptv: isSlotDisabled($slot) failed: $e');
       return false;
     }
   }
@@ -1926,7 +1926,7 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
     } catch (e) {
       // Etiket okuması storage hatasında "isimsiz" gibi davransın; UI default
       // başlığa düşer.
-      debugPrint('mina_iptv: readSlotName($slot) failed: $e');
+      if (kDebugMode) debugPrint('mina_iptv: readSlotName($slot) failed: $e');
       return null;
     }
   }
@@ -2113,7 +2113,7 @@ class PlaylistRepositoryImpl implements PlaylistRepository {
         return slim;
       }
     } catch (e) {
-      debugPrint('mina_iptv: merged SQLite populate failed: $e');
+      if (kDebugMode) debugPrint('mina_iptv: merged SQLite populate failed: $e');
     }
 
     unawaited(_persistMergedPlaylistSnapshot(merged));

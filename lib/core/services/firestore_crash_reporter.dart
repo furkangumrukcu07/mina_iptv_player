@@ -65,9 +65,9 @@ class FirestoreCrashReporter {
         'device_ram': ramInfo,
         'platform': defaultTargetPlatform.name,
       });
-      debugPrint('[CrashReporter] Crash logged to Firestore.');
+      if (kDebugMode) debugPrint('[CrashReporter] Crash logged to Firestore.');
     } catch (e) {
-      debugPrint('[CrashReporter] Failed to write crash to Firestore: $e');
+      if (kDebugMode) debugPrint('[CrashReporter] Failed to write crash to Firestore: $e');
     }
   }
 }

@@ -591,6 +591,7 @@ extension TvShellNavigationController on TvShellController {
   void onLeftFromLiveBrowse() {
     if (phase.value != TvShellPhase.categories) return;
     if (selectedSection.value != TvShellSection.live) return;
+    channels.tvShellLiveActive.value = false;
     channels.tvShellLiveBrowsingChannels.value = false;
     channels.clearTvShellChannelRowFocus();
     liveChannelsFocusNode.unfocus();
@@ -598,13 +599,36 @@ extension TvShellNavigationController on TvShellController {
     focusLiveCategoryFromChannels(channels.selectedCategoryId.value);
   }
 
-  /// TV ana ekranında geri: Android TV'de doğrudan çık, diğerlerinde onay diyaloğu.
+  /// TV ana ekranında geri: çift basılma ile çıkış (double-back-to-exit).
+  /// İlk basışta toast gösterir, 2 saniye içinde ikinci basışta çıkar.
   void _requestTvShellExit() {
-    if (_app.androidTvShellLayoutLocked.value) {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    // 2 saniye içinde ikinci geri tuşu → uygulamadan çık
+    if (now - _lastRailExitBackMs < 2000) {
       ExitConfirmDialog.exitAppImmediately();
-    } else {
-      ExitConfirmDialog.showIfNeeded();
+      return;
     }
+    // İlk basış: zaman damgasını kaydet ve uyarı göster
+    _lastRailExitBackMs = now;
+    if (Get.isRegistered<AppSettingsService>()) {
+      final settings = Get.find<AppSettingsService>();
+      if (settings.layoutMode.value == AppLayoutMode.tv) {
+        // TV modunda Snackbar ile bildirim göster
+        Get.snackbar(
+          '',
+          'exit.pressBackAgain'.tr,
+          snackPosition: SnackPosition.BOTTOM,
+          backgroundColor: Colors.black87,
+          colorText: Colors.white,
+          duration: const Duration(seconds: 2),
+          margin: const EdgeInsets.all(16),
+          isDismissible: true,
+        );
+        return;
+      }
+    }
+    // Mobil modda veya servis yoksa dialog göster
+    ExitConfirmDialog.showIfNeeded();
   }
   /// Oynatıcıdan tam ekrandan çıkarken TvShell'e dönüldüğünde oluşabilecek
   /// hayalet "Geri" tuşu tetiklemelerini önlemek için kullanılır.
@@ -625,8 +649,6 @@ extension TvShellNavigationController on TvShellController {
     }
     // Navigator yığınında pop yapılabilecek bir sayfa varsa (alt sayfa açık)
     // TV kabuğu mantığına düşmeden önce onu kapat.
-    // ÖNEMLİ: Yalnızca mevcut route'un üzerinde ekstra bir yığın varsa pop et;
-    // aksi takdirde TV kabuğu navigasyonu devreye girer.
     // GetX navigator'ına doğrudan erişim — KM2 Plus gibi TV box'larda
     // Get.overlayContext / Get.context bazen hatalı navigator döndürebilir.
     final getxNav = Get.key.currentState;
@@ -641,6 +663,16 @@ extension TvShellNavigationController on TvShellController {
         rootNav.pop();
         return;
       }
+    }
+    // Son çare: GetX route tablosuna bak — bazı alt sayfalarda PopScope
+    // olmadığı için yukarıdaki navigator kontrolleri false dönebilir.
+    // Mevcut route ana sayfa değilse alt sayfa açıktır.
+    final currentRoute = Get.currentRoute;
+    if (currentRoute != AppRoutes.home &&
+        currentRoute != AppRoutes.splash &&
+        currentRoute != '/') {
+      Get.back<void>();
+      return;
     }
 
     // Settings panelindeyken ve alt sayfa açık değilken:
@@ -682,15 +714,11 @@ extension TvShellNavigationController on TvShellController {
         }
         return;
       case TvShellPhase.liveContent:
-        // Kanal listesindeyken geri → önce kategorilere dön, çıkma.
-        // Kullanıcı rail'e odaklansa bile, liveContent phase'inden çıkış
-        // yerine kategorilere dönülür (rail zaten ana menü).
-        channels.tvShellLiveActive.value = false;
-        channels.tvShellLiveBrowseActive.value = true;
+        // Kanal listesindeyken geri → kategori listesine dön (sol yön tuşuyla aynı).
+        // onLeftFromLiveBrowse() phase==categories kontrolü yaptığı için
+        // önce phase'i değiştir, sonra çağır.
         phase.value = TvShellPhase.categories;
-        railExpanded.value = true;
-        final liveNode = railFocusNodes[selectedSection.value];
-        if (liveNode != null) scheduleTvFocusRestore(liveNode);
+        onLeftFromLiveBrowse();
         return;
       case TvShellPhase.categories:
         if (selectedSection.value == TvShellSection.live &&

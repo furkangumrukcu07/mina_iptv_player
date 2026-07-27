@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:ui';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/rendering.dart';
 import 'package:get/get.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -143,10 +144,10 @@ class _ShowcaseUpcomingEpgState extends State<ShowcaseUpcomingEpg> {
     newEntries.sort((a, b) => a.programme.start.compareTo(b.programme.start));
 
     if (newEntries.isEmpty) {
-      debugPrint(
+      if (kDebugMode) debugPrint(
           'ShowcaseUpcomingEpg: No upcoming EPG found. epg.xtreamProgrammeCount=${epg.xtreamProgrammeCount.value}, poolSize=${uniquePool.length}');
     } else {
-      debugPrint(
+      if (kDebugMode) debugPrint(
           'ShowcaseUpcomingEpg: Found ${newEntries.length} upcoming EPGs.');
     }
 

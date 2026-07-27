@@ -553,6 +553,13 @@ class _PlayerViewState extends State<PlayerView> with WidgetsBindingObserver {
           Get.back<void>();
           return true;
         }
+        
+        // Eğer hiçbir dialog açık değilse, doğrudan player'dan çıkmak için
+        // Geri tuşunu biz yutalım. Böylece Android'in gereksiz sistem pop
+        // üretmesini ve arkadaki menüleri kapatmasını önlemiş oluruz.
+        _consumeNextSystemBackPop = true;
+        controller.handleBack();
+        return true;
       }
     }
     if (controller.liveSingleChannelEpgOpen.value) {
@@ -1718,6 +1725,25 @@ class _PlayerPortraitSurfaceShell extends StatelessWidget {
                   fit: StackFit.expand,
                   children: [
                     playerWidget,
+                    if (Platform.isIOS)
+                      Positioned(
+                        left: 12,
+                        top: 12,
+                        child: Material(
+                          color: Colors.black.withValues(alpha: 0.5),
+                          shape: const CircleBorder(),
+                          child: IconButton(
+                            icon: const Icon(
+                              Icons.arrow_back_ios_new_rounded,
+                              color: Colors.white,
+                              size: 18,
+                            ),
+                            onPressed: () {
+                              Get.back();
+                            },
+                          ),
+                        ),
+                      ),
                     // Tap-to-show OSD katmanı her zaman aktif olsun;
                     // OSD paneli artık daima görünür ama kullanıcı video
                     // alanına tıklayarak auto-hide süresini yeniler.

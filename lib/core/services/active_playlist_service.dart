@@ -275,7 +275,7 @@ class ActivePlaylistService extends GetxService {
       // Panel geçici yanıt vermiyorsa önbellek/SQLite ile ana ekrana izin ver.
       final dbReady = await _isDbReady(dbKey);
       if (dbReady && dbKey != null) {
-        debugPrint(
+        if (kDebugMode) debugPrint(
           'mina_iptv: slot $slot network load failed → sqlite offline ($dbKey): $e',
         );
         lastLoadFromSnapshot = true;
@@ -447,7 +447,7 @@ class ActivePlaylistService extends GetxService {
       _memCache[slot] = forCache;
       _pushToCache(forCache, src, dbReady ? dbKey : null);
     } catch (e, st) {
-      debugPrint('mina_iptv: background refresh slot $slot failed: $e\n$st');
+      if (kDebugMode) debugPrint('mina_iptv: background refresh slot $slot failed: $e\n$st');
     }
   }
 

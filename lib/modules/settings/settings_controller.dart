@@ -477,7 +477,15 @@ class SettingsController extends GetxController {
   /// yeniden tamamlandı olarak işaretlenip ana ekrana döner; geri tuşuyla
   /// ayarlara dönülebilir.
   void restartSetupWizard() {
-    Get.toNamed(AppRoutes.setupWizard);
+    pushSettingsSubpage(AppRoutes.setupWizard, shellDpadIndex: _shellSetup);
+  }
+
+  void openLocalPrivacyPolicy() {
+    pushSettingsSubpage(AppRoutes.privacyPolicy, shellDpadIndex: _shellPrivacy);
+  }
+
+  void openOtherApps() {
+    pushSettingsSubpage(AppRoutes.otherApps, shellDpadIndex: _shellOtherApps);
   }
 
   /// Resmi Telegram kanalı / destek grubu.
@@ -525,12 +533,17 @@ class SettingsController extends GetxController {
   static const _shellPlaylist = 0;
   static const _shellChannelLayout = 1;
   static const _shellHomeSettings = 2;
-  static const _shellPlayback = 3;
-  static const _shellKeyMapping = 4;
-  static const _shellOtherTools = 7;
-  static const _shellProfiles = 9;
-  static const _shellCloud = 10;
-  static const _shellDownloads = 11;
+  static const _shellRailSettings = 3;
+  static const _shellPlayback = 4;
+  static const _shellPerformance = 5;
+  static const _shellKeyMapping = 6;
+  static const _shellOtherTools = 9;
+  static const _shellProfiles = 11;
+  static const _shellCloud = 12;
+  static const _shellDownloads = 13;
+  static const _shellPrivacy = 25;
+  static const _shellSetup = 17;
+  static const _shellOtherApps = 27;
   int _lastBackHandledMs = 0;
 
   /// Ayarlardan çıkış (üst geri düğmesi veya TV kumandası).
@@ -573,6 +586,10 @@ class SettingsController extends GetxController {
 
   void openTvKeyMapping() {
     pushSettingsSubpage(AppRoutes.tvKeyMapping, shellDpadIndex: _shellKeyMapping);
+  }
+
+  void openRailSettings() {
+    pushSettingsSubpage(AppRoutes.railSettings, shellDpadIndex: _shellRailSettings);
   }
 
   void openSubtitleOptions() {
@@ -1360,15 +1377,7 @@ class SettingsController extends GetxController {
                                 fontSize: 12,
                               ),
                             )
-                          : t == GlassThemeLabels.ios27
-                              ? Text(
-                                  'theme.ios27.sub'.tr,
-                                  style: TextStyle(
-                                    color: Colors.white.withValues(alpha: 0.72),
-                                    fontSize: 12,
-                                  ),
-                                )
-                              : null,
+                          : null,
                       trailing: pending == t
                           ? const Icon(Icons.check_rounded, color: Colors.white)
                           : null,
@@ -1845,7 +1854,7 @@ class SettingsController extends GetxController {
   }
 
   void openPerformanceSettings() {
-    Get.toNamed(AppRoutes.performanceSettings);
+    pushSettingsSubpage(AppRoutes.performanceSettings, shellDpadIndex: _shellPerformance);
   }
 
   Future<void> showLiveBufferDialog() async {

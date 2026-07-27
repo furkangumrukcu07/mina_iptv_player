@@ -272,22 +272,116 @@ class AutoScrollVerticalText extends StatelessWidget {
           );
         }
 
+        // Metin alana sığmıyor — otomatik kayma yap
         return SizedBox(
           width: maxW,
           height: cappedH,
           child: _AutoScrollVerticalMarquee(
-            key: ValueKey(text),
             text: text,
             style: style,
             textHeight: tp.height,
             viewportHeight: cappedH,
             maxWidth: maxW,
             startDelay: startDelay,
-            textDirection: direction,
             paused: paused,
+            textDirection: direction,
           ),
         );
       },
+    );
+  }
+}
+
+/// Metni alana sığacak şekilde font boyutunu dinamik olarak küçültür.
+/// Otomatik kayma (marquee) yapılmaz; tüm metin görünür kalır.
+class _AutoFitText extends StatelessWidget {
+  const _AutoFitText({
+    required this.text,
+    required this.baseStyle,
+    required this.maxHeight,
+    required this.maxWidth,
+    this.maxLines,
+    required this.textDirection,
+  });
+
+  final String text;
+  final TextStyle baseStyle;
+  final double maxHeight;
+  final double maxWidth;
+  final int? maxLines;
+  final TextDirection textDirection;
+
+  /// Minimum font boyutu — daha küçük okunamaz hale gelir.
+  static const double _minFontSize = 5.0;
+
+  TextStyle _scaledStyle(double fontSize) {
+    return baseStyle.copyWith(fontSize: fontSize);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Binary search ile optimum font boyutunu bul
+    double lo = _minFontSize;
+    double hi = baseStyle.fontSize ?? 14.0;
+    double best = hi;
+
+    // Önce mevcut font boyutunun çalışıp çalışmadığını kontrol et
+    final baseTp = TextPainter(
+      text: TextSpan(text: text, style: _scaledStyle(hi)),
+      textDirection: textDirection,
+      maxLines: maxLines,
+    )..layout(maxWidth: maxWidth);
+
+    if (baseTp.height <= maxHeight + 1) {
+      // Mevcut boyut zaten sığıyor — ellipsis ile göster
+      return Text(
+        text,
+        style: baseStyle,
+        maxLines: maxLines,
+        overflow: maxLines != null ? TextOverflow.ellipsis : TextOverflow.clip,
+      );
+    }
+
+    // Binary search: en büyük font boyutunu bul ki metin sığsın
+    for (var i = 0; i < 12; i++) {
+      final mid = (lo + hi) / 2;
+      final tp = TextPainter(
+        text: TextSpan(text: text, style: _scaledStyle(mid)),
+        textDirection: textDirection,
+        maxLines: maxLines,
+      )..layout(maxWidth: maxWidth);
+
+      if (tp.height <= maxHeight + 0.5) {
+        best = mid;
+        lo = mid; // Daha büyük dene
+      } else {
+        hi = mid; // Daha küçük dene
+      }
+    }
+
+    // best değeri ile son kontrol
+    final finalStyle = _scaledStyle(best);
+    final finalTp = TextPainter(
+      text: TextSpan(text: text, style: finalStyle),
+      textDirection: textDirection,
+      maxLines: maxLines,
+    )..layout(maxWidth: maxWidth);
+
+    if (finalTp.height <= maxHeight + 0.5) {
+      return Text(
+        text,
+        style: finalStyle,
+        maxLines: maxLines,
+        overflow: maxLines != null ? TextOverflow.ellipsis : TextOverflow.clip,
+      );
+    }
+
+    // Son çare: minimum font ile ellipsis
+    return Text(
+      text,
+      style: _scaledStyle(_minFontSize),
+      maxLines: maxLines,
+      overflow: TextOverflow.ellipsis,
     );
   }
 }

@@ -21,6 +21,9 @@ abstract final class TvShellListWindow {
   /// Bellek modunda kanal listesi — genişletme adımı.
   static const int memChannelExpandBatch = 40;
 
+  /// Küçük playlistlerde (100 kanal altı) baştan tüm kanalları yükle.
+  static const int memChannelSmallPlaylistThreshold = 100;
+
   /// TV düzeninde DB kanal penceresi üst sınırı.
   static const int tvChannelWindowCap = 140;
 

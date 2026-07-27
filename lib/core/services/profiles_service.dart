@@ -346,7 +346,7 @@ class ProfilesService extends GetxService {
         await Get.find<AppSettingsService>().reloadAllFromPrefs();
       }
     } catch (e) {
-      debugPrint('[ProfilesService] settings reload error: $e');
+      if (kDebugMode) debugPrint('[ProfilesService] settings reload error: $e');
     }
     try {
       if (Get.isRegistered<FavoritesService>()) {

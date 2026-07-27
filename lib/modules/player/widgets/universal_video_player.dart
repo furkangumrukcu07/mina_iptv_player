@@ -3,6 +3,8 @@ import 'dart:io';
 
 import 'package:better_player_plus/better_player_plus.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:get/get.dart';
 import 'package:media_kit/media_kit.dart';
 import 'package:media_kit_video/media_kit_video.dart';
@@ -11,6 +13,7 @@ import '../../../core/player/iptv_playback_defaults.dart';
 import '../../../core/player/media_kit_mpv_crispy_config.dart';
 import '../../../core/player/video_player_engine.dart';
 import '../../../core/player/media_kit_subtitle_font.dart';
+import '../../../core/player/media_kit_lock.dart';
 import '../../../core/platform/android_playback_soc_hints.dart';
 import '../../../core/player/playback_orientation_manager.dart';
 import '../../../core/services/app_settings_service.dart';
@@ -62,6 +65,9 @@ VideoControllerConfiguration _minaVideoControllerConfiguration() {
       ),
     );
   }
+  if (Platform.isMacOS) {
+    return const VideoControllerConfiguration(enableHardwareAcceleration: false);
+  }
   return const VideoControllerConfiguration();
 }
 
@@ -71,6 +77,7 @@ VideoControllerConfiguration minaVideoControllerConfiguration() =>
 
 /// libmpv ayarları: [Player.platform] üzerinden (media_kit varsayılanlarından sonra).
 Future<void> _applyMpvIptvTuning(Player player, String rawUrl) async {
+  if (Platform.isMacOS) return;
   final plat = player.platform;
   if (plat is! NativePlayer) return;
   final live = _isLiveForMpvTuning(rawUrl);
@@ -79,20 +86,21 @@ Future<void> _applyMpvIptvTuning(Player player, String rawUrl) async {
     try {
       await plat.setProperty(key, value);
     } catch (e) {
-      debugPrint('mina_iptv: mpv prop $key=$value skipped: $e');
+      if (kDebugMode) debugPrint('mina_iptv: mpv prop $key=$value skipped: $e');
     }
   }
 
   final bool weak = Platform.isAndroid &&
       (AndroidPlaybackSocHints.weakMpvDevice ||
           AndroidPlaybackSocHints.playbackChallengedTv ||
-          AndroidPlaybackSocHints.playbackSegment == DevicePlaybackSegment.low);
+          AndroidPlaybackSocHints.playbackSegment == DevicePlaybackSegment.low ||
+          AndroidPlaybackSocHints.isTotalRamBelowBytes(2560 * 1024 * 1024));
 
   if (weak) {
     await set('framedrop', 'decoder+vo');
     await set('vd-lavc-skiploopfilter', 'all');
     await set('vd-lavc-fast', 'yes');
-    await set('vd-lavc-threads', '0');
+    await set('vd-lavc-threads', '2');
   }
 
   if (MediaKitMpvCrispyConfig.shouldApplyHlsBitrate(
@@ -137,14 +145,50 @@ class UniversalVideoPlayer extends StatefulWidget {
 }
 
 class _UniversalVideoPlayerState extends State<UniversalVideoPlayer> {
+  static Player? _macOSGlobalPlayer;
+  static VideoController? _macOSGlobalVideoController;
+  static Future<void>? _macOSInitFuture;
+
   Player? _player;
   VideoController? _videoController;
   int _initId = 0;
+  Future<void>? _activeInitFuture;
   /// Ana yüzey [Video] remount — Texture yeniden bağlansın (PiP restore ile aynı fikir).
   int _mediaKitSurfaceEpoch = 0;
   bool _mediaKitOpenSurfaceRebindDone = false;
 
-  VideoPlayerEngine get _engine => widget.engine;
+  VideoPlayerEngine get _engine =>
+      Platform.isMacOS ? VideoPlayerEngine.mediaKit : widget.engine;
+
+  Widget _buildMediaKitSurface() {
+    final vc = _videoController;
+    if (vc == null) {
+      return const ColoredBox(color: Colors.black);
+    }
+    return ValueListenableBuilder<Rect?>(
+      valueListenable: vc.rect,
+      builder: (context, rect, child) {
+        // macOS'ta rect kontrolü dead-lock'a neden oluyor: Video widget'ı mount
+        // edilmediği için native texture binding tetiklenmiyor, bu yüzden rect
+        // hep null/0 kalıyor ve ekran siyah kalıyordu. Her zaman Video'yu mount ediyoruz.
+        return LayoutBuilder(
+          builder: (context, constraints) {
+            if (constraints.maxWidth < 2 || constraints.maxHeight < 2) {
+              return const ColoredBox(color: Colors.black);
+            }
+            return SizedBox.expand(
+              child: Video(
+                key: ValueKey('mk_surf_$_mediaKitSurfaceEpoch'),
+                controller: vc,
+                fit: widget.fit,
+                controls: null,
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
   bool _mediaKitPurpleFixAtLastInit = false;
   final GlobalKey _betterPlayerKey = GlobalKey();
 
@@ -162,10 +206,10 @@ class _UniversalVideoPlayerState extends State<UniversalVideoPlayer> {
           for (var attempt = 0; attempt < 5; attempt++) {
             if (!mounted) break;
             try {
-              debugPrint('mina_iptv: reattaching BetterPlayer surface attempt#$attempt');
+              if (kDebugMode) debugPrint('mina_iptv: reattaching BetterPlayer surface attempt#$attempt');
               await c.videoPlayerController?.reattachPlatformSurface();
             } catch (e) {
-              debugPrint('mina_iptv: error reattaching BetterPlayer surface attempt#$attempt: $e');
+              if (kDebugMode) debugPrint('mina_iptv: error reattaching BetterPlayer surface attempt#$attempt: $e');
             }
             await Future<void>.delayed(Duration(milliseconds: 100 * (attempt + 1)));
           }
@@ -221,17 +265,29 @@ class _UniversalVideoPlayerState extends State<UniversalVideoPlayer> {
     required bool bumpVideoWidget,
   }) async {
     final currentVideoTrack = player.state.track.video;
-    try {
-      await player.setVideoTrack(VideoTrack.no());
-    } catch (_) {}
-    await Future<void>.delayed(const Duration(milliseconds: 100));
-    try {
-      await player.setVideoTrack(currentVideoTrack);
-    } catch (_) {
+    int attempts = 0;
+    const maxAttempts = 3;
+    
+    while (attempts < maxAttempts) {
       try {
-        await player.setVideoTrack(VideoTrack.auto());
+        await player.setVideoTrack(VideoTrack.no());
       } catch (_) {}
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      try {
+        await player.setVideoTrack(currentVideoTrack);
+        // Success - break out of retry loop
+        break;
+      } catch (_) {
+        attempts++;
+        if (attempts >= maxAttempts) {
+          // Last attempt failed, try auto as fallback
+          try {
+            await player.setVideoTrack(VideoTrack.auto());
+          } catch (_) {}
+        }
+      }
     }
+    
     if (seekAfter) {
       try {
         final pos = player.state.position;
@@ -270,7 +326,7 @@ class _UniversalVideoPlayerState extends State<UniversalVideoPlayer> {
       if (!mounted || initId != _initId || !identical(_player, player)) return;
       if (_mediaKitOpenSurfaceRebindDone) return;
       _mediaKitOpenSurfaceRebindDone = true;
-      debugPrint('mina_iptv: MediaKit open surface rebind');
+      if (kDebugMode) debugPrint('mina_iptv: MediaKit open surface rebind');
       await _forceMediaKitVoSurfaceRebind(
         player,
         seekAfter: false,
@@ -346,9 +402,88 @@ class _UniversalVideoPlayerState extends State<UniversalVideoPlayer> {
   }
 
   Future<void> _initMediaKit() async {
+    final prev = _activeInitFuture;
+    final completer = Completer<void>();
+    _activeInitFuture = completer.future;
+
+    if (prev != null) {
+      try {
+        await prev;
+      } catch (_) {}
+    }
+
+    try {
+      await _doInitMediaKit();
+    } finally {
+      if (identical(_activeInitFuture, completer.future)) {
+        _activeInitFuture = null;
+      }
+      if (!completer.isCompleted) {
+        completer.complete();
+      }
+    }
+  }
+
+  Future<void> _doInitMediaKit() async {
     final currentId = ++_initId;
     _mediaKitOpenSurfaceRebindDone = false;
     await AndroidPlaybackSocHints.ensureLoaded();
+
+    if (Platform.isMacOS) {
+      await MinaMediaKitLock.synchronized(() async {
+        if (!mounted || !_engine.isMediaKit || currentId != _initId) return;
+        if (_macOSGlobalPlayer == null) {
+          _macOSInitFuture ??= () async {
+            final player = Player(configuration: minaMediaKitPlayerConfiguration());
+            // mpv core'un oluşturulması için yeterli süre.
+            await Future<void>.delayed(const Duration(milliseconds: 200));
+            final videoController = VideoController(
+              player,
+              configuration: _minaVideoControllerConfiguration(),
+            );
+            try {
+              await videoController.platform.future;
+              // mpv_render_context_create, media_kit_video worker thread'inde
+              // (Thread 50) arka planda çalışır. videoController.platform.future
+              // Dart tarafında resolve olduktan sonra native C++ tarafında
+              // m_config_cache_from_shadow hâlâ çalışıyor olabilir.
+              // Yeterli bekleme ile render context'in tam kurulmasını garanti ediyoruz.
+              await Future<void>.delayed(const Duration(milliseconds: 500));
+            } catch (e) {
+              if (kDebugMode) debugPrint('mina_iptv: macOS VideoController init failed: $e');
+              try { await player.dispose(); } catch (_) {}
+              _macOSInitFuture = null;
+              return;
+            }
+            _macOSGlobalPlayer = player;
+            _macOSGlobalVideoController = videoController;
+          }();
+          await _macOSInitFuture;
+        }
+        if (_macOSGlobalPlayer == null) return;
+        _player = _macOSGlobalPlayer;
+        _videoController = _macOSGlobalVideoController;
+        await (widget.onMediaKitPlayerChanged?.call(_player) ?? Future.value());
+        if (mounted) setState(() {});
+
+        final player = _player;
+        if (player == null || !mounted || !_engine.isMediaKit || currentId != _initId) return;
+
+        final headers = IptvPlaybackDefaults.headersForStreamUrl(widget.url);
+        final uri = widget.url.trim();
+        if (uri.isNotEmpty) {
+          await player.open(
+            Media(
+              uri,
+              httpHeaders: headers.isEmpty ? null : Map<String, String>.from(headers),
+            ),
+            play: true,
+          );
+        }
+      });
+      return;
+    }
+
     if (_pendingShowcasePipRestore() ||
         (Get.isRegistered<PlayerController>() &&
             Get.find<PlayerController>().isReopeningFromInAppPip)) {
@@ -361,50 +496,58 @@ class _UniversalVideoPlayerState extends State<UniversalVideoPlayer> {
       await _tryAdoptShowcasePipRestore();
       if (_player != null) return;
     }
-    await _disposeMediaKit();
-    if (!mounted || !_engine.isMediaKit || currentId != _initId) return;
 
-    if (AndroidPlaybackSocHints.amlogicLike) {
-      debugPrint(
-        'mina_iptv: MediaKit SoC: Amlogic/Meson — ek demuxer / latency ayarı uygulanır',
-      );
-    }
+    await MinaMediaKitLock.synchronized(() async {
+      await _disposeMediaKit();
+      if (!mounted || !_engine.isMediaKit || currentId != _initId) return;
 
-    final player = Player(configuration: minaMediaKitPlayerConfiguration());
-    final videoController = VideoController(
-      player,
-      configuration: _minaVideoControllerConfiguration(),
-    );
-
-    try {
-      await videoController.platform.future;
-    } catch (e, st) {
-      debugPrint('mina_iptv: VideoController init failed: $e\n$st');
-      try {
-        await player.dispose();
-      } catch (_) {}
-      if (Get.isRegistered<PlayerController>()) {
-        await Get.find<PlayerController>().handleMediaKitSurfaceInitFailed(e);
+      if (AndroidPlaybackSocHints.amlogicLike) {
+        if (kDebugMode) debugPrint(
+          'mina_iptv: MediaKit SoC: Amlogic/Meson — ek demuxer / latency ayarı uygulanır',
+        );
       }
-      return;
-    }
 
-    if (!mounted || !_engine.isMediaKit || currentId != _initId) {
+      final player = Player(configuration: minaMediaKitPlayerConfiguration());
+      final videoController = VideoController(
+        player,
+        configuration: _minaVideoControllerConfiguration(),
+      );
+
       try {
-        await player.dispose();
-      } catch (_) {}
+        await videoController.platform.future;
+      } catch (e, st) {
+        if (kDebugMode) debugPrint('mina_iptv: VideoController init failed: $e\n$st');
+        try {
+          await player.dispose();
+        } catch (_) {}
+        if (Get.isRegistered<PlayerController>()) {
+          await Get.find<PlayerController>().handleMediaKitSurfaceInitFailed(e);
+        }
+        return;
+      }
+
+      if (!mounted || !_engine.isMediaKit || currentId != _initId) {
+        try {
+          await player.dispose();
+        } catch (_) {}
+        return;
+      }
+
+      _player = player;
+      _videoController = videoController;
+      if (Get.isRegistered<AppSettingsService>()) {
+        _mediaKitPurpleFixAtLastInit =
+            Get.isRegistered<PlayerController>() &&
+                Get.find<PlayerController>().mediaKitShouldUseSoftwareDecode;
+      }
+      await (widget.onMediaKitPlayerChanged?.call(player) ?? Future.value());
+      if (mounted) setState(() {});
+    });
+
+    final player = _player;
+    if (player == null || !mounted || !_engine.isMediaKit || currentId != _initId) {
       return;
     }
-
-    _player = player;
-    _videoController = videoController;
-    if (Get.isRegistered<AppSettingsService>()) {
-      _mediaKitPurpleFixAtLastInit =
-          Get.isRegistered<PlayerController>() &&
-              Get.find<PlayerController>().mediaKitShouldUseSoftwareDecode;
-    }
-    await (widget.onMediaKitPlayerChanged?.call(player) ?? Future.value());
-    if (mounted) setState(() {});
 
     unawaited(PlaybackOrientationManager.onMediaKitVideoSurfaceReady());
 
@@ -446,7 +589,7 @@ class _UniversalVideoPlayerState extends State<UniversalVideoPlayer> {
         );
       }
     } catch (e, st) {
-      debugPrint('mina_iptv: media_kit open error: $e\n$st');
+      if (kDebugMode) debugPrint('mina_iptv: media_kit open error: $e\n$st');
       if (Get.isRegistered<PlayerController>()) {
         Get.find<PlayerController>().onMediaKitOpenFailed(e);
       }
@@ -457,6 +600,16 @@ class _UniversalVideoPlayerState extends State<UniversalVideoPlayer> {
     final p = _player;
     _player = null;
     _videoController = null;
+
+    if (Platform.isMacOS) {
+      if (p != null) {
+        await (widget.onMediaKitPlayerChanged?.call(null) ?? Future.value());
+        try {
+          await p.stop();
+        } catch (_) {}
+      }
+      return;
+    }
 
     if (p != null &&
         Get.isRegistered<ShowcaseInAppPipService>() &&
@@ -469,7 +622,7 @@ class _UniversalVideoPlayerState extends State<UniversalVideoPlayer> {
       try {
         await p.dispose();
       } catch (e) {
-        debugPrint('mina_iptv: media_kit dispose error: $e');
+        if (kDebugMode) debugPrint('mina_iptv: media_kit dispose error: $e');
       }
     }
   }
@@ -490,32 +643,6 @@ class _UniversalVideoPlayerState extends State<UniversalVideoPlayer> {
       case VideoPlayerEngine.betterPlayer:
         return _buildBetterPlayerSurface();
     }
-  }
-
-  Widget _buildMediaKitSurface() {
-    final vc = _videoController;
-    if (vc == null) {
-      return const ColoredBox(color: Colors.black);
-    }
-    // media_kit [Video] zaten iç FittedBox + texture boyutlandırması yapar.
-    // Dışarıda 1920×1080 FittedBox (fill/cover) Android'de Texture'ı bozup
-    // «ses var, ana yüzey siyah / PiP'de görüntü var» üretebiliyor — PiP yolu
-    // doğrudan Video kullandığı için orada sorun yok.
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        if (constraints.maxWidth < 2 || constraints.maxHeight < 2) {
-          return const ColoredBox(color: Colors.black);
-        }
-        return SizedBox.expand(
-          child: Video(
-            key: ValueKey('mk_surf_$_mediaKitSurfaceEpoch'),
-            controller: vc,
-            fit: widget.fit,
-            controls: null,
-          ),
-        );
-      },
-    );
   }
 
   Widget _buildBetterPlayerSurface() {

@@ -63,7 +63,7 @@ abstract final class PlaylistChannelLayoutSync {
         orderByCategoryId: orderByCategoryId,
       );
     } catch (e, st) {
-      debugPrint('mina_iptv: channel layout SQLite sync failed: $e\n$st');
+      if (kDebugMode) debugPrint('mina_iptv: channel layout SQLite sync failed: $e\n$st');
     }
   }
 }

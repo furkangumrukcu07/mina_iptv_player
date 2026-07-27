@@ -18,10 +18,8 @@ class DefaultFirebaseOptions {
       case TargetPlatform.android:
         return android;
       case TargetPlatform.iOS:
-        throw UnsupportedError(
-          'iOS için Firebase yapılandırılmadı. `flutterfire configure` '
-          'çalıştırıp GoogleService-Info.plist ekleyin.',
-        );
+      case TargetPlatform.macOS:
+        return ios;
       default:
         throw UnsupportedError(
           'Bu platform için Firebase yapılandırılmadı.',
@@ -35,5 +33,15 @@ class DefaultFirebaseOptions {
     messagingSenderId: '678971140280',
     projectId: 'mina-iptv-player',
     storageBucket: 'mina-iptv-player.firebasestorage.app',
+  );
+
+  static const FirebaseOptions ios = FirebaseOptions(
+    apiKey: 'AIzaSyCe5qkUpA0_SdzNs_Gb1Wjv4XotARWAUX0',
+    appId: '1:678971140280:ios:268aff6caaf77457156c4d',
+    messagingSenderId: '678971140280',
+    projectId: 'mina-iptv-player',
+    storageBucket: 'mina-iptv-player.firebasestorage.app',
+    iosClientId: '678971140280-2pabne7tpdu8ar6fbad9kn8c0e1ud6e3.apps.googleusercontent.com',
+    iosBundleId: 'com.mina.iptv.minaIptvPlayer',
   );
 }

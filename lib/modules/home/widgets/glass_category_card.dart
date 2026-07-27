@@ -85,8 +85,7 @@ class GlassCategoryCard extends StatelessWidget {
       final tv = settings.layoutMode.value == AppLayoutMode.tv;
       // Android + TV: gölge blur'u (raster geçişi) eski kutularda pahalı; kaldır.
       final isTvAndroid = AppPerformance.isTvAndroidLayout(settings);
-      final isGm = theme == GlassThemeLabels.glassmorphism ||
-          theme == GlassThemeLabels.minaGlass ||
+      final isGm = theme == GlassThemeLabels.minaGlass ||
           theme == GlassThemeLabels.flyUi;
       final isGg = theme == GlassThemeLabels.glassGri;
       final flat = ga.useFlatHomeCategoryStyle;

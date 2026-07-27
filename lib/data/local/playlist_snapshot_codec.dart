@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
 import 'package:flutter/foundation.dart';
 
@@ -415,11 +416,33 @@ String encodeMergedPlaylistSnapshotFromResult(List<dynamic> args) {
   });
 }
 
-Future<M3uResult?> decodeMergedPlaylistSnapshotFromBytes(
+Future<M3uResult?> decodeMergedPlaylistSnapshotFromFilePath(
   String expectedKey,
-  List<int> bytes,
+  String filePath,
 ) async {
-  // Bayt → String ana isolate'te; decode isolate'e yalnızca String gider.
-  final jsonStr = utf8.decode(bytes);
-  return compute(decodeMergedPlaylistSnapshotJsonString, [expectedKey, jsonStr]);
+  return compute(_decodeMergedPlaylistSnapshotFromFileIsolate, [expectedKey, filePath]);
+}
+
+M3uResult? _decodeMergedPlaylistSnapshotFromFileIsolate(List<dynamic> args) {
+  final expectedKey = args[0] as String;
+  final filePath = args[1] as String;
+  try {
+    final file = File(filePath);
+    if (!file.existsSync()) return null;
+    final bytes = file.readAsBytesSync();
+    if (bytes.isEmpty) return null;
+    final jsonStr = utf8.decode(bytes);
+    final root = jsonDecode(jsonStr) as Map<String, dynamic>;
+    final version = root['v'];
+    if (version != kPlaylistSnapshotVersionFull &&
+        version != kPlaylistSnapshotVersionSlim) {
+      return null;
+    }
+    if (root['sk'] as String != expectedKey) return null;
+    final payload = root['payload'];
+    if (payload is! Map) return null;
+    return m3uResultFromJsonMap(Map<String, dynamic>.from(payload));
+  } catch (_) {
+    return null;
+  }
 }

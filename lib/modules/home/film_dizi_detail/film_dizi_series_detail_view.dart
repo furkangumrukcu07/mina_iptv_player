@@ -1236,7 +1236,7 @@ class _EpisodesPanelState extends State<_EpisodesPanel> {
     List<SeriesEpisodeOption> list,
     int index,
   ) {
-    debugPrint(
+    if (kDebugMode) debugPrint(
         '[EpisodesPanel] _buildEpisodeTile called for index $index (list.length=${list.length})');
     final opt = list[index];
     final isFirst = index == 0;
@@ -1274,7 +1274,7 @@ class _EpisodesPanelState extends State<_EpisodesPanel> {
       final seasons = controller.seasons;
       final list = controller.episodesInSeason;
       final release = controller.seriesReleaseDate();
-      debugPrint(
+      if (kDebugMode) debugPrint(
           '[EpisodesPanel] Build: shrinkWrap=$shrinkWrap, seasons.length=${seasons.length}, list.length=${list.length}');
 
       final children = <Widget>[
@@ -1462,26 +1462,26 @@ class _EpisodeCard extends StatelessWidget {
     try {
       safeDuration = controller.durationLabel(option);
     } catch (e) {
-      debugPrint('[EpisodeCard - durationLabel] Error: $e');
+      if (kDebugMode) debugPrint('[EpisodeCard - durationLabel] Error: $e');
       safeDuration = null;
     }
 
     try {
       safeEpisodeTitle = controller.episodeListTitle(option) ?? safeChannelName;
     } catch (e) {
-      debugPrint('[EpisodeCard - episodeListTitle] Error: $e');
+      if (kDebugMode) debugPrint('[EpisodeCard - episodeListTitle] Error: $e');
       safeEpisodeTitle = safeChannelName;
     }
 
     try {
       // Debug: Episode card content
-      debugPrint(
+      if (kDebugMode) debugPrint(
           '[EpisodeCard] Building card for episode: S${option.season}E${option.episodeNumber}');
-      debugPrint('[EpisodeCard] Thumb: ${thumb.isNotEmpty ? thumb : "EMPTY"}');
-      debugPrint('[EpisodeCard] Duration: ${safeDuration ?? "NULL"}');
-      debugPrint('[EpisodeCard] Plot: ${safePlot ?? "NULL"}');
-      debugPrint('[EpisodeCard] Channel name: $safeChannelName');
-      debugPrint('[EpisodeCard] Episode title: $safeEpisodeTitle');
+      if (kDebugMode) debugPrint('[EpisodeCard] Thumb: ${thumb.isNotEmpty ? thumb : "EMPTY"}');
+      if (kDebugMode) debugPrint('[EpisodeCard] Duration: ${safeDuration ?? "NULL"}');
+      if (kDebugMode) debugPrint('[EpisodeCard] Plot: ${safePlot ?? "NULL"}');
+      if (kDebugMode) debugPrint('[EpisodeCard] Channel name: $safeChannelName');
+      if (kDebugMode) debugPrint('[EpisodeCard] Episode title: $safeEpisodeTitle');
     } catch (_) {
       // Debug printler hata verse de devam edelim
     }
@@ -1561,7 +1561,7 @@ class _EpisodeCard extends StatelessWidget {
                                   ),
                                 );
                               } catch (e) {
-                                debugPrint(
+                                if (kDebugMode) debugPrint(
                                     '[EpisodeCard - epName Obx] Error: $e');
                                 return const SizedBox.shrink();
                               }
@@ -1628,7 +1628,7 @@ class _EpisodeCard extends StatelessWidget {
                         ),
                       );
                     } catch (e) {
-                      debugPrint('[EpisodeCard - overview Obx] Error: $e');
+                      if (kDebugMode) debugPrint('[EpisodeCard - overview Obx] Error: $e');
                       // Hata olursa varsayılan plot'u gösterelim (eğer varsa)
                       if (safePlot?.isNotEmpty ?? false) {
                         return Padding(
@@ -1675,7 +1675,7 @@ class _EpisodeCard extends StatelessWidget {
         child: body,
       );
     } catch (e) {
-      debugPrint('[EpisodeCard - full build] Error: $e');
+      if (kDebugMode) debugPrint('[EpisodeCard - full build] Error: $e');
       // Tüm kart çökerse basit bir geri dönüş versin
       return RecommendedFilmsGlassPanel(
         padding: const EdgeInsets.all(10),
@@ -1744,7 +1744,7 @@ class _SafeObx extends StatelessWidget {
     try {
       return Obx(() => builder(context));
     } catch (e) {
-      debugPrint('[_SafeObx] Error: $e');
+      if (kDebugMode) debugPrint('[_SafeObx] Error: $e');
       return const SizedBox.shrink();
     }
   }

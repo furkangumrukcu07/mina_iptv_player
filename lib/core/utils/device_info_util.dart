@@ -48,7 +48,7 @@ class DeviceInfoUtil {
         }
       }
     } catch (e) {
-      debugPrint('[DeviceInfoUtil] error fetching hardware ID: $e');
+      if (kDebugMode) debugPrint('[DeviceInfoUtil] error fetching hardware ID: $e');
     }
 
     // Fallback: Generate or retrieve the secure storage UUID
@@ -81,7 +81,7 @@ class DeviceInfoUtil {
         return info.computerName;
       }
     } catch (e) {
-      debugPrint('[DeviceInfoUtil] error fetching device name: $e');
+      if (kDebugMode) debugPrint('[DeviceInfoUtil] error fetching device name: $e');
     }
     return 'Unknown Device';
   }

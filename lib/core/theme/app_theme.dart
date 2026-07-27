@@ -32,7 +32,6 @@ abstract final class AppTheme {
     _darkFlatBackgroundBase,
     _glassGriBackgroundBase,
     _flatBlackBackgroundBase,
-    _glassmorphismBackgroundBase,
   };
 
   static String _bgAssetFor(BuildContext context, String fileBaseName) {
@@ -58,7 +57,7 @@ abstract final class AppTheme {
 
   static const _flatBlackBackgroundBase = 'flat_black_background';
 
-  static const _glassmorphismBackgroundBase = 'glassmorphism_background';
+
 
   /// [GlassThemeLabels.minaGlass]: kullanıcı PNG’leri (yatay / dikey).
   static const _minaGlassLandscapeAsset = '$_bgDir/mina_glass_landscape.png';
@@ -82,14 +81,7 @@ abstract final class AppTheme {
   static const _tvLiteLandscapeAsset = '$_bgDir/tv_lite_landscape.png';
   static const _tvLitePortraitAsset = '$_bgDir/tv_lite_portrait.png';
 
-  /// [GlassThemeLabels.ios27]: akışkan "Liquid Glass" damla cam duvar kağıdı
-  /// (yatay / dikey, tam çözünürlük). Telif sorunu olmayan özgün üretim görselleri.
-  static const _ios27LandscapeAsset = '$_bgDir/ios27_landscape.png';
-  static const _ios27PortraitAsset = '$_bgDir/ios27_portrait.png';
 
-  /// [GlassThemeLabels.macTema]: macOS 26 Tahoe wallpapers (yatay / dikey).
-  static const _macLandscapeAsset = '$_bgDir/mac_landscape.jpg';
-  static const _macPortraitAsset = '$_bgDir/mac_portrait.jpg';
 
   /// [GlassThemeLabels.trabzon]: Canlı zemin (mesh gradient) Trabzon teması (yatay / dikey).
   static const _trabzonLandscapeAsset = '$_bgDir/trabzon_landscape.jpg';
@@ -122,9 +114,7 @@ abstract final class AppTheme {
           ? _flyUiPortraitAsset
           : _flyUiLandscapeAsset;
     }
-    if (themeLabel == GlassThemeLabels.glassmorphism) {
-      return _bgAssetFor(context, _glassmorphismBackgroundBase);
-    }
+
     if (themeLabel == GlassThemeLabels.koyuCam) {
       return _bgAssetFor(context, _darkGlassBackgroundBase);
     }
@@ -138,16 +128,7 @@ abstract final class AppTheme {
           ? _tvLitePortraitAsset
           : _tvLiteLandscapeAsset;
     }
-    if (themeLabel == GlassThemeLabels.ios27) {
-      return MediaQuery.orientationOf(context) == Orientation.portrait
-          ? _ios27PortraitAsset
-          : _ios27LandscapeAsset;
-    }
-    if (themeLabel == GlassThemeLabels.macTema) {
-      return MediaQuery.orientationOf(context) == Orientation.portrait
-          ? _macPortraitAsset
-          : _macLandscapeAsset;
-    }
+
     if (themeLabel == GlassThemeLabels.trabzon) {
       return MediaQuery.orientationOf(context) == Orientation.portrait
           ? _trabzonPortraitAsset
@@ -200,11 +181,8 @@ abstract final class AppTheme {
         themeLabel == GlassThemeLabels.darkFlat ||
         themeLabel == GlassThemeLabels.flatBlack ||
         themeLabel == GlassThemeLabels.glassGri ||
-        themeLabel == GlassThemeLabels.glassmorphism ||
         themeLabel == GlassThemeLabels.minaGlass ||
         themeLabel == GlassThemeLabels.tvLite ||
-        themeLabel == GlassThemeLabels.ios27 ||
-        themeLabel == GlassThemeLabels.macTema ||
         themeLabel == GlassThemeLabels.trabzon ||
         themeLabel == GlassThemeLabels.flyUi) {
       return (
@@ -1270,9 +1248,7 @@ abstract final class AppTheme {
     String appFontFamilyKey = kDefaultAppFontFamilyKey,
   }) {
     ThemeData base;
-    if (themeLabel == GlassThemeLabels.glassmorphism) {
-      base = darkGlassmorphism;
-    } else if (themeLabel == GlassThemeLabels.amoledBlack) {
+    if (themeLabel == GlassThemeLabels.amoledBlack) {
       base = amoledBlack;
     } else if (themeLabel == GlassThemeLabels.minaGlass) {
       base = minaGlass;
@@ -1284,10 +1260,7 @@ abstract final class AppTheme {
       base = glassGri;
     } else if (themeLabel == GlassThemeLabels.tvLite) {
       base = tvLite;
-    } else if (themeLabel == GlassThemeLabels.ios27) {
-      base = ios27;
-    } else if (themeLabel == GlassThemeLabels.macTema) {
-      base = macTema;
+
     } else if (themeLabel == GlassThemeLabels.semcTheme) {
       base = semcTheme;
     } else if (themeLabel == GlassThemeLabels.flyUi) {

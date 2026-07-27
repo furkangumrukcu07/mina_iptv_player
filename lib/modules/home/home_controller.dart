@@ -1,5 +1,5 @@
 import 'package:flutter/foundation.dart'
-    show defaultTargetPlatform, kIsWeb, TargetPlatform;
+    show defaultTargetPlatform, kIsWeb, TargetPlatform, kDebugMode;
 import 'package:flutter/material.dart';
 import 'package:get/get.dart';
 import 'dart:async';
@@ -168,7 +168,7 @@ class HomeController extends GetxController {
       }
       final s = _nameMatchScore(ch.name, q);
       if (s >= 0) scored.add((ch, s));
-      if (++_yieldCounter % 1500 == 0) await Future.delayed(Duration.zero);
+      if (++_yieldCounter % 500 == 0) await Future.delayed(Duration.zero);
     }
     scored.sort((a, b) => b.$2.compareTo(a.$2));
     return scored.take(limit).map((e) => e.$1).toList();
@@ -185,7 +185,7 @@ class HomeController extends GetxController {
       if (PlaylistCategoryHide.vodItemHidden(app, _cache, d, v)) continue;
       final s = _nameMatchScore(v.name, q);
       if (s >= 0) scored.add((v, s));
-      if (++_yieldCounter % 1500 == 0) await Future.delayed(Duration.zero);
+      if (++_yieldCounter % 500 == 0) await Future.delayed(Duration.zero);
     }
     scored.sort((a, b) => b.$2.compareTo(a.$2));
     return scored.take(limit).map((e) => e.$1).toList();
@@ -204,7 +204,7 @@ class HomeController extends GetxController {
       }
       final sc = _nameMatchScore(s.name, q);
       if (sc >= 0) scored.add((s, sc));
-      if (++_yieldCounter % 1500 == 0) await Future.delayed(Duration.zero);
+      if (++_yieldCounter % 500 == 0) await Future.delayed(Duration.zero);
     }
     scored.sort((a, b) => b.$2.compareTo(a.$2));
     return scored.take(limit).map((e) => e.$1).toList();
@@ -767,7 +767,7 @@ class HomeController extends GetxController {
         }
       }
     } catch (e) {
-      debugPrint('[HomeController] Error checking smart announcements: $e');
+      if (kDebugMode) debugPrint('[HomeController] Error checking smart announcements: $e');
     }
   }
 
@@ -833,7 +833,7 @@ class HomeController extends GetxController {
         await settings.setPlayStoreRatePromptShownForBuild(build);
       }
     } catch (e, st) {
-      debugPrint('mina_iptv: PlayStore rate dialog: $e\n$st');
+      if (kDebugMode) debugPrint('mina_iptv: PlayStore rate dialog: $e\n$st');
     }
   }
 
@@ -1098,7 +1098,7 @@ class HomeController extends GetxController {
       _lastBackAt = now;
       GlassSnackbar.show(
         '',
-        'Çıkmak için tekrar geri tuşuna basın',
+        'exit.pressBackAgain'.tr,
         duration: const Duration(seconds: 2),
         snackPosition: SnackPosition.BOTTOM,
       );

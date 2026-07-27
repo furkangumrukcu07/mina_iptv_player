@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io' show Platform;
 
 import 'package:cloud_functions/cloud_functions.dart';
 import 'package:flutter/foundation.dart';
@@ -89,6 +90,7 @@ class LicensingService extends GetxService with WidgetsBindingObserver {
   }
 
   Future<bool> syncLicenseFromAccount({User? user}) async {
+
     if (user == null && Get.isRegistered<AuthService>()) {
       user = Get.find<AuthService>().currentUser.value;
     }
@@ -115,7 +117,7 @@ class LicensingService extends GetxService with WidgetsBindingObserver {
       final refreshed = FirebaseAuth.instance.currentUser;
       if (refreshed != null) return refreshed;
     } catch (e) {
-      debugPrint('[LicensingService] user.reload failed: $e');
+      if (kDebugMode) debugPrint('[LicensingService] user.reload failed: $e');
     }
     return user;
   }
@@ -126,7 +128,7 @@ class LicensingService extends GetxService with WidgetsBindingObserver {
       final available = await InAppPurchase.instance.isAvailable();
       isBillingAvailable.value = available;
     } catch (e) {
-      debugPrint('[LicensingService] Billing availability check: $e');
+      if (kDebugMode) debugPrint('[LicensingService] Billing availability check: $e');
     }
   }
 
@@ -164,7 +166,7 @@ class LicensingService extends GetxService with WidgetsBindingObserver {
           onTimeout: () {},
         );
       } catch (e) {
-        debugPrint('[LicensingService] Billing restore join wait: $e');
+        if (kDebugMode) debugPrint('[LicensingService] Billing restore join wait: $e');
       }
       return;
     }
@@ -178,7 +180,7 @@ class LicensingService extends GetxService with WidgetsBindingObserver {
         onTimeout: () {},
       );
     } catch (e) {
-      debugPrint('[LicensingService] Billing restore wait: $e');
+      if (kDebugMode) debugPrint('[LicensingService] Billing restore wait: $e');
     } finally {
       if (identical(_billingRestoreRound, round)) {
         _billingRestoreRound = null;
@@ -187,12 +189,14 @@ class LicensingService extends GetxService with WidgetsBindingObserver {
   }
 
   @override
-  void onInit() {
-    super.onInit();
-    WidgetsBinding.instance.addObserver(this);
-    _initBilling();
-    unawaited(_checkLicenseStatus());
-  }
+   void onInit() {
+     super.onInit();
+
+     WidgetsBinding.instance.addObserver(this);
+     _initBilling();
+     // Wait for Firebase auth (including anonymous) before checking license status
+     unawaited(_awaitRestoredAuthUser().then((_) => _checkLicenseStatus()));
+   }
 
   @override
   void onClose() {
@@ -210,6 +214,7 @@ class LicensingService extends GetxService with WidgetsBindingObserver {
   }
 
   Future<void> revalidateRuntimeAccess() async {
+
     _reevaluateTrialState();
 
     // Premium veya trial aktifse sunucudan sync dene (oturum açıksa).
@@ -246,7 +251,7 @@ class LicensingService extends GetxService with WidgetsBindingObserver {
     _purchaseSub = purchaseUpdated.listen(
       _onPurchaseUpdated,
       onError: (err) {
-        debugPrint('[LicensingService] Purchase stream error: $err');
+        if (kDebugMode) debugPrint('[LicensingService] Purchase stream error: $err');
       },
     );
 
@@ -298,18 +303,18 @@ class LicensingService extends GetxService with WidgetsBindingObserver {
         if (auth.currentUser.value == null) {
           try {
             await auth.signInAnonymously();
-            debugPrint(
+            if (kDebugMode) debugPrint(
               '[LicensingService] Anonymous user created for trial tracking',
             );
           } catch (e) {
-            debugPrint('[LicensingService] Anonymous auth failed: $e');
+            if (kDebugMode) debugPrint('[LicensingService] Anonymous auth failed: $e');
           }
         }
       }
 
       final int packageInstallMs = await _getPackageInstallTimeMs();
       final int trialStartMs = await _getTrialStartTimeMs();
-      debugPrint(
+      if (kDebugMode) debugPrint(
         '[LicensingService] Package install: ${DateTime.fromMillisecondsSinceEpoch(packageInstallMs)}, '
         'trial start: ${DateTime.fromMillisecondsSinceEpoch(trialStartMs)}',
       );
@@ -321,7 +326,7 @@ class LicensingService extends GetxService with WidgetsBindingObserver {
           return;
         }
 
-        debugPrint(
+        if (kDebugMode) debugPrint(
           '[LicensingService] User is grandfathered via install date (offline fallback).',
         );
         _applyLocalPremium(
@@ -341,10 +346,10 @@ class LicensingService extends GetxService with WidgetsBindingObserver {
       final now = DateTime.now();
       if (now.isAfter(expireDateTime)) {
         isTrialActive.value = false;
-        debugPrint('[LicensingService] Trial expired.');
+        if (kDebugMode) debugPrint('[LicensingService] Trial expired.');
       } else {
         isTrialActive.value = true;
-        debugPrint(
+        if (kDebugMode) debugPrint(
           '[LicensingService] Trial active. Remaining: $trialRemainingFormatted',
         );
       }
@@ -356,7 +361,7 @@ class LicensingService extends GetxService with WidgetsBindingObserver {
       // lisans anında sunucudan senkronize edilir ve trial iptal olur.
       _registerAuthWorker();
     } catch (e) {
-      debugPrint('[LicensingService] Error checking license: $e');
+      if (kDebugMode) debugPrint('[LicensingService] Error checking license: $e');
       isTrialActive.value = false;
     } finally {
       if (!_initCompleter.isCompleted) {
@@ -433,7 +438,7 @@ class LicensingService extends GetxService with WidgetsBindingObserver {
         await _savePremiumStatusLocally(true);
         await _ensureDeviceRegistration();
         if (!silent) {
-          debugPrint(
+          if (kDebugMode) debugPrint(
             '[LicensingService] Premium unlocked via server sync for uid: ${user.uid}',
           );
         }
@@ -452,7 +457,7 @@ class LicensingService extends GetxService with WidgetsBindingObserver {
       }
       return false;
     } catch (e) {
-      debugPrint('[LicensingService] syncLicenseEntitlements failed: $e');
+      if (kDebugMode) debugPrint('[LicensingService] syncLicenseEntitlements failed: $e');
       return false;
     }
   }
@@ -482,7 +487,7 @@ class LicensingService extends GetxService with WidgetsBindingObserver {
         return true;
       }
     } catch (e) {
-      debugPrint('[LicensingService] claimInstallGrandfather failed: $e');
+      if (kDebugMode) debugPrint('[LicensingService] claimInstallGrandfather failed: $e');
     }
     return false;
   }
@@ -494,7 +499,7 @@ class LicensingService extends GetxService with WidgetsBindingObserver {
 
     final token = _extractAndroidPurchaseToken(purchase);
     if (token == null || token.isEmpty) {
-      debugPrint('[LicensingService] Missing purchase token for server verify.');
+      if (kDebugMode) debugPrint('[LicensingService] Missing purchase token for server verify.');
       return false;
     }
 
@@ -517,7 +522,7 @@ class LicensingService extends GetxService with WidgetsBindingObserver {
         return true;
       }
     } catch (e) {
-      debugPrint('[LicensingService] activatePremiumFromPlay failed: $e');
+      if (kDebugMode) debugPrint('[LicensingService] activatePremiumFromPlay failed: $e');
     }
     return false;
   }
@@ -569,7 +574,7 @@ class LicensingService extends GetxService with WidgetsBindingObserver {
       deviceAccessGranted.value = false;
       isPremium.value = false;
       isTrialActive.value = false;
-      debugPrint(
+      if (kDebugMode) debugPrint(
         '[LicensingService] Device limit exceeded (${registration.deviceCount}/${registration.maxDevices}).',
       );
       return false;
@@ -608,7 +613,7 @@ class LicensingService extends GetxService with WidgetsBindingObserver {
       deviceAccessGranted.value = false;
       isPremium.value = false;
       isTrialActive.value = false;
-      debugPrint(
+      if (kDebugMode) debugPrint(
         '[LicensingService] Device register soft-fail treated as limit '
         '(${devices.length}/${maxDevices.value}, device not in list).',
       );
@@ -621,7 +626,7 @@ class LicensingService extends GetxService with WidgetsBindingObserver {
       isPremium.value = true;
       isTrialActive.value = false;
       trialExpirationDate.value = null;
-      debugPrint(
+      if (kDebugMode) debugPrint(
         '[LicensingService] Device register soft-fail '
         '(${registration.errorCode}: ${registration.errorMessage}); '
         'premium kept (device already known or prior grant).',
@@ -642,7 +647,7 @@ class LicensingService extends GetxService with WidgetsBindingObserver {
       isPremium.value = true;
       isTrialActive.value = false;
       trialExpirationDate.value = null;
-      debugPrint(
+      if (kDebugMode) debugPrint(
         '[LicensingService] Device register soft-fail transient '
         '($code); premium unlocked pending retry.',
       );
@@ -651,7 +656,7 @@ class LicensingService extends GetxService with WidgetsBindingObserver {
 
     deviceAccessGranted.value = false;
     isPremium.value = false;
-    debugPrint(
+    if (kDebugMode) debugPrint(
       '[LicensingService] Device register hard-fail '
       '($code: ${registration.errorMessage}); premium locked.',
     );
@@ -711,7 +716,7 @@ class LicensingService extends GetxService with WidgetsBindingObserver {
         }
       }
     } catch (e) {
-      debugPrint('[LicensingService] MethodChannel invoke error: $e');
+      if (kDebugMode) debugPrint('[LicensingService] MethodChannel invoke error: $e');
     }
 
     if (installTime != null && installTime > 0) {
@@ -737,39 +742,41 @@ class LicensingService extends GetxService with WidgetsBindingObserver {
 
     try {
       if (gFirebaseReady) {
-        final hardwareId = await DeviceInfoUtil.getHardwareDeviceId();
-        final docRef = FirebaseFirestore.instance.collection('device_trials').doc(hardwareId);
-        
-        // Timeout ensures we don't block forever if offline
-        final docSnap = await docRef.get().timeout(const Duration(seconds: 10));
-        
-        if (docSnap.exists) {
-          final data = docSnap.data();
-          if (data != null && data['trialStartMs'] is int) {
-            final int serverStartMs = data['trialStartMs'] as int;
-            // Sync local cache with server truth
-            if (cached != serverStartMs) {
-              await prefs.setInt(trialKey, serverStartMs);
+        // Ensure Firebase Auth user is available (including anonymous) before Firestore access
+        final authUser = await _awaitRestoredAuthUser();
+        if (authUser != null) {
+          final hardwareId = await DeviceInfoUtil.getHardwareDeviceId();
+          final docRef = FirebaseFirestore.instance.collection('device_trials').doc(hardwareId);
+          // Timeout ensures we don't block forever if offline
+          final docSnap = await docRef.get().timeout(const Duration(seconds: 10));
+          if (docSnap.exists) {
+            final data = docSnap.data();
+            if (data != null && data['trialStartMs'] is int) {
+              final int serverStartMs = data['trialStartMs'] as int;
+              // Sync local cache with server truth
+              if (cached != serverStartMs) {
+                await prefs.setInt(trialKey, serverStartMs);
+              }
+              return serverStartMs;
             }
-            return serverStartMs;
+          } else {
+            // Document does not exist. Use cached if it exists (e.g. they started trial offline), else generate new
+            final int startMs = cached ?? DateTime.now().millisecondsSinceEpoch;
+            await docRef.set({
+              'trialStartMs': startMs,
+              'createdAt': FieldValue.serverTimestamp(),
+            });
+            if (cached != startMs) {
+              await prefs.setInt(trialKey, startMs);
+            }
+            return startMs;
           }
         } else {
-          // Document does not exist. Use cached if it exists (e.g. they started trial offline), else generate new
-          final int startMs = cached ?? DateTime.now().millisecondsSinceEpoch;
-          
-          await docRef.set({
-            'trialStartMs': startMs,
-            'createdAt': FieldValue.serverTimestamp(),
-          });
-          
-          if (cached != startMs) {
-            await prefs.setInt(trialKey, startMs);
-          }
-          return startMs;
+          if (kDebugMode) debugPrint('[LicensingService] No auth user, skipping Firestore trial check.');
         }
       }
     } catch (e) {
-      debugPrint('[LicensingService] Firebase trial check failed (offline?): $e');
+      if (kDebugMode) debugPrint('[LicensingService] Firebase trial check failed (offline?): $e');
       // If error (e.g., no internet), it will fall through and use cached or create new locally
     }
 
@@ -788,7 +795,7 @@ class LicensingService extends GetxService with WidgetsBindingObserver {
     try {
       await InAppPurchase.instance.restorePurchases();
     } catch (e) {
-      debugPrint('[LicensingService] Restore purchases failed: $e');
+      if (kDebugMode) debugPrint('[LicensingService] Restore purchases failed: $e');
     }
   }
 
@@ -850,7 +857,7 @@ class LicensingService extends GetxService with WidgetsBindingObserver {
         );
       }
     } catch (e) {
-      debugPrint('[LicensingService] refreshLicenseAcquisitionDate: $e');
+      if (kDebugMode) debugPrint('[LicensingService] refreshLicenseAcquisitionDate: $e');
     }
   }
 
@@ -880,7 +887,7 @@ class LicensingService extends GetxService with WidgetsBindingObserver {
         errorMessage: errorMessage,
       );
     } catch (e) {
-      debugPrint('[LicensingService] Telemetry log error: $e');
+      if (kDebugMode) debugPrint('[LicensingService] Telemetry log error: $e');
     }
   }
 
@@ -912,7 +919,7 @@ class LicensingService extends GetxService with WidgetsBindingObserver {
       );
       return result;
     } catch (e) {
-      debugPrint('[LicensingService] Purchase flow error: $e');
+      if (kDebugMode) debugPrint('[LicensingService] Purchase flow error: $e');
       _logPurchaseAttempt(premiumProductId, false, e.toString());
       return false;
     }
@@ -946,7 +953,7 @@ class LicensingService extends GetxService with WidgetsBindingObserver {
       );
       return result;
     } catch (e) {
-      debugPrint('[LicensingService] +3 Devices Purchase flow error: $e');
+      if (kDebugMode) debugPrint('[LicensingService] +3 Devices Purchase flow error: $e');
       _logPurchaseAttempt(plus3DevicesProductId, false, e.toString());
       return false;
     }
@@ -981,7 +988,7 @@ class LicensingService extends GetxService with WidgetsBindingObserver {
       );
       return result;
     } catch (e) {
-      debugPrint('[LicensingService] Coffee purchase flow error: $e');
+      if (kDebugMode) debugPrint('[LicensingService] Coffee purchase flow error: $e');
       _logPurchaseAttempt(coffeeProductId, false, e.toString());
       return false;
     }
@@ -1009,15 +1016,15 @@ class LicensingService extends GetxService with WidgetsBindingObserver {
 
           if (isPremium.value) {
             purchaseCompleted.value = true;
-            debugPrint(
+            if (kDebugMode) debugPrint(
               '[LicensingService] Product unlocked via Google Play: ${purchase.productID}',
             );
           } else if (deviceLimitExceeded.value) {
-            debugPrint(
+            if (kDebugMode) debugPrint(
               '[LicensingService] Premium verified but device limit reached.',
             );
           } else {
-            debugPrint(
+            if (kDebugMode) debugPrint(
               '[LicensingService] Purchase received but server verification pending/failed.',
             );
           }
@@ -1028,7 +1035,7 @@ class LicensingService extends GetxService with WidgetsBindingObserver {
           await InAppPurchase.instance.completePurchase(purchase);
         }
       } else if (purchase.status == PurchaseStatus.error) {
-        debugPrint('[LicensingService] Purchase error: ${purchase.error}');
+        if (kDebugMode) debugPrint('[LicensingService] Purchase error: ${purchase.error}');
       }
     }
   }
@@ -1045,7 +1052,7 @@ class LicensingService extends GetxService with WidgetsBindingObserver {
       }
       await prefs.setBool('mina_premium_grandfathered', isGrandfathered.value);
     } catch (e) {
-      debugPrint('[LicensingService] Error saving premium status: $e');
+      if (kDebugMode) debugPrint('[LicensingService] Error saving premium status: $e');
     }
   }
 
@@ -1062,7 +1069,7 @@ class LicensingService extends GetxService with WidgetsBindingObserver {
       return _parseIsoDate(data['purchaseDate'] as String?) ??
           _parseIsoDate(data['updatedAt'] as String?);
     } catch (e) {
-      debugPrint('[LicensingService] _fetchPurchaseDateFromFirestore: $e');
+      if (kDebugMode) debugPrint('[LicensingService] _fetchPurchaseDateFromFirestore: $e');
       return null;
     }
   }
@@ -1128,7 +1135,7 @@ class LicensingService extends GetxService with WidgetsBindingObserver {
     } catch (e) {
       Get.snackbar('Hata', 'Lisans kodu geçersiz veya kullanılmış.\n${e.toString()}',
           backgroundColor: const Color(0xFFEF4444), colorText: const Color(0xFFFFFFFF));
-      debugPrint('[LicensingService] redeemManualLicense error: $e');
+      if (kDebugMode) debugPrint('[LicensingService] redeemManualLicense error: $e');
       throw e;
     }
   }

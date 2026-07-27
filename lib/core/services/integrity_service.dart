@@ -34,7 +34,7 @@ const bool kTemporarilyDisablePlayIntegrity = false;
 
 void _integrityVlog(String message) {
   if (kIntegrityDebugLog) {
-    debugPrint('IntegrityService: $message');
+    if (kDebugMode) debugPrint('IntegrityService: $message');
   }
 }
 
@@ -58,7 +58,7 @@ class IntegrityService extends GetxService {
   void scheduleReleaseCheckIfNeeded(BuildContext appContext) {
     if (_scheduled || _completed) return;
     if (kTemporarilyDisablePlayIntegrity) {
-      debugPrint(
+      if (kDebugMode) debugPrint(
         'IntegrityService: atlandı — kTemporarilyDisablePlayIntegrity=true',
       );
       _completed = true;
@@ -78,7 +78,7 @@ class IntegrityService extends GetxService {
     if (defaultTargetPlatform != TargetPlatform.android) return;
     if (cloudProjectNumber.trim().isEmpty ||
         kPlayIntegrityApiKey.trim().isEmpty) {
-      debugPrint(
+      if (kDebugMode) debugPrint(
         'IntegrityService: atlandı — PLAY_INTEGRITY_API_KEY dart-define ile '
         'verilmeli (Play Integrity API etkin API anahtarı).',
       );
@@ -148,7 +148,7 @@ class IntegrityService extends GetxService {
       if (!appContext.mounted) return;
       await _showStoreSuggestionDialog(appContext, pkg);
     } catch (e, st) {
-      debugPrint('IntegrityService: $e\n$st');
+      if (kDebugMode) debugPrint('IntegrityService: $e\n$st');
     }
   }
 

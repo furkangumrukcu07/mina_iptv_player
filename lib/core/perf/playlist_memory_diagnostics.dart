@@ -109,6 +109,6 @@ abstract final class PlaylistMemoryDiagnostics {
       if (snapshotFileBytes != null)
         'snapshot_disk=${formatBytes(snapshotFileBytes)}',
     ];
-    debugPrint('mina_iptv_memory: ${parts.join(' ')}');
+    if (kDebugMode) debugPrint('mina_iptv_memory: ${parts.join(' ')}');
   }
 }

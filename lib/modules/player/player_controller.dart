@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:dio/dio.dart';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -47,6 +48,7 @@ import '../../core/services/playlist_data_source.dart';
 import '../../core/services/playlist_category_hide.dart';
 import '../../core/services/system_volume_service.dart';
 import '../../core/services/toast_service.dart';
+import '../../core/services/network_reachability.dart';
 import '../../core/services/watch_progress_service.dart';
 import '../../services/user_history_service.dart';
 import '../../domain/entities/channel.dart';
@@ -59,6 +61,7 @@ import '../../core/services/active_playlist_service.dart';
 import '../../domain/repositories/playlist_repository.dart';
 import '../channels/channels_controller.dart';
 import '../tv_shell/tv_shell_controller.dart';
+import '../../core/tv/tv_shell_section.dart';
 import 'player_route_args.dart';
 import 'series_player_panel_data.dart';
 import 'widgets/tv_better_player_controls.dart';
@@ -767,11 +770,23 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
   /// MediaKit canlı: pozisyon 10 sn ilerlemezse yeniden bağlan (Crispy watchdog).
   Timer? _mediaKitLiveStallWatchdog;
 
+  /// MediaKit: Aşırı kare düşüşü (stutter/jank) izleme bekçisi.
+  Timer? _mediaKitFrameDropWatchdog;
+  int _mediaKitLastDropCount = 0;
+  int _mediaKitStutterTicks = 0;
+  DateTime? _mediaKitFrameDropWatchdogArmedAt;
+
+  /// BetterPlayer (ExoPlayer): Pozisyon donması izleme bekçisi.
+  Timer? _betterPlaybackWatchdog;
+  Duration _betterLastKnownPosition = Duration.zero;
+  int _betterStutterTicks = 0;
+  DateTime? _betterPlaybackWatchdogArmedAt;
+
   Duration _mediaKitLastKnownPosition = Duration.zero;
 
   int _mediaKitStallTicks = 0;
 
-  static const int _kMediaKitStallThresholdTicks = 5;
+  static const int _kMediaKitStallThresholdTicks = 3;
 
   static const Duration _kMediaKitStallWatchdogInterval = Duration(seconds: 2);
 
@@ -1076,7 +1091,11 @@ class PlayerController extends GetxController with WidgetsBindingObserver {
 
     // Eğer showcase PiP'ten geri dönüş değilse ve farklı bir kanal açılıyorsa,
     // arka planda kalmış olan eski oturumu temizle (ses karışmasını önlemek için).
-    if (!reopenFromInAppPip && Get.isRegistered<ShowcaseInAppPipService>()) {
+    // NOT: Bu kontrol sadece mobil/tablet modunda PiP aktifse çalışmalı.
+    // TV modunda PiP yok, bu yüzden bu kontrol gereksiz ve ANR'a sebep olabilir.
+    if (!reopenFromInAppPip && 
+        Get.isRegistered<ShowcaseInAppPipService>() &&
+        _settings.layoutMode.value != AppLayoutMode.tv) {
       final pip = Get.find<ShowcaseInAppPipService>();
       if (pip.active.value && !pip.isReopeningFromPipBubble) {
         final saved = pip.savedChannel;

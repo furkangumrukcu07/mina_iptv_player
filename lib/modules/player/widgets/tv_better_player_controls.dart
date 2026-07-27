@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui';
 
@@ -1092,6 +1093,30 @@ class _TvBetterPlayerControlsState extends State<TvBetterPlayerControls> {
                   );
                 },
               ),
+              if (Platform.isIOS)
+                AnimatedPositioned(
+                  duration: const Duration(milliseconds: 220),
+                  right: _visible.value ? 24 + rightInset : -100,
+                  top: 24 + MediaQuery.paddingOf(context).top,
+                  child: AnimatedOpacity(
+                    duration: const Duration(milliseconds: 220),
+                    opacity: _visible.value ? 1.0 : 0.0,
+                    child: Material(
+                      color: Colors.black.withValues(alpha: 0.5),
+                      shape: const CircleBorder(),
+                      child: IconButton(
+                        icon: const Icon(
+                          Icons.arrow_back_rounded,
+                          color: Colors.white,
+                          size: 24,
+                        ),
+                        onPressed: () {
+                          Get.back();
+                        },
+                      ),
+                    ),
+                  ),
+                ),
               Positioned(
                 left: (isPortrait ? 8 : 12) + leftInset,
                 right: (isPortrait ? 8 : 12) + rightInset,

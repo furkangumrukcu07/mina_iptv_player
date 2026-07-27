@@ -156,7 +156,7 @@ class M3uParser {
 
     final dropped = extinfSeen - emitted;
     if (dropped > 0) {
-      debugPrint(
+      if (kDebugMode) debugPrint(
         'mina_iptv: ⚠️ m3u parse drop — extinf=$extinfSeen emitted=$emitted '
         'dropped=$dropped (URL eşleşmeyen giriş)',
       );

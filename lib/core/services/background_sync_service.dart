@@ -39,7 +39,7 @@ class BackgroundSyncService extends GetxService {
     try {
       final enabled = _app.silentBackgroundSyncEnabled.value;
       if (enabled) {
-        debugPrint('BackgroundSyncService: Scheduling silent background sync...');
+        if (kDebugMode) debugPrint('BackgroundSyncService: Scheduling silent background sync...');
         await Workmanager().registerPeriodicTask(
           uniqueName,
           taskName,
@@ -51,18 +51,18 @@ class BackgroundSyncService extends GetxService {
           existingWorkPolicy: ExistingPeriodicWorkPolicy.keep,
         );
       } else {
-        debugPrint('BackgroundSyncService: Cancelling silent background sync...');
+        if (kDebugMode) debugPrint('BackgroundSyncService: Cancelling silent background sync...');
         await Workmanager().cancelByUniqueName(uniqueName);
       }
     } catch (e) {
-      debugPrint('BackgroundSyncService: Error updating sync schedule: $e');
+      if (kDebugMode) debugPrint('BackgroundSyncService: Error updating sync schedule: $e');
     }
   }
 
   /// Triggers a one-off silent sync immediately for testing or manual usage.
   Future<void> triggerOneOffSync() async {
     try {
-      debugPrint('BackgroundSyncService: Triggering one-off silent sync...');
+      if (kDebugMode) debugPrint('BackgroundSyncService: Triggering one-off silent sync...');
       await Workmanager().registerOneOffTask(
         '${uniqueName}_oneoff_${DateTime.now().millisecondsSinceEpoch}',
         taskName,
@@ -71,7 +71,7 @@ class BackgroundSyncService extends GetxService {
         ),
       );
     } catch (e) {
-      debugPrint('BackgroundSyncService: Error triggering one-off sync: $e');
+      if (kDebugMode) debugPrint('BackgroundSyncService: Error triggering one-off sync: $e');
     }
   }
 }

@@ -36,7 +36,7 @@ abstract final class VodXtreamInfoCacheStore {
       final out = t?.trim();
       return (out != null && out.isNotEmpty) ? out : null;
     } catch (e) {
-      debugPrint('mina_iptv: VOD info cache read failed: $e');
+      if (kDebugMode) debugPrint('mina_iptv: VOD info cache read failed: $e');
       return null;
     }
   }
@@ -65,7 +65,7 @@ abstract final class VodXtreamInfoCacheStore {
       }
       await tmp.rename(f.path);
     } catch (e) {
-      debugPrint('mina_iptv: VOD info cache write failed: $e');
+      if (kDebugMode) debugPrint('mina_iptv: VOD info cache write failed: $e');
     }
   }
 
@@ -83,7 +83,7 @@ abstract final class VodXtreamInfoCacheStore {
         }
       }
     } catch (e) {
-      debugPrint('mina_iptv: VOD info cache deleteAll failed: $e');
+      if (kDebugMode) debugPrint('mina_iptv: VOD info cache deleteAll failed: $e');
     }
   }
 }

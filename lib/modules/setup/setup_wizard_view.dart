@@ -75,12 +75,17 @@ class _SetupWizardViewState extends State<SetupWizardView> {
               ),
             );
           }),
-          BackdropFilter(
-            filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
-            child: Container(
-              color: Colors.black.withValues(alpha: 0.22),
+          if (!tv)
+            BackdropFilter(
+              filter: ImageFilter.blur(sigmaX: 18, sigmaY: 18),
+              child: Container(
+                color: Colors.black.withValues(alpha: 0.22),
+              ),
+            )
+          else
+            Container(
+              color: Colors.black.withValues(alpha: 0.65),
             ),
-          ),
           SafeArea(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -103,15 +108,7 @@ class _SetupWizardViewState extends State<SetupWizardView> {
                       const SizedBox(height: 6),
                       Obx(() {
                         final i = ctrl.pageIndex.value;
-                        final key = switch (i) {
-                          0 => 'setup.stepLanguage',
-                          1 => 'setup.stepTheme',
-                          2 => 'setup.stepPlayer',
-                          3 => 'setup.stepPerformance',
-                          4 => 'setup.stepFeatures',
-                          5 => 'setup.stepAppFont',
-                          _ => 'setup.stepSource',
-                        };
+                        final key = SetupWizardController.stepKeyFor(i, tv: tv);
                         return Text(
                           key.tr,
                           textAlign: TextAlign.center,
@@ -125,7 +122,7 @@ class _SetupWizardViewState extends State<SetupWizardView> {
                       const SizedBox(height: 12),
                       Obx(() {
                         final v = (ctrl.pageIndex.value + 1) /
-                            SetupWizardController.totalPages;
+                            SetupWizardController.pageCountFor(tv);
                         return ClipRRect(
                           borderRadius: BorderRadius.circular(6),
                           child: LinearProgressIndicator(
@@ -152,16 +149,24 @@ class _SetupWizardViewState extends State<SetupWizardView> {
                         ctrl.ensurePlaylistHook();
                       }
                     },
-                    children: [
-                      _SetupLanguagePage(app: app, tv: tv),
-                      _SetupThemePage(app: app),
-                      _SetupPlayerPage(app: app),
-                      _SetupPerformancePage(app: app),
-                      _SetupFeaturesPage(app: app),
-                      _SetupAppFontPage(app: app),
-                      const _SetupPersonalizationPage(),
-                      const _SetupSourcePage(),
-                    ],
+                    children: tv
+                        ? [
+                            _SetupThemePage(app: app),
+                            _SetupPlayerPage(app: app),
+                            _SetupPerformancePage(app: app),
+                            _SetupAppFontPage(app: app),
+                            const _SetupSourcePage(),
+                          ]
+                        : [
+                            _SetupLanguagePage(app: app, tv: tv),
+                            _SetupThemePage(app: app),
+                            _SetupPlayerPage(app: app),
+                            _SetupPerformancePage(app: app),
+                            _SetupFeaturesPage(app: app),
+                            _SetupAppFontPage(app: app),
+                            const _SetupPersonalizationPage(),
+                            const _SetupSourcePage(),
+                          ],
                   ),
                 ),
                 _IosWizardFooter(

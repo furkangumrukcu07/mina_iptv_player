@@ -30,10 +30,16 @@ abstract final class EpgSnapshotStore {
     await tmp.rename(f.path);
   }
 
-  /// TTL ve [logicalKey] eşleşmesi [validateAndDecode] içinde yapılır.
   static Future<bool> hasSnapshotFile(String logicalKey) async {
     final dir = await getApplicationSupportDirectory();
     return _file(dir, logicalKey).exists();
+  }
+
+  static Future<String?> getSnapshotFilePath(String logicalKey) async {
+    final dir = await getApplicationSupportDirectory();
+    final f = _file(dir, logicalKey);
+    if (!await f.exists()) return null;
+    return f.path;
   }
 
   static Future<String?> readRaw(String logicalKey) async {
@@ -44,7 +50,7 @@ abstract final class EpgSnapshotStore {
       final s = await f.readAsString();
       return s.isEmpty ? null : s;
     } catch (e) {
-      debugPrint('mina_iptv: EPG cache read failed: $e');
+      if (kDebugMode) debugPrint('mina_iptv: EPG cache read failed: $e');
       return null;
     }
   }
@@ -63,7 +69,7 @@ abstract final class EpgSnapshotStore {
         }
       }
     } catch (e) {
-      debugPrint('mina_iptv: EPG cache deleteAll failed: $e');
+      if (kDebugMode) debugPrint('mina_iptv: EPG cache deleteAll failed: $e');
     }
   }
 }

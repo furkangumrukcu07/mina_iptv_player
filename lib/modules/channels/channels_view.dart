@@ -737,6 +737,7 @@ class _CategoriesGlassPanelState extends State<_CategoriesGlassPanel>
                       controller: _listScroll,
                       physics: AppScrollPhysics.list(context: context),
                       itemExtent: remoteNav ? kTvGlassListRowExtent : null,
+                      cacheExtent: remoteNav ? kTvGlassListRowExtent * 10 : null,
                       itemCount: itemCount,
                       itemBuilder: (context, index) {
                         if (index == 0) {
@@ -981,9 +982,15 @@ class _ChannelsGlassPanelState extends State<_ChannelsGlassPanel>
   void initState() {
     super.initState();
     widget.controller.attachTvChannelListScroll(_listScroll);
-    _epgMarqueeTimer = Timer(const Duration(seconds: 2), () {
-      if (mounted) setState(() => _epgMarqueeEnabled = true);
-    });
+    // Disable marquee on TV mode to prevent performance issues
+    if (Get.isRegistered<AppSettingsService>()) {
+      final settings = Get.find<AppSettingsService>();
+      if (settings.layoutMode.value != AppLayoutMode.tv) {
+        _epgMarqueeTimer = Timer(const Duration(seconds: 2), () {
+          if (mounted) setState(() => _epgMarqueeEnabled = true);
+        });
+      }
+    }
   }
 
   @override
@@ -1035,6 +1042,7 @@ class _ChannelsGlassPanelState extends State<_ChannelsGlassPanel>
                   controller: _listScroll,
                   physics: AppScrollPhysics.list(context: context),
                   itemExtent: remoteNav ? kTvGlassListRowExtent : null,
+                  cacheExtent: remoteNav ? kTvGlassListRowExtent * 10 : null,
                   itemCount: list.length,
                   addRepaintBoundaries: true,
                   addAutomaticKeepAlives: false,

@@ -31,7 +31,7 @@ import '../services/epg_service.dart';
 import '../services/epg_deferred_load_service.dart';
 import '../services/mina_telemetry_service.dart';
 import '../services/movie_service.dart';
-import '../services/remote_config_service.dart';
+
 import '../services/playback_progress_write_queue_service.dart';
 import '../services/search_history_service.dart';
 import '../services/toast_service.dart';
@@ -85,8 +85,7 @@ class InitialBinding extends Bindings {
 
     // Sunucu-tarafı bayraklar (varsayilan_video_motoru / inceleme_modu_aktif /
     // zorunlu_surum_kontrolu). Splash fetch'i bekler.
-    Get.put<RemoteConfigService>(RemoteConfigService(), permanent: true);
-    Get.find<RemoteConfigService>().init();
+
     // Push bildirim (FCM) — herkese yayın topic'ine abone olur, izin ister.
     // init() splash sonrası UI hazırken çağrılır (runtime izin popup'ı için).
     Get.put<MinaPushService>(MinaPushService(), permanent: true);

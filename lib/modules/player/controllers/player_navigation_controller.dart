@@ -521,13 +521,21 @@ Future<void> _handleBackAsync() async {
     final isLandscape = Get.context != null &&
                         MediaQuery.orientationOf(Get.context!) == Orientation.landscape;
 
-    if (isMobile && isLandscape) {
+    // macOS masaüstünde pencere yatay olsa bile ekran döndürme mantığı yok;
+    // ESC tuşu doğrudan oynatıcıdan çıkmalı.
+    if (!Platform.isMacOS && isMobile && isLandscape) {
       unawaited(settings.requestMobileHandheldPortraitPlayback());
       return;
     }
 
     if (Get.isRegistered<TvShellController>()) {
-      Get.find<TvShellController>().restoreVodCinemaListAfterPlayerPop();
+      final shell = Get.find<TvShellController>();
+      shell.preventGhostBackAfterPlayerPop();
+      if (shell.selectedSection.value == TvShellSection.live && Get.isRegistered<ChannelsController>()) {
+        Get.find<ChannelsController>().restoreChannelListFocusAfterPlayerPop();
+      } else {
+        shell.restoreVodCinemaListAfterPlayerPop();
+      }
     } else if (Get.isRegistered<ChannelsController>()) {
       Get.find<ChannelsController>().restoreChannelListFocusAfterPlayerPop();
     }

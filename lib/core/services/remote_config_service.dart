@@ -53,7 +53,7 @@ class RemoteConfigService extends GetxService {
   /// Ağ çekimi yapmaz; [ensureFetched] ayrı çağrılır (splash'te timeout'lu).
   Future<RemoteConfigService> init() async {
     if (!gFirebaseReady) {
-      debugPrint('mina_iptv: RemoteConfig — Firebase hazır değil, varsayılanlar');
+      if (kDebugMode) debugPrint('mina_iptv: RemoteConfig — Firebase hazır değil, varsayılanlar');
       _readIntoReactive(fromDefaultsOnly: true);
       return this;
     }
@@ -76,7 +76,7 @@ class RemoteConfigService extends GetxService {
       // Önce son aktif değerleri oku (ağ beklemeden); fetch sonra güncelleyecek.
       _readIntoReactive();
     } catch (e) {
-      debugPrint('mina_iptv: RemoteConfig init hata: $e');
+      if (kDebugMode) debugPrint('mina_iptv: RemoteConfig init hata: $e');
       _ready = false;
       _readIntoReactive(fromDefaultsOnly: true);
     }
@@ -90,12 +90,12 @@ class RemoteConfigService extends GetxService {
     try {
       final activated = await _rc!.fetchAndActivate();
       _readIntoReactive();
-      debugPrint('mina_iptv: RemoteConfig fetch ok (activated=$activated) '
+      if (kDebugMode) debugPrint('mina_iptv: RemoteConfig fetch ok (activated=$activated) '
           '→ engine=${value.defaultVideoEngine} review=${value.reviewModeActive} '
           'minVer=${value.versionCheck.minVersion}');
       return true;
     } catch (e) {
-      debugPrint('mina_iptv: RemoteConfig fetch hata: $e');
+      if (kDebugMode) debugPrint('mina_iptv: RemoteConfig fetch hata: $e');
       return false;
     }
   }

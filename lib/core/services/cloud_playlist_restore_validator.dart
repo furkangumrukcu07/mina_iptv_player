@@ -65,7 +65,7 @@ class CloudPlaylistRestoreValidator {
     try {
       sources = await r.readAllSources();
     } catch (e) {
-      debugPrint('[CloudPlaylistRestoreValidator] readAllSources: $e');
+      if (kDebugMode) debugPrint('[CloudPlaylistRestoreValidator] readAllSources: $e');
       return const CloudPlaylistRestoreReport(
         totalCount: 0,
         successCount: 0,
@@ -76,7 +76,7 @@ class CloudPlaylistRestoreValidator {
     }
 
     // Tüm listelerin silinmeden korunması ve hızlı yükleme için ağ doğrulamasını atlıyoruz.
-    debugPrint(
+    if (kDebugMode) debugPrint(
       '[CloudPlaylistRestoreValidator] Skipping network validation check to preserve '
       'all ${sources.length} restored playlist slots and prevent network timeouts.',
     );
@@ -91,12 +91,12 @@ class CloudPlaylistRestoreValidator {
         if (!okSlots.contains(active)) {
           final target = okSlots.first;
           await prefs.setInt('mina_active_playlist_slot', target);
-          debugPrint(
+          if (kDebugMode) debugPrint(
             '[CloudPlaylistRestoreValidator] Active slot $active was empty. Reconciled to first available slot $target.',
           );
         }
       } catch (e) {
-        debugPrint('[CloudPlaylistRestoreValidator] active slot reconcile error: $e');
+        if (kDebugMode) debugPrint('[CloudPlaylistRestoreValidator] active slot reconcile error: $e');
       }
     }
 

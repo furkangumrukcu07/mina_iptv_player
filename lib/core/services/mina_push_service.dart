@@ -19,7 +19,7 @@ import '../i18n/app_locale.dart';
 /// message) işlemek istenirse bağlantı noktası burası.
 @pragma('vm:entry-point')
 Future<void> minaFirebaseBackgroundHandler(RemoteMessage message) async {
-  debugPrint('[MinaPush] background message: ${message.messageId}');
+  if (kDebugMode) debugPrint('[MinaPush] background message: ${message.messageId}');
 }
 
 /// Firebase Cloud Messaging (push bildirim) sarmalayıcısı.
@@ -51,7 +51,7 @@ class MinaPushService extends GetxService {
     if (_initStarted) return this;
     _initStarted = true;
     if (!gFirebaseReady) {
-      debugPrint('[MinaPush] Firebase hazır değil — push devre dışı');
+      if (kDebugMode) debugPrint('[MinaPush] Firebase hazır değil — push devre dışı');
       return this;
     }
     try {
@@ -73,7 +73,7 @@ class MinaPushService extends GetxService {
         badge: true,
         sound: true,
       );
-      debugPrint(
+      if (kDebugMode) debugPrint(
         '[MinaPush] permission: ${settings.authorizationStatus}',
       );
 
@@ -96,16 +96,16 @@ class MinaPushService extends GetxService {
 
       // Token (hedefli gönderim veya hata ayıklama için).
       token = await _fm!.getToken();
-      debugPrint('[MinaPush] token: $token');
+      if (kDebugMode) debugPrint('[MinaPush] token: $token');
       _fm!.onTokenRefresh.listen((t) {
         token = t;
-        debugPrint('[MinaPush] token refresh: $t');
+        if (kDebugMode) debugPrint('[MinaPush] token refresh: $t');
       });
 
       // Foreground mesajları → uygulama içi cam snackbar.
       _foregroundSub = FirebaseMessaging.onMessage.listen(_onForeground);
     } catch (e) {
-      debugPrint('[MinaPush] init hata: $e');
+      if (kDebugMode) debugPrint('[MinaPush] init hata: $e');
     }
     return this;
   }

@@ -251,7 +251,7 @@ abstract final class SeriesNameGrouping {
 
   static ({int season, int episode}) parseSeasonEpisode(String rawName) {
     final s = rawName.trim();
-    debugPrint('[SeriesNameGrouping] parseSeasonEpisode called for: "$s"');
+    if (kDebugMode) debugPrint('[SeriesNameGrouping] parseSeasonEpisode called for: "$s"');
     if (s.isEmpty) return (season: 1, episode: 0);
 
     // Pattern 1: S01E02, S01-E02, etc.
@@ -262,7 +262,7 @@ abstract final class SeriesNameGrouping {
     if (lastSe != null) {
       final sn = int.tryParse(lastSe.group(1) ?? '') ?? 1;
       final en = int.tryParse(lastSe.group(2) ?? '') ?? 0;
-      debugPrint('[SeriesNameGrouping] Matched SxE pattern: S$sn E$en');
+      if (kDebugMode) debugPrint('[SeriesNameGrouping] Matched SxE pattern: S$sn E$en');
       return (season: sn, episode: en);
     }
 
@@ -271,7 +271,7 @@ abstract final class SeriesNameGrouping {
     if (mx != null) {
       final sn = int.tryParse(mx.group(1) ?? '') ?? 1;
       final en = int.tryParse(mx.group(2) ?? '') ?? 0;
-      debugPrint('[SeriesNameGrouping] Matched x pattern: ${sn}x$en');
+      if (kDebugMode) debugPrint('[SeriesNameGrouping] Matched x pattern: ${sn}x$en');
       return (season: sn, episode: en);
     }
 
@@ -280,7 +280,7 @@ abstract final class SeriesNameGrouping {
     if (sw != null) {
       final sn = int.tryParse(sw.group(1) ?? '') ?? 1;
       final en = int.tryParse(sw.group(2) ?? '') ?? 0;
-      debugPrint(
+      if (kDebugMode) debugPrint(
           '[SeriesNameGrouping] Matched Season Episode pattern: S$sn E$en');
       return (season: sn, episode: en);
     }
@@ -289,7 +289,7 @@ abstract final class SeriesNameGrouping {
     final eo = _episodeOnlyRe.firstMatch(s);
     if (eo != null) {
       final en = int.tryParse(eo.group(1) ?? '') ?? 0;
-      debugPrint('[SeriesNameGrouping] Matched Episode-only pattern: E$en');
+      if (kDebugMode) debugPrint('[SeriesNameGrouping] Matched Episode-only pattern: E$en');
       return (season: 1, episode: en);
     }
 
@@ -297,11 +297,11 @@ abstract final class SeriesNameGrouping {
     final ne = _numberedEpisodeRe.firstMatch(s);
     if (ne != null) {
       final en = int.tryParse(ne.group(1) ?? '') ?? 0;
-      debugPrint('[SeriesNameGrouping] Matched numbered pattern: E$en');
+      if (kDebugMode) debugPrint('[SeriesNameGrouping] Matched numbered pattern: E$en');
       return (season: 1, episode: en);
     }
 
-    debugPrint('[SeriesNameGrouping] No pattern matched, returning (1, 0)');
+    if (kDebugMode) debugPrint('[SeriesNameGrouping] No pattern matched, returning (1, 0)');
     return (season: 1, episode: 0);
   }
 
@@ -310,7 +310,7 @@ abstract final class SeriesNameGrouping {
   ) {
     final byParsedEpisode = <String, List<SeriesEpisodeOption>>{};
     final unparsed = <SeriesEpisodeOption>[];
-    debugPrint('[SeriesNameGrouping] buildM3uEpisodeOptions called with ${items.length} items');
+    if (kDebugMode) debugPrint('[SeriesNameGrouping] buildM3uEpisodeOptions called with ${items.length} items');
     
     for (final s in items) {
       final url = s.streamUrl?.trim();
@@ -360,7 +360,7 @@ abstract final class SeriesNameGrouping {
     // Add all unparsed episodes
     result.addAll(unparsed);
     
-    debugPrint('[SeriesNameGrouping] buildM3uEpisodeOptions returning ${result.length} options (${byParsedEpisode.length} parsed, ${unparsed.length} unparsed)');
+    if (kDebugMode) debugPrint('[SeriesNameGrouping] buildM3uEpisodeOptions returning ${result.length} options (${byParsedEpisode.length} parsed, ${unparsed.length} unparsed)');
     
     // Now sort them properly
     result.sort((a, b) {

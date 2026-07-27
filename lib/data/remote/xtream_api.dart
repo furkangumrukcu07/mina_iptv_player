@@ -22,6 +22,243 @@ List<dynamic> _decodeXtreamJsonList(String raw) {
   return const [];
 }
 
+List<String> _extractArrayObjectsFast(String jsonStr) {
+  final result = <String>[];
+  final units = jsonStr.codeUnits;
+  final length = units.length;
+  
+  bool inString = false;
+  bool escape = false;
+  
+  List<bool> isArrayScope = [];
+  int depth = 0;
+  int objectStart = -1;
+  int objectDepth = -1;
+
+  final quote = 34; // "
+  final backslash = 92; // \
+  final bracketOpen = 91; // [
+  final bracketClose = 93; // ]
+  final braceOpen = 123; // {
+  final braceClose = 125; // }
+
+  for (int i = 0; i < length; i++) {
+    final c = units[i];
+    
+    if (inString) {
+      if (escape) {
+        escape = false;
+      } else if (c == backslash) {
+        escape = true;
+      } else if (c == quote) {
+        inString = false;
+      }
+      continue;
+    }
+
+    if (c == quote) {
+      inString = true;
+    } else if (c == bracketOpen) {
+      isArrayScope.add(true);
+      depth++;
+    } else if (c == bracketClose) {
+      if (isArrayScope.isNotEmpty) isArrayScope.removeLast();
+      depth--;
+    } else if (c == braceOpen) {
+      isArrayScope.add(false);
+      depth++;
+      if (objectStart == -1 && isArrayScope.length >= 2 && isArrayScope[isArrayScope.length - 2] == true) {
+        objectStart = i;
+        objectDepth = depth;
+      }
+    } else if (c == braceClose) {
+      if (objectStart != -1 && depth == objectDepth) {
+        result.add(jsonStr.substring(objectStart, i + 1));
+        objectStart = -1;
+        objectDepth = -1;
+      }
+      if (isArrayScope.isNotEmpty) isArrayScope.removeLast();
+      depth--;
+    }
+  }
+  return result;
+}
+
+List<Channel> _parseLiveStreamsIsolate(Map<String, dynamic> args) {
+  final raw = args['raw'] as String;
+  final baseUrl = args['baseUrl'] as String;
+  final username = args['username'] as String;
+  final password = args['password'] as String;
+
+  final server = baseUrl.replaceAll(RegExp(r'/$'), '');
+  String encode(String v) => Uri.encodeComponent(v).replaceAll('+', '%20');
+  
+  String normalizeStreamExtension(String? extension, {required String fallback}) {
+    if (extension == null || extension.trim().isEmpty) return fallback;
+    var e = extension.trim().toLowerCase();
+    if (e.startsWith('.')) e = e.substring(1);
+    return e.isEmpty ? fallback : e;
+  }
+
+  String getLiveUrl(int streamId, String? extension) {
+    final ext = normalizeStreamExtension(extension, fallback: 'm3u8');
+    return '$server/live/${encode(username)}/${encode(password)}/$streamId.$ext';
+  }
+
+  final objectStrings = _extractArrayObjectsFast(raw);
+  final result = <Channel>[];
+
+  for (final str in objectStrings) {
+    dynamic item;
+    try {
+      item = jsonDecode(str);
+    } catch (_) {
+      continue;
+    }
+    if (item is! Map) continue;
+    final streamId = XtreamApi._parseIntStatic(item['stream_id']) ?? 0;
+    if (streamId == 0) continue;
+    final catId = XtreamApi._parseIntStatic(item['category_id']) ?? 0;
+    final rawExt = item['container_extension'] as String?;
+
+    result.add(Channel(
+      id: streamId,
+      name: (item['name'] as String?) ?? '',
+      streamUrl: getLiveUrl(streamId, XtreamApi.liveContainerForAdaptivePlayback(rawExt)),
+      categoryId: catId,
+      logoUrl: item['stream_icon'] as String?,
+      epgChannelId: XtreamApi._epgChannelIdFromJson(item['epg_channel_id']),
+      sortOrder: XtreamApi._parseIntStatic(item['num']) ?? result.length,
+    ));
+  }
+  return result;
+}
+
+List<VodItem> _parseVodStreamsIsolate(Map<String, dynamic> args) {
+  final raw = args['raw'] as String;
+  final baseUrl = args['baseUrl'] as String;
+  final username = args['username'] as String;
+  final password = args['password'] as String;
+
+  final server = baseUrl.replaceAll(RegExp(r'/$'), '');
+  String encode(String v) => Uri.encodeComponent(v).replaceAll('+', '%20');
+  
+  String normalizeStreamExtension(String? extension, {required String fallback}) {
+    if (extension == null || extension.trim().isEmpty) return fallback;
+    var e = extension.trim().toLowerCase();
+    if (e.startsWith('.')) e = e.substring(1);
+    return e.isEmpty ? fallback : e;
+  }
+
+  final objectStrings = _extractArrayObjectsFast(raw);
+  final result = <VodItem>[];
+
+  int? vodAddedEpoch(Map<dynamic, dynamic> item) {
+    for (final k in <String>['added', 'last_modified', 'date_added']) {
+      final v = XtreamApi._parseIntStatic(item[k]);
+      if (v == null || v <= 0) continue;
+      if (v > 200000000000) return (v / 1000).round();
+      return v;
+    }
+    return null;
+  }
+
+  for (final str in objectStrings) {
+    dynamic item;
+    try {
+      item = jsonDecode(str);
+    } catch (_) {
+      continue;
+    }
+    if (item is! Map) continue;
+    final streamId = XtreamApi._parseIntStatic(item['stream_id']) ?? 0;
+    final catId = XtreamApi._parseIntStatic(item['category_id']) ?? 0;
+    final ext = item['container_extension'] as String?;
+    if (streamId == 0) continue;
+
+    final durRaw = item['duration'];
+    int? durSecs;
+    if (durRaw is int) {
+      durSecs = durRaw > 0 ? durRaw : null;
+    } else if (durRaw != null) {
+      durSecs = int.tryParse(durRaw.toString());
+      if (durSecs != null && durSecs <= 0) durSecs = null;
+    }
+    final addedUnix = vodAddedEpoch(item);
+
+    final map = Map<String, dynamic>.from(item);
+    var plot = _xtreamPlotLine(map);
+    if (plot == null || plot.isEmpty) {
+      final info = item['info'];
+      if (info is Map) {
+        plot = _xtreamPlotLine(Map<String, dynamic>.from(info));
+      }
+    }
+    
+    final normalizedExt = normalizeStreamExtension(ext, fallback: 'mp4');
+    result.add(
+      VodItem(
+        id: streamId,
+        name: (item['name'] as String?) ?? '',
+        streamUrl: '$server/movie/${encode(username)}/${encode(password)}/$streamId.$normalizedExt',
+        categoryId: catId,
+        posterUrl: item['stream_icon'] as String?,
+        containerExtension: ext,
+        durationSecs: durSecs,
+        addedUnix: addedUnix,
+        plot: plot,
+        rating: _xtreamVodRating(map),
+        trailerUrl: _xtreamVodTrailerUrl(map),
+      ),
+    );
+  }
+  return result;
+}
+
+List<SeriesItem> _parseSeriesStreamsIsolate(Map<String, dynamic> args) {
+  final raw = args['raw'] as String;
+  final objectStrings = _extractArrayObjectsFast(raw);
+  final result = <SeriesItem>[];
+
+  int? vodAddedEpoch(Map<dynamic, dynamic> item) {
+    for (final k in <String>['added', 'last_modified', 'date_added']) {
+      final v = XtreamApi._parseIntStatic(item[k]);
+      if (v == null || v <= 0) continue;
+      if (v > 200000000000) return (v / 1000).round();
+      return v;
+    }
+    return null;
+  }
+
+  for (final str in objectStrings) {
+    dynamic item;
+    try {
+      item = jsonDecode(str);
+    } catch (_) {
+      continue;
+    }
+    if (item is! Map) continue;
+    final seriesId = XtreamApi._parseIntStatic(item['series_id']) ?? 0;
+    final catId = XtreamApi._parseIntStatic(item['category_id']) ?? 0;
+    if (seriesId == 0) continue;
+
+    final addedUnix = vodAddedEpoch(item);
+    result.add(
+      SeriesItem(
+        id: seriesId,
+        name: (item['name'] as String?) ?? '',
+        categoryId: catId,
+        posterUrl: (item['cover'] as String?) ??
+            (item['movie_image'] as String?) ??
+            (item['stream_icon'] as String?),
+        plot: _xtreamPlotLine(Map<String, dynamic>.from(item)),
+        addedUnix: addedUnix,
+      ),
+    );
+  }
+  return result;
+}
+
 class _XtreamSeriesPayload {
   const _XtreamSeriesPayload({
     required this.episodeMaps,
@@ -477,45 +714,50 @@ class XtreamApi {
   }
 
   /// Tek kategori için `get_live_streams&category_id=` (küçük yanıtlar, zayıf ağ için).
+  Future<String> _getRaw(Dio dio, String url) async {
+    try {
+      final response = await dio.get<String>(
+        url,
+        options: Options(
+          responseType: ResponseType.plain,
+          receiveTimeout: const Duration(seconds: 120),
+        ),
+      );
+      return response.data ?? '';
+    } on DioException catch (e) {
+      if (e.response?.statusCode == 401 || e.response?.statusCode == 403) {
+        throw const ParseException('xtream.error.invalidCredentials');
+      }
+      throw NetworkException(e.message ?? 'Network error', e);
+    } catch (e) {
+      throw NetworkException('Network error', e);
+    }
+  }
+
   Future<List<Channel>> getLiveStreamsForCategory(Dio dio, int categoryId) async {
     if (categoryId == 0) return const [];
-    final list = await _getList(
+    final raw = await _getRaw(
       dio,
       '$_base&action=get_live_streams&category_id=$categoryId',
     );
-    return _parseLiveStreamsList(list);
+    if (raw.isEmpty) return const [];
+    return compute(_parseLiveStreamsIsolate, {
+      'raw': raw,
+      'baseUrl': baseUrl,
+      'username': username,
+      'password': password,
+    });
   }
 
   Future<List<Channel>> getLiveStreams(Dio dio) async {
-    final list = await _getList(dio, '$_base&action=get_live_streams');
-    return _parseLiveStreamsList(list);
-  }
-
-  List<Channel> _parseLiveStreamsList(List<dynamic> list) {
-    final result = <Channel>[];
-    for (final item in list) {
-      if (item is! Map) continue;
-      final m = Map<String, dynamic>.from(item);
-      final ch = _parseLiveChannelMap(m, result.length);
-      if (ch != null) result.add(ch);
-    }
-    return result;
-  }
-
-  Channel? _parseLiveChannelMap(Map<String, dynamic> item, int orderFallback) {
-    final streamId = _parseInt(item['stream_id']) ?? 0;
-    if (streamId == 0) return null;
-    final catId = _parseInt(item['category_id']) ?? 0;
-    final ext = item['container_extension'] as String?;
-    return Channel(
-      id: streamId,
-      name: (item['name'] as String?) ?? '',
-      streamUrl: liveUrl(streamId, liveContainerForAdaptivePlayback(ext)),
-      categoryId: catId,
-      logoUrl: item['stream_icon'] as String?,
-      epgChannelId: _epgChannelIdFromJson(item['epg_channel_id']),
-      sortOrder: _parseInt(item['num']) ?? orderFallback,
-    );
+    final raw = await _getRaw(dio, '$_base&action=get_live_streams');
+    if (raw.isEmpty) return const [];
+    return compute(_parseLiveStreamsIsolate, {
+      'raw': raw,
+      'baseUrl': baseUrl,
+      'username': username,
+      'password': password,
+    });
   }
 
   Future<List<VodCategory>> getVodCategories(Dio dio) async {
@@ -532,61 +774,15 @@ class XtreamApi {
         .toList();
   }
 
-  int? _vodAddedEpochFromVodItemMap(Map<dynamic, dynamic> item) {
-    for (final k in <String>['added', 'last_modified', 'date_added']) {
-      final v = _parseInt(item[k]);
-      if (v == null || v <= 0) continue;
-      if (v > 200000000000) return (v / 1000).round();
-      return v;
-    }
-    return null;
-  }
-
   Future<List<VodItem>> getVodStreams(Dio dio) async {
-    final list = await _getList(dio, '$_base&action=get_vod_streams');
-    final result = <VodItem>[];
-    for (final item in list) {
-      if (item is! Map) continue;
-      final streamId = _parseInt(item['stream_id']) ?? 0;
-      final catId = _parseInt(item['category_id']) ?? 0;
-      final ext = item['container_extension'] as String?;
-      if (streamId == 0) continue;
-
-      final durRaw = item['duration'];
-      int? durSecs;
-      if (durRaw is int) {
-        durSecs = durRaw > 0 ? durRaw : null;
-      } else if (durRaw != null) {
-        durSecs = int.tryParse(durRaw.toString());
-        if (durSecs != null && durSecs <= 0) durSecs = null;
-      }
-      final addedUnix = _vodAddedEpochFromVodItemMap(item);
-
-      final map = Map<String, dynamic>.from(item);
-      var plot = _xtreamPlotLine(map);
-      if (plot == null || plot.isEmpty) {
-        final info = item['info'];
-        if (info is Map) {
-          plot = _xtreamPlotLine(Map<String, dynamic>.from(info));
-        }
-      }
-      result.add(
-        VodItem(
-          id: streamId,
-          name: (item['name'] as String?) ?? '',
-          streamUrl: vodUrl(streamId, ext),
-          categoryId: catId,
-          posterUrl: item['stream_icon'] as String?,
-          containerExtension: ext,
-          durationSecs: durSecs,
-          addedUnix: addedUnix,
-          plot: plot,
-          rating: _xtreamVodRating(map),
-          trailerUrl: _xtreamVodTrailerUrl(map),
-        ),
-      );
-    }
-    return result;
+    final raw = await _getRaw(dio, '$_base&action=get_vod_streams');
+    if (raw.isEmpty) return const [];
+    return compute(_parseVodStreamsIsolate, {
+      'raw': raw,
+      'baseUrl': baseUrl,
+      'username': username,
+      'password': password,
+    });
   }
 
   static String? _pickXtreamString(
@@ -849,29 +1045,11 @@ class XtreamApi {
   }
 
   Future<List<SeriesItem>> getSeriesStreams(Dio dio) async {
-    final list = await _getList(dio, '$_base&action=get_series');
-    final result = <SeriesItem>[];
-    for (final item in list) {
-      if (item is! Map) continue;
-      final seriesId = _parseInt(item['series_id']) ?? 0;
-      final catId = _parseInt(item['category_id']) ?? 0;
-      if (seriesId == 0) continue;
-
-      final addedUnix = _vodAddedEpochFromVodItemMap(item);
-      result.add(
-        SeriesItem(
-          id: seriesId,
-          name: (item['name'] as String?) ?? '',
-          categoryId: catId,
-          posterUrl: (item['cover'] as String?) ??
-              (item['movie_image'] as String?) ??
-              (item['stream_icon'] as String?),
-          plot: _xtreamPlotLine(Map<String, dynamic>.from(item)),
-          addedUnix: addedUnix,
-        ),
-      );
-    }
-    return result;
+    final raw = await _getRaw(dio, '$_base&action=get_series');
+    if (raw.isEmpty) return const [];
+    return compute(_parseSeriesStreamsIsolate, {
+      'raw': raw,
+    });
   }
 
   String get seriesStreamsUrl =>

@@ -14,6 +14,7 @@ import '../../domain/entities/series.dart';
 import '../../domain/entities/series_episode_option.dart';
 import '../../domain/entities/vod.dart';
 import '../player/iptv_playback_defaults.dart';
+import '../player/media_kit_lock.dart';
 import 'toast_service.dart';
 
 /// Film ve dizi bölümlerinin **arka plan indirme** servisi.
@@ -111,13 +112,13 @@ class DownloadService extends GetxService {
               map[item.id] = item;
             }
           } catch (e) {
-            debugPrint('[downloads] failed to parse entry: $e');
+            if (kDebugMode) debugPrint('[downloads] failed to parse entry: $e');
           }
         }
         items.value = map;
       }
     } catch (e) {
-      debugPrint('[downloads] load failed: $e');
+      if (kDebugMode) debugPrint('[downloads] load failed: $e');
     }
     _loaded = true;
   }
@@ -128,7 +129,7 @@ class DownloadService extends GetxService {
       final arr = items.values.map((e) => e.toJson()).toList(growable: false);
       await _prefs!.setString(_kStoreKey, jsonEncode(arr));
     } catch (e) {
-      debugPrint('[downloads] persist failed: $e');
+      if (kDebugMode) debugPrint('[downloads] persist failed: $e');
     }
   }
 
@@ -365,7 +366,7 @@ class DownloadService extends GetxService {
         if (e is DioException && CancelToken.isCancel(e)) rethrow;
         errors.add('${item.engine.name}: ${_humanizeError(e)}');
         // Fallback: direct ↔ mpv
-        debugPrint(
+        if (kDebugMode) debugPrint(
           '[downloads] $id primary engine ${item.engine.name} failed, '
           'trying fallback. error: $e',
         );
@@ -402,7 +403,7 @@ class DownloadService extends GetxService {
         literal: true,
       );
     } catch (e) {
-      debugPrint('[downloads] $id failed: $e');
+      if (kDebugMode) debugPrint('[downloads] $id failed: $e');
       if (e is DioException && CancelToken.isCancel(e)) {
         // cancel zaten state'i güncelledi
       } else {
@@ -492,7 +493,7 @@ class DownloadService extends GetxService {
       final swapped = _swapHttpScheme(item.sourceUrl);
       if (swapped == null) rethrow;
       if (!_isSchemeFallbackEligible(e)) rethrow;
-      debugPrint(
+      if (kDebugMode) debugPrint(
         '[downloads] ${item.id} direct failed on ${item.sourceUrl}, '
         'retrying with swapped scheme: $swapped',
       );
@@ -562,17 +563,27 @@ class DownloadService extends GetxService {
   // ---------------------------------------------------------------------------
 
   Future<void> _runMpv(DownloadItem item) async {
+    if (Platform.isMacOS) {
+      await _runDirectWithSchemeRace(item);
+      return;
+    }
     final completer = Completer<void>();
-    final p = Player(
-      configuration: const PlayerConfiguration(
-        logLevel: MPVLogLevel.warn,
-        bufferSize: 32 * 1024 * 1024,
-      ),
-    );
-    _mpvSidecars[item.id] = p;
-    final plat = p.platform;
+    Player? p;
+    await MinaMediaKitLock.synchronized(() async {
+      p = Player(
+        configuration: const PlayerConfiguration(
+          logLevel: MPVLogLevel.warn,
+          bufferSize: 32 * 1024 * 1024,
+        ),
+      );
+    });
+    final player = p!;
+    _mpvSidecars[item.id] = player;
+    final plat = player.platform;
     if (plat is! NativePlayer) {
-      await p.dispose();
+      await MinaMediaKitLock.synchronized(() async {
+        try { await player.dispose(); } catch (_) {}
+      });
       throw Exception('mpv platform unavailable');
     }
     Timer? progressTimer;
@@ -595,12 +606,12 @@ class DownloadService extends GetxService {
       }
       await plat.setProperty('stream-record', item.localPath);
 
-      completedSub = p.stream.completed.listen((isCompleted) {
+      completedSub = player.stream.completed.listen((isCompleted) {
         if (isCompleted && !completer.isCompleted) {
           completer.complete();
         }
       });
-      errorSub = p.stream.error.listen((err) {
+      errorSub = player.stream.error.listen((err) {
         if (!completer.isCompleted) {
           completer.completeError(Exception('mpv stream error: $err'));
         }
@@ -615,7 +626,7 @@ class DownloadService extends GetxService {
         }
       });
 
-      await p.open(Media(item.sourceUrl), play: true);
+      await player.open(Media(item.sourceUrl), play: true);
       await completer.future;
     } finally {
       progressTimer?.cancel();
@@ -625,10 +636,12 @@ class DownloadService extends GetxService {
         await plat.setProperty('stream-record', '');
       } catch (_) {}
       try {
-        await p.stop();
+        await player.stop();
       } catch (_) {}
       try {
-        await p.dispose();
+        await MinaMediaKitLock.synchronized(() async {
+          try { await player.dispose(); } catch (_) {}
+        });
       } catch (_) {}
     }
   }

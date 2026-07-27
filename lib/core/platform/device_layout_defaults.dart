@@ -55,7 +55,7 @@ double readLongestSideDips() => _longestSideDips();
 /// Kayıtlı tercih yokken: Android TV/Leanback önce, sonra ekran oranı.
 /// 1920×1080 TV’de kısa kenar genelde 480–600 dp arası; sadece kısa kenara bakmak TV’yi “telefon” yapıyordu.
 Future<AppLayoutMode> resolveDefaultLayoutMode() async {
-  if (await nativeAndroidTv()) {
+  if (Platform.isMacOS || await nativeAndroidTv()) {
     return AppLayoutMode.tv;
   }
 

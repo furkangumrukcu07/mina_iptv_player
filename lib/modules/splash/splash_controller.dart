@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:get/get.dart';
@@ -8,7 +9,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../core/services/app_install_source_service.dart';
 import '../../core/services/mina_push_service.dart';
 import '../../core/services/mina_telemetry_service.dart';
-import '../../core/services/remote_config_service.dart';
+
 import '../home/widgets/google_signin_prompt_dialog.dart';
 
 import '../../core/layout/app_layout_mode.dart';
@@ -20,6 +21,7 @@ import '../../core/services/app_bootstrap_service.dart';
 import '../../core/services/app_settings_service.dart';
 import '../../core/services/active_playlist_service.dart';
 import '../../core/services/licensing_service.dart';
+import '../../core/services/remote_config_service.dart';
 import '../../core/services/auth_service.dart';
 import '../../core/services/app_image_cache_service.dart';
 import '../../core/services/epg_service.dart';
@@ -137,16 +139,21 @@ class SplashController extends GetxController {
   }
 
   Future<void> _bootstrap() async {
-    debugPrint('mina_iptv: Splash bootstrap start');
+    print('mina_iptv: Splash bootstrap start');
     final splashStarted = DateTime.now();
     _appBoot.setSplashStatus('splash.preparing');
     try {
+      print('mina_iptv: Checking licensing service registration');
       if (Get.isRegistered<LicensingService>()) {
         final licensing = Get.find<LicensingService>();
+        print('mina_iptv: Awaiting licensing initialization');
         await licensing.initialization.timeout(
           const Duration(seconds: 15),
-          onTimeout: () {},
+          onTimeout: () {
+            print('mina_iptv: Licensing initialization timeout');
+          },
         );
+        print('mina_iptv: Licensing initialization completed');
         if (!licensing.isTrialActive.value && !licensing.isPremium.value) {
           // Xiaomi vb.: Firebase oturumu geç restore olabilir; paywall'a
           // gitmeden bir kez daha bulut + Play senkronu dene.
@@ -160,25 +167,29 @@ class SplashController extends GetxController {
         if (licensing.deviceLimitExceeded.value) {
           _finished = true;
           _failSafe?.cancel();
+          print('mina_iptv: Device limit exceeded, navigating to paywall');
           Get.offAllNamed(AppRoutes.paywall);
           return;
         }
         if (!licensing.isTrialActive.value && !licensing.isPremium.value) {
           _finished = true;
           _failSafe?.cancel();
+          print('mina_iptv: Trial expired & not premium, navigating to paywall');
           Get.offAllNamed(AppRoutes.paywall);
           return;
         }
       }
 
+      print('mina_iptv: Checking if setup is completed');
       if (!_app.isSetupCompleted.value) {
+        print('mina_iptv: Setup not completed, checking legacy user');
         await _app.maybeMarkLegacyUserCompleteIfHasPlaylist(_repo);
       }
+      print('mina_iptv: Setup completion status: ${_app.isSetupCompleted.value}');
       if (!_app.isSetupCompleted.value) {
         _finished = true;
         _failSafe?.cancel();
-        // Tek kurulum sihirbazı (mobil tasarım) hem dokunmatik hem TV/kumanda
-        // için kullanılır; D-pad gezinmesi sihirbaz içinde desteklenir.
+        print('mina_iptv: Navigating to setupWizard');
         Get.offAllNamed(AppRoutes.setupWizard);
         return;
       }
@@ -197,18 +208,18 @@ class SplashController extends GetxController {
         return;
       }
 
-      // Remote Config canlı değerlerini playlist yüklemesiyle EŞZAMANLI çek
-      // (min cache). Ağ turu, disk decode + EPG restore ile örtüştüğü için
-      // splash'e kayda değer ek süre bindirmez; home'dan hemen önce beklenir.
-      final remote = Get.isRegistered<RemoteConfigService>()
-          ? Get.find<RemoteConfigService>()
-          : null;
-      final remoteFetch = remote?.ensureFetched();
-
       // Push bildirim servisini başlat (topic aboneliği + izin). Splash'i
       // bloklamaz; bildirim izni popup'ı arka planda kullanıcıya sunulur.
+      // TV Box'larda push bildirim servisini başlatmıyoruz (Performans Optimizasyonu).
       if (Get.isRegistered<MinaPushService>()) {
-        unawaited(Get.find<MinaPushService>().init());
+        final isTv = _app.layoutMode.value == AppLayoutMode.tv;
+        if (!isTv) {
+          unawaited(Get.find<MinaPushService>().init());
+        } else {
+          if (kDebugMode) {
+            debugPrint('[MinaPush] TV Box tespiti — push bildirim servisi atlandı');
+          }
+        }
       }
 
       // Çoklu liste birleştirme DEVRE DIŞI. Aktif slot servisini başlat ve
@@ -259,14 +270,6 @@ class SplashController extends GetxController {
           m3uXmltvNeedsNetwork: activeSource is M3uSource
         );
       });
-      // Remote Config fetch'i kısa bir timeout ile tamamla, sonra canlı
-      // değerleri uygula (video motoru + inceleme modu). Fetch zaten yukarıda
-      // başladı; çoğu durumda burada beklemeden hazırdır.
-      if (remote != null && remoteFetch != null) {
-        await remoteFetch.timeout(const Duration(seconds: 2),
-            onTimeout: () => false);
-        await _applyRemoteConfig(remote.value);
-      }
 
       // Ana ekran kart sayıları (canlı / film / dizi) hazır olana kadar splash
       // "hazırlanıyor"da kalır; böylece ana ekran rozetleri "0" görünüp
@@ -282,7 +285,7 @@ class SplashController extends GetxController {
         xtreamEpgNeedsNetwork: epgDefer.xtreamEpgNeedsNetwork,
         m3uXmltvNeedsNetwork: epgDefer.m3uXmltvNeedsNetwork,
       );
-      _afterHomeRemoteConfigTasks(remote?.value);
+      _afterHomeRemoteConfigTasks(null);
     } on AppException catch (e) {
       debugPrint('mina_iptv: AppException: ${e.message}');
       _handleBootstrapError(

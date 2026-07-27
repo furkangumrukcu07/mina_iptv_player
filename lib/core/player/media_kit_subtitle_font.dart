@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:media_kit/media_kit.dart';
 
 import 'subtitle_appearance.dart';
@@ -29,7 +30,7 @@ Future<void> applyMediaKitSubtitleFontPt(
       await plat.setProperty('sub-border-size', '0');
     }
   } catch (e) {
-    debugPrint('mina_iptv: mpv subtitle appearance skipped: $e');
+    if (kDebugMode) debugPrint('mina_iptv: mpv subtitle appearance skipped: $e');
   }
 }
 

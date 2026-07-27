@@ -24,6 +24,7 @@ abstract final class AppRoutes {
   static const channelListEditor = '/channel-list-editor';
   static const homeCardOrderEditor = '/home-card-order-editor';
   static const homeSettings = '/home-settings';
+  static const railSettings = '/rail-settings';
   static const backupRestore = '/backup-restore';
   static const cloudSync = '/cloud-sync';
   static const channelCategoryLayout = '/channel-category-layout';
@@ -41,4 +42,6 @@ abstract final class AppRoutes {
   static const downloads = '/downloads';
   static const tvKeyMapping = '/tv-key-mapping';
   static const paywall = '/paywall';
+  static const privacyPolicy = '/privacy-policy';
+  static const otherApps = '/other-apps';
 }

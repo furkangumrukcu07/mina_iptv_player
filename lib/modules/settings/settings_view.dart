@@ -49,6 +49,9 @@ abstract final class _ShellDpad {
   static const account = 18;
   static const subscription = 19;
   static const admin = 20;
+  static const privacy = 25;
+  static const deleteAccount = 26;
+  static const otherApps = 27;
 }
 
 class SettingsView extends GetView<SettingsController> {
@@ -436,35 +439,33 @@ class SettingsView extends GetView<SettingsController> {
                                   // birden sunulur.
                                   // «Yedekleme / Geri Yükleme» «Diğer Araçlar»
                                   // alt-sayfasına taşındı.
-                                  Obx(() {
-                                    if (!controller.isCloudAvailable) {
-                                      return const SizedBox.shrink();
-                                    }
-                                    final auth = Get.find<AuthService>();
-                                    final user = auth.currentUser.value;
-                                    final subtitle = user == null
-                                        ? 'cloud.status.notSignedIn'.tr
-                                        : 'cloud.status.signedIn'.trParams({
-                                            'email':
-                                                user.email ?? user.uid,
-                                          });
-                                    return _GlassTile(
-                                      index: idx(),
-                                      shellDpadIndex: _ShellDpad.cloud,
-                                      title: 'settings.tile.cloudSync'.tr,
-                                      subtitle: Text(
-                                        subtitle,
-                                        style: _subtitleStyle,
-                                        maxLines: 2,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                      icon: Icons.cloud_sync_rounded,
-                                      iconColor: user != null
-                                          ? Colors.greenAccent
-                                          : primary,
-                                      onTap: controller.openCloudSync,
-                                    );
-                                  }),
+                                  if (controller.isCloudAvailable)
+                                    Obx(() {
+                                      final auth = Get.find<AuthService>();
+                                      final user = auth.currentUser.value;
+                                      final subtitle = user == null
+                                          ? 'cloud.status.notSignedIn'.tr
+                                          : 'cloud.status.signedIn'.trParams({
+                                              'email':
+                                                  user.email ?? user.uid,
+                                            });
+                                      return _GlassTile(
+                                        index: idx(),
+                                        shellDpadIndex: _ShellDpad.cloud,
+                                        title: 'settings.tile.cloudSync'.tr,
+                                        subtitle: Text(
+                                          subtitle,
+                                          style: _subtitleStyle,
+                                          maxLines: 2,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
+                                        icon: Icons.cloud_sync_rounded,
+                                        iconColor: user != null
+                                            ? Colors.greenAccent
+                                            : primary,
+                                        onTap: controller.openCloudSync,
+                                      );
+                                    }),
                                   // Veri Kullanım Detayı buradan kaldırıldı;
                                   // «Mina Wrapped & İzleme Analitiği» sayfasının
                                   // en altına (gizlilik kartının ardına)
@@ -537,8 +538,7 @@ class SettingsView extends GetView<SettingsController> {
                             const SizedBox(height: 24),
                             _SectionLabel(text: 'settings.section.about'.tr),
                             const SizedBox(height: 10),
-                            Builder(
-                              builder: (_) {
+                            Obx(() {
                                 var a = 0;
                                 String ai() => (++a).toString().padLeft(2, '0');
                                 return _SettingsGrid(
@@ -550,17 +550,13 @@ class SettingsView extends GetView<SettingsController> {
                                       index: ai(),
                                       shellDpadIndex: _ShellDpad.about,
                                       title: 'settings.tile.about'.tr,
-                                      subtitle: Obx(() {
-                                        final v = controller
-                                            .packageVersionLabel.value;
-                                        return Text(
-                                          v.isEmpty
-                                              ? 'settings.tile.about.loading'.tr
-                                              : 'settings.tile.about.sub'
-                                                  .trParams({'v': v}),
-                                          style: _subtitleStyle,
-                                        );
-                                      }),
+                                      subtitle: Text(
+                                        controller.packageVersionLabel.value.isEmpty
+                                            ? 'settings.tile.about.loading'.tr
+                                            : 'settings.tile.about.sub'
+                                                .trParams({'v': controller.packageVersionLabel.value}),
+                                        style: _subtitleStyle,
+                                      ),
                                       icon: Icons.info_outline_rounded,
                                       iconColor: primary,
                                       onTap: controller.showAboutApp,
@@ -568,7 +564,7 @@ class SettingsView extends GetView<SettingsController> {
 
                                     _GlassTile(
                                       index: ai(),
-                                      shellDpadIndex: _ShellDpad.about + 10,
+                                      shellDpadIndex: _ShellDpad.privacy,
                                       title: 'Gizlilik Politikası',
                                       subtitle: Text(
                                         'Uygulama kullanım koşulları ve gizlilik sözleşmesi.',
@@ -576,7 +572,20 @@ class SettingsView extends GetView<SettingsController> {
                                       ),
                                       icon: Icons.privacy_tip_outlined,
                                       iconColor: primary,
-                                      onTap: () => Get.to(() => const privacy.PrivacyPolicyView()),
+                                      onTap: controller.openLocalPrivacyPolicy,
+                                    ),
+
+                                    _GlassTile(
+                                      index: ai(),
+                                      shellDpadIndex: _ShellDpad.otherApps,
+                                      title: 'settings.tile.otherApps'.tr,
+                                      subtitle: Text(
+                                        'settings.tile.otherApps.sub'.tr,
+                                        style: _subtitleStyle,
+                                      ),
+                                      icon: Icons.apps_rounded,
+                                      iconColor: primary,
+                                      onTap: controller.openOtherApps,
                                     ),
 
                                     _GlassTile(
@@ -594,83 +603,67 @@ class SettingsView extends GetView<SettingsController> {
                                     // «Hesap Bilgileri» (Xtream) — yalnızca
                                     // Xtream girişinde, «Uygulama Bilgileri»
                                     // bölümünün en altında görünür.
-                                    Builder(builder: (_) {
-                                      final accountIndex = ai();
-                                      return Obx(() {
-                                      if (!controller.isXtream.value) {
-                                        return const SizedBox.shrink();
-                                      }
-                                      return _GlassTile(
-                                        index: accountIndex,
+                                    if (controller.isXtream.value)
+                                      _GlassTile(
+                                        index: ai(),
                                         shellDpadIndex: _ShellDpad.account,
                                         title: 'settings.tile.account'.tr,
-                                        subtitle: Obx(
-                                          () => Text(
-                                            controller.isFetchingInfo.value
-                                                ? 'common.fetching'.tr
-                                                : 'settings.tile.account.sub'.tr,
-                                            style: _subtitleStyle,
-                                          ),
+                                        subtitle: Text(
+                                          controller.isFetchingInfo.value
+                                              ? 'common.fetching'.tr
+                                              : 'settings.tile.account.sub'.tr,
+                                          style: _subtitleStyle,
                                         ),
                                         icon: Icons.account_circle_rounded,
                                         iconColor: primary,
                                         onTap: controller.isFetchingInfo.value
                                             ? null
                                             : controller.showXtreamInfo,
-                                      );
-                                    });
-                                    }),
-                                    Obx(() {
-                                      final licensing = LicensingService.to;
-                                      final isPremium = licensing.isPremium.value;
-                                      final isGrandfathered = licensing.isGrandfathered.value;
-
-                                      String sub = '';
-                                      if (isPremium) {
-                                        if (isGrandfathered) {
-                                          sub = 'settings.subscription.grandfathered'.tr;
-                                        } else {
-                                          sub = 'settings.subscription.premiumActive'.tr;
-                                        }
-                                      } else if (licensing.deviceLimitExceeded.value) {
-                                        sub = 'settings.subscription.deviceLimit'.trParams({
-                                          'count': '${licensing.deviceCount.value}',
-                                          'max': '${licensing.maxDevices.value}',
-                                        });
-                                      } else {
-                                        if (licensing.isTrialActive.value) {
-                                          sub = licensing.trialRemainingFormatted;
-                                        } else {
-                                          sub = 'settings.subscription.trialExpired'.tr;
-                                        }
-                                      }
-
-                                      return _GlassTile(
+                                      ),
+                                    _GlassTile(
                                         index: ai(),
                                         shellDpadIndex: _ShellDpad.subscription,
                                         title: 'settings.tile.subscription'.tr,
                                         subtitle: Text(
-                                          sub,
+                                          () {
+                                            final licensing = LicensingService.to;
+                                            final isPremium = licensing.isPremium.value;
+                                            final isGrandfathered = licensing.isGrandfathered.value;
+  
+                                            if (isPremium) {
+                                              return isGrandfathered
+                                                  ? 'settings.subscription.grandfathered'.tr
+                                                  : 'settings.subscription.premiumActive'.tr;
+                                            } else if (licensing.deviceLimitExceeded.value) {
+                                              return 'settings.subscription.deviceLimit'.trParams({
+                                                'count': '${licensing.deviceCount.value}',
+                                                'max': '${licensing.maxDevices.value}',
+                                              });
+                                            } else {
+                                              return licensing.isTrialActive.value
+                                                  ? licensing.trialRemainingFormatted
+                                                  : 'settings.subscription.trialExpired'.tr;
+                                            }
+                                          }(),
                                           style: _subtitleStyle,
                                         ),
                                         icon: Icons.verified_user_rounded,
-                                        iconColor: isPremium ? Colors.greenAccent : primary,
+                                        iconColor: LicensingService.to.isPremium.value ? Colors.greenAccent : primary,
                                         onTap: controller.showSubscriptionStatusDialog,
-                                      );
-                                    }),
-                                      _GlassTile(
-                                        index: ai(),
-                                        shellDpadIndex: _ShellDpad.about + 11,
-                                        title: 'Hesabımı Sil',
-                                        subtitle: Text(
-                                          'Hesabınızı ve buluttaki tüm verilerinizi kalıcı olarak siler.',
-                                          style: _subtitleStyle.copyWith(color: Colors.red[300]),
-                                        ),
-                                        icon: Icons.delete_forever_rounded,
-                                        iconColor: Colors.redAccent,
-                                        onTap: controller.showDeleteAccountDialog,
                                       ),
-                                    ],
+                                    _GlassTile(
+                                      index: ai(),
+                                      shellDpadIndex: _ShellDpad.deleteAccount,
+                                      title: 'Hesabımı Sil',
+                                      subtitle: Text(
+                                        'Hesabınızı ve buluttaki tüm verilerinizi kalıcı olarak siler.',
+                                        style: _subtitleStyle.copyWith(color: Colors.red[300]),
+                                      ),
+                                      icon: Icons.delete_forever_rounded,
+                                      iconColor: Colors.redAccent,
+                                      onTap: controller.showDeleteAccountDialog,
+                                    ),
+                                  ],
                                 );
                               },
                             ),
@@ -769,14 +762,6 @@ class _SettingsTopBar extends StatelessWidget {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                if (!Platform.isAndroid) ...[
-                  Icon(Icons.signal_cellular_alt_rounded,
-                      color: Colors.white.withValues(alpha: 0.75), size: 18),
-                  const SizedBox(width: 6),
-                  Icon(Icons.wifi_rounded,
-                      color: Colors.white.withValues(alpha: 0.75), size: 18),
-                  const SizedBox(width: 10),
-                ],
                 clockBuilder(),
                 const SizedBox(width: 10),
                 // Ayıraç (saat ile Mina şemsiye ikonu arası).
@@ -836,37 +821,18 @@ class _SettingsGrid extends StatelessWidget {
           );
         }
 
-        // Satır bazlı düzen: her satırdaki kartlar eşit genişlik (Expanded) ve
-        // eşit yükseklik (IntrinsicHeight + stretch) olur — Wrap'taki düzensiz
-        // boşluklar ve hizasız alt kenarlar kalkar.
-        final rows = <Widget>[];
-        for (var i = 0; i < children.length; i += crossAxisCount) {
-          final rowChildren = <Widget>[];
-          for (var j = 0; j < crossAxisCount; j++) {
-            if (j > 0) rowChildren.add(const SizedBox(width: gap));
-            final idx = i + j;
-            rowChildren.add(
-              Expanded(
-                child: idx < children.length
-                    ? children[idx]
-                    : const SizedBox.shrink(),
-              ),
-            );
-          }
-          if (rows.isNotEmpty) rows.add(const SizedBox(height: gap));
-          rows.add(
-            IntrinsicHeight(
-              child: Row(
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: rowChildren,
-              ),
-            ),
-          );
-        }
+        final itemWidth = (w - (gap * (crossAxisCount - 1))) / crossAxisCount;
 
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: rows,
+        return Wrap(
+          spacing: gap,
+          runSpacing: gap,
+          children: [
+            for (final child in children)
+              SizedBox(
+                width: itemWidth,
+                child: child,
+              ),
+          ],
         );
       },
     );

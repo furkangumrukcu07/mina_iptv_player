@@ -8,7 +8,6 @@ String localizedThemeStorageLabel(String stored) {
     GlassThemeLabels.varsayilan => 'theme.defaultName'.tr,
     GlassThemeLabels.koyuCam => 'theme.darkGlass'.tr,
     GlassThemeLabels.amoledBlack => 'theme.amoledBlack'.tr,
-    GlassThemeLabels.glassmorphism => 'theme.glassmorphism'.tr,
     GlassThemeLabels.darkFlat => 'theme.darkFlat'.tr,
     GlassThemeLabels.glassGri => 'theme.glassGri'.tr,
     GlassThemeLabels.flatBlack => 'theme.flatBlack'.tr,
@@ -16,8 +15,6 @@ String localizedThemeStorageLabel(String stored) {
     GlassThemeLabels.semcTheme => 'theme.semcTheme'.tr,
     GlassThemeLabels.flyUi => 'theme.flyUi'.tr,
     GlassThemeLabels.tvLite => 'theme.tvLite'.tr,
-    GlassThemeLabels.ios27 => 'theme.ios27'.tr,
-    GlassThemeLabels.macTema => 'theme.macTema'.tr,
     _ => stored,
   };
 }

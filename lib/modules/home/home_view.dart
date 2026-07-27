@@ -292,15 +292,8 @@ class _HomeMainColumnState extends State<_HomeMainColumn> {
     final screenSize = MediaQuery.sizeOf(context);
     final tv = _settings.layoutMode.value == AppLayoutMode.tv;
 
-    return PopScope(
-      canPop: false,
-      onPopInvokedWithResult: (didPop, _) {
-        if (didPop) return;
-        if (c.tryConsumeBackForExit()) return;
-        SystemNavigator.pop();
-      },
-      child: Builder(
-        builder: (context) {
+    return Builder(
+      builder: (context) {
 
     // TV modunda pull-to-refresh kullanılmaz (DPAD ile down scroll yapılır);
     // sadece dokunmatik (telefon/tablet) layout için aktif. RefreshIndicator
@@ -312,9 +305,8 @@ class _HomeMainColumnState extends State<_HomeMainColumn> {
         if (_settings.layoutMode.value == AppLayoutMode.tv) {
           return const SizedBox.shrink();
         }
-        // Android telefon: sahte pil/WiFi yok; sistem durum çubuğu görünsün (iOS'a dokunulmaz).
-        if (Platform.isAndroid) return const SizedBox.shrink();
-        return const _StatusBarRow();
+        // Sahte pil/WiFi ikonları iOS'ta kafa karıştırdığı için kaldırıldı.
+        return const SizedBox.shrink();
       }),
       const SizedBox(height: 12),
       // Cam header satırı düşük dpi / dar ekranlarda (≤ 360dp) sol
@@ -640,46 +632,7 @@ class _HomeMainColumnState extends State<_HomeMainColumn> {
       ),
     );
         },
-      ),
-    );
-  }
-}
-
-/// Üst satır: sadece sağda sistem ikonları (sol saat yok).
-class _StatusBarRow extends StatelessWidget {
-  const _StatusBarRow();
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        const Spacer(),
-        Icon(Icons.alarm_rounded,
-            color: Colors.white.withValues(alpha: 0.9), size: 18),
-        const SizedBox(width: 10),
-        Icon(Icons.signal_cellular_4_bar_rounded,
-            color: Colors.white.withValues(alpha: 0.9), size: 18),
-        const SizedBox(width: 10),
-        Icon(Icons.wifi_rounded,
-            color: Colors.white.withValues(alpha: 0.9), size: 18),
-        const SizedBox(width: 8),
-        Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.bolt_rounded,
-                color: Colors.white.withValues(alpha: 0.85), size: 16),
-            Text(
-              '100',
-              style: TextStyle(
-                color: Colors.white.withValues(alpha: 0.92),
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ],
-        ),
-      ],
-    );
+      );
   }
 }
 

@@ -152,6 +152,13 @@ class TvShellController extends GetxController {
   final vodFocusedTrailers = <FilmDiziTrailer>[].obs;
   final vodTrailersLoading = false.obs;
 
+  /// Debounce timer for vodFocusedIndex to reduce Obx rebuilds
+  Timer? _vodFocusedIndexDebounce;
+
+  /// Debounce tarafından bekletilen indeks. `_flushVodFocusedIndex()` ile
+  /// anında uygulanır.
+  int? _vodFocusedIndexPending;
+
   List<VodItem> _vodPreviewItems = const [];
   List<VodItem> _vodContentItems = const [];
   List<VodItem> _vodContentSource = const [];
@@ -172,6 +179,7 @@ class TvShellController extends GetxController {
   int _vodLoadGen = 0;
   int _lastBackCoalesceMs = 0;
   int _lastBackHandledMs = 0;
+  int _lastRailExitBackMs = 0;
   int _liveBrowseChannelFocusSeq = 0;
 
   /// Kullanıcı kanal listesinde gezinince otomatik odak yeniden denemesini iptal et.
@@ -218,6 +226,12 @@ class TvShellController extends GetxController {
   ChannelsController get channels {
     _channels ??= Get.find<ChannelsController>();
     return _channels!;
+  }
+
+  void markBackHandled() {
+    final now = DateTime.now().millisecondsSinceEpoch;
+    _lastBackCoalesceMs = now;
+    _lastBackHandledMs = now;
   }
 
   @override
@@ -303,6 +317,7 @@ class TvShellController extends GetxController {
     channels.tvShellLiveBrowseActive.value = false;
     channels.clearStreamPreview();
     _vodOmdbDebounce?.cancel();
+    _vodFocusedIndexDebounce?.cancel();
     for (final n in railFocusNodes.values) {
       n.dispose();
     }
@@ -585,15 +600,21 @@ class TvShellController extends GetxController {
 
 
   VodItem? get focusedVodContentItem {
+    final items = phase.value == TvShellPhase.vodContent
+        ? _vodContentItems
+        : _vodPreviewItems;
     final idx = vodFocusedIndex.value;
-    if (idx < 0 || idx >= _vodContentItems.length) return null;
-    return _vodContentItems[idx];
+    if (idx < 0 || idx >= items.length) return null;
+    return items[idx];
   }
 
   SeriesItem? get focusedSeriesContentItem {
+    final items = phase.value == TvShellPhase.vodContent
+        ? _seriesContentItems
+        : _seriesPreviewItems;
     final idx = vodFocusedIndex.value;
-    if (idx < 0 || idx >= _seriesContentItems.length) return null;
-    return _seriesContentItems[idx];
+    if (idx < 0 || idx >= items.length) return null;
+    return items[idx];
   }
 
 
@@ -1507,9 +1528,15 @@ class TvShellController extends GetxController {
     final pool = filter == null
         ? visible
         : visible.where((v) => v.categoryId == filter).toList();
-    _vodMemPool = pool;
+    // Limit pool size to reduce RAM usage on TV boxes
+    const maxPoolSize = 1500;
+    if (pool.length > maxPoolSize) {
+      _vodMemPool = pool.sublist(0, maxPoolSize);
+    } else {
+      _vodMemPool = pool;
+    }
     _vodMemPoolCategoryKey = categoryId;
-    return pool;
+    return _vodMemPool!;
   }
 
   Future<({List<VodItem> items, bool hasMore})> _fetchFavoriteVodPage(
@@ -1768,9 +1795,15 @@ class TvShellController extends GetxController {
         : visible.where((s) => s.categoryId == filter).toList();
     final groups = SeriesNameGrouping.group(raw);
     final pool = groups.map(SeriesNameGrouping.representative).toList();
-    _seriesMemGroupedPool = pool;
+    // Limit pool size to reduce RAM usage on TV boxes
+    const maxPoolSize = 1000;
+    if (pool.length > maxPoolSize) {
+      _seriesMemGroupedPool = pool.sublist(0, maxPoolSize);
+    } else {
+      _seriesMemGroupedPool = pool;
+    }
     _seriesMemPoolCategoryKey = categoryId;
-    return pool;
+    return _seriesMemGroupedPool!;
   }
 
   Future<({List<SeriesItem> items, bool hasMore})> _fetchFavoriteSeriesPage(

@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:dio/dio.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:translator/translator.dart';
@@ -77,7 +78,7 @@ class MovieService extends GetxService {
     final keys = ApiConstants.omdbApiKeys;
     if (_omdbKeyIndex + 1 < keys.length) {
       _omdbKeyIndex++;
-      debugPrint(
+      if (kDebugMode) debugPrint(
           '[MovieService] OMDb anahtarı limite takıldı → yedek anahtara geçiliyor (#${_omdbKeyIndex + 1}/${keys.length})');
       return true;
     }
@@ -143,7 +144,7 @@ class MovieService extends GetxService {
     if (_tmdbKey != failedKey) return true; // başka çağrı zaten döndürmüş
     if (_tmdbKeyIndex + 1 < keys.length) {
       _tmdbKeyIndex++;
-      debugPrint(
+      if (kDebugMode) debugPrint(
           '[MovieService] TMDB anahtarı geçersiz → yedek anahtara geçiliyor (#${_tmdbKeyIndex + 1}/${keys.length})');
       return true;
     }
@@ -196,7 +197,7 @@ class MovieService extends GetxService {
       if (cached != null) return cached;
 
       // 2. Çeviri yap
-      debugPrint(
+      if (kDebugMode) debugPrint(
           '[MovieService] Metin çevriliyor ($_deviceLanguage): ${text.substring(0, text.length > 20 ? 20 : text.length)}...');
       final translation =
           await _translator.translate(text, to: _deviceLanguage);
@@ -206,7 +207,7 @@ class MovieService extends GetxService {
       await prefs.setString(cacheKey, translatedText);
       return translatedText;
     } catch (e) {
-      debugPrint('[MovieService] Translation Error: $e');
+      if (kDebugMode) debugPrint('[MovieService] Translation Error: $e');
       return text;
     }
   }
@@ -230,7 +231,7 @@ class MovieService extends GetxService {
       await prefs.setString(cacheKey, translated);
       return translated;
     } catch (e) {
-      debugPrint('[MovieService] Episode translation error: $e');
+      if (kDebugMode) debugPrint('[MovieService] Episode translation error: $e');
       return text;
     }
   }
@@ -273,7 +274,7 @@ class MovieService extends GetxService {
         .replaceAll(RegExp(r'\s+'), ' ')
         .trim();
 
-    debugPrint(
+    if (kDebugMode) debugPrint(
         '[MovieService] İsim temizlendi (${isSeries ? "Dizi" : "Film"}): "$originalName" -> "$cleaned" (Yıl: $year)');
     return {'name': cleaned, 'year': year};
   }
@@ -282,7 +283,7 @@ class MovieService extends GetxService {
   Future<MovieModel?> fetchMovieInfo(String title,
       {String? year, String? type}) async {
     if (!omdbApiAvailable) return null;
-    debugPrint(
+    if (kDebugMode) debugPrint(
         '[MovieService] OMDb sorgusu başlatıldı (İsim): $title ($year, Type: $type)');
     try {
       final queryParameters = <String, dynamic>{
@@ -305,7 +306,7 @@ class MovieService extends GetxService {
       if (!omdbApiAvailable) return null;
       return _fetchOmdbBySearch(title, year: year, type: type);
     } catch (e) {
-      debugPrint('OMDb API Error: $e');
+      if (kDebugMode) debugPrint('OMDb API Error: $e');
       return null;
     }
   }
@@ -341,7 +342,7 @@ class MovieService extends GetxService {
       }
       return null;
     } catch (e) {
-      debugPrint('OMDb Search Error: $e');
+      if (kDebugMode) debugPrint('OMDb Search Error: $e');
       return null;
     }
   }
@@ -355,7 +356,7 @@ class MovieService extends GetxService {
   /// OMDb API'den film veya dizi bilgilerini getirir (IMDb ID ile).
   Future<MovieModel?> fetchMovieByImdbId(String imdbId) async {
     if (!omdbApiAvailable) return null;
-    debugPrint('[MovieService] OMDb sorgusu başlatıldı (IMDb ID): $imdbId');
+    if (kDebugMode) debugPrint('[MovieService] OMDb sorgusu başlatıldı (IMDb ID): $imdbId');
     try {
       final response = await _omdbGet(<String, dynamic>{
         'i': imdbId,
@@ -370,7 +371,7 @@ class MovieService extends GetxService {
       }
       return null;
     } catch (e) {
-      debugPrint('OMDb API Error (IMDb ID): $e');
+      if (kDebugMode) debugPrint('OMDb API Error (IMDb ID): $e');
       return null;
     }
   }
@@ -602,7 +603,7 @@ class MovieService extends GetxService {
         }
       }
     } catch (e) {
-      debugPrint('[MovieService] TMDB Advanced Fetch Error: $e');
+      if (kDebugMode) debugPrint('[MovieService] TMDB Advanced Fetch Error: $e');
     }
 
     // 2. Adım: Eğer ID bulunamadıysa veya OMDb verisi gelmediyse, temizlenmiş isimle dene
@@ -724,7 +725,7 @@ class MovieService extends GetxService {
         }
       }
     } catch (e) {
-      debugPrint('[MovieService] resolveTmdbTvId error: $e');
+      if (kDebugMode) debugPrint('[MovieService] resolveTmdbTvId error: $e');
     }
     return _tmdbTvIdCache[key] = null;
   }
@@ -795,7 +796,7 @@ class MovieService extends GetxService {
           ..addEntries(translated);
       }
     } catch (e) {
-      debugPrint('[MovieService] fetchTmdbSeasonEpisodes error: $e');
+      if (kDebugMode) debugPrint('[MovieService] fetchTmdbSeasonEpisodes error: $e');
     }
     return _seasonEpisodeCache[cacheKey] = out;
   }
@@ -971,7 +972,7 @@ class MovieService extends GetxService {
         if (out.length >= 6) break;
       }
     } catch (e) {
-      debugPrint('[MovieService] Trailer fetch error: $e');
+      if (kDebugMode) debugPrint('[MovieService] Trailer fetch error: $e');
     }
     return out;
   }
@@ -1072,7 +1073,7 @@ class MovieService extends GetxService {
       }
       return (bio: bio, photo: photo, credits: credits.take(40).toList());
     } catch (e) {
-      debugPrint('[MovieService] Person fetch error: $e');
+      if (kDebugMode) debugPrint('[MovieService] Person fetch error: $e');
       return (bio: null, photo: null, credits: <ActorCredit>[]);
     }
   }

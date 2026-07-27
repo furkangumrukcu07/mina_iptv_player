@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import '../../core/util/firestore_timeout.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'package:flutter/foundation.dart';
@@ -18,6 +19,7 @@ import 'mina_telemetry_service.dart';
 import '../platform/android_playback_soc_hints.dart';
 import 'profiles_service.dart';
 import 'licensing_service.dart';
+import '../util/firestore_timeout.dart';
 import 'toast_service.dart';
 import '../utils/device_info_util.dart';
 
@@ -114,9 +116,10 @@ class AuthService extends GetxService {
   /// giriş çalışmasa bile tarayıcı OAuth yedek akışı denenebilir.
   bool get isCloudBackupSupported => isAvailable;
 
-  /// Android'de Credential Manager / native Google girişi denenebilir mi?
-  bool get canTryNativeGoogleSignIn =>
-      !_isAndroidPlatform || playServicesAvailable.value;
+  bool get canTryNativeGoogleSignIn {
+    final available = playServicesAvailable.value;
+    return !_isAndroidPlatform || available;
+  }
 
   static const Duration _nativeSignInTimeout = Duration(seconds: 25);
   static const Duration _browserSignInTimeout = Duration(seconds: 180);
@@ -148,7 +151,7 @@ class AuthService extends GetxService {
         await user.getIdToken(true);
         user = FirebaseAuth.instance.currentUser ?? user;
       } catch (e) {
-        debugPrint('[AuthService] post-sign-in user refresh: $e');
+        if (kDebugMode) debugPrint('[AuthService] post-sign-in user refresh: $e');
       }
     }
 
@@ -193,7 +196,7 @@ class AuthService extends GetxService {
         }
       });
     } catch (e) {
-      debugPrint('[AuthService] authState listen failed: $e');
+      if (kDebugMode) debugPrint('[AuthService] authState listen failed: $e');
     }
     unawaited(_ensureGoogleInitialized());
   }
@@ -209,13 +212,14 @@ class AuthService extends GetxService {
       final doc = FirebaseFirestore.instance.collection(_usersCollection).doc(u.uid);
       final os = DeviceInfoUtil.getDeviceOS();
       final name = await DeviceInfoUtil.getDeviceName();
-      await doc.set({
+      await withFirestoreTimeout(doc.set({
         'lastLoginAt': FieldValue.serverTimestamp(),
         'lastDeviceOS': os,
         'lastDeviceName': name,
-      }, SetOptions(merge: true));
+      }, SetOptions(merge: true)));
+
     } catch (e) {
-      debugPrint('[AuthService] _recordActivityLog failed: $e');
+      if (kDebugMode) debugPrint('[AuthService] _recordActivityLog failed: $e');
     }
   }
 
@@ -229,10 +233,22 @@ class AuthService extends GetxService {
   Future<void> _ensureGoogleInitialized() async {
     if (_googleInitialized) return;
     try {
-      await GoogleSignIn.instance.initialize(serverClientId: _serverClientId);
+      // macOS masaüstü: iOS/macOS native OAuth akışı kullanır.
+      // WEB client ID kullanılırsa Google 400 hatası verir (Custom scheme URIs not allowed).
+      // Bu yüzden macOS'te iOS client ID'si kullanılmalı.
+      final String? explicitClientId;
+      if (defaultTargetPlatform == TargetPlatform.macOS || defaultTargetPlatform == TargetPlatform.iOS) {
+        explicitClientId = '678971140280-2pabne7tpdu8ar6fbad9kn8c0e1ud6e3.apps.googleusercontent.com'; // iOS client ID
+      } else {
+        explicitClientId = null;
+      }
+      await GoogleSignIn.instance.initialize(
+        serverClientId: _serverClientId,
+        clientId: explicitClientId,
+      );
       _googleInitialized = true;
     } catch (e) {
-      debugPrint('[AuthService] GoogleSignIn.initialize failed: $e');
+      if (kDebugMode) debugPrint('[AuthService] GoogleSignIn.initialize failed: $e');
     }
   }
 
@@ -252,7 +268,7 @@ class AuthService extends GetxService {
       playServicesAvailable.value = ok;
       return ok;
     } catch (e) {
-      debugPrint('[AuthService] play services check failed: $e');
+      if (kDebugMode) debugPrint('[AuthService] play services check failed: $e');
       playServicesAvailable.value = true;
       return true;
     }
@@ -261,15 +277,15 @@ class AuthService extends GetxService {
   /// Firebase Anonymous Auth ile oturum açar (deneme süresi takibi için)
   Future<void> signInAnonymously() async {
     if (!gFirebaseReady) {
-      debugPrint('[AuthService] Firebase not ready, cannot sign in anonymously');
+      if (kDebugMode) debugPrint('[AuthService] Firebase not ready, cannot sign in anonymously');
       return;
     }
     try {
       await FirebaseAuth.instance.signInAnonymously();
       AdminAnalyticsService.incrementNewUsers();
-      debugPrint('[AuthService] Anonymous sign-in successful');
+      if (kDebugMode) debugPrint('[AuthService] Anonymous sign-in successful');
     } catch (e) {
-      debugPrint('[AuthService] Anonymous sign-in failed: $e');
+      if (kDebugMode) debugPrint('[AuthService] Anonymous sign-in failed: $e');
     }
   }
 
@@ -292,7 +308,7 @@ class AuthService extends GetxService {
 
       // GMS yoksa tarayıcı OAuth tek seçenektir.
       if (!playServicesAvailable.value) {
-        debugPrint(
+        if (kDebugMode) debugPrint(
           '[AuthService] Play Services unavailable, falling back to browser OAuth.',
         );
         return signInWithGoogleViaBrowser();
@@ -301,7 +317,7 @@ class AuthService extends GetxService {
       // GMS mevcut: sadece native dene.
       // Native başarısız olsa bile tarayıcı açılmaz; hata doğrudan döner.
       if (!GoogleSignIn.instance.supportsAuthenticate()) {
-        debugPrint(
+        if (kDebugMode) debugPrint(
           '[AuthService] supportsAuthenticate() = false, cannot sign in natively.',
         );
         return const GoogleSignInResult.failed('platform-unsupported');
@@ -310,6 +326,8 @@ class AuthService extends GetxService {
       return _signInWithGoogleNative();
     }
 
+    // macOS ve iOS: google_sign_in plugin'inin native akışını kullan.
+    // (signInWithProvider macOS'te desteklenmiyor.)
     return _signInWithGoogleNative();
   }
 
@@ -343,18 +361,18 @@ class AuthService extends GetxService {
       if (e.code == GoogleSignInExceptionCode.canceled) {
         return const GoogleSignInResult.cancelled();
       }
-      debugPrint(
+      if (kDebugMode) debugPrint(
         '[AuthService] GoogleSignInException: ${e.code} ${e.description}',
       );
       return GoogleSignInResult.failed(e.code.name);
     } on FirebaseAuthException catch (e) {
-      debugPrint('[AuthService] FirebaseAuthException: ${e.code}');
+      if (kDebugMode) debugPrint('[AuthService] FirebaseAuthException: ${e.code}');
       return GoogleSignInResult.failed(e.code);
     } on TimeoutException catch (e) {
-      debugPrint('[AuthService] native sign-in timeout: $e');
+      if (kDebugMode) debugPrint('[AuthService] native sign-in timeout: $e');
       return const GoogleSignInResult.failed('timeout');
     } catch (e, st) {
-      debugPrint('[AuthService] native sign-in error: $e\n$st');
+      if (kDebugMode) debugPrint('[AuthService] native sign-in error: $e\n$st');
       return GoogleSignInResult.failed(e.toString());
     }
   }
@@ -382,7 +400,7 @@ class AuthService extends GetxService {
       _syncLicenseAfterGoogleSignIn();
       return GoogleSignInResult.success(uid);
     } on FirebaseAuthException catch (e) {
-      debugPrint('[AuthService] browser sign-in FirebaseAuthException: ${e.code}');
+      if (kDebugMode) debugPrint('[AuthService] browser sign-in FirebaseAuthException: ${e.code}');
       if (_isAuthCancelledCode(e.code)) {
         return const GoogleSignInResult.cancelled();
       }
@@ -394,12 +412,12 @@ class AuthService extends GetxService {
       }
       return GoogleSignInResult.failed(e.code);
     } on TimeoutException catch (e) {
-      debugPrint('[AuthService] browser sign-in timeout: $e');
+      if (kDebugMode) debugPrint('[AuthService] browser sign-in timeout: $e');
       final recovered = await _recoverSignedInAfterError();
       if (recovered != null) return recovered;
       return const GoogleSignInResult.failed('timeout');
     } catch (e) {
-      debugPrint('[AuthService] browser sign-in error: $e');
+      if (kDebugMode) debugPrint('[AuthService] browser sign-in error: $e');
       if (_isIgnorableRedirectStateError(e.toString())) {
         final recovered = await _recoverSignedInAfterError();
         if (recovered != null) return recovered;
@@ -456,7 +474,7 @@ class AuthService extends GetxService {
         unawaited(Get.find<ProfilesService>().clearGoogleLinkOnSignOut());
       }
     } catch (e) {
-      debugPrint('[AuthService] signOut error: $e');
+      if (kDebugMode) debugPrint('[AuthService] signOut error: $e');
     }
   }
 
@@ -505,7 +523,7 @@ class AuthService extends GetxService {
       final payload = jsonEncode(backup);
       final sizeBytes = utf8.encode(payload).length;
       if (sizeBytes > _maxBackupBytes) {
-        debugPrint(
+        if (kDebugMode) debugPrint(
           '[AuthService] backup too large: $sizeBytes B > $_maxBackupBytes B',
         );
         _logBackup(success: false, sizeBytes: sizeBytes, reason: 'too_large');
@@ -526,7 +544,7 @@ class AuthService extends GetxService {
       _logBackup(success: true, sizeBytes: sizeBytes);
       return true;
     } catch (e) {
-      debugPrint('[AuthService] saveUserSettingsToCloud error: $e');
+      if (kDebugMode) debugPrint('[AuthService] saveUserSettingsToCloud error: $e');
       _logBackup(success: false, reason: 'error');
       return false;
     }
@@ -540,7 +558,7 @@ class AuthService extends GetxService {
     final doc = _userDoc();
     if (doc == null) return null;
     try {
-      final snap = await doc.get();
+      final snap = await withFirestoreTimeout(doc.get());
       if (!snap.exists) return null;
       final docData = snap.data();
       final raw = docData?[_dataField];
@@ -581,7 +599,7 @@ class AuthService extends GetxService {
         localM3uCount: localM3u,
       );
     } catch (e) {
-      debugPrint('[AuthService] fetchCloudBackupInfo error: $e');
+      if (kDebugMode) debugPrint('[AuthService] fetchCloudBackupInfo error: $e');
       return null;
     }
   }
@@ -593,7 +611,7 @@ class AuthService extends GetxService {
     final doc = _userDoc();
     if (doc == null) return null;
     try {
-      final snap = await doc.get();
+      final snap = await withFirestoreTimeout(doc.get());
       if (!snap.exists) return null;
       final data = snap.data();
       if (data == null || data[_dataField] is! String) return null;
@@ -601,7 +619,7 @@ class AuthService extends GetxService {
       if (ts is Timestamp) return ts.millisecondsSinceEpoch;
       return null;
     } catch (e) {
-      debugPrint('[AuthService] fetchCloudUpdatedAtMs error: $e');
+      if (kDebugMode) debugPrint('[AuthService] fetchCloudUpdatedAtMs error: $e');
       return null;
     }
   }
@@ -622,7 +640,7 @@ class AuthService extends GetxService {
       }
       return true;
     } catch (e) {
-      debugPrint('[AuthService] deleteCloudData error: $e');
+      if (kDebugMode) debugPrint('[AuthService] deleteCloudData error: $e');
       if (Get.isRegistered<MinaTelemetryService>()) {
         unawaited(
           Get.find<MinaTelemetryService>().logCloudDelete(success: false),
@@ -653,10 +671,10 @@ class AuthService extends GetxService {
       if (e.code == 'requires-recent-login') {
         throw Exception('requires-recent-login');
       }
-      debugPrint('[AuthService] deleteAccount error: $e');
+      if (kDebugMode) debugPrint('[AuthService] deleteAccount error: $e');
       return false;
     } catch (e) {
-      debugPrint('[AuthService] deleteAccount error: $e');
+      if (kDebugMode) debugPrint('[AuthService] deleteAccount error: $e');
       return false;
     }
   }
@@ -667,7 +685,7 @@ class AuthService extends GetxService {
     final doc = _userDoc();
     if (doc == null) return null;
     try {
-      final snap = await doc.get();
+      final snap = await withFirestoreTimeout(doc.get());
       if (!snap.exists) return null;
       final raw = snap.data()?[_dataField];
       if (raw is! String || raw.trim().isEmpty) return null;
@@ -675,7 +693,7 @@ class AuthService extends GetxService {
       if (decoded is! Map) return null;
       return Map<String, dynamic>.from(decoded);
     } catch (e) {
-      debugPrint('[AuthService] loadUserSettingsFromCloud error: $e');
+      if (kDebugMode) debugPrint('[AuthService] loadUserSettingsFromCloud error: $e');
       return null;
     }
   }
@@ -699,7 +717,7 @@ class AuthService extends GetxService {
       try {
         final sources = await Get.find<PlaylistRepository>().readAllSources();
         if (sources.isEmpty) {
-          debugPrint('[AuthService] maybeAutoBackup aborted: Local device has 0 playlists. Preventing cloud overwrite.');
+          if (kDebugMode) debugPrint('[AuthService] maybeAutoBackup aborted: Local device has 0 playlists. Preventing cloud overwrite.');
           return;
         }
       } catch (_) {}
@@ -712,7 +730,7 @@ class AuthService extends GetxService {
         onTimeout: () => false,
       );
     } catch (e) {
-      debugPrint('[AuthService] maybeAutoBackup error: $e');
+      if (kDebugMode) debugPrint('[AuthService] maybeAutoBackup error: $e');
     } finally {
       _autoBackupRunning = false;
     }
@@ -725,7 +743,7 @@ class AuthService extends GetxService {
       await _backup.applyBackupJson(data);
       return true;
     } catch (e) {
-      debugPrint('[AuthService] applyCloudSettingsLocally error: $e');
+      if (kDebugMode) debugPrint('[AuthService] applyCloudSettingsLocally error: $e');
       return false;
     }
   }

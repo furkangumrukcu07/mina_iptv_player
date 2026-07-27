@@ -59,6 +59,7 @@ CREATE TABLE m3u_epg_mapping (
     if (sourceKey.isEmpty) return;
     final db = await _open();
 
+    // 1) Temizleme ve kanal ekleme işlemlerini tek bir hızlı transaction içinde yap
     await db.transaction((txn) async {
       await txn.delete('epg_programme', where: 'source_key = ?', whereArgs: [sourceKey]);
       await txn.delete('epg_xml_channel', where: 'source_key = ?', whereArgs: [sourceKey]);
@@ -77,35 +78,44 @@ CREATE TABLE m3u_epg_mapping (
         );
       }
       await chBatch.commit(noResult: true);
-
-      const chunk = 150;
-      Batch progBatch = txn.batch();
-      var n = 0;
-      for (final e in programmes.entries) {
-        final chanId = e.key;
-        for (final pr in e.value) {
-          progBatch.insert(
-            'epg_programme',
-            {
-              'source_key': sourceKey,
-              'xml_channel_id': chanId,
-              'start_ms': pr.start.millisecondsSinceEpoch,
-              'end_ms': pr.end.millisecondsSinceEpoch,
-              'title': pr.title,
-              'description': pr.description,
-            },
-            conflictAlgorithm: ConflictAlgorithm.replace,
-          );
-          n++;
-          if (n % chunk == 0) {
-            await progBatch.commit(noResult: true);
-            progBatch = txn.batch();
-            await Future<void>.delayed(Duration.zero);
-          }
-        }
-      }
-      await progBatch.commit(noResult: true);
     });
+
+    // 2) Eklenecek tüm programları tek bir düz listede topla
+    final allProgrammes = <Map<String, dynamic>>[];
+    for (final e in programmes.entries) {
+      final chanId = e.key;
+      for (final pr in e.value) {
+        allProgrammes.add({
+          'source_key': sourceKey,
+          'xml_channel_id': chanId,
+          'start_ms': pr.start.millisecondsSinceEpoch,
+          'end_ms': pr.end.millisecondsSinceEpoch,
+          'title': pr.title,
+          'description': pr.description,
+        });
+      }
+    }
+
+    // 3) Programları 2000'lik paketler (ayrı transaction'lar) halinde yaz ve
+    // her paket commit edildikten (kilit tamamen serbest kaldıktan) SONRA yield et.
+    // Bu sayede video önizleme veya UI başka bir sorgu attığında kilit sırası beklemez,
+    // JNI/SQLite deadlocks (ANR) tamamen engellenir.
+    const chunkSize = 2000;
+    for (var i = 0; i < allProgrammes.length; i += chunkSize) {
+      final end = (i + chunkSize < allProgrammes.length) ? i + chunkSize : allProgrammes.length;
+      final chunk = allProgrammes.sublist(i, end);
+
+      await db.transaction((txn) async {
+        final b = txn.batch();
+        for (final row in chunk) {
+          b.insert('epg_programme', row, conflictAlgorithm: ConflictAlgorithm.replace);
+        }
+        await b.commit(noResult: true);
+      });
+
+      // İş parçacığını ana döngüye bırak, SQLite transaction kilidini serbest bırak
+      await Future<void>.delayed(Duration.zero);
+    }
 
     if (kDebugMode) {
       debugPrint(
@@ -163,7 +173,7 @@ CREATE TABLE m3u_epg_mapping (
       }
       return out;
     } catch (e) {
-      debugPrint('mina_iptv: EPG SQLite read mappings failed: $e');
+      if (kDebugMode) debugPrint('mina_iptv: EPG SQLite read mappings failed: $e');
       return {};
     }
   }
@@ -176,7 +186,7 @@ CREATE TABLE m3u_epg_mapping (
       await db.delete('epg_xml_channel', where: 'source_key = ?', whereArgs: [sourceKey]);
       await db.delete('m3u_epg_mapping', where: 'source_key = ?', whereArgs: [sourceKey]);
     } catch (e) {
-      debugPrint('mina_iptv: EPG SQLite deleteSource failed: $e');
+      if (kDebugMode) debugPrint('mina_iptv: EPG SQLite deleteSource failed: $e');
     }
   }
 }

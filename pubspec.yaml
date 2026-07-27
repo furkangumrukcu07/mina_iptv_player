@@ -1,7 +1,7 @@
 name: mina_iptv_player
 description: Mina IPTV Player — Android TV optimized IPTV client with GetX.
 publish_to: none
-version: 2.23.2+6616
+version: 2.24.6+6630
 
 environment:
   sdk: '>=3.6.0 <4.0.0'
@@ -31,6 +31,8 @@ dependencies:
   media_kit: ^1.2.6
   media_kit_video: ^2.0.1
   media_kit_libs_android_video: ^1.3.8
+  media_kit_libs_ios_video: ^1.1.4
+  media_kit_libs_macos_video: ^1.1.4
   # Sürüm + installerStore (yükleyici paketi) — AppInstallSourceService
   package_info_plus: ^9.0.1
   cached_network_image: ^3.4.1
@@ -87,6 +89,9 @@ flutter:
 flutter_launcher_icons:
   android: true
   ios: true
+  macos:
+    generate: true
+    image_path: assets/images/app_icon.png
   image_path: assets/images/app_icon.png
   adaptive_icon_background: "#FFFFFF"
   adaptive_icon_foreground: assets/images/app_icon.png

@@ -399,8 +399,7 @@ class GlassPopupPanel extends StatelessWidget {
             : ga.popupGradientColors;
         final tv = settings.layoutMode.value == AppLayoutMode.tv;
         final tl = settings.themeLabel.value;
-        final isGm = tl == GlassThemeLabels.glassmorphism ||
-            tl == GlassThemeLabels.minaGlass ||
+        final isGm = tl == GlassThemeLabels.minaGlass ||
             tl == GlassThemeLabels.flyUi;
         final isDf = GlassThemeLabels.isDarkFlatFamily(tl);
         final isGg = tl == GlassThemeLabels.glassGri;

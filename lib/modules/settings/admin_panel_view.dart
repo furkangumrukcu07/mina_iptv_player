@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:cloud_functions/cloud_functions.dart';
@@ -7,16 +8,12 @@ import 'package:flutter/services.dart';
 import 'package:get/get.dart';
 import '../../ui/themed_settings_background.dart';
 import 'admin_online_users_view.dart';
-import 'admin_announcements_view.dart';
-import 'admin_global_settings_view.dart';
-import 'admin_dashboard_view.dart';
-import 'admin_support_manager_view.dart';
+
 import 'admin_user_management_view.dart';
 import 'admin_orders_view.dart';
-import 'admin_user_activity_logs_view.dart';
-import 'admin_analytics_view.dart';
+
 import 'admin_notification_center_view.dart';
-import 'admin_banner_view.dart';
+
 import 'admin_crash_reports_view.dart';
 
 class AdminPanelView extends StatefulWidget {
@@ -65,48 +62,51 @@ class _AdminPanelViewState extends State<AdminPanelView> {
     }
   }
 
-    Future<void> _fetchUnusedCode() async {
-    setState(() {
-      _isLoading = true;
-      _statusMessage = 'Kullanılmamış bir kod aranıyor...';
-      _fetchedCode = null;
-    });
-
-    try {
-      final snapshot = await FirebaseFirestore.instance
-          .collection('license_codes')
-          .where('is_used', isEqualTo: false)
-          .limit(1)
-          .get(const GetOptions(source: Source.server))
-          .timeout(const Duration(seconds: 8));
-
-      if (!mounted) return;
-
-      if (snapshot.docs.isNotEmpty) {
-        final code = snapshot.docs.first.data()['code'] as String?;
-        setState(() {
-          _fetchedCode = code;
-          _statusMessage = '🎉 Kod başarıyla getirildi!';
-        });
-      } else {
-        setState(() {
-          _statusMessage = 'Kullanılmamış kod kalmadı! Lütfen yeni kod üretin.';
-          _fetchedCode = null;
-        });
-      }
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _statusMessage = 'Hata oluştu. Firebase kurallarınızı kontrol edin: $e';
-      });
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
+    /// Fetches an unused license code from Firestore with a timeout.
+    /// Returns the document snapshot if a code exists, otherwise null.
+    Future<DocumentSnapshot?> _fetchUnusedCodeFromFirestore() async {
+      try {
+        final snapshot = await FirebaseFirestore.instance
+            .collection('license_codes')
+            .where('is_used', isEqualTo: false)
+            .limit(1)
+            .get(const GetOptions(source: Source.server))
+            .timeout(const Duration(seconds: 8));
+        if (snapshot.docs.isNotEmpty) {
+          return snapshot.docs.first;
+        }
+        return null;
+      } on TimeoutException catch (_) {
+        debugPrint('Firestore fetch timed out');
+        return null;
+      } catch (e) {
+        debugPrint('Firestore error: $e');
+        return null;
       }
     }
-  }
+
+    /// UI‑thread safe wrapper that updates the UI based on the result.
+    Future<void> _fetchUnusedCode() async {
+      setState(() {
+        _isLoading = true;
+        _statusMessage = 'Kullanılmamış bir kod aranıyor...';
+        _fetchedCode = null;
+      });
+
+      final doc = await _fetchUnusedCodeFromFirestore();
+      if (!mounted) return;
+
+      setState(() {
+        _isLoading = false;
+        if (doc != null) {
+          _fetchedCode = (doc.data() as Map<String, dynamic>?)?['code'] as String?;
+          _statusMessage = '🎉 Kod başarıyla getirildi!';
+        } else {
+          _fetchedCode = null;
+          _statusMessage = 'Kullanılmamış kod kalmadı! Lütfen yeni kod üretin.';
+        }
+      });
+    }
 
 
 
@@ -204,12 +204,7 @@ class _AdminPanelViewState extends State<AdminPanelView> {
                               shrinkWrap: true,
                               physics: const NeverScrollableScrollPhysics(),
                               children: [
-                                _buildGridCard(
-                                  title: 'Hareket Dökümleri',
-                                  icon: Icons.history_rounded,
-                                  color: Colors.blueGrey,
-                                  onTap: () => Get.to(() => const AdminUserActivityLogsView()),
-                                ),
+                                
                                 _buildGridCard(
                                   title: 'Satın Alımlar',
                                   icon: Icons.shopping_cart_rounded,
@@ -222,12 +217,7 @@ class _AdminPanelViewState extends State<AdminPanelView> {
                                   color: Colors.blueAccent,
                                   onTap: () => Get.to(() => const AdminUserManagementView()),
                                 ),
-                                _buildGridCard(
-                                  title: 'Sistem Ayarları',
-                                  icon: Icons.settings_applications,
-                                  color: Colors.tealAccent,
-                                  onTap: () => Get.to(() => const AdminGlobalSettingsView()),
-                                ),
+                                
                                 _buildGridCard(
                                   title: 'Hata Raporları',
                                   icon: Icons.bug_report,
@@ -247,42 +237,17 @@ class _AdminPanelViewState extends State<AdminPanelView> {
                                   color: Colors.purpleAccent,
                                   onTap: () => Get.to(() => const AdminOnlineUsersView()),
                                 ),
-                                _buildGridCard(
-                                  title: 'Duyurular',
-                                  icon: Icons.campaign_rounded,
-                                  color: Colors.orangeAccent,
-                                  onTap: () => Get.to(() => const AdminAnnouncementsView()),
-                                ),
-                                _buildGridCard(
-                                  title: 'İstatistikler',
-                                  icon: Icons.analytics_rounded,
-                                  color: Colors.tealAccent,
-                                  onTap: () => Get.to(() => const AdminDashboardView()),
-                                ),
-                                _buildGridCard(
-                                  title: 'Destek Talepleri',
-                                  icon: Icons.support_agent_rounded,
-                                  color: Colors.indigoAccent,
-                                  onTap: () => Get.to(() => const AdminSupportManagerView()),
-                                ),
-                                _buildGridCard(
-                                  title: 'Analitik',
-                                  icon: Icons.bar_chart_rounded,
-                                  color: Colors.cyanAccent,
-                                  onTap: () => Get.to(() => const AdminAnalyticsView()),
-                                ),
+                                
+                                
+                                
+                                
                                 _buildGridCard(
                                   title: 'Bildirim Merkezi',
                                   icon: Icons.notifications_rounded,
                                   color: Colors.deepPurpleAccent,
                                   onTap: () => Get.to(() => const AdminNotificationCenterView()),
                                 ),
-                                _buildGridCard(
-                                  title: 'Banner Yönetimi',
-                                  icon: Icons.view_carousel_rounded,
-                                  color: Colors.pinkAccent,
-                                  onTap: () => Get.to(() => const AdminBannerView()),
-                                ),
+                                
                               ],
                             ),
                           if (_fetchedCode != null) ...[
@@ -306,15 +271,17 @@ class _AdminPanelViewState extends State<AdminPanelView> {
                                     mainAxisAlignment: MainAxisAlignment.center,
                                     children: [
                                       Text(
-                                        _fetchedCode!,
+                                        _fetchedCode ?? '',
                                         style: const TextStyle(color: Colors.white, fontSize: 24, fontWeight: FontWeight.w900, letterSpacing: 2),
                                       ),
                                       const SizedBox(width: 12),
                                       IconButton(
                                         icon: const Icon(Icons.copy_rounded, color: Colors.greenAccent),
                                         onPressed: () {
-                                          Clipboard.setData(ClipboardData(text: _fetchedCode!));
-                                          Get.snackbar('Başarılı', 'Kod kopyalandı!', backgroundColor: Colors.green, colorText: Colors.white);
+                                          if (_fetchedCode != null) {
+                                            Clipboard.setData(ClipboardData(text: _fetchedCode!));
+                                            Get.snackbar('Başarılı', 'Kod kopyalandı!', backgroundColor: Colors.green, colorText: Colors.white);
+                                          }
                                         },
                                       ),
                                     ],

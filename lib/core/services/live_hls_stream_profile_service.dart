@@ -55,7 +55,7 @@ class LiveHlsStreamProfileService extends GetxService {
 
     final probeUrl = _pickProbeLiveM3u8Url(source, result);
     if (probeUrl == null) {
-      debugPrint('mina_iptv: HLS profil probe atlandı (canlı URL yok)');
+      if (kDebugMode) debugPrint('mina_iptv: HLS profil probe atlandı (canlı URL yok)');
       return;
     }
 
@@ -67,12 +67,12 @@ class LiveHlsStreamProfileService extends GetxService {
       );
       useLongSegmentLiveBuffer.value = active;
       if (active) {
-        debugPrint(
+        if (kDebugMode) debugPrint(
           'mina_iptv: Uzun segmentli ABR\'siz HLS profili aktif ($key)',
         );
       }
     } catch (e) {
-      debugPrint('mina_iptv: HLS profil probe hata: $e');
+      if (kDebugMode) debugPrint('mina_iptv: HLS profil probe hata: $e');
     } finally {
       _evaluationCompleter?.complete();
       _evaluationCompleter = null;
@@ -207,7 +207,7 @@ class LiveHlsStreamProfileService extends GetxService {
       final resp = await dio.get<String>(url);
       return resp.data;
     } on DioException catch (e) {
-      debugPrint('mina_iptv: HLS manifest GET $url → ${e.message}');
+      if (kDebugMode) debugPrint('mina_iptv: HLS manifest GET $url → ${e.message}');
       return null;
     } finally {
       dio.close(force: true);

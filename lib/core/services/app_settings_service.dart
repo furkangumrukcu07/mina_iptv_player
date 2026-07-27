@@ -2,6 +2,9 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
+import 'package:path_provider/path_provider.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:crypto/crypto.dart';
 import 'package:flutter/foundation.dart';
@@ -100,6 +103,9 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
   static const _kLowEndDeviceMode = 'mina_settings_low_end_device_mode';
   static const _kLowEndUserChoseOff = 'mina_settings_low_end_user_chose_off';
   static const _kTvLite = 'mina_settings_tv_lite';
+  static const _kImageMemoryCacheLimitMb = 'mina_settings_image_memory_cache_limit_mb_v1';
+  static const _kAutoCleanCacheInterval = 'mina_settings_auto_clean_cache_interval_v1';
+  static const _kLastAutoCleanMs = 'mina_settings_last_auto_clean_ms_v1';
 
   /// TV düzeninde TV Lite'ı bir kez zorla açtık mı? (Eski kullanıcılarda kapalı
   /// kalmış olabilir.) Bir kez true yapılır; kullanıcı sonradan kapatabilir.
@@ -302,6 +308,10 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
   static const _kDailyQuote = 'mina_settings_daily_quote';
   static const _kContinueWatching = 'mina_settings_continue_watching';
   static const _kMinaWrappedEnabled = 'mina_settings_mina_wrapped_enabled';
+  static const _kShowTvRailWrapper = 'mina_settings_show_tv_rail_wrapper';
+  static const _kShowTvRailPlaylists = 'mina_settings_show_tv_rail_playlists';
+  static const _kShowTvRailRepeat = 'mina_settings_show_tv_rail_repeat';
+  static const _kShowTvRailContinueWatching = 'mina_settings_show_tv_rail_continue_watching';
   static const _kStripLiveChannelPrefix = 'mina_settings_strip_live_ch_prefix';
   static const _kAdaptiveHaptics = 'mina_settings_adaptive_haptics';
   static const _kSmartStreamCutter = 'mina_settings_smart_stream_cutter';
@@ -547,6 +557,15 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
   final lowEndSuggestionDismissed = false.obs;
   final launchOnBoot = false.obs;
 
+  /// Görsel bellek (RAM) cache limiti (MB). 0 = otomatik (cihaza göre).
+  final imageMemoryCacheLimitMb = 0.obs;
+
+  /// Otomatik depolama/önbellek temizleme sıklığı. Seçenekler: 'off', 'everyLaunch', 'weekly', 'monthly'.
+  final autoCleanCacheInterval = 'off'.obs;
+
+  /// Son otomatik depolama temizliği zaman damgası (ms).
+  final lastAutoCleanMs = 0.obs;
+
   /// **Film/Dizi (VOD)** oynatma motoru tercihi: `true` → MediaKit (mpv),
   /// `false` → Better Player (Exo). Varsayılan **Better Player**; sorun olursa
   /// oynatıcı yalnız o yayın için diğer motora otomatik geçer.
@@ -626,12 +645,15 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
   final Map<int, String> _streamSuccessCache = <int, String>{};
 
   Future<String?> getStreamSuccessFormat(int channelId) {
+    if (!smartPlayerSelection.value) return Future.value(null);
     return Future.value(_streamSuccessCache[channelId]);
   }
 
   /// Senkron okuma — zap/boot sırasında async beklemeden önbellek uygulamak için.
-  String? peekStreamSuccessFormat(int channelId) =>
-      _streamSuccessCache[channelId];
+  String? peekStreamSuccessFormat(int channelId) {
+    if (!smartPlayerSelection.value) return null;
+    return _streamSuccessCache[channelId];
+  }
 
   void _scheduleStreamSuccessCachePersist() {
     if (_streamSuccessCache.isEmpty) {
@@ -644,6 +666,7 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
   }
 
   Future<void> setStreamSuccessFormat(int channelId, String format) async {
+    if (!smartPlayerSelection.value) return;
     _streamSuccessCache[channelId] = format;
     _scheduleStreamSuccessCachePersist();
   }
@@ -660,7 +683,7 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
     _streamSuccessCache.clear();
     _hotPrefs.scheduleRemove(_kStreamSuccessCache);
     await _hotPrefs.flush();
-    debugPrint(
+    if (kDebugMode) debugPrint(
       'mina_iptv: Stream success cache cleared ($n channel(s), engine pref changed)',
     );
   }
@@ -675,7 +698,7 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
     if (removed == 0) return;
     _scheduleStreamSuccessCachePersist();
     await _hotPrefs.flush();
-    debugPrint(
+    if (kDebugMode) debugPrint(
       'mina_iptv: MediaKit stream success cache cleared ($removed channel(s))',
     );
   }
@@ -686,7 +709,7 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
     final p = await _getPrefs();
     await p.setBool(_kSmartPlayerSelection, enabled);
     if (!enabled) {
-      await clearMediaKitStreamSuccessFormats();
+      await clearAllStreamSuccessFormats();
     }
   }
 
@@ -842,6 +865,7 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
 
   /// Kullanıcı ayarı + canlı MediaKit engeli + TV düzeni.
   bool get isShowcaseInAppPipEffectivelyEnabled =>
+      !Platform.isMacOS &&
       showcaseInAppPipEnabled.value &&
       !isShowcaseInAppPipBlockedByLiveMediaKit &&
       layoutMode.value != AppLayoutMode.tv;
@@ -856,6 +880,35 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
   /// (Wrapped) analitiği açık gelir; kullanıcı isterse Ayarlar > Ana Ekran'dan
   /// veya kurulum sihirbazından kapatabilir. Tüm veri yereldir (bulut sync yok).
   final minaWrappedEnabled = true.obs;
+
+  final showTvRailWrapper = true.obs;
+  final showTvRailPlaylists = true.obs;
+  final showTvRailRepeat = true.obs;
+  final showTvRailContinueWatching = true.obs;
+
+  Future<void> setShowTvRailWrapper(bool value) async {
+    showTvRailWrapper.value = value;
+    final p = await _getPrefs();
+    await p.setBool(_kShowTvRailWrapper, value);
+  }
+
+  Future<void> setShowTvRailPlaylists(bool value) async {
+    showTvRailPlaylists.value = value;
+    final p = await _getPrefs();
+    await p.setBool(_kShowTvRailPlaylists, value);
+  }
+
+  Future<void> setShowTvRailRepeat(bool value) async {
+    showTvRailRepeat.value = value;
+    final p = await _getPrefs();
+    await p.setBool(_kShowTvRailRepeat, value);
+  }
+
+  Future<void> setShowTvRailContinueWatching(bool value) async {
+    showTvRailContinueWatching.value = value;
+    final p = await _getPrefs();
+    await p.setBool(_kShowTvRailContinueWatching, value);
+  }
 
   /// Ana ekran kart boyut ölçeği. 1.0 = standart; 0.80 → ~%20 küçük,
   /// 1.20 → ~%20 büyük. Hem üst kategori kartları (Canlı/Filmler/Diziler…)
@@ -1295,7 +1348,10 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
     } else if (savedTheme == 'Yeşil Cam' ||
         savedTheme == 'Kırmızı Cam' ||
         savedTheme == 'Mavi Cam' ||
-        savedTheme == 'Mor Cam') {
+        savedTheme == 'Mor Cam' ||
+        savedTheme == 'Glassmorphism' ||
+        savedTheme == 'IOS 27' ||
+        savedTheme == 'Mac Tema') {
       themeLabel.value = GlassThemeLabels.varsayilan;
       await p.setString(_kTheme, GlassThemeLabels.varsayilan);
     } else {
@@ -1314,6 +1370,9 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
     lowEndSuggestionDismissed.value =
         p.getBool(_kLowEndSuggestDismissed) ?? false;
     launchOnBoot.value = p.getBool(_kLaunchOnBoot) ?? false;
+    imageMemoryCacheLimitMb.value = p.getInt(_kImageMemoryCacheLimitMb) ?? 0;
+    autoCleanCacheInterval.value = p.getString(_kAutoCleanCacheInterval) ?? 'off';
+    lastAutoCleanMs.value = p.getInt(_kLastAutoCleanMs) ?? 0;
 
     final rawLayout = p.getString(_kLayout);
     if (rawLayout == null) {
@@ -1502,6 +1561,12 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
       await p.setString(
           _kVodPlaybackEngine, vodPlaybackEngine.value.storageValue);
     }
+    if (Platform.isMacOS) {
+      livePlaybackEngine.value = PlaybackEngineKind.mediaKit;
+      vodPlaybackEngine.value = PlaybackEngineKind.mediaKit;
+      liveUseMediaKit.value = true;
+      useMediaKit.value = true;
+    }
     _syncLegacyEngineBoolsFromKind();
 
     externalPlayerEnabled.value = p.getBool(_kExternalPlayerEnabled) ?? false;
@@ -1612,6 +1677,10 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
     // Mina Wrapped artık kullanıcı tarafından kapatılamaz — her zaman açık.
     // Eskiden kapatmış kullanıcılarda da zorla açık gelir.
     minaWrappedEnabled.value = true;
+    showTvRailWrapper.value = p.getBool(_kShowTvRailWrapper) ?? true;
+    showTvRailPlaylists.value = p.getBool(_kShowTvRailPlaylists) ?? true;
+    showTvRailRepeat.value = p.getBool(_kShowTvRailRepeat) ?? true;
+    showTvRailContinueWatching.value = p.getBool(_kShowTvRailContinueWatching) ?? true;
     stripLiveChannelCountryPrefix.value =
         p.getBool(_kStripLiveChannelPrefix) ?? false;
     var adaptiveHaptics = p.getBool(_kAdaptiveHaptics);
@@ -1758,6 +1827,55 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
     _loaded = true;
     _listenToAdminGlobalOverrides();
     rescheduleSleepTimer();
+    unawaited(maybePerformAutoClean());
+  }
+
+  Future<void> maybePerformAutoClean() async {
+    final interval = autoCleanCacheInterval.value;
+    if (interval == 'off') return;
+
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final lastClean = lastAutoCleanMs.value;
+    bool shouldClean = false;
+
+    if (interval == 'everyLaunch') {
+      shouldClean = true;
+    } else if (interval == 'weekly') {
+      if (now - lastClean >= 604800000) {
+        shouldClean = true;
+      }
+    } else if (interval == 'monthly') {
+      if (now - lastClean >= 2592000000) {
+        shouldClean = true;
+      }
+    }
+
+    if (shouldClean) {
+      if (kDebugMode) {
+        debugPrint('[AutoClean] Starting storage auto-clean background job (interval: $interval)...');
+      }
+      try {
+        await DefaultCacheManager().emptyCache();
+        final tempDir = await getTemporaryDirectory();
+        if (await tempDir.exists()) {
+          await for (var entity in tempDir.list(recursive: false, followLinks: false)) {
+            if (entity is File || entity is Directory) {
+              try {
+                await entity.delete(recursive: true);
+              } catch (_) {}
+            }
+          }
+        }
+        await setLastAutoCleanMs(now);
+        if (kDebugMode) {
+          debugPrint('[AutoClean] Storage auto-clean completed successfully.');
+        }
+      } catch (e) {
+        if (kDebugMode) {
+          debugPrint('[AutoClean] Storage auto-clean error: $e');
+        }
+      }
+    }
   }
 
   StreamSubscription? _globalOverridesSub;
@@ -1827,14 +1945,14 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
             }
           }
 
-          debugPrint(
+          if (kDebugMode) debugPrint(
               '[AppSettings] Global overrides applied (ID: $newForceId)');
         }
       }, onError: (e) {
-        debugPrint('[AppSettings] Stream error: $e');
+        if (kDebugMode) debugPrint('[AppSettings] Stream error: $e');
       });
     } catch (e) {
-      debugPrint('[AppSettings] Error listening to global overrides: $e');
+      if (kDebugMode) debugPrint('[AppSettings] Error listening to global overrides: $e');
     }
   }
 
@@ -2543,7 +2661,11 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
   Future<void> _applySystemChromeForLayout(AppLayoutMode mode) async {
     if (kIsWeb) return;
     if (defaultTargetPlatform == TargetPlatform.iOS) {
-      await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+      if (mode == AppLayoutMode.tv) {
+        await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+      } else {
+        await SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+      }
       return;
     }
     if (defaultTargetPlatform == TargetPlatform.android) {
@@ -2826,11 +2948,16 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
 
   Future<void> setThemeLabel(String label) async {
     var resolved = label;
+    if (!GlassThemeLabels.selectableThemeLabels.contains(resolved)) {
+      resolved = layoutMode.value == AppLayoutMode.tv
+          ? GlassThemeLabels.koyuCam
+          : GlassThemeLabels.varsayilan;
+    }
     if (layoutMode.value == AppLayoutMode.tv &&
-        !GlassThemeLabels.isThemeAllowedOnTv(label)) {
+        !GlassThemeLabels.isThemeAllowedOnTv(resolved)) {
       resolved = GlassThemeLabels.koyuCam;
     } else if (layoutMode.value != AppLayoutMode.tv &&
-        !GlassThemeLabels.isThemeAllowedOnHandheld(label)) {
+        !GlassThemeLabels.isThemeAllowedOnHandheld(resolved)) {
       resolved = GlassThemeLabels.varsayilan;
     }
     themeLabel.value = resolved;
@@ -2899,6 +3026,11 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
 
   /// TV düzeninde yasaklı tema kayıtlıysa «Koyu Cam»'a çek.
   Future<void> _coerceThemeForTvLayoutIfNeeded(SharedPreferences p) async {
+    if (!GlassThemeLabels.selectableThemeLabels.contains(themeLabel.value)) {
+      themeLabel.value = GlassThemeLabels.koyuCam;
+      await p.setString(_kTheme, GlassThemeLabels.koyuCam);
+      return;
+    }
     if (layoutMode.value != AppLayoutMode.tv) return;
     if (GlassThemeLabels.isThemeAllowedOnTv(themeLabel.value)) return;
     themeLabel.value = GlassThemeLabels.koyuCam;
@@ -2908,6 +3040,11 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
   /// Mobil/tablet düzeninde TV Lite kayıtlıysa «Varsayılan»'a çek.
   Future<void> _coerceThemeForHandheldLayoutIfNeeded(
       SharedPreferences p) async {
+    if (!GlassThemeLabels.selectableThemeLabels.contains(themeLabel.value)) {
+      themeLabel.value = GlassThemeLabels.varsayilan;
+      await p.setString(_kTheme, GlassThemeLabels.varsayilan);
+      return;
+    }
     if (layoutMode.value == AppLayoutMode.tv) return;
     if (GlassThemeLabels.isThemeAllowedOnHandheld(themeLabel.value)) return;
     themeLabel.value = GlassThemeLabels.varsayilan;
@@ -3288,6 +3425,25 @@ class AppSettingsService extends GetxService with WidgetsBindingObserver {
     await p.setBool(_kLowEndDeviceMode, v);
     await p.setBool(_kTvLite, v);
     await p.setBool(_kLowEndUserChoseOff, !v);
+  }
+
+  Future<void> setImageMemoryCacheLimitMb(int v) async {
+    imageMemoryCacheLimitMb.value = v;
+    AppPerformance.applyImageCacheLimitsFor(this);
+    final p = await _getPrefs();
+    await p.setInt(_kImageMemoryCacheLimitMb, v);
+  }
+
+  Future<void> setAutoCleanCacheInterval(String v) async {
+    autoCleanCacheInterval.value = v;
+    final p = await _getPrefs();
+    await p.setString(_kAutoCleanCacheInterval, v);
+  }
+
+  Future<void> setLastAutoCleanMs(int v) async {
+    lastAutoCleanMs.value = v;
+    final p = await _getPrefs();
+    await p.setInt(_kLastAutoCleanMs, v);
   }
 
   /// Ana ekrandaki «düşük donanım moduna geç» uyarısı kapatıldı olarak
